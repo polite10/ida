@@ -1,0 +1,39 @@
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Derleme çıktıları
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+vcpkg_installed/
+*.o
+*.obj
+*.a
+*.lib
+*.elf
+*.bin
+*.hex
+*.map
+*.exe
+*.dll
+*.dylib
+*.so
+
+# Editör ve IDE
+.vscode/
+.idea/
+*.swp
+.cproject
+.project
+.settings/
+
+# Yerel araç durumu
+.codex-log/
+.claude/settings.local.json
+
+# Simülasyon kayıtları (büyük dosyalar depoya girmez)
+*.mcap

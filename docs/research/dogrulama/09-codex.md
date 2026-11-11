@@ -1,0 +1,112 @@
+# Codex doğrulaması: 09-pc-cpp-yigini
+
+## Hüküm tablosu
+
+| # | İddia (kısa) | Hüküm | Kanıt (URL) | Not |
+|---|---|---|---|---|
+| 1 | Qt Quick 3D ve Qt Graphs açık kaynakta GPLv3; Qt Location 6.12 Technology Preview | DOĞRU | [Quick 3D](https://doc.qt.io/qt-6/qtquick3d-index.html), [Graphs](https://doc.qt.io/qt-6/qtgraphs-index.html), [modüller](https://doc.qt.io/qt-6/qtmodules.html) | Quick 3D ve Graphs ticari lisansla da sunuluyor. Technology Preview statüsü Location’a ait. |
+| 2 | MSVC 2022 daralma kapalı; Clang `on`; GCC ISO C’de `off`, GNU kipinde `fast` | DOĞRU | [MSVC](https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior), [Clang](https://clang.llvm.org/docs/UsersManual.html), [GCC 14.3](https://gcc.gnu.org/onlinedocs/gcc-14.3.0/gcc/Optimize-Options.html) | GCC için sürüm koşulu önemli: [13.3 belgesi](https://gcc.gnu.org/onlinedocs/gcc-13.3.0/gcc/Optimize-Options.html) varsayılanı genel olarak `fast` veriyor. ISO C++ kipi de ISO C ile aynı değil. |
+| 3 | `<random>` dağılımları taşınabilir dizi üretmez; motorlar üretir | KISMEN DOĞRU | [Dağılım algoritmaları](https://eel.is/c++draft/rand.dist.general), [motor tanımları](https://eel.is/c++draft/rand.predef) | `mt19937` gibi belirli motorlar için doğru. `default_random_engine` uygulamaya bağlıdır. |
+| 4 | vcpkg `x-gha` kaldırıldı; GitHub Packages + NuGet öneriliyor | DOĞRU | [Microsoft duyurusu](https://devblogs.microsoft.com/cppblog/whats-new-in-vcpkg-june-2025/), [güncel sağlayıcı listesi](https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching) | Haziran 2025 değişikliği. `actions/cache` alternatifi de belgelenmiş; NuGet tek mümkün yol değil. |
+| 5 | Apple `jthread`/`stop_token` desteğinin hangi Xcode’da bulunduğu bilinmiyor | YANLIŞ | [Xcode 26 sürüm notları](https://developer.apple.com/documentation/xcode-release-notes/xcode-26-release-notes.md), [libc++ 20 notları](https://releases.llvm.org/20.1.0/projects/libcxx/docs/ReleaseNotes.html) | Xcode 26, deneysel bayrak gereksiniminin kaldırıldığını açıkça bildiriyor. Rapordaki Eylül 2024 commit bağlantısına erişemedim; kesin commit tarihini doğrulanmış saymıyorum. |
+| 6 | Kartın CN4 Type-C portu HS/sink-only ve CDC/bulk için kullanılabilir | KISMEN DOĞRU | [ST kart veri özeti](https://www.st.com/resource/en/data_brief/stm32u5a9j-dk.pdf), [ST ürün sayfası](https://www.st.com/en/evaluation-tools/stm32u5a9j-dk.html) | USB 2.0 HS ve sink-only doğrulandı. UM2967 açılamadı; CN4 ayrıntısını ve kart üzerinde çalışan CDC/vendor-bulk uygulamasını doğrulanmış saymıyorum. |
+| 7 | Windows/macOS CDC sorunları tekrarlanabilir işletim sistemi olgularıdır | DOĞRULANAMADI | [OSR tartışması](https://community.osr.com/t/about-supposed-bug-in-usbser-sys-with-cdc-devices-on-some-microcontrollers/59965), [ST macOS başlığı](https://community.st.com/stm32-mcus-embedded-software-32/stm32h7-usb-cdc-read-fails-on-mac-mini-m4-macos-15-5-152452) | Bildirimler mevcut; genel sürücü kusuru ve bu karttaki tekrarlanabilirlik kanıtlanmıyor. macOS vakası terminal/firmware düzeltmesiyle çözülmüş. |
+| 8 | Foxglove SDK: Rust çekirdek, C++ sarmalayıcı, MIT, MCAP/WebSocket; C++ tür güvenli şema kanalları eksik | KISMEN DOĞRU | [Depo README](https://raw.githubusercontent.com/foxglove/foxglove-sdk/main/README.md), [güncel SDK belgesi](https://docs.foxglove.dev/docs/sdk), [v0.8.0](https://docs.foxglove.dev/changelog/sdk/v0.8.0) | Çekirdek ve lisans iddiaları doğru. Güncel C++ örneğinde `foxglove::messages::LogChannel` var; eski eksiklik güncel karar gerekçesi olamaz. |
+| 9 | QGC yalnız Qt 6.12.0 ister; Apache derlemesi ticari Qt, GPLv3 derlemesi açık Qt kullanır | DOĞRU | [QGC derleme belgesi](https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/getting_started/index.html), [lisans belgesi](https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/contribute/licences.html) | Açılan **master** belgeleri için doğru. Bütün geçmiş QGC sürümlerine genellenmemeli. |
+| 10 | STM32U5A9’un Cortex-M33 FPU’su yalnız tek duyarlıklıdır | DOĞRU | [ST DS13543, s.17 ve s.23](https://www.st.com/resource/en/datasheet/stm32u5a9nj.pdf) | Bu MCU’da single-precision FPU açıkça belirtiliyor. Genel Cortex-M33 tasarımlarında FPU isteğe bağlı olabilir. |
+| 11 | Apple C++20/23 tablosu `flat_map`, deducing-this, `print` gibi özelliklerden kaçınmayı gerektiriyor | YANLIŞ | [Apple’ın resmî destek tablosu](https://developer.apple.com/xcode/cpp/) | `flat_map`: Xcode 26; deducing-this: 16.3; formatted output: 15.3 olarak belgelenmiş. Özellikler tek tek değerlendirilmelidir. |
+| 12 | Apple’da `<chrono>` saat dilimleri tam ve kararlı ortak taban sayılmamalı | DOĞRU | [libc++ kullanıcı belgesi](https://libcxx.llvm.org/UserDocumentation.html), [Apple dalındaki `tzdb` başlığı](https://raw.githubusercontent.com/apple/llvm-project/next/libcxx/include/__chrono/tzdb.h) | `tzdb` hâlâ deneysel koruma altında. Bu durum bütün `<chrono>` kütüphanesini yasaklamayı gerektirmez. |
+| 13 | SIL’de kartla aynı `float` ve FMA politikası kullanılmalı | KISMEN DOĞRU | [ST FPU tanımı](https://www.st.com/resource/en/datasheet/stm32u5a9nj.pdf), [Clang FP davranışı](https://clang.llvm.org/docs/UsersManual.html), [MSVC FP davranışı](https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior) | Ortak otopilot algoritmasının hedefe sadık sınaması için doğru. Tek başına eşitlik sağlamaz; PC fizik modelinin de `float` olması gerekmez. |
+| 14 | Philox ve PCG sayaç tabanlı RNG örnekleridir | YANLIŞ | [Random123](https://github.com/DEShawResearch/random123), [PCG tasarımı](https://www.pcg-random.org/index.html) | Philox sayaç tabanlıdır. PCG, durum geçişinde doğrusal eşlenik üreteç kullanır. |
+| 15 | `EIGEN_DONT_VECTORIZE` determinizm için yeterli bir ayardır | KISMEN DOĞRU | [Eigen makroları](https://libeigen.gitlab.io/eigen/docs-nightly/TopicPreprocessorDirectives.html) | Yalnız Eigen’in açık vektörleştirmesini kapatır. Derleyici dönüşümleri ve `EIGEN_FAST_MATH` ayrıca ele alınmalıdır. |
+| 16 | Genel MAVLink alt kümesi özel otopilotun QGC desteğine yeter | KISMEN DOĞRU | [Eklenti mimarisi](https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/firmware_plugin.html), [güncel `FirmwarePlugin.h`](https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/src/FirmwarePlugin/FirmwarePlugin.h), [uygulaması](https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/src/FirmwarePlugin/FirmwarePlugin.cc) | Telemetri mümkün; görev/mod/kurulum desteği otomatik değildir. Temel `isCapable()` hâlâ `false` döndürüyor. |
+| 17 | MCAP C++ başlık tabanlıdır; LZ4/Zstd kapatılabilir | DOĞRU | [Resmî C++ README](https://raw.githubusercontent.com/foxglove/mcap/main/cpp/README.md) | `MCAP_IMPLEMENTATION` tam bir `.cpp` dosyasında tanımlanıyor. Doğrudan kullanım önerisi sağlam. |
+| 18 | three.js izleyici + Godot sensör motoru birlikte en uygun varsayılandır | KISMEN DOĞRU | [Godot ortak dünya/görünümler](https://docs.godotengine.org/en/stable/tutorials/rendering/viewports.html), [native render mimarisi](https://docs.godotengine.org/en/4.7/engine_details/architecture/internal_rendering_architecture.html), [three.js WebGPU durumu](https://threejs.org/manual/pages/webgpurenderer) | Teknik olarak mümkün; küçük takım için iki tam sahnenin bakımını haklı çıkaran kanıt sunulmamış. Tek Godot sahnesi daha güçlü başlangıç tercihi. |
+
+1–10 numaralı satırlar raporun Bölüm 5 maddeleridir; diğerleri ek denetimlerdir. 09 ve 10 numaralı raporların tamamı okundu. Dosya değiştirilmedi, kurulum ve derleme yapılmadı. Hükümler, açılıp okunan kaynaklara dayanır; donanım performansı doğrulaması değildir.
+
+## Yanlış ya da yanıltıcı bulunanlar
+
+1. **Apple standart kütüphane değerlendirmesi güncel değil.**  
+   Raporda `jthread`/`stop_token` için Xcode sürümünün bilinmediği söyleniyor ve bunlardan kaçınılması öneriliyor. Apple, Xcode 26’da deneysel bayrak gereksiniminin kaldırıldığını bildiriyor. Dolayısıyla Xcode 26 veya üstü tabanda genel yasak gerekçesi kalmıyor; seçilen minimum macOS hedefiyle derleme, bağlama ve çalışma ayrıca sınanmalı. [Xcode 26](https://developer.apple.com/documentation/xcode-release-notes/xcode-26-release-notes.md)
+
+   Diğer özellikler de eksik değerlendirilmiş: Apple `std::format` ve `mdspan` için 15.3, `flat_map` için 26, deducing-this için 16.3 veriyor. Buna karşılık saat dilimi veritabanı ayrı bir sorun: libc++ belgesi `tzdb` işlevlerini deneysel sayıyor. “`chrono` kullanmayın” yerine “kararlı olmayan saat dilimi API’lerini ortak tabana koymayın” denmeli. [Apple destek tablosu](https://developer.apple.com/xcode/cpp/), [libc++ deneysel özellikler](https://libcxx.llvm.org/UserDocumentation.html)
+
+2. **FP varsayılanları doğru aktarılmış, fakat sürüm ve sürücü ayrımı eksik.**  
+   Güncel Clang’da `on`, aynı ifade içinde daralmaya izin verir; `fast`, ifadeler arasında da izin verir. Bunlar FMA’nın her ifadede mutlaka üretileceği anlamına gelmez. MSVC 2022’nin `/fp:precise` davranışı farklıdır. Apple’ın açık kaynak sürücü kodu da başlangıç değerini `on` atıyor; upstream Clang kodunda clang-cl için ayrı bir varsayılan `off` görülmüyor. clang-cl’nin `/fp:precise` seçeneği MSVC ile sayısal özdeşlik varsayımı yaratmamalı. [Clang kılavuzu](https://clang.llvm.org/docs/UsersManual.html), [Apple sürücü kodu](https://raw.githubusercontent.com/apple/llvm-project/next/clang/lib/Driver/ToolChains/Clang.cpp), [LLVM sürücü kodu](https://raw.githubusercontent.com/llvm/llvm-project/main/clang/lib/Driver/ToolChains/Clang.cpp)
+
+   Ayrıca GCC 13.3 belgesi varsayılanı `fast` verirken 14.3, ISO C için `off` ayrımını yapıyor. Bu projede raporlanan GCC 14.3 seçimiyle öneri tutarlı; sürümsüz GCC genellemesi güvenilir değil. [GCC 13.3](https://gcc.gnu.org/onlinedocs/gcc-13.3.0/gcc/Optimize-Options.html), [GCC 14.3](https://gcc.gnu.org/onlinedocs/gcc-14.3.0/gcc/Optimize-Options.html)
+
+3. **“M33 yalnız SP, dolayısıyla çekirdek `float` olmalı” zorunluluk gibi sunuluyor.**  
+   Donanım bilgisi doğru; bundan çıkan sonuç bir performans tercihidir. Ortak otopilot algoritmasının SIL sürümü, kartta kullanılan türleri ve işlemleri korumalıdır. Fakat bağımsız fizik, ortam ve doğruluk referansı hesapları `double` kullanabilir. Kartın sayısal sınırlamalarını fiziksel gerçekliğin referansına taşımak gereksizdir. Bu, donanım özelliğinden türetilen mühendislik değerlendirmesidir. [ST veri sayfası](https://www.st.com/resource/en/datasheet/stm32u5a9nj.pdf)
+
+   Aynı `float` ve daralma bayrakları da yeterli değildir: matematik kütüphanesi, yuvarlama, subnormal davranışı, işlem sırası ve optimize edilmiş yardımcılar farklı kalabilir. FMA’yı kapatmak karşılaştırmayı kolaylaştırır; FMA kendi başına doğruluk kusuru değildir ve tek yuvarlama kullanır. Asıl gereklilik, SIL’in **üretimdeki firmware politikasını** temsil etmesidir. [MSVC FP açıklaması](https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior)
+
+4. **RNG önerisinde sınıflandırma hatası ve eksik taşınabilirlik koşulu var.**  
+   PCG sayaç tabanlı değildir; Philox ile aynı sınıfa yazılmamalı. Ayrıca “motorlar taşınabilirdir” ifadesi `default_random_engine` için geçersizdir. [PCG](https://www.pcg-random.org/index.html), [Random123](https://github.com/DEShawResearch/random123), [standart motor tanımları](https://eel.is/c++draft/rand.predef)
+
+   Kendi Box–Muller kodunu yazmak da tek başına platformlar arası bit eşitliği sağlamaz: kullanılan logaritma, karekök ve trigonometrik işlemler hâlâ sayısal sözleşmenin parçasıdır. Bu, raporun kabul ettiği `libm` farklılıklarının önerdiği çözüme de uygulanması gerektiği anlamına gelir. Dağılım algoritmasının sürümlenmesi, dönüşüm kuralları ve varsa önbellek durumunun kaydı gerekir. Dağılım algoritmalarının standart tarafından sabitlenmediği ana iddia doğrudur. [C++ çalışma taslağı](https://eel.is/c++draft/rand.dist.general)
+
+5. **macOS CDC örneği genel işletim sistemi kusurunu desteklemiyor.**  
+   Rapor, kontrol işleyicisi değişikliğinin davranışı bozduğunu ST moderatörüne atfediyor. Bunu yazan sorun sahibidir. Aynı kişi, terminalin gösterim biçimini yanlış yorumladığını ve kendi firmware değişikliğini kaldırınca CDC’nin düzgün çalıştığını açıklıyor. Moderatörün “macOS duyarlıdır” yorumu ölçülmüş bir sürücü kusuru değildir. [ST başlığı ve kabul edilen yanıt](https://community.st.com/stm32-mcus-embedded-software-32/stm32h7-usb-cdc-read-fails-on-mac-mini-m4-macos-15-5-152452)
+
+   Windows başlığında paket kaybı bildirimleri bulunuyor; ancak `usbser.sys` kök nedeni kesinleştirilmiş değil. Rapordaki ölçüm önerisi yerinde; ≤63 bayt önerisi genel protokol kuralına dönüştürülmemeli. [OSR tartışması](https://community.osr.com/t/about-supposed-bug-in-usbser-sys-with-cdc-devices-on-some-microcontrollers/59965)
+
+6. **Eigen ayarı bütün sayısal dönüşümleri kapatmıyor.**  
+   Rapordaki `EIGEN_DONT_VECTORIZE` önerisi tanımlı bir mekanizmaya dayanıyor, ancak yalnız açık vektörleştirmeyi etkiliyor. Eigen’in `EIGEN_FAST_MATH` makrosu varsayılan olarak açık ve bazı doğruluk etkili hızlandırmaları yönetiyor. Derleyicide `-ffast-math` kullanmamak bu ayrı makroyu otomatik kapatmaz. Kontrollü referans yapılandırmasında bu seçenekler birlikte değerlendirilmelidir. [Eigen resmî belgesi](https://libeigen.gitlab.io/eigen/docs-nightly/TopicPreprocessorDirectives.html)
+
+7. **Qt lisansı ile olgunluğu birbirine karıştırmaya elverişli bir karşılaştırma kurulmuş.**  
+   GPLv3 bilgisi doğru; fakat Quick 3D ve Graphs, Location gibi Technology Preview değildir. Graphs’ın Surface3D saydamlığı ve gölgeleri gibi belgelenmiş sınırlamaları vardır. Bunlar somut gereksinimlerle karşılaştırılmalı; lisans tercihi tek başına teknik yetersizlik olarak puanlanmamalı. [Modül statüleri](https://doc.qt.io/qt-6/qtmodules.html), [Graphs bilinen sorunları](https://doc.qt.io/qt-6/qtgraphs-known-issues.html)
+
+8. **Foxglove’un eski C++ eksikleri güncel yığın kararını gerekçelendirmiyor.**  
+   Güncel resmî örnek tür güvenli `LogChannel` kullanıyor. Rust çekirdek bilgisi ise hâlâ doğru. “Rust kullanılmıyor” şartı bağımlılıkların iç uygulamasını da kapsıyorsa bu SDK uygun değildir; doğrudan MCAP C++ yolu bu belirsizliği giderir. [Güncel C++ örneği](https://docs.foxglove.dev/docs/sdk), [çekirdek uygulaması](https://raw.githubusercontent.com/foxglove/foxglove-sdk/main/README.md)
+
+## Rapor dışı ek bulgular
+
+- **QGC’de bağlantı kurmak ile işlevsel özel otopilot desteği farklı kabul ölçütleridir.** Güncel temel eklenti `isCapable()` için `false` döndürüyor; mod değiştirme ve guided işlemlerinde desteklenmiyor davranışları var. HEARTBEAT/ATTITUDE göstermek; görev başlatma, mod geçişleri ve parametre kurulumunun çalıştığını kanıtlamaz. Hibrit yüzey/dalış modları erken entegrasyon prototipinde sınanmalı. [Güncel başlık](https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/src/FirmwarePlugin/FirmwarePlugin.h), [uygulama](https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/src/FirmwarePlugin/FirmwarePlugin.cc)
+
+- **CI işletim sistemi etiketi araç zincirini sabitlemez.** Güncel tabloda `macos-26` arm64, `macos-26-intel` x64’tür; `windows-latest` Windows Server 2025/VS2026 görüntüsüne işaret ediyor. Apple Silicon testi için Intel örneği kullanılmamalı; Xcode ve MSVC sürümü ayrıca seçilip kaydedilmeli. [GitHub runner görüntüleri](https://raw.githubusercontent.com/actions/runner-images/main/README.md)
+
+- **1 kHz taban adımı, 30 fps kamerayı tam sayı oranla ifade etmez.** Kamera periyodu 33⅓ ms’dir. 33/34 tick dönüşümü, rasyonel zamanlayıcı veya ayrı olay zamanı gerekir. Kamera pozlama zamanı, GPU işinin bitiş zamanı ve algılama sürecine teslim zamanı ayrı tutulmalı. Bu, 09’daki sabit adım ile 10’daki kamera hızının birlikte uygulanmasından çıkan hesaplamadır.
+
+- **GPU sonucunun modellenmiş gecikmede hazır olacağı varsayılamaz.** `step()` iş gönderebilir; sonucun gerçekten hazır olmaması ayrı durumdur. Godot asenkron geri okuma belgesi büyük dokuların gerçek zamanda pahalı olabileceğini açıkça belirtiyor. SIL bekleyebilir; gerçek zamanlı HIL için geç kalma ve kare düşürme politikası gereklidir. [RenderingDevice](https://docs.godotengine.org/en/stable/classes/class_renderingdevice.html)
+
+- **10’daki “RGB G-buffer’dan ucuz 6–8 bant” önerisi fiziksel spektral doğruluk garantisi değildir.** RGB’den gerçek spektrumu tekil biçimde geri elde etmek mümkün değildir. Spektral malzeme ve ışık verisi olmadan ek bantlar bir yaklaşım olur. Bu nedenle “ihmal edilebilir maliyetle azami gerçekçilik” sonucu desteklenmiyor. [PBRT: renk ve spektrum ilişkisi](https://pbr-book.org/4ed/Radiometry,_Spectra,_and_Color/Color)
+
+- **Kamera kabulü görüntünün güzel görünmesine bağlanmamalı.** OceanSim’in nicel kamera karşılaştırması renk kartı üzerindeki RGB açısal hatayı ölçüyor; bu, hedef tespitinin veya görsel odometrinin doğrulandığı anlamına gelmez. Bu proje ayrıca gerçek görüntülerle algılama başarımı, yanlış pozitifler ve zamansal davranış için kabul ölçütleri belirlemeli. Bu son öneri mühendislik çıkarımıdır. [OceanSim deneyleri](https://arxiv.org/html/2503.01074v2)
+
+- **Erişim sınırları:** Raporun verdiği UM2967 ve PM0264 bağlantıları ile Eylül 2024 libc++ commit sayfası açılamadı. USB donanımı için ST veri özeti, FPU için ST veri sayfası, kütüphane durumu için Apple/LLVM sürüm notları kullanıldı. MCAP GitHub dizin görünümü açılamadı; resmî ham README okundu. 10’daki Sea-thru PDF’i 403 verdi; bu PDF doğrulanmış kanıt sayılmadı.
+
+## Raporlar arası çelişki değerlendirmesi
+
+**İki süreç ayrımı savunulabilir; iki tam 3B sahne motoru bu proje için varsayılan tercih olmamalı.** C++ fizik/HIL sunucusunu render’dan ayırmak, sensör üretimini ve arayüz yükünü kontrol döngüsünden ayırır. Bunun için aynı ortamı hem three.js hem Godot’ta yeniden kurmak gerekmez.
+
+İki motorlu düzen; three.js yalnız düşük ayrıntılı konum, rota ve koordinat çerçevesi gösteriyorsa savunulabilir. Ortak kimlikler ve pozlar yeterli olabilir. Ancak iki tarafta da aynı su yüzeyi, hedef geometrisi, aydınlatma ve malzemeler tutulacaksa ikinci varlık hattı, shader uygulaması ve tutarlılık testleri doğar. Bu bakım maliyeti değerlendirmesi bir mühendislik çıkarımıdır.
+
+| Seçenek | Native/platform koşulu | Küçük takım ve kamera değerlendirmesi |
+|---|---|---|
+| three.js tam sahne + Godot sensör sahnesi | Godot native; tarayıcı arayüzünün native uygulama şartını karşılayıp karşılamadığı ayrıca kararlaştırılmalı | İki sahnenin bakımı en yüksek. Yalnız sadeleştirilmiş bağımsız izleyici gerekçesiyle savunulabilir. |
+| Tek Godot sahnesi; operatör görünümü ve sensör kameraları | Metal/D3D12/Vulkan üzerinden native yol mevcut | En güçlü başlangıç tercihi. Ortak dünya, birden fazla kamera ve render hedefi belgelenmiş. |
+| Tek web/WebGPU sahnesi | Tarayıcı/WebView çalışma ortamı eklenir; native masaüstü uygulama ile eşdeğer kabul edilmemeli | Teknik olarak mümkün. Özel optik/sonar shader’ları, kare taşıma ve tarayıcı yaşam döngüsü yine ek iş getirir. |
+| C++ + Dawn gibi native WebGPU render katmanı | Native olabilir | three.js web uygulamasıyla aynı çözüm değildir; sahne/editör/varlık hattının daha büyük kısmını takım üstlenir. |
+
+Godot, birden fazla Viewport’un aynı `World3D`’yi kullanmasını ve aynı sahnenin farklı kameralardan çizilmesini destekliyor. Böylece operatör kamerası, araç kamerası ve sensör geçişleri aynı geometriyi kullanabilir; sensör kamerasına özgü optik etkiler ayrıca uygulanabilir. Bu yol, ikinci tam three.js sahnesini gereksiz kılıyor. [Godot Viewport ve dünya paylaşımı](https://docs.godotengine.org/en/stable/tutorials/rendering/viewports.html)
+
+Godot’un Apple Silicon için native Metal, Windows için D3D12 yolu belgelenmiş. Buna karşılık `--headless` altında RenderingDevice yok; gizli/minimize pencereyle kesintisiz GPU sensör üretimi doğrulanmış kabul edilemez. Tek motor seçimi bu prototip gereksinimini kaldırmaz. [Native render mimarisi](https://docs.godotengine.org/en/4.7/engine_details/architecture/internal_rendering_architecture.html), [RenderingDevice sınırı](https://docs.godotengine.org/en/stable/classes/class_renderingdevice.html)
+
+WebGPU seçeneği platform desteği yok diye elenmemeli: Safari 26 ile destek yayımlandı. Fakat three.js kendi WebGPURenderer’ını hâlâ deneysel olarak tanımlıyor; mevcut özel shader ve post-process kodlarının doğrudan taşınamadığını da belirtiyor. Küçük takım ve native önceliğinde bu yolun Godot’tan daha düşük toplam yük getirdiğine ilişkin kanıt yok. [WebKit](https://webkit.org/blog/17640/webkit-features-for-safari-26-2/), [three.js geçiş ve olgunluk durumu](https://threejs.org/manual/pages/webgpurenderer)
+
+**Önerim:** C++ sunucu + tek Godot render/sensör sahnesi. Laboratuvarın 3B görünümü de bu sahneden üretilsin. MapLibre/uPlot tabanlı 2B harita ve grafik panelleri gerekiyorsa ayrı arayüz olarak kalabilir; ikinci bir tam 3B dünya kurulmasın. Bütün arayüzün native olması kesin şartsa Godot arayüz araçları veya ayrı native kabuk ayrıca prototiplenmeli; harita/editör işinin hazır çözüldüğü varsayılmamalı.
+
+Godot seçimi kamera gerçekçiliğini kendiliğinden sağlamaz. Motor kabulü; hedef Mac ve Windows GPU’sunda gerçek algılama giriş biçimi, optik bozulmalar, kare zamanları ve gerçek veri karşılaştırmasıyla yapılmalıdır.
+
+## Mimari için net sonuçlar
+
+1. **C/C++ kararı ve başsız C++ sunucu korunabilir.** 09 numaralı rapor koşullu olarak kullanılabilir; Apple desteği ve arayüz gerekçeleri düzeltilmeli.
+2. **Xcode 26+ tabanında `jthread`/`stop_token` genel yasağı kaldırılmalı.** Saat dilimi API’leri ayrı tutulmalı; özellik ve minimum OS kontrolleri yapılmalı.
+3. **Ortak otopilot SIL’i kartın türlerini ve üretim FP politikasını korumalı.** Fizik ve doğruluk referansları gerektiğinde `double` kullanmalı.
+4. **FP ayarları açıkça sabitlenmeli.** Aynı tür/FMA ayarı eşitlik garantisi sayılmamalı; karttan alınan izlerle toleranslı karşılaştırma yapılmalı.
+5. **RNG ve dağılım algoritmaları sürümlenmeli.** PCG sınıflandırması düzeltilmeli; standart dağılımlardan platformlar arası aynı dizi beklenmemeli.
+6. **vcpkg + NuGet önbelleği ve doğrudan MCAP C++ seçimi korunmalı.** QGC, kendi sürüm/Qt çiftiyle ayrı entegrasyon hedefi olmalı.
+7. **Tek Godot 3B sahnesi tercih edilmeli.** Operatör görünümü, kamera ve GPU sonar aynı varlıkları kullanmalı; ikinci tam three.js sahnesi kurulması gerekçelendirilmedikçe ertelenmeli.
+8. **Kabul kapıları ölçüme dayanmalı:** USB gecikmesi/kayıp, kart–SIL farkı, iki platformda kamera geri okuma, gizli pencere davranışı ve gerçek görüntülerle algılama başarımı.
