@@ -8,8 +8,9 @@ Tek bir hibrit insansız deniz aracı (su üstünde seyreden ve dalabilen tek ar
 
 - **Hardware-in-the-Loop (HIL):** gerçek otopilot yazılımı bir STM32 kartında koşar; deniz, araç dinamiği, sensörler (sonar dahil) ve aktüatörler PC'de simüle edilir. Kart yazılımı simülasyonda olduğunu bilmez; gerçek sensörler geldiğinde yalnızca sürücü katmanı değişir.
 - **Software-in-the-Loop (SIL):** aynı çekirdek kod PC'de derlenip koşar.
-- Araç su altında sonar ile tarama yapar; kart ayrıca yarışma tipi (küçük, zararsız, patlayıcısız) torpido için atış kontrolünü yürütür.
+- Araç su altında sonar ile tarama yapar; kart ayrıca simüle edilen torpido için hedef algılama ve atış kontrolünü yürütür.
 - Öncelik: simülasyonun olabildiğince gerçekçi olması.
+- Proje bir araştırma ödevidir; bir yarışmaya hazırlık değildir. Yarışma şartnameleri kapsam dışıdır; raporlardaki yarışma kurallarına dayalı çıkarımlar tasarımı bağlamaz.
 
 ## Kesin kararlar
 

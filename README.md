@@ -4,13 +4,15 @@ Tek bir hibrit insansız deniz aracı (su üstünde seyreden ve dalabilen tek ar
 
 ## Durum
 
-**Araştırma aşaması.** Bu depoda henüz kod yok. On bir araştırma raporu yazıldı, her biri bağımsız bir model tarafından doğrulandı ve düzeltmeler tek belgede toplandı. Sıradaki adım mimari belge; kod geliştirmeleri onun onayından sonra bu depoya eklenecek.
+**Araştırma aşaması tamamlandı.** Bu depoda henüz kod yok. On üç araştırma raporu yazıldı, her biri bağımsız bir model tarafından doğrulandı ve düzeltmeler tek belgede toplandı. Sıradaki adım mimari belge; kod geliştirmeleri onun onayından sonra bu depoya eklenecek.
+
+Proje bir araştırma ödevidir; bir yarışmaya hazırlık değildir. Raporlar başlangıçta yarışma varsayımıyla yazıldı; yarışma kurallarına dayalı çıkarımlar tasarımı bağlamaz.
 
 ## Proje özeti
 
 - Gerçek otopilot yazılımı bir STM32 kartında koşar; deniz, araç dinamiği, sensörler (sonar dahil) ve aktüatörler PC'de simüle edilir.
 - Aynı çekirdek kod PC'de de derlenir; kart olmadan geliştirme ve otomatik test yapılabilir.
-- Kart ayrıca yarışma tipi (küçük, zararsız) torpido için atış kontrolünü yürütür.
+- Kart ayrıca simüle edilen torpido için hedef algılama ve atış kontrolünü yürütür.
 - Laboratuvar uygulaması 3B görünüm, harita, görev planlama, canlı telemetri, sonar görüntüsü, senaryo editörü, hata enjeksiyonu, kayıt ve tekrar oynatma sunar.
 - Öncelik simülasyonun olabildiğince gerçekçi olmasıdır.
 
@@ -48,6 +50,8 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir.
 | 09 | PC tarafı C++ yığını | [rapor](docs/research/09-pc-cpp-yigini.md) | [doğrulama](docs/research/dogrulama/09-codex.md) | C/C++ kararından sonra |
 | 10 | Gerçekçilik ve grafik motoru | [rapor](docs/research/10-gercekcilik-ve-grafik-motoru.md) | [doğrulama](docs/research/dogrulama/10-codex.md) | C/C++ kararından sonra |
 | 11 | Haberleşme ve güç sistemi | [rapor](docs/research/11-haberlesme-ve-guc.md) | [doğrulama](docs/research/dogrulama/11-codex.md) | C/C++ kararından sonra |
+| 12 | Godot entegrasyonu, sahne hattı, çarpışma | [rapor](docs/research/12-godot-entegrasyonu.md) | [doğrulama](docs/research/dogrulama/12-codex.md) | C/C++ kararından sonra |
+| 13 | Donanım yol haritası | [rapor](docs/research/13-donanim-yol-haritasi.md) | [doğrulama](docs/research/dogrulama/13-codex.md) | C/C++ kararından sonra |
 
 ## Depo düzeni
 
