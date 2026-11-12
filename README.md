@@ -21,19 +21,22 @@ Proje bir araştırma ödevidir; bir yarışmaya hazırlık değildir. Raporlar 
 | Konu | Karar |
 |---|---|
 | Araç | Tek hibrit araç: yüzey + dalış |
-| Kart | STM32U5A9J-DK (geçici; ileride değişecek) |
+| Kart | STM32U5A9J-DK; bu aşamadaki tek hedef kart |
+| Odak | Simülasyon ortamını kurup bu kartta çalıştırmak |
 | Kart yazılımı ve ortak çekirdek | C |
 | PC tarafı (simülatör, laboratuvar uygulaması) | C++ |
 | Platform | macOS (Apple Silicon) ve Windows, ikisinde de native |
 | Simülatör | Sıfırdan yazılır; fizik çekirdeği görselleştirmeden bağımsız |
+| Arayüz panelleri | Harita, grafik ve formlar web teknolojisiyle |
 
 Önerilen yığın ve henüz açık olan kararlar [00 numaralı belgede](docs/research/00-duzeltmeler-ve-kararlar.md) duruyor.
 
 ## Belgeler nasıl okunur
 
-1. **Önce [docs/research/00-duzeltmeler-ve-kararlar.md](docs/research/00-duzeltmeler-ve-kararlar.md).** Tek geçerli başvuru belgesi: kararlar, raporlardaki hataların düzeltmeleri, çelişkilerin çözümleri, ölçülmesi gereken konular ve açık sorular.
-2. **Ham raporlar** yazıldıkları haliyle korunuyor ve bilinen hatalar içeriyor. Her raporun başında bunu belirten bir not ve doğrulamasına bağlantı var.
-3. **Doğrulamalar** her raporun iddialarını birincil kaynaklardan sınayan bağımsız incelemelerdir.
+1. **Projenin şu anki durumu için [docs/DURUM.md](docs/DURUM.md).** Ne bitti, ne sürüyor, sıradaki adım.
+2. **Kararlar ve düzeltmeler için [docs/research/00-duzeltmeler-ve-kararlar.md](docs/research/00-duzeltmeler-ve-kararlar.md).** Tek geçerli başvuru belgesi: kararlar, raporlardaki hataların düzeltmeleri, çelişkilerin çözümleri, ölçülmesi gereken konular ve açık sorular.
+3. **Ham raporlar** yazıldıkları haliyle korunuyor ve bilinen hatalar içeriyor. Her raporun başında bunu belirten bir not ve doğrulamasına bağlantı var.
+4. **Doğrulamalar** her raporun iddialarını birincil kaynaklardan sınayan bağımsız incelemelerdir.
 
 Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir.
 
@@ -56,6 +59,7 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir.
 ## Depo düzeni
 
 ```
+docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
 docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
 docs/research/dogrulama/   bağımsız doğrulamalar
 tools/                     yardımcı betikler
