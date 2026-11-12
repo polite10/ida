@@ -7,13 +7,15 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 ## Şu an
 
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
+- **Mimari iskelet yazıldı:** `docs/mimari/00-iskelet.md` (taslak, kullanıcı onayı bekliyor). Mimari bölümleri yazılıyor; ilk bölüm `04-simulator-cekirdegi.md`.
+- **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında (AGENTS.md, Çalışma yöntemi).
 - **Kod yok.** Kod dizinleri mimari belge onaylanınca eklenecek.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
 ## Sıradaki adım
 
-1. Mimari belge. Yazılması için kullanıcı onayı bekleniyor.
-2. Kodlama iş akışı (görev belgesi, dal ve pull request, Codex incelemesi, Mac ve Windows'ta otomatik derleme ve test, ölçüm kaydı). Kullanıcıya önerildi; kurulması için onayı bekleniyor.
+1. Mimari bölümlerini yazmak (ilk: `04-simulator-cekirdegi.md`), ardından iskeletin ve bölümlerin kullanıcı onayı.
+2. Kodlama iş akışı (görev belgesi, dal ve pull request, yazan/inceleyen farklı aile, Mac ve Windows'ta otomatik derleme ve test, ölçüm kaydı). Kullanıcıya önerildi; kurulması için onayı bekleniyor.
 
 ## Kodlamanın ilk işleri: ölçümler
 
@@ -35,6 +37,12 @@ Web araştırmasıyla kapanmayan belirsizlikler. Sonuçları çıkmadan ilgili t
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-12 · agent yapısı ve mimari iskelet
+
+- `.claude/agents/` altında altı agent tanımı eklendi (kritik uygulayıcı, uygulayıcı, hafif uygulayıcı, test yazarı, inceleyici, kayıt).
+- Karar günlüğüne K11–K14 (mimar kod yazmaz, commit'i kayıt agent'ı atar, sol kodlayabilir ve yazan/inceleyen farklı aile, effort seviyeleri) ve Ö12 (en fazla iki agent) işlendi; `AGENTS.md` Çalışma yöntemi güncellendi.
+- Mimari iskelet `docs/mimari/00-iskelet.md` yazıldı (taslak); bölümler yazılıyor.
 
 ### 2026-11-12 · kurallar ve kararlar
 

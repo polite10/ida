@@ -36,9 +36,10 @@ Windows hedef bilgisayarı düşük donanımlıdır; simülatör kısılabilir k
 ## Belgeleri okuma sırası
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
-2. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
-3. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
-4. **`docs/research/dogrulama/NN-codex.md`** — her raporun bağımsız doğrulaması.
+2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; taslak, kullanıcı onayı bekliyor.
+3. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
+4. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
+5. **`docs/research/dogrulama/NN-codex.md`** — her raporun bağımsız doğrulaması.
 
 Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham rapordan bilgi alacaksan önce o raporun doğrulamasına ve 00'daki düzeltme tablosuna bak.
 
@@ -54,11 +55,25 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 
 ## Çalışma yöntemi
 
-1. Mimar oturum kullanıcıyla kararları netleştirir, işi tanımlar ve çıktıları denetler; kendisi araştırma ya da uygulama yapmaz.
-2. Araştırma ve uygulama işleri alt agent'lara verilir.
-3. Bağımsız ikinci bir model (Codex) çıktıyı doğrular ya da inceler; aynı işi iki modele yazdırmak yerine biri yazar, diğeri denetler.
-4. Web araştırmasıyla kapanmayan sorular kart üzerinde ya da prototiple ölçülür; ölçüm sonucu çıkmadan ilgili tasarım kararı kesinleşmiş sayılmaz.
-5. Agent yalnızca onaylamaz; bir öneride ya da görev tanımında hata görürse gerekçesiyle söyler.
+1. Mimar oturum kullanıcıyla kararları netleştirir, fikir yapısını kurar, görev belgelerini yazar, alt agent'ları gönderir ve çıktıları denetler. Kod yazmaz ve commit atmaz.
+2. Araştırma ve uygulama işleri alt agent'lara verilir. Codex `gpt-6.1-sol` yalnızca inceleme için değil kodlama için de kullanılabilir.
+3. Yazan ile inceleyen farklı model ailesinden olur: Claude'un yazdığını sol, sol'un yazdığını Claude inceler. Aynı iş iki modele yazdırılmaz.
+4. Bir aşama tamamlanıp ilerleme olduğunda commit'i kayıt agent'ı (`ida-kayit`) atar.
+5. Web araştırmasıyla kapanmayan sorular kart üzerinde ya da prototiple ölçülür; ölçüm sonucu çıkmadan ilgili tasarım kararı kesinleşmiş sayılmaz.
+6. Agent yalnızca onaylamaz; bir öneride ya da görev tanımında hata görürse gerekçesiyle söyler.
+7. Çalışma kuralı (öneri): gerçek kotayla aynı anda en fazla iki agent çalışır.
+
+Agent tanımları `.claude/agents/` altındadır. `xhigh` ve `max` effort kullanılmaz.
+
+| Agent | Model | Effort | Rol |
+|---|---|---|---|
+| `ida-kritik-uygulayici` | Fable | high | Arayüz sözleşmeleri, fizik çekirdeği, kestirim, güdüm, kontrol |
+| `ida-uygulayici` | Opus | high | Mimari bölümleri, kart yazılımı, HIL köprüsü, sonar, atış kontrol, Godot sahnesi |
+| `ida-hafif-uygulayici` | Sonnet | medium | Web panelleri, depo iskeleti, otomatik derleme, belgeler |
+| `ida-test-yazari` | Opus | high | Kabul testleri (kodu yazandan bağımsız) |
+| `ida-inceleyici` | Opus | high | sol'un yazdığı kodu inceler, dosya değiştirmez |
+| `ida-kayit` | Sonnet | low | Commit, gönderim, DURUM.md ve karar günlüğü |
+| Codex `gpt-6.1-sol` | sol | high | Kodlama ve Claude'un yazdığının incelemesi |
 
 ## Kayıt ve süreklilik
 
@@ -79,9 +94,11 @@ Her agent işe sıfır bilgiyle başlar; depodaki dosyalar projenin tek kalıcı
 
 ```
 docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
+docs/mimari/               mimari belgeler (iskelet taslak)
 docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
 docs/research/dogrulama/   bağımsız doğrulamalar
 tools/                     yardımcı betikler
+.claude/agents/            agent tanımları
 ```
 
 Kod dizinleri mimari belge onaylandıktan sonra eklenecek.
