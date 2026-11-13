@@ -1,6 +1,12 @@
 # Mimari iskelet
 
-Sürüm: 0.3 (2026-11-13). Durum: taslak; kullanıcı onayı bekliyor.
+Sürüm: 0.6 (2026-11-13). Durum: taslak; kullanıcı onayı bekliyor.
+
+Sürüm 0.6 değişiklikleri (07 numaralı bölümün bildirdikleri üzerine): kamera algılama bileşeninin bağlantısı A8 olarak adlandırıldı; malzeme özelliklerinin yeri ve türetilmiş ağların depoya girmemesi (A7).
+
+Sürüm 0.5 değişiklikleri (03 numaralı bölümün bildirdikleri üzerine): torpido itkili olarak tanımlandı ve menzil hedefi verildi (5); sanal emniyet girdileri ve fırlatıcı durum geri okuması donanım setine eklendi (5); olay kimliğinin kapsamı (3.2); menzil profili taşıyan akustik ölçümlerin zaman damgası (3.1).
+
+Sürüm 0.4 değişiklikleri (05 numaralı bölümün bildirdiği uyumsuzluklar üzerine): gövde referans noktasının kütle merkezi olmadığı ve yük ayrılınca değişmediği; bir aralık boyunca toplanan ölçümlerin zaman damgası (3.1).
 
 Sürüm 0.2 değişiklikleri: fizik adımı 1 ms yerine 1,25 ms (kontrol periyodunun tam böleni olması için); ölçüme bağlı yedeklerin kalite kademesi olmadığı notu.
 
@@ -66,7 +72,8 @@ Her arayüz bir sözleşmedir. Sözleşmeler mimari onaylandıktan sonra ayrı b
 | A4 | Ortak çekirdek ↔ çevresi | C işlev arayüzü (`port`) | Zaman, birimli ve zaman damgalı sensör örnekleri, aktüatör çıkışı, bağlantı, kalıcı parametreler. Kartta BSP ve HIL bağlantısı, PC'de SIL koşucusu uygular | Kesin tasarım ilkesi |
 | A5 | Senaryo ve araç tanımı | Dosya (TOML) | Araç parametreleri, ortam, hedefler, görev, arıza zaman çizelgesi, rastgelelik tohumu, kalite kademesi | — |
 | A6 | Kayıt | Dosya (MCAP) | Bütün A1 ve A3 trafiği, fizik durumu, olaylar; tekrar oynatma bu dosyadan yapılır. Tekrar oynatılabilir bir kayıt, mesaj içeriğine ek olarak her komutun uygulandığı fizik adımını, bariyer zaman aşımı kararlarını ve düşürülen verileri içerir; "yalnızca olaylar" kademesinde tekrar oynatma güvencesi yoktur | Ö7 |
-| A7 | Sahne ve varlıklar | glTF + manifest | Tek kaynaktan görsel model, sonar geometrisi, yüzerlik ve çarpışma ağları, malzemelerin akustik ve optik özellikleri | 12 numaralı rapor; D12 |
+| A7 | Sahne ve varlıklar | glTF + manifest | Tek kaynaktan görsel model, sonar geometrisi, yüzerlik ve çarpışma ağları, malzemelerin akustik ve optik özellikleri. Malzemelerin varsayılan değerleri A7'de durur; senaryoya özgü kalibrasyon değerleri A5'te bunları geçersiz kılar. Kaynaktan türetilen ağlar (ör. dışbükey ayrıştırma çıktıları) depoya girmez; derlemede sabitlenmiş araç sürümüyle üretilir ve manifestteki özetle doğrulanır | 12 numaralı rapor; D12 |
+| A8 | Sim sunucusu ↔ kamera algılama bileşeni | Paylaşımlı bellek (kareler), yerel soket (kayıtlar) | Sim → bileşen: zaman damgalı kamera kareleri. Bileşen → sim: 03 numaralı bölümdeki biçimde algılama kayıtları; sim bunları A1 üzerinden karta iletir. Bileşen poz ya da yer gerçeği almaz | 07 numaralı bölüm; M8 |
 
 A1 ile A4 arasındaki dönüştürücü: A1 mesajlarını port örneklerine, port çıkışlarını A1 mesajlarına çeviren ince katman. Kartta kart yazılımının (01), PC'de SIL koşucusunun (02) parçasıdır; mesaj alanları ile port alanları arasındaki eşlemeyi 06 numaralı bölüm tanımlar.
 
@@ -80,16 +87,17 @@ Bütün bölümler ve bütün arayüzler aynı kabulleri kullanır; bir bölüm 
 
 - **Birimler:** SI. Açı radyan, zaman tamsayı nanosaniye, basınç pascal, gerilim volt, akım amper.
 - **Dünya çerçevesi:** NED (kuzey, doğu, aşağı); orijin senaryoda tanımlanır.
-- **Gövde çerçevesi:** x ileri, y sancak, z aşağı. Gövde referans noktası A5 dosyasında tanımlıdır; genelleştirilmiş hızlar, kuvvetler ve momentler bu noktaya göre yazılır.
+- **Gövde çerçevesi:** x ileri, y sancak, z aşağı. Gövde referans noktası A5 dosyasında tanımlıdır; genelleştirilmiş hızlar, kuvvetler ve momentler bu noktaya göre yazılır. Referans noktası gövdeye sabit geometrik bir noktadır; kütle merkezi değildir ve torpido ayrıldığında yerinde kalır. Sensör montaj konumları ve itici konumları da bu noktaya göre verilir.
 - **Yönelim:** birim kuaterniyon, bileşen sırası (w, x, y, z), Hamilton çarpımı; gövdeden dünyaya dönüşü temsil eder.
 - **Zaman damgası:** her ölçüm iki ayrı zaman taşır: ölçümün geçerli olduğu an (ölçüm zamanı) ve alıcıya ulaştığı an (alım zamanı). Bunlar birbirinin yerine kullanılmaz.
+- **Aralık boyunca toplanan ölçümler** (ör. IMU'nun örnekleme aralığı, basınç sensörünün dönüşüm penceresi) aralığın sonunu ve süresini taşır. Tek bir geçerlilik anı gereken yerde aralığın ortası kullanılır; "dönüşümün bittiği an" ya da "verinin hazır olduğu an" ölçüm zamanı sayılmaz. Akustik ölçümlerde ölçüm zamanı yansımanın gerçekleştiği andır. Menzil profili taşıyan ölçümlerde (sonar tarama satırı) darbenin gönderildiği an taşınır; her menzil kutusunun yansıma anı, gönderim anına o menzilin gidiş süresi eklenerek bulunur.
 
 ### 3.2 Sürekli komutlar ve tek seferlik olaylar
 
 A1 ve A4 üzerinde iki tür çıkış ayrı taşınır:
 
 - **Sürekli komut** (itici çıkışları): her adımda yenilenir; yeniden gönderilmesi zararsızdır; en son geçerli olan uygulanır ve kullanım süresi sınırlıdır.
-- **Tek seferlik olay** (atış tetiği, silahlandırma değişikliği): benzersiz bir olay kimliği taşır; alıcı aynı kimliği yalnızca bir kez uygular. Yeniden gönderilen ya da önbellekten tekrarlanan bir çıkış olay üretmez.
+- **Tek seferlik olay** (atış tetiği, silahlandırma değişikliği): benzersiz bir olay kimliği taşır; alıcı aynı kimliği yalnızca bir kez uygular. Yeniden gönderilen ya da önbellekten tekrarlanan bir çıkış olay üretmez. Olay kimliği, kartın açılış sayacı ile olay sayacından oluşur; böylece kart yeniden başladığında ya da bağlantı yeniden kurulduğunda eski bir olay yeni sayılmaz. Her olayın bir son geçerlilik süresi vardır; süresi geçmiş olay uygulanmaz.
 
 Silahlandırmayı kaldıran ve izni daraltan komutlar, aynı adımda atış kontrol modülünden önce uygulanır; modül her adımda güncel izni görür.
 
@@ -122,13 +130,16 @@ Araç parametrelerini mimar oturum belirler (K10). Başlangıç aracı **İDA-0*
 - Hidrodinamik parametreler yayımlanmış ve test tankında ölçülmüş sönüm değerlerine dayanır (von Benzon 2022; 00 belgesi, 04 düzeltmeleri). Bütün parametreler A5 dosyasında durur ve değiştirilebilir.
 - **Yük muhasebesi:** araç üç kütle durumunda tanımlanır: iki torpido yüklü, bir torpido yüklü, boş. Torpido tüpten ayrılana kadar aracın bağlı kütlesidir; ayrılma anında ayrı bir gövdeye dönüşür ve aracın kütlesi, kütle merkezi, ataleti ve deplasmanı aynı fizik adımında güncellenir. Hiçbir anda torpidonun kütlesi iki gövdede birden sayılmaz.
 - **Fırlatma modeli:** ilk kademe, ayrılmayı tek bir anda çözen darbe modelidir (araç ve torpido etkin kütleleriyle birlikte; 00 belgesi, 04 düzeltmeleri). Tüp boyunca sonlu süreli hareketi çözen model sonraki kademedir ve ilk sürümün kapsamında değildir.
+- **Torpido itkilidir:** ayrıldıktan sonra kendi itkisiyle, belirli bir süre boyunca sabit itki üreterek seyreder. Tasarım hedefi yaklaşık 3 m/s seyir hızı ve 10 m mertebesinde etkili menzildir; itki, itki süresi ve sürükleme 04 numaralı bölümde bu hedefi verecek biçimde seçilir ve mimari varsayımı olarak işaretlenir. Gerekçe: itkisiz torpidonun etkili menzili yaklaşık 1 m çıkıyor (03 numaralı bölümün hesabı) ve bu, taramalı sonarın göremediği yakın bölgeye düşüyor; sonarla algılanan bir hedefe atış ancak daha uzun menzille anlamlıdır.
+- **Sonarın göremediği yakın bölge:** hedef taramalı sonarın en kısa menzilinin içine girdiğinde konumu, kamera algılaması ve mevcut izin öngörüsüyle sürdürülür; öne bakan ikinci bir menzil ölçer eklenmez.
 
 | Simüle edilen | Öğeler |
 |---|---|
 | Seyrüsefer sensörleri | IMU, manyetometre, basınç/derinlik, GNSS (yalnızca yüzeyde), DVL |
 | Sonar | Ping1D (dibe mesafe), Ping360 (mekanik taramalı) |
 | Görüntü | Öne bakan kamera |
-| Sistem sensörleri | Batarya gerilimi ve akımı, sızıntı |
+| Sistem sensörleri | Batarya gerilimi ve akımı, sızıntı, fırlatıcı durumu (tüp dolu ya da boş) |
+| Sanal emniyet girdileri | Acil durdurma, silahlandırma fişi, emniyet pimi. Kartın dışında, sim sunucusunda durur; kart yazılımı bunları değiştiremez, yalnızca durumlarını okur. Atış olayı sim sunucusunda bu girdiler izin veriyorsa uygulanır |
 | Aktüatörler | Sekiz itici (motor sürücü modeliyle), iki torpido fırlatıcı |
 | Çevre | Dalga, akıntı, rüzgar, havuz ve açık su ortamı, hedefler |
 | Bağlantı | Yer istasyonu bağlantısının gecikmesi ve kaybı (telsiz, kablo) |

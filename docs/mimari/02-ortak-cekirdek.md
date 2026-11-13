@@ -1,30 +1,24 @@
 # 02 — Ortak çekirdek
 
-Sürüm: 0.1 (2026-11-12). Durum: taslak; mimar denetimi ve kullanıcı onayı bekliyor.
+Sürüm: 0.2 (2026-11-13). Durum: taslak; ikinci inceleme bekliyor. Sürüm 0.2: iskelet 0.3'e uyum ve [inceleme/02-sol.md](inceleme/02-sol.md) bulgularının giderilmesi; madde madde yanıt [inceleme/02-yanit.md](inceleme/02-yanit.md).
 
-Bu bölüm [00-iskelet.md](00-iskelet.md) belgesine bağlıdır; iskeletle çeliştiği yerde iskelet geçerlidir. Dayanak gösterimi: `K`, `Ö`, `M`, `Ç`, `A` ve `06.6` gibi satır numaraları [../research/00-duzeltmeler-ve-kararlar.md](../research/00-duzeltmeler-ve-kararlar.md) belgesine; `06 §2.2` ham rapor bölümüne; `D06 E`, `D06 Y5`, `D06 #10` doğrulama maddelerine işaret eder. **(tahmin)** işaretli her sayı ölçülmemiş bir başlangıç değeridir; ilgili ölçüm ya da SIL ayarı çıkmadan kesinleşmez.
+Bu bölüm [00-iskelet.md](00-iskelet.md) belgesine bağlıdır; çelişkide iskelet geçerlidir. Dayanak gösterimi: `K`, `Ö`, `M`, `Ç`, `A` ve `06.6` gibi satırlar [../research/00-duzeltmeler-ve-kararlar.md](../research/00-duzeltmeler-ve-kararlar.md) belgesine; `06 §2.2` ham rapor bölümüne; `D06 E`, `D06 Y5`, `D06 #10` doğrulama maddelerine işaret eder. **(tahmin)** işaretli her sayı ölçülmemiş bir başlangıç değeridir; ilgili ölçüm ya da SIL ayarı çıkmadan kesinleşmez. Ortak kabuller (SI, ns zaman, NED, gövde x ileri / y sancak / z aşağı, kuaterniyon `(w, x, y, z)` Hamilton gövde → dünya) iskelet §3.1'dendir ve burada yinelenmez.
 
 ## 1. Amaç ve sorumluluklar
 
-Ortak çekirdek, aracın otopilotudur: sensör örneklerinden seyrüsefer durumunu kestirir, görevi ve operatör komutlarını izleyerek setpoint üretir, sekiz iticiyi sürer ve arıza durumunda aracı güvenli duruma götürür. ISO C17 ile yazılır, donanıma ve işletim sistemine bağımlı değildir; aynı kaynak hem STM32U5A9J-DK'ya hem PC'ye (SIL) derlenir (iskelet §2, K3).
+Ortak çekirdek aracın otopilotudur: sensör örneklerinden seyrüsefer durumunu kestirir, görev ve operatör komutlarından setpoint üretir, sekiz iticiyi sürer, arızada aracı güvenli duruma götürür. ISO C17'dir, donanım ve işletim sisteminden bağımsızdır; aynı kaynak karta ve PC'ye (SIL) derlenir (iskelet §2, K3).
 
-Sorumluluklar: port arayüzü (A4), kestirim, güdüm, kontrol, itki tahsisi, kipler, görev yönetimi, arıza güvenliği, sayı tipi ve derleme politikası, SIL koşucusu.
-
-Yazmadıkları ve beklenen yer:
+Sorumluluklar: port arayüzü (A4), kestirim, güdüm, kontrol, itki tahsisi, kipler, görev yönetimi, arıza güvenliği, sayı tipi ve derleme politikası, SIL koşucusu (A1 ↔ A4 dönüştürücüsünün PC tarafı dahil; iskelet §3).
 
 | Konu | Bölüm | Bu bölümün ondan beklediği |
 |---|---|---|
-| Hedef algılama, takip, atış çözümü, emniyet zinciri | 03 | `ida_fc_step` ve arka plan işinin içi; algılama kaydının kesin alanları (3.6) |
-| Başlatma, saat, kesme düzeni, gözetim zamanlayıcısı, parametrelerin flash'ta saklanması | 01 | Çekirdeği 2.2'deki düzende çağırması; girdi biriktirme; IMU yokken duvar saati çağrısı |
-| A1 mesaj kümesi, adım bariyeri, bağlantı emülatörü, MAVLink eşlemesi | 06 | A1 ↔ A4 dönüşümü; sıra numarasının uçtan uca korunması (Ç1) |
-| İDA-0'ın itici yerleşimi, itici eğrisi, yüzerlik, sönüm | 04 | 2.5'teki araç girdileri |
-| Sensör modelleri, örnekleme hızları ve zaman damgalarının anlamı | 05 | 3.3'teki alanların modelden üretilmesi |
+| Algılama, takip, atış çözümü, emniyet zinciri | 03 | `ida_fc_step` ve arka plan işinin içi; atış olay kimliği; 3.7'deki sözleşmeye uyum |
+| Başlatma, kesme düzeni, gözetim zamanlayıcısı, flash, kart tarafı dönüştürücü | 01 | 2.2'deki çağrı düzeni; ≥ 100 Hz duvar çağrısı; alım zamanı damgası |
+| A1 mesaj kümesi, bariyer, alan eşlemesi | 06 | Zaman çerçevesi, eş zamansız güvenli çıktının kabulü, olay kimliğinin uçtan uca taşınması |
+| İDA-0 itici yerleşimi, itki eğrisi, kütle durumları | 04 | 2.5'teki A5 parametre kaynağı (04 §2.6, §2.7) |
+| Sensör modelleri, ölçüm zamanı ve kovaryans anlamı | 05 | 3.3'teki alanların anlamıyla üretilmesi |
 
-Temel ilkeler:
-1. **Tek sınır A4.** Çekirdek dış dünyayı yalnız bir adım çağrısının girdisi ve çıktısı olarak görür; geri çağırma, işletim sistemi, donanım başlığı yoktur (08 §2.6).
-2. **Saat okumaz.** Ölçüm zamanı örneklerin damgasında, duvar saati girdide gelir; iki alan tip düzeyinde ayrıdır (iskelet §4, D06 E).
-3. **Bellek ayırmaz, küresel değişken tutmaz.** Bütün durum, platformun statik ayırdığı tek `ida_core_t` içindedir; boyutlar derleme zamanında sabittir (08 §2.5, 08 §2.6).
-4. **Simülasyondan habersizdir** (3.2).
+Temel ilkeler: (1) tek sınır A4, geri çağırma yok (08 §2.6); (2) çekirdek saat okumaz, ölçüm zamanı ve duvar saati ayrı tiplerdir (iskelet §4); (3) bellek ayırma ve küresel değişken yok, bütün durum tek `ida_core_t` içinde (08 §2.5–2.6); (4) simülasyondan habersizlik (3.2).
 
 ## 2. İç yapı
 
@@ -32,334 +26,421 @@ Temel ilkeler:
 
 | Modül (`core/src/…`) | Girdi | Çıktı |
 |---|---|---|
-| `port` | — | A4 tipleri, sabitler, `ida_core_step` |
-| `ingest` | Adım girdisi | Ölçüm zamanına göre sıralanmış örnekler, tazelik bilgisi |
-| `est` | IMU, basınç, DVL, manyetometre, GNSS | `ida_nav_t`, `ida_est_health_t`, seyrüsefer geçmişi |
-| `fs` (arıza güvenliği) | Sağlık, sızıntı, batarya, bağlantı olayları, adım bilgisi | Arıza eylemi isteği, olaylar |
-| `mode` | Komutlar, arıza isteği, görev durumu, atış hizalanma isteği | Etkin kip, rejim (yüzey/dalış) |
-| `mission` | Görev listesi, nav durumu | Güdüm hedefi, görev ilerlemesi |
-| `gd` (güdüm) | Hedef, nav, irtifa | Setpoint (rota, derinlik/irtifa, hız, yönelim) |
-| `ctl` (kontrol) | Setpoint, nav, doyma bayrakları | Genelleştirilmiş kuvvet `τ` (6) |
-| `alloc` (tahsis) | `τ`, batarya gerilimi | 8 itici komutu, doyma bayrakları, gerçekleşen `τ` |
-| `fcif` | nav, izin, algılamalar, Ping360 profili | 03'ün hizalanma isteği ve tetik çıktısı |
-| `param`, `telem` | Parametre komutları; bütün modüller | Parametre tablosu; telemetri kayıtları |
-| `math` | — | `mat.h` (sabit boyutlu matris), kuaterniyon, `ida_math` sarmalayıcıları |
+| `ingest` | Çağrı girdisi | Kabul edilmiş, sıralanmış örnekler; tazelik durumu (4.1) |
+| `est` | IMU, basınç, DVL, manyetometre, GNSS | Çıkış durumu `ida_nav_t`, sağlık, seyrüsefer geçmişi |
+| `fs` | Sağlık, sızıntı, batarya, bağlantı, tazelik | Arıza eylemi isteği, olaylar |
+| `mode` | Komutlar, arıza isteği, görev durumu | Etkin kip, güdüm aşaması, atış izni |
+| `fcif` | nav, izin, algılamalar, sonar dilimi, arka plan sonucu | 03'ün hizalanma isteği ve atış olayı |
+| `mission`, `gd` | Görev, nav, irtifa, hizalanma isteği | Setpoint |
+| `ctl` | Setpoint, nav, doyma kalıntısı | İstenen genelleştirilmiş kuvvet `τ_req` |
+| `alloc` | `τ_req`, rejim, batarya gerilimi | 8 itici komutu, elde edilen `τ_a`, eksen kalıntısı |
+| `param`, `telem`, `math` | — | Parametre tablosu ve işlemleri; telemetri; `mat.h`, kuaterniyon, `ida_math` |
 
 ```
  platform (kart: 01 · SIL: koşucu)
-   │ ida_step_in_t: IMU tetik örneği + biriken örnekler + komutlar + duvar saati
-   ▼
- ┌ ida_core_step ───────────────────────────────────────────────────────┐
- │ ingest ─► est (ESKF15) ─► nav, sağlık, geçmiş ──────────► fcif (03)   │
- │              │                                         hizalanma ist. │
- │              ▼                                              │         │
- │             fs ─► mode ◄─ komutlar, mission ◄───────────────┘         │
- │                    │                                                   │
- │                    ▼                                                   │
- │                   gd ─► ctl ─► alloc ─► 8 itici komutu                 │
- │                          ▲       │ doyma bayrakları (sonraki adım)     │
- │                          └───────┘                                     │
- └───────────────────────────────────────────────────────────────────────┘
-   │ ida_step_out_t: itici komutları, 2 tetik, telemetri, olaylar, canlılık
+   │ ida_step_in_t (IMU ile)          │ ida_tick_in_t (duvar saatiyle, IMU'suz)
+   ▼                                  ▼
+ ┌ ida_core_step ─────────────────────────────┐  ┌ ida_core_tick ─────────────────┐
+ │ ingest ► est(ufuk + çıkış) ► fs ► mode ►   │  │ ingest ► tazelik ► fs ► mode ► │
+ │ izin ► fcif(03) ► mission/gd ► ctl ►       │  │ güvenli çıktı (gerekirse)      │
+ │ alloc ► çıkış kapısı                       │  └────────────────────────────────┘
+ └────────────────────────────────────────────┘
+   │ ida_out_t: sürekli itici komutu + tek seferlik olaylar + telemetri + canlılık
    ▼
  platform
 ```
 
 ### 2.2 Çalışma düzeni
 
-**Çağrılma.** Her yeni IMU örneği bir adım üretir (iskelet §4; ArduSub "metronom" deseni, 06 §2.1). Platform, son adımdan beri gelen diğer örnekleri ve komutları biriktirir ve IMU örneğiyle birlikte tek girdide verir. Bir IMU örneği tam olarak bir adım ve bir aktüatör çıktısı üretir; çıktı IMU'nun sıra numarasını taşır. Bu, adım bariyerinin istediği koşuldur (Ç1). Yinelenen ya da eski sıra numaralı IMU örneği adım çalıştırmaz (3.1). IMU akışı kesilirse platform duvar saatiyle `ida_core_tick_wall` çağırır (Bölüm 4).
+**Çağrılar.** Her yeni IMU örneği bir `ida_core_step` çağrısı üretir (iskelet §4). Platform ayrıca duvar saatiyle `ida_core_tick` çağırır: kartta donanım zamanlayıcısı ≥ 100 Hz (01'den beklenen), SIL'de sim sunucusunun her kontrol periyodunda gönderdiği zaman çerçevesi (iskelet §4). SIL'de bir periyotta IMU varsa `step`, yoksa `tick` çağrılır; bariyer yanıtı her durumda o periyodun sıra numarasını taşır (2.8). İki çağrı aynı `ida_core_t` üzerinde eş zamanlı çalışmaz; sıralamayı platform yapar.
 
-**Döngü hızları.** Hız grupları adım sayacına değil ölçüm zamanına bağlanır; IMU örneği kaybolsa da gruplar kaymaz. Ağır gruplar faz kaydırılarak aynı adıma düşürülmez (öneri; en kötü durum adım süresini düşürmek için).
+**Zaman ilişkileri.** Fizik adımı 1,25 ms; 400 Hz kontrolde periyot 2,5 ms = iki fizik adımı, 200 Hz yedekte 5 ms = dört fizik adımı (iskelet §4). Bu belgedeki süre eşikleri periyot sayısıyla değil süreyle verilir; iki hızda da aynı kalır.
+
+**Tek hız tablosu.** Hız grupları ölçüm zamanına bağlanır; ağır gruplar faz kaydırılarak aynı adıma düşürülmez.
 
 | İş | Hız | Dayanak |
 |---|---|---|
-| Adım, nominal durum yayılımı, açısal hız kontrolü, tahsis | 400 Hz (IMU ile) | iskelet §4; M5 |
-| ESKF kovaryans yayılımı | 100 Hz, biriken Δθ, Δv ile | 06 §3.2; PX4 tahmin adımı 10 ms (D06 #3) |
-| Basınç güncellemesi | Geldikçe; sensör ≤ ~25 Hz | 05 §2.8 |
-| DVL güncellemesi | Geldikçe; 2–15 Hz (irtifaya bağlı) | 05 §2.8 |
-| Manyetometre (yalnız yön) | 10 Hz'e seyreltilmiş (tahmin); sensör 10–100 Hz | 05 §2.8 (doğrulanmadı) |
-| GNSS | Geldikçe; 5 Hz | 05 §2.8 (PX4 varsayılanı) |
-| Açı, derinlik, hız, konum döngüleri | 100 Hz (tahmin) | 06 §3.2 ölçeklendi |
-| Güdüm, görev yürütücüsü, kip yöneticisi | 10 Hz (tahmin) | 06 §3.2 |
-| Arıza değerlendirmesi | 50 Hz (tahmin); sızıntı her adımda | 06 §3.2 |
-| Telemetri kayıtları | Akış başına 1–10 Hz (tahmin) | 06 §3.2 |
+| Çıkış durumu yayılımı, ufuk ilerletmesi, açısal hız ve öteleme hızı döngüleri, tahsis | Her adım (400 Hz) | iskelet §4; M5 |
+| Kovaryans yayılımı | Biriken aralık 10 ms'ye ulaşınca ya da ufukta bir füzyondan hemen önce (2.3.2) | PX4 tahmin adımı 10 ms (D06 #3) |
+| Ölçüm füzyonu (basınç ≤ 25, DVL 2–15, GNSS 5 Hz; manyetometre 10 Hz'e seyreltilmiş) | Ufuk ölçüm zamanına ulaştıkça | 05 §2.8; seyreltme tahmin |
+| Tutum, derinlik, konum dış döngüleri | 100 Hz (tahmin) | 06 §3.2 ölçeklendi |
+| Güdüm, görev yürütücüsü | 10 Hz (tahmin) | 06 §3.2 |
+| Kip yöneticisi, izin, arıza değerlendirmesi | Her çağrı (step ve tick) | iskelet §3.2: izin her adımda güncel |
+| Telemetri | Akış başına 1–10 Hz (tahmin) | 06 §3.2 |
+| Duvar çağrısı (`tick`) | Kart ≥ 100 Hz; SIL her IMU'suz periyot | iskelet §4 |
 
-**Adım içindeki sıra.**
-1. `ingest`: örnekler ölçüm zamanına göre sıralanır; zamanı IMU'dan büyük olan örnek sonraki adıma kalır. Aynı zaman damgasında sabit sıra uygulanır: IMU, basınç, DVL, manyetometre, GNSS, Ping1D, batarya, sızıntı, algılama, Ping360 (D06 E: sensör sıralaması protokolün parçası olmalı).
-2. Tazelik: her sensörün son örnek yaşı, ölçüm zamanında hesaplanır.
-3. `est`: nominal yayılım; zamanı geldiyse kovaryans yayılımı; ölçüm güncellemeleri (adım başına en çok `IDA_EST_MAX_SCALAR_UPD` skaler güncelleme, varsayılan 8 (tahmin); artanlar sonraki adıma kalır, böylece adım süresi sınırlı olur).
-4. `fs`: arıza koşulları ve süreleri; eylem isteği.
-5. `fcif`: 03'ün hızlı kısmı (durum makinesi) çağrılır; hizalanma isteği ve tetik çıktısı alınır.
-6. `mode`: komutlar, arıza isteği, görev ve hizalanma isteği önceliğe göre birleştirilir.
-7. `mission` ve `gd` (zamanı geldiyse), ardından `ctl` dış döngüler (zamanı geldiyse) ve iç döngü.
-8. `alloc`: itici komutları ve doyma bayrakları; bayraklar bir sonraki adımın integral güncellemesine girer (PX4 deseni, D06 #10).
-9. Çıktı: itici komutları, tetikler (03'ten aynen), telemetri, olaylar, parametre kayıt isteği, canlılık bayrağı.
+**Adım içindeki sıra** (`step`):
+1. `ingest`: örnek ve komutlar kabul denetiminden geçer (4.1); kabul edilmeyen ne kuyruğa ne tazeliğe girer.
+2. `est`: ufuk ilerletilir ve bekleyen ölçümler füzyonlanır (2.3.2), çıkış durumu yeni IMU ile yayılır; sayısal çökme denetimi (2.3.6).
+3. `fs`: arıza koşulları; sayısal çökmede eylem bu adımda devreye girer.
+4. `mode`: bütün komutlar uygulanır. Silahlandırmayı kaldıran ve izni daraltan komutlar (`DISARM`, izin dışı kipe geçiş, `FC_ABORT`) ve arıza eylemi atış modülünden önce uygulanır (iskelet §3.2).
+5. İzin hesaplanır (3.7); `fcif`: 03'ün hızlı kısmı bu adımın güncel izniyle çağrılır.
+6. `mission`, `gd` (zamanı geldiyse), `ctl`, `alloc`; doyma kalıntısı integral güncellemesine bir sonraki adımda girer.
+7. Çıkış kapısı: itici komutları sonlu ve sınır içinde mi denetlenir; atış olayı yalnız izin çıkış anında hâlâ geçerliyse yazılır, değilse atılır ve olay kaydı üretilir.
 
-03'ün sonar verisinde hedef algılama işi 400 Hz adımın içinde koşmaz; platformun düşük öncelikte çağırdığı ayrı bir arka plan girişidir (03'ten ve 01'den beklenen).
+03'ün sonar verisinde algılama işi adım içinde koşmaz; platformun düşük öncelikte çağırdığı arka plan işidir (3.7).
 
-**Hesap bütçesi (tahmin; M5 ölçer).** Periyot 2,5 ms. ESKF15'in kovaryans yayılımı ve 200 skaler güncelleme/s için bağımsız işlem sayısı ≈ 855.000 MAC/s; MAC başına 3–6 çevrim varsayımıyla 160 MHz'te %1,6–3,2; Joseph formu genel yoğun çarpımlarla uygulanırsa %3,8–7,6. Bu sayılar nominal entegrasyonu, Jacobian'ları, kapılamayı ve bellek erişimini kapsamaz ve kapasite garantisi değildir (06.5, D06 Y5). Tahsis, önceden hesaplanmış 8×6 sözde ters ile adım başına 48 çarpma düzeyindedir. Tasarım hedefi: çekirdek adımının en kötü durum süresi ≤ 1,0 ms, ortalama işlemci payı ≤ %15 (hedef, ölçüm değil); kalan pay USB servisi, 03 ve platform içindir. Ortalama yük en kötü durum yanıtını kanıtlamaz (08.12); karar M5'in DWT ölçümüyle verilir. Statik bellek tahmini < 64 KB (tahmin; kartta yaklaşık 2,5 MB SRAM var, 00 Bölüm 6).
+**Hesap bütçesi (tahmin; M5 ölçer).** MAC eşdeğeri sayılarıdır, `-ffp-contract=off` altında çarpma ve toplama ayrı komuttur; MAC başına 3–6 çevrim varsayımı doğrulanmamıştır (D06 Y5).
+- *Ortalama:* 100 Hz kovaryans yayılımı ≈ 675.000; skaler güncellemeler: sensör hızlarının üst değerleriyle basınç 25 + DVL 3×15 + manyetometre 10 + GNSS 4×5 = 100/s, iki kat payla 200/s × 900 ≈ 180.000; 100 Hz LDLᵀ denetimi ≈ 56.000; adım başına nominal entegrasyon, kontrol ve tahsis ≈ 340.000. Toplam ≈ 1,25 milyon/s → 160 MHz'te %2,3–4,7. Ortalama işlemci payı hedefi, 03'ün hızlı kısmı dahil ≤ %15 (hedef).
+- *En kötü yığılma (tek adım):* kovaryans yayılımı 6.750 + 8 optimize skaler güncelleme 7.200 + vektör kapısı ve beyazlatma ≈ 1.000 + sıfırlama ≈ 540 + LDLᵀ ≈ 560 + nominal, kontrol, tahsis ≈ 850 ≈ 16.900 → 0,32–0,63 ms. Hedef ≤ 1,0 ms; kesme gecikmeleri ve USB servisi 01'in bütçesindedir. Genel yoğun Joseph formu adım başına 8 güncellemeyle 60.750 → 1,14–2,28 ms olur ve hedefi aşar; bu yüzden yedek ancak güncelleme sınırı adım başına 1'e indirilerek kullanılır (≈ 0,31–0,62 ms; 400 adım/s kapasite 200 skaler/s'yi karşılar).
+- Ortalama yük en kötü durum yanıtını kanıtlamaz (08.12); karar M5'in DWT ölçümüyle. Statik bellek < 64 KB (tahmin; kartta ≈ 2,5 MB SRAM, 00 Bölüm 6).
 
 ### 2.3 Kestirim
 
-**Filtre.** Hata durumlu (çarpımsal) genişletilmiş Kalman filtresi, 15 hata durumu (06 §2.2; D06 N1: ESKF15 ve kademeli PID başlangıcı savunulabilir). Referans: MSS `ins_mekf` 15×15 hata kovaryansı (D06 #24), Solà ESKF notu (06 §2.2).
+#### 2.3.1 Filtre ve öngörü
 
-| | İçerik |
-|---|---|
-| Nominal durum | `p` (yerel NED, m), `v` (NED, m/s), `q` (gövde → NED), `b_g`, `b_a` |
-| Hata durumu | `δp, δv, δθ, δb_g, δb_a` = 15 |
-| İsteğe bağlı (ilk sürümde yok) | Basınç ofseti (1), su akıntısı (2, yalnız su takibiyle), manyetometre sapması (3). SIL'de gerekçelendirilirse eklenir; boyut derleme zamanı sabitidir |
+Hata durumlu (çarpımsal) genişletilmiş Kalman filtresi, 15 hata durumu (06 §2.2; D06 N1). Nominal durum `p` (NED, gövde referans noktası `O_b`), `v`, `q` (gövde → NED), `b_g`, `b_a` (16 sayı); hata durumu `δp, δv, δθ, δb_g, δb_a` (15). Tutum hatası sağdan yereldir: `q = q̂ ⊗ Exp(δθ)` (Solà; D06 #24 MSS `ins_mekf` aynı boyut). İsteğe bağlı durumlar (basınç ofseti, akıntı, manyetometre sapması) ilk sürümde yoktur.
 
-**Öngörü.** Nominal durum her IMU örneğinde entegre edilir (dönme vektörü üstel eşlemesi, kuaterniyon normalleştirmesi). Kovaryans 100 Hz'te, birikmiş aralıkla `P = F P Fᵀ + Q_d` ile yayılır; yoğunlukları parametredir. Dünya dönüşü ihmal edilir (düşük maliyetli MEMS gürültüsü ve kısa dalış süresi varsayımı; 05'in IMU modeli dünya dönüşü içeriyorsa SIL'de etkisi ölçülür).
+`R = R(q)`, `f = a_m − b_a`, `ω = ω_m − b_g`, `g_n = (0, 0, g)`:
+- Nominal: `ṗ = v`, `v̇ = R f + g_n`, `q̇ = ½ q ⊗ (0, ω)`; IMU örneği aralık ortalaması olduğundan aralık içinde sabit alınır, kuaterniyon `q ← q ⊗ Exp(ω Δt)` ve normalleştirme.
+- Hata dinamiği: `δṗ = δv`, `δv̇ = −R[f]× δθ − R δb_a − R n_a`, `δθ̇ = −[ω]× δθ − δb_g − n_g`, sapmalar rastgele yürüyüş (`δḃ = n_b`). Sürekli zaman Jacobian'ı `A`, ayrık geçiş `Φ = I + A Δt`, `Q_d = L Q_c Lᵀ Δt` (birinci mertebe; `Φ` ve `Q_d` aynı birikmiş `Δt` için kurulur). `P⁻ = Φ P⁺ Φᵀ + Q_d`.
+- Geçerlilik: birinci mertebe yaklaşım `Δt ≤ 10 ms` ve `|ω| Δt ≤ 0,05 rad` (yani `|ω| ≤ 5 rad/s`, tahmin) için kullanılır; daha büyük açısal hızda yayılım bölünür.
+- Dünya dönüşü ihmal edilir (düşük maliyetli MEMS ve kısa dalış varsayımı; 05'in IMU modeli içeriyorsa etkisi SIL'de ölçülür).
+- Başlangıç hizalaması: durağan 1 s (tahmin) ivme ortalamasından roll/pitch, eğim telafili manyetometreden yön; `P₀` parametre.
 
-**Ölçüm modelleri.** Güncellemeler sıralı skalerdir, matris tersi gerekmez; Joseph formu, simetrikleştirme ve varyans alt sınırı uygulanır (06 §2.2).
+#### 2.3.2 Zaman ufku ve gecikmeli füzyon
 
-| Sensör | Model | Kapı ve koşul |
+**Seçilen yöntem: sabit gecikmeli füzyon ufku + çıkış öngörücüsü** (PX4 EKF2 yöntemi: gecikmeli ufuk, FIFO tamponları, tamamlayıcı ileri yayılım; 06 §2.1). Geçmiş yeniliğe güncel kovaryansın kazancını uygulamak yanlış güven üretir (inceleme hesabı: `P₀ = Q = R = 1` için doğru `P⁺ = 1,5`, yanlış yöntem `2/3`); bu yüzden 0.1'deki "geçmiş durumla yenilik, şimdiki duruma düzeltme" kaldırıldı.
+
+- **Ufuk.** Filtre (durum ve `P`) `t_h = t_imu − D` anında yaşar; `D = 150 ms` (parametre, tahmin: en büyük beklenen gecikme GNSS ≈ 120 ms, 05 §2.8 PX4 varsayılanı; DVL gecikmesi `r/c` + işleme + iletim, 05.3). IMU tamponu `(D + 50 ms)/periyot` = 80 kayıt (400 Hz).
+- **İlerletme ve zaman eşlemesi.** Her adımda ufuk, tampondaki IMU örnekleriyle `t_imu − D`'ye kadar ilerler. Füzyon bekleyen bir ölçümün zamanı `t_m` bir IMU aralığının içine düşerse aralık `t_m`'de bölünür (örnek aralık ortalaması olduğundan iki parça aynı değerle entegre edilir). `t_m`'ye varınca birikmiş aralıkla kovaryans yayılır, ölçüm Jacobian'ı o anki ufuk durumunda kurulur ve füzyon yapılır: durum, Jacobian ve `P` aynı `t_m`'de buluşur. Kalan aralık füzyondan sonra entegre edilir ve yeni birikime başlar.
+- **Ölçüm sırası.** Bekleyen ölçümler `t_m`'ye göre sıralıdır; eşit zamanlarda sabit sıra: basınç, DVL, manyetometre, GNSS (D06 E). Ufka göre geç kalan ölçüm (`t_m < t_h` iken gelen) füzyonlanmaz, "geç örnek" sayacı artar.
+- **Güncelleme sınırı.** Adım başına en çok 8 skaler güncelleme (tahmin). Sınır dolarsa ufuk o adımda daha fazla ilerlemez; sonraki adımlarda birden çok IMU örneği tüketerek yetişir. Ufuk gecikmesi `D + 50 ms`'yi aşarsa en eski bekleyen ölçüm atılır ve sayılır; böylece tampon taşmaz ve davranış deterministiktir.
+- **Çıkış öngörücüsü.** Kontrol, güdüm ve 03 ufuk durumunu değil şimdiki zamandaki çıkış durumunu `x_o` kullanır. `x_o` her yeni IMU ile aynı nominal denklemlerle ve ufkun sapma kestirimleriyle yayılır; geçmişi tamponda tutulur. Ufuk ilerledikçe hata `e = x_h ⊖ x_o(t_h)` (konum, hız ve `Log(q_o(t_h)⁻¹ ⊗ q_h)`) hesaplanır ve `x_o(şimdi)` ile tampondaki kayıtlara `k = T/τ_o` kazancıyla eklenir; `τ_o = 0,25 s` (tahmin).
+- **Geçerlilik sınırları.** (a) Ölçüm gecikmesi `D`'yi aşmamalıdır; geç örnek oranı sağlık metriğidir. (b) `τ_o ≥ 10 T`; düzeltme `τ_o` ile yumuşar, kontrol sıçrama görmez. (c) Sağlık metrikleri `D` kadar gecikir; 4. başlıktaki 2 s pencereler buna göre seçildi. (d) Konum sıfırlaması (2.3.4) yumuşatılmaz, `x_o` ve geçmişe aynı adımda sıçrama olarak uygulanır.
+
+#### 2.3.3 Ölçüm modelleri
+
+Ham değerler sensör çerçevesindedir; montaj dönüşümlerini çekirdek parametrelerden uygular (3.3).
+
+| Sensör | Model `h(x)` | Kapı ve koşul |
 |---|---|---|
-| Basınç | `d = (P − P_atm)/(ρ g)`; ölçüm `d = p_z + (R l_p)_z` (montaj kolu) | `P_atm` yüzeyde açılışta kalibre edilir; `ρ` parametre. Yüzeye yakın dalga basıncı için `R` derinliğe göre büyütülür (tahmin; dalga etkisinin derinlikle `e^{-kd}` sönümü, 04.10) |
-| DVL | `v_dvl = R_dvlᵀ (R_nbᵀ v + ω × l_dvl)` (06 §2.2) | Yalnız dip takibi; `velocity_valid`, FOM ve en az irtifa koşulu. Yüzeyde ve yüzeye çok yakınken kapalı (06 §2.2 md.4, tahmin) |
-| Manyetometre | Yalnız yön açısı; sapma açısı parametre | İtici akımı kaynaklı bozulma riski nedeniyle üç eksen yerine yön (06 §4 md.5) |
-| GNSS | Yatay konum (2) ve yatay hız (2); anten kolu | Yalnız `SURFACE_GNSS` kaynak kipinde; 3B fix, `eph` eşiğin altında |
-| Ping1D | Filtreye girmez; irtifa güdümde kullanılır (2.4) | Dip düz değildir; ESKF durumu değil |
+| Basınç | `d = (P − P_atm)/(ρ g)`; `h = p_z + (R l_p)_z`; `H = [e₃ᵀ, 0, −e₃ᵀ R [l_p]×, 0, 0]` | `P_atm` yüzeyde açılışta kalibre; `ρ` parametre. Yüzeye yakın dalga basıncı için `R` derinliğe göre büyütülür (tahmin; sönüm `e^{-kd}`, 04.10) |
+| DVL | `h = R_dvlᵀ (Rᵀ v + ω × l_dvl)`; kollar `O_b`'den | Dip takibi, `vel_valid`, FOM ve en az irtifa; yalnız fiziksel rejim `DALIŞ` iken (06 §2.2 md.4) |
+| Manyetometre | Eğim telafili yön; yenilik `(−π, π]` aralığına sarılır | Alan normu beklenenin ±%20'si (tahmin); bozulma riskinden ötürü üç eksen yerine yön (06 §4 md.5) |
+| GNSS | Anten konumu `p + R l_a`, hızı `v + R(ω × l_a)` (yatay 2 + 2) | Yalnız GNSS kullanılabilirken (2.3.5); 3B fix, `eph` eşik altı |
+| Ping1D | Filtreye girmez; irtifa güdümde | Dip düz değildir |
 
-**Gecikme.** Ölçüm zamanı (DVL'de `time_of_validity`, yani yansıma anı; 05.3) adım zamanından eskidir. İlk sürüm: yenilik, seyrüsefer geçmişindeki ölçüm anına en yakın durumla hesaplanır, düzeltme şimdiki duruma uygulanır. Bu, düşük hızlı araç için yeterli olabilir ama doğrulanmamıştır (06 §2.2, kendi tahmini); yedek PX4 tipi gecikmeli ufuktur (06 §2.1, PX4 EKF2). Karar SIL ölçümüyle (Bölüm 6).
+`R` kaynakları: sensör kovaryans verirse o (DVL `cov`), vermezse parametre; `eph` ve FOM bir ölçekle `σ`'ya çevrilir. Verilen kovaryans sonlu ve pozitif tanımlı değilse parametre `R` kullanılır ve bayrak kalkar. Ayrıntılar 8.1'de.
 
-**Yenilik kapısı.** Kapı `P`'den değil `S = H P Hᵀ + R` üzerinden hesaplanır (D06 E, 00 Bölüm 6). Vektör ölçümler (GNSS konumu 2, GNSS hızı 2, DVL 3) önce bütün olarak Mahalanobis uzaklığıyla (`yᵀ S⁻¹ y < γ`, en çok 3×3 ters) kapıdan geçirilir, sonra skaler güncellenir; kısmi kabul olmaz. Sensörün verdiği `R` köşegen değilse skaler güncellemeden önce Cholesky ile beyazlatılır; eksenleri bağımsız saymak ancak böyle gerekçelenir (D06 E). `γ` sensör başına parametredir; test oranı `NIS/γ` sağlık metriğidir.
+#### 2.3.4 Kapı, güncelleme ve sıfırlama
 
-**Hata enjeksiyonu ve kovaryans sıfırlaması.** Güncellemeden sonra `δx` nominal duruma eklenir (`q ← q ⊗ Exp(δθ)`), `δx = 0` yapılır ve kovaryans `P ← G P Gᵀ`, `G = blokköşegen(I, I, I − [½δθ]×, I, I)` ile dönüştürülür (Solà; D06 E). `G ≈ I` kısaltması kullanılmaz; yalnız 3×3 blok değiştiği için maliyeti küçüktür.
+- **Kapı:** vektör ölçüm bütün olarak `yᵀ S⁻¹ y < γ_m`, `S = H P Hᵀ + R` (D06 E); `γ_m` ölçüm boyutuna göre ki-kare eşiğidir. Kısmi kabul yoktur.
+- **Beyazlatma:** `R = L Lᵀ`, `y' = L⁻¹ y`, `H' = L⁻¹ H` (D06 E: ilişkili gürültüde eksenleri bağımsız saymanın gerekçesi).
+- **Sıralı skaler güncelleme:** her skaler için `u = P hᵀ`, `s = h u + r`, `k = u/s`, `P ← P − k uᵀ − u kᵀ + s k kᵀ` (Joseph formunun açılmış hali, karesel maliyet); yenilik önceki skalerlerin düzeltmesini içerir: `y_j ← y_j − h_j δx`, `δx ← δx + k (y_j − h_j δx)`. Simetrikleştirme ve varyans alt sınırı ardından.
+- **Enjeksiyon ve sıfırlama:** `δx` nominal duruma eklenir (`q ← q ⊗ Exp(δθ)`); `G = blokköşegen(I, I, I − ½[δθ]×, I, I)` **sıfırlamadan önceki** `δθ` ile kurulur, `P ← G P Gᵀ`, sonra `δx = 0` (Solà; D06 E).
+- **Yüzeye çıkışta konum düzeltmesi.** Fix, 5 ardışık iyi örnekten sonra kabul edilir (5 Hz'te ilk ile son örnek arası 0,8 s; tahmin); fix'in belli sürede geleceği varsayılmaz (05.5). İlk fix kapıdan geçerse normal güncelleme. Geçmez ama kalite M = 10 ardışık örnek (tahmin) boyunca iyiyse sıfırlama: anten konumu kolla `O_b`'ye taşınır (`p = p_a − R l_a`), `p_NE` ona eşitlenir; GNSS hızı da kapıyı geçemiyorsa `v_NE` aynı biçimde sıfırlanır; sıfırlanan blokların çapraz kovaryansı sıfırlanır, köşegen `R` + kol belirsizliğiyle kurulur; `reset_counter` artar; biriken ölü hesap hatası olay olarak kaydedilir; güdüm yolu yeni konumdan kurulur (06 §2.2 md.3).
+- **GNSS farkı:** `lat_e7`, `lon_e7` farkı `int64` alınır, boylam farkı ±180°'ye sarılır, sonra `float` ile ölçeklenir.
 
-**Yüzey ve dalış geçişi.** Kaynak kipleri `SURFACE_GNSS`, `TRANSITION`, `SUBMERGED_DR` derinlik histerezisiyle değişir: dalış > 0,5 m, yüzey < 0,2 m (06 §2.2, tahmin; anten yüksekliğine göre parametre). Dalışta GNSS füzyonu kapanır, konum kovaryansının büyümesine izin verilir; DVL kilidi de yoksa "konum güveni düşük" bayrağı kalkar. GNSS'in su altında ne zaman kesildiği sabit bir derinlikle varsayılmaz; fix kalitesi ve derinlik birlikte kullanılır (05.4).
+#### 2.3.5 Fiziksel rejim, sensör kullanılabilirliği ve güdüm aşaması
 
-**Yüzeye çıkışta konum düzeltmesi.** Fix ancak N ardışık iyi örnekten sonra kabul edilir (N = 5, 5 Hz'te ≈ 1 s; tahmin). Dalıştan sonra fix'in belirli sürede geleceği varsayılmaz (05.5). İlk fix kapıdan geçerse normal güncelleme yapılır. Geçmez ama kalite M ardışık örnek boyunca iyiyse kontrollü konum sıfırlaması yapılır: `p_NE` GNSS'e eşitlenir, ilgili `P` bloğu `R`'den kurulur, çapraz terimler sıfırlanır, `reset_counter` artar, dalış boyunca biriken ölü hesap hatası olay olarak kaydedilir ve güdüm yolu yeni konumdan yeniden kurulur (06 §2.2 md.3).
+Üçü ayrı durumdur; biri diğerinin yerine kullanılmaz.
 
-**Kestirim güveninin düşmesi.** Sağlık çıktısı: konum ve hız σ'sı, yön σ'sı, sensör başına test oranı ve ardışık ret sayısı, DVL kilit yaşı, `reset_counter`. Üç düzey:
+| Durum | Değerler | Belirleyen | Kullanan |
+|---|---|---|---|
+| Fiziksel rejim | `YÜZEY`, `GEÇİŞ`, `DALIŞ` | Yalnız basınçtan derinlik, histerezis: `DALIŞ` girişi `d > 0,5 m`, `YÜZEY` girişi `d < 0,2 m`, arası `GEÇİŞ` (06 §2.2, tahmin; anten yüksekliğine göre parametre) | DVL kapısı, `SURFACE` eyleminin bitişi, arıza anlamları |
+| Sensör kullanılabilirliği | GNSS, DVL kilidi, manyetometre, basınç | Fix kalitesi ve rejim (GNSS yalnız `YÜZEY`; derinlikle sabit bir kesme varsayılmaz, 05.4), bayraklar, tazelik | Kestirim, sağlık |
+| Güdüm aşaması | `SURFACE_TRANSIT`, `DIVE`, `SUBMERGED`, `ASCENT` | Görev ve kip | Kontrol rejimi ve dikey yetki |
 
-| Düzey | Koşul (eşikler parametre; tahmin) |
-|---|---|
-| `EST_OK` | Aşağıdakilerin hiçbiri |
-| `EST_DEGRADED` | Yatay konum σ > σ_max ya da DVL kilidi yok ve GNSS yok |
-| `EST_BAD` | Hız ya da tutum test oranı sürekli > 1; tutum σ eşik üstü; durumda NaN/Inf; `P` köşegeninde negatif değer |
+Yüzeyde GNSS kaybı dalış değildir: rejim `YÜZEY` kalır, kestirim ölü hesapla sürer ve sağlık düzeyi düşer (4. başlık). Dalış ve yükselme GNSS beklemez.
 
-Süre koşulları Bölüm 4'te duvar saatindedir.
+#### 2.3.6 Sağlık ve sayısal çökme
 
-**Tek duyarlık: gerekçe ve sınırlar.** Kartın FPU'su yalnız tek duyarlıklıdır (D06 #8, D09 #10); `double` yazılımla mümkündür ama yoğun filtre aritmetiğinde `float` performans tercihidir, zorunluluk değildir (06.6). Konum yerel NED'de, orijine göre tutulur. 10 km'de `float` çözünürlüğü `2^(13−23)` m ≈ 0,977 mm'dir (06.7; ham rapordaki 0,6 mm yanlış); temsil çözünürlüğü kestirim doğruluğu demek değildir. Coğrafi orijin `int32` 1e-7 derece olarak tutulur; GNSS farkı tamsayı çıkarmayla alınıp `float` ile ölçeklenir, böylece çekirdekte `double` gerekmez (düz dünya yaklaşımı birkaç km için; sınır SIL'de ölçülür). Asıl sınırlar temsil değil birikimdir: (a) mutlak zaman `float` saniye tutulamaz; 1 saatte ULP `2^(11−23)` s ≈ 0,24 ms, adım periyodunun onda biri. Zaman `int64` ns tutulur, yalnız farklar `float`'a çevrilir. (b) `float` kovaryans pozitif tanımlılığını yitirebilir; Joseph formu, simetrikleştirme ve varyans alt sınırı bu yüzden zorunludur. (c) Varyansların dinamik aralığı geniştir (konum ile sapma); SIL'de aynı filtrenin yalnız test için derlenmiş `double` referansıyla karşılaştırılır (Bölüm 7).
+- `EST_OK`; `EST_DEGRADED`: yatay konum σ > σ_max (parametre) ya da GNSS ve DVL kilidi yok; `EST_BAD`: hız ya da tutum kapı oranı (`NIS/γ`) sürekli > 1, tutum σ eşik üstü. Bunların süre koşulları duvar saatindedir (4.3).
+- **Sayısal çökme ayrıdır ve beklemesizdir:** ufuk ya da çıkış durumunda NaN/Inf, kovaryansın 100 Hz LDLᵀ ayrıştırmasında pivot ≤ ε (pozitif köşegen pozitif tanımlılığı kanıtlamaz), ya da sonlu olmayan kontrol çıktısı. Aynı çağrıda: atış izni kalkar, kontrol yolu atlanır, sekiz itici nötr (`PASSIVE_SURFACE`), `EST_FAULT` olayı. Filtre yeniden hizalanır (2.3.1); arıza mandallı kalır, `FAILSAFE_RESET` ve 2 s `EST_OK` ile kalkar.
+
+#### 2.3.7 Tek duyarlık: gerekçe ve sınırlar
+
+Kartın FPU'su yalnız tek duyarlıklıdır (D06 #8, D09 #10); `float` yoğun filtre aritmetiğinde performans tercihidir, zorunluluk değildir (06.6). 10 km'de `float` aralığı `2^(13−23)` m = 0,977 mm (06.7); temsil çözünürlüğü doğruluk değildir. Coğrafi orijin `int32` 1e-7 derecedir; çekirdekte `double` gerekmez (düz dünya yaklaşımı birkaç km için; sınır SIL'de ölçülür). Asıl sınırlar birikimdir: (a) mutlak zaman `float` saniye tutulamaz (1 saatte aralık 0,244 ms, periyodun onda biri); zaman `int64` ns, yalnız farklar `float`; (b) `float` kovaryans pozitif tanımlılığını yitirebilir: Joseph formu, simetrikleştirme, alt sınır ve LDLᵀ denetimi bu yüzden; (c) geniş dinamik aralık: aynı filtre yalnız test için `double` derlenip karşılaştırılır (Bölüm 7).
 
 ### 2.4 Güdüm
 
-- **Rota noktası ve yol takibi.** Bacak boyunca LOS; akıntıya karşı kalıcı çapraz hatayı sıfırlamak için ILOS (Caharija vd. 2016; Fossen ve Pettersen 2014; 06 §2.3). Kabul dairesi, bakış uzaklığı ve integral kazancı parametredir. Araç tam itkili olduğu için yol takibinde yön rotaya hizalanır; yanal hata ILOS ile yön düzeltmesine çevrilir.
-- **Derinlik ve irtifa.** Dikey kanal yataydan ayrıdır (06 §2.3). Derinlik setpoint'i hız ve ivme sınırlı ikinci/üçüncü dereceden referans modelden geçer (`refModel3`, 06 §2.3). İrtifa tutmada setpoint `d_ref = d + (a − a_ref)` filtrelenerek üretilir; irtifa Ping1D mesafesinin eğim düzeltmeli değeri, yedeği DVL irtifasıdır. En az irtifa sınırı arıza güvenliğine girer.
-- **İstasyon tutma.** NED konum hatası gövde çerçevesinde hız setpoint'ine çevrilir, yön ayrıca tutulur. Akıntıya burun tutma enerji için seçenektir (06 §2.3).
-- **Sonar tarama deseni.** Ping360 mekanik taramalıdır; tam tur süresi menzil, örnek sayısı, açı adımı ve bağlantı hızıyla değişir, 50 m'de 33 s'ye kadar çıkabilir (05.2). İki desen: (a) **çizgi taraması**: biçerdöver deseni, hat aralığı = kapsama genişliği × (1 − örtüşme); hız, sektör tarama süresiyle sınırlanır; dönüşler önceden hesaplı yaylarla (06 §2.3). (b) **noktada tur**: ızgara noktalarında istasyon tutma ve tam tur tarama. Desen, görev yürütücüsünde sabit bellekle bacak bacak üretilir. Sonar verisi yalnız düz, sabit hız ve derinlikli bacaklarda geçerli sayılır; çekirdek bunu `scan_leg_active` bayrağıyla 03'e ve telemetriye bildirir.
-- **Yüzey seyri ile dalış arasındaki geçiş.** Güdüm aşamaları: `SURFACE_TRANSIT` (derinlik kontrolü kapalı, araç pozitif yüzerlikle yüzeyde; LOS ve GNSS), `DIVE` (konum ve yön tutulurken derinlik referansı hız sınırlı rampayla iner; kaynak kipi `SUBMERGED_DR` olana dek bekler), `SUBMERGED`, `ASCENT` (hız sınırlı yükselme; yüzey eşiğinde derinlik kontrolü bırakılır). Aşamalar kestiricinin kaynak kipiyle aynı histerezisi kullanır (06 §2.4).
+- **Rota noktası ve yol takibi:** LOS; akıntıya karşı kalıcı çapraz hatayı sıfırlamak için ILOS (Caharija vd. 2016; Fossen ve Pettersen 2014; 06 §2.3). Yön rotaya hizalanır; yanal hata ILOS ile yön düzeltmesine çevrilir.
+- **Derinlik ve irtifa:** dikey kanal ayrıdır; derinlik referansı hız ve ivme sınırlı referans modelden geçer (`refModel3`, 06 §2.3). İrtifa tutma `d_ref = d + (a − a_ref)` (filtreli); irtifa Ping1D'nin eğim düzeltmeli değeri, yedeği DVL irtifası.
+- **İstasyon tutma:** NED konum hatası → gövde hız setpoint'i; yön ayrıca tutulur.
+- **Sonar taraması:** Ping360'ın tam turu menzil, örnek sayısı, açı adımı ve bağlantı hızıyla değişir, 50 m'de 33 s'ye çıkabilir (05.2). (a) Çizgi taraması: hat aralığı = kapsama × (1 − örtüşme), hız sektör tarama süresiyle sınırlı, dönüşler hazır yaylarla (06 §2.3); (b) noktada tur: ızgara noktasında istasyon tutma ve tam tur. Desen sabit bellekle bacak bacak üretilir; `scan_leg_active` yalnız düz, sabit hız ve derinlikli bacaklarda doğrudur ve 03'e `ida_fc_in_t` ile, telemetriye kayıtla gider.
+- **Güdüm aşamaları:** `SURFACE_TRANSIT` (yüzey kontrol rejimi, dikey kapalı); `DIVE` (dalış rejimi aşamanın başında açılır: dikey yetki tam, derinlik referansı hız sınırlı rampayla; konum ve yön tutulur; fiziksel rejim `DALIŞ` olunca `SUBMERGED`); `SUBMERGED`; `ASCENT` (dalış rejimi, yükselme hızı `v_asc = 0,25 m/s` (tahmin); fiziksel rejim `YÜZEY` olunca dikey kapanır, `SURFACE_TRANSIT`). Kontrol rejimi fiziksel rejime değil aşamaya bağlıdır; böylece "dalmak için dalış kontrolü, dalış kontrolü için derinlik" döngüsü oluşmaz.
 
 ### 2.5 Kontrol ve itki tahsisi
 
-**Kademeli yapı** (06 §2.4; ArduSub ve PX4 deseni, 06 §2.1):
+**Kademeli yapı** (06 §2.4, 06 §2.1):
 
-| Kanal | Dış döngü (100 Hz, tahmin) | İç döngü (400 Hz) | Çıkış |
+| Kanal | Dış döngü, 100 Hz (tahmin) | İç döngü, 400 Hz | Çıkış |
 |---|---|---|---|
 | Tutum | Kuaterniyon hatası → açısal hız setpoint'i (P, sınırlı) | Açısal hız PID | `K, M, N` |
-| Derinlik | `z` hatası → dikey hız setpoint'i (P, sınırlı) | PI + net yüzerlik ileri beslemesi | `Z` |
-| Yatay hız | `u_sp, v_sp` | PI + sönüm eğrisi ileri beslemesi | `X, Y` |
-| Konum (istasyon tutma) | NED hata → gövde hız setpoint'i | — | yatay hız kanalına |
+| Derinlik | `d` hatası → NED dikey hız setpoint'i (P, sınırlı) | Dikey hız PI + yüzerlik ileri beslemesi | NED `F_z` |
+| Konum | NED hata → yatay hız setpoint'i (yön çerçevesinde) | Yatay hız PI + sönüm ileri beslemesi | Yön çerçevesinde `F_x, F_y` |
 
-**Doyma ve integral birikimi.** Her PID kendi çıkış sınırını bilir. Tahsis katmanı her eksen için pozitif ve negatif doyma bayrağı döndürür; integral yalnız doymayı artıran yönde dondurulur, ters yönde çözülmesine izin verilir (PX4, D06 #10). Kip ve rejim geçişlerinde integral, mevcut çıkışı koruyacak biçimde başlatılır (06 §2.4).
+Öteleme kuvvetleri yön (yalnız yaw ile döndürülmüş NED) çerçevesinde hesaplanır ve gövdeye `[X Y Z]ᵀ = Rᵀ R_ψ [F_x F_y F_z]ᵀ` ile çevrilir. Yüzerlik ileri beslemesi NED aşağı yönde `+(B − W)` (araç pozitif yüzer); `B − W` üç kütle durumu için ayrı parametredir (tatlı suda iki yüklü +1,82, bir yüklü +1,89, boş +1,96 N; 04 §2.6) ve kütle durumu çekirdeğin kabul ettiği her atış olayında bir alt duruma geçer.
 
-**Yüzey ve dalış kontrolcüsü.** Her rejimin kendi kazanç seti vardır (06 §2.4). Yüzey rejiminde kontrol edilen eksenler `X, Y, N`'dir; roll ve pitch hidrostatiğe bırakılır, dikey iticiler havalanma riski nedeniyle sınırlı yetkiyle kullanılır (06 §2.4; sınır SIL'de ayarlanır). Dalış rejimi altı eksenlidir. Geçiş kestiricinin kaynak kipine bağlıdır, kazançlar T_blend (1 s, tahmin) boyunca karıştırılır ve integral sarsıntısız aktarılır.
+**İntegral yönetimi.** Tahsis, eksen başına kalıntıyı `r = τ_req − τ_a` döndürür; `|r_j| > ε_j` ise eksen o işaretle doymuş sayılır ve ilgili integral yalnız doymayı artıran yönde dondurulur, ters yönde çözülebilir (PX4, D06 #10). Kalıntı gövde eksenindedir; yön çerçevesindeki öteleme integralleri için aynı dönüşümün devriğiyle geri taşınır. Kazanç değişiminde çıktı sürekliliği `I_yeni = I_eski + (K_p,eski − K_p,yeni) e` ile korunur; yeni etkinleşen kanalın integrali, o eksende elde edilen çıktıdan P terimi çıkarılarak başlatılır (06 §2.4).
 
-**Sekiz itici için tahsis.** `τ = B u`, `B` 6×8, `u` itici kuvvetleri (N). Ağırlıklı sözde ters `B⁺` başlatmada ve parametre değişince (yalnız devre dışıyken) hesaplanır. Doyma olursa öncelikli doyma giderme uygulanır: önce düşük öncelikli eksenler ölçeklenir; öncelik sırası roll/pitch > derinlik > yön > ileri/yanal (öneri; ArduSub'ın dikey ve yatay grupları ayrı normalize etmesi ve PX4'ün sıralı doyma giderme yöntemi örnek alındı, 06 §2.4, 06 §2.1). Kuvvetten komuta geçişte itici eğrisi tersine çevrilir (`T ∝ n|n|` → `komut ≈ işaret·√|T|`), ileri/geri asimetrisi ve ölü bölge telafi edilir (06 §2.4); azami itki batarya gerilimine göre ölçeklenir (04.13). Çıktı `[-1, 1]` aralığında normalleştirilmiş sürücü komutudur; platform bunu `PWM = 1500 + 400·u` µs ile darbe genişliğine çevirir (04 bölümü taslağındaki normalizasyonun tersi). ESC'nin belgeli dur ölü bandı 1500 ± 25 µs olduğundan sıfırdan farklı komut en az `|u| = 25/400` olarak verilir (11.6, Ç12). Gerilime bağlı sıfır-itki aralığı ve eğri değerleri doğrulanmamış adaydır (Ç12, M22); hepsi parametredir.
+**Rejime göre kontrolcü.** Yüzey rejimi: denetlenen eksenler `X, Y, N`; `Z, K, M` hidrostatiğe bırakılır, dikey iticiler kapalıdır (havalanma, 06 §2.4; 04 havalanmayı modeller). Dalış rejimi altı eksenlidir. Rejim güdüm aşamasıyla değişir (2.4); kazançlar 1 s (tahmin) boyunca karıştırılır.
 
-**04'ten beklenen araç girdisi:** sekiz iticinin gövde çerçevesindeki konumu ve yönü (`B` bunlardan ve CG referansından kurulur; 04 taslağında yerleşim tablosu mimari varsayımı olarak var ve pervane tepki torku ihmal ediliyor), ileri/geri azami itki ve gerilime bağımlılığı, itici eğrisi, net yüzerlik ve CB–CG ofseti, ileri besleme için yaklaşık sönüm katsayıları, kazanç tasarımı için kütle ve eylemsizlik, kartın gördüğü itici sırası. Çekirdek bu değerleri kendi parametresi olarak taşır; fizikteki gerçek değerden kasıtlı olarak farklı verilebilmeleri gerekir (8. başlık).
+**Tahsis matrisi.** `B` (6×8), 04 §2.6'nın A5 kaynağından kurulur: sütun `i` = `[ε_i; r_i × ε_i]`, referans `O_b` (yük durumundan bağımsız), dikey iticilerde pozitif komut `+z` (aşağı) itkisi; sıra kartın gördüğü itici sırasıdır (04 §2.6). Yatay iticilerin `z = 0,085 m` ofseti `K = −0,085 Y`, `M = 0,085 X` çapraz momentlerini üretir; dalış rejiminde dikey grup bunları dengeler. Tam `B`'nin rankı 6'dır (inceleme hesabı; 04 denetledi).
 
-**Pasif yüzeye çıkışın hızı.** 04 taslağındaki İDA-0 değerleriyle (tatlı suda net yüzerlik ≈ +1,96 N; 120 N dikey kuvvette uç hız ≈ 0,71 m/s) karesel sönüm yaklaşımı pasif yükselme hızını ≈ 0,1 m/s verir (kaba tahmin, doğrusal sönüm ihmal edildi). Bu nedenle `PASSIVE_SURFACE` yalnız kontrolün güvenilmez olduğu durumlar içindir; diğer arızalarda kontrollü `SURFACE` seçilir.
+**Tahsis yöntemi.**
+1. Başlatmada ve geometri parametresi değişince (yalnız devre dışıyken) her rejim için ağırlıklı en küçük norm tersi `B⁺ = W⁻¹ Bᵀ (B W⁻¹ Bᵀ)⁻¹` hesaplanır; `W = diag(1/F_maks,i²)`. Yüzey rejiminde yalnız `X, Y, N` satırları ve yatay iticiler kullanılır. Koşul sayısı `κ(B W⁻¹ Bᵀ) > κ_maks` ise parametre reddedilir.
+2. Her adımda öncelik grupları sırasıyla `[K, M] > [Z] > [N] > [X, Y]` (dalış; yüzeyde `[N] > [X, Y]`): `u ← u + α_g B⁺ τ_g`; `α_g ∈ [0, 1]`, her itici sınırından doğrusal olarak hesaplanan en büyük uygun değer. Yineleme sayısı grup sayısıyla sınırlıdır (en çok 4); sonuç her zaman sınır içindedir (ArduSub grup normalizasyonu ve PX4 sıralı doyma giderme örnek alındı, 06 §2.1, §2.4).
+3. Sınırlar: `F_maks,ileri/geri(V)` 04 ile aynı gerilim yasasıyla, filtrelenmiş batarya geriliminden (04 §2.7.2).
+4. Elde edilen `τ_a = B u` ve kalıntı integral yönetimine döner.
+
+**İtki eğrisinin tersi.** Çekirdek 04'ün A5'teki geçici modelini aynı sürümle kullanır: `F = F_şekil(u) · F_maks,yön(V)` (04 §2.7.2). `F_şekil`'in monoton kırpılmış biçiminden başlatmada 33 noktalı tablo kurulur; ters, ikili arama ve doğrusal ara değerlemeyle alınır. Daha önceki `√|T|` tersi kaldırıldı: `T ∝ n|n|` devir hızına aittir, PWM'e değil. ESC dur ölü bandı 1500 ± 25 µs sınır dahil sıfır itkidir (04 §2.7.1; 11.6); PWM 1 µs nicemlidir, bu yüzden sıfırdan farklı en küçük komut `|PWM − 1500| = 26 µs`, yani `|u| = 0,065`. İstenen itki `F_şekil(0,065)` değerinin yarısından küçükse komut 0, değilse en az 0,065. Platform `PWM = 1500 + round(400 u)` µs ile çevirir. Eğri sürümü 04'ünkinden farklıysa bu ancak bilinçli model hatası olarak `model_farkı` bayrağıyla kabul edilir.
+
+**Pasif yükselme hızı.** 04 §2.6 değerleriyle tam batık, durgun tatlı suda `33 v + 190 v² = B − W` çözümü: boş 0,047, iki yüklü 0,044 m/s (doğrusal sönüm bu hızda baskın; yalnız karesel terim 0,10 m/s verir ve yanlıştır). Yüzeye yaklaşma, yönelim ve dalga bu denge hesabının dışındadır. 10 m'den ≈ 3,5 dakika (tahmin). Bu yüzden `PASSIVE_SURFACE` yalnız kontrolün güvenilmez olduğu durumlar içindir.
 
 ### 2.6 Kipler ve görev yönetimi
 
-**Kipler** (06 §2.5'ten uyarlandı):
-
 | Kip | Ön koşul | Davranış |
 |---|---|---|
-| `INIT` | — | Parametre doğrulama (CRC, aralık), kestirici hizalama |
-| `DISARMED` | — | Motorlar nötr; arm komutu ön koşullar sağlanırsa kabul |
-| `MANUAL` | Arm | Operatör `τ` doğrudan tahsise |
+| `INIT` | — | Parametre doğrulama, kestirici hizalama |
+| `DISARMED` | — | Motorlar nötr; arm, ön koşullar ve parametre geçerliliğiyle |
+| `MANUAL` | Arm | Operatör altı eksen girdisi doğrudan `τ_req` |
 | `STABILIZE` | Tutum geçerli | Tutum tutulur, öteleme operatörden |
 | `DEPTH_HOLD` | Derinlik geçerli | Derinlik ve yön tutulur |
-| `STATION_KEEP` | `EST_OK` | Konum, derinlik ve yön tutulur |
-| `GUIDED` | `EST_OK` | Yer istasyonundan setpoint; 3 s yeni hedef gelmezse son hedefte kalır (ArduSub, 06 §2.1) |
-| `AUTO` | `EST_OK`, geçerli görev | Görev yürütücüsü setpoint üretir |
-| `SURFACE` | — | Kontrollü yükselme, yön tutulur |
-| `PASSIVE_SURFACE` | — | Motorlar nötr, arm durumu korunur; İDA-0 pozitif yüzerlikle yüzer (iskelet §5) |
+| `STATION_KEEP` | `EST_OK` | Konum, derinlik, yön |
+| `GUIDED` | `EST_OK` | Yer istasyonu setpoint'i; 3 s yeni hedef yoksa son hedefte kalır (06 §2.1) |
+| `AUTO` | `EST_OK`, geçerli görev | Görev yürütücüsü |
 
-Geçiş önceliği: arıza eylemi > operatör komutu > görev. Ön koşulu düşen kip bir alt kipe iner (`AUTO`/`STATION_KEEP` → `DEPTH_HOLD`, 06 §2.5 tablosu). Arıza eylemleri kalıcıdır (mandal); açık bir sıfırlama komutuyla ve koşul geçmişse kalkar (11.4'teki "kendiliğinden toparlanma ile açık sıfırlama ayrıdır" dersi). Durum makinesi tam geçiş tablosu olarak yazılır; her durum × olay çifti tanımlıdır (06 §2.5'in Rust `match` gerekçesinin C karşılığı: tablo ve birim testle eksiksizlik).
+Arıza eylemleri (`HOLD`, `SURFACE`, `PASSIVE_SURFACE`, `DISARM`; tanımları 4.2) kipin üstünde çalışır. Öncelik: arıza > operatör > görev. Ön koşulu düşen kip bir alt kipe iner (`AUTO`/`STATION_KEEP` → `DEPTH_HOLD`, 06 §2.5). Durum makinesi tam geçiş tablosudur; her durum × olay çifti tanımlıdır ve birim testle doğrulanır.
 
-**Görev durum makinesi:** `IDLE → LOADED → RUNNING(öğe i, aşama) ⇄ PAUSED → COMPLETE | ABORTED`. Her öğenin başlangıcı, setpoint üretimi, bitiş ölçütü (kabul dairesi + derinlik toleransı + bekleme süresi, ya da süre) ve zaman aşımı vardır; zaman aşımı görevi durdurur ve `SURFACE` ister. Yürütücü yalnız setpoint üretir, kip ve arıza katmanını atlayamaz (06 §2.5).
+**Görev durum makinesi:** `IDLE → LOADED → RUNNING(öğe, aşama) ⇄ PAUSED → COMPLETE | ABORTED`. Her öğenin başlangıcı, setpoint üretimi, bitiş ölçütü ve zaman aşımı vardır; zaman aşımı görevi durdurur ve `SURFACE` ister. Davranış süreleri (bekleme, tur) ölçüm zamanında; zaman aşımları ve toplam görev süresi duvar saatindedir (iskelet §4). Yürütücü yalnız setpoint üretir (06 §2.5).
 
-**Görev öğeleri** (sabit kapasiteli dizi, `IDA_MISSION_MAX` = 128 (tahmin)): `WAYPOINT` (konum, derinlik ya da irtifa kipi, hız, kabul yarıçapı), `DIVE_TO`, `SURFACE`, `HOLD` (süre), `SCAN_LINES` (dikdörtgen alan, yön, hat aralığı, derinlik/irtifa), `SCAN_POINT` (tur sayısı), `WAIT_GNSS`, `TARGET_ALIGN` (03'ün hizalanma aşaması, zaman aşımıyla).
+**Öğeler** (sabit dizi, `IDA_MISSION_MAX = 128`, tahmin): `WAYPOINT`, `DIVE_TO`, `SURFACE`, `HOLD`, `SCAN_LINES`, `SCAN_POINT`, `WAIT_GNSS`, `TARGET_ALIGN`.
 
-**Görevin çekirdeğe verilişi.** Görev bağlantı komutlarıyla gelir: `MISSION_BEGIN(n)`, `MISSION_ITEM(i, öğe)`, `MISSION_END`. Platform bunları MAVLink görev protokolünden çözer (06; özel öğeler `MAV_CMD_USER_*` aralığında olabilir, 06 §2.5). SIL'de senaryodaki görev (A5) sim sunucusunun yer istasyonu yolundan aynı komutlarla gelir. Görev atomik yüklenir: bütün öğeler doğrulanmadan yürürlüğe girmez; çalışan görev yalnız `PAUSED` ya da `HOLD` iken değiştirilebilir.
+**Görevin verilişi:** `MISSION_BEGIN(n)`, `MISSION_ITEM(i, öğe)`, `MISSION_END` komutları; platform MAVLink görev protokolünden çözer (06; özel öğeler `MAV_CMD_USER_*`, 06 §2.5). SIL'de senaryodaki görev (A5) sim sunucusunun yer istasyonu yolundan aynı komutlarla gelir. Yükleme atomiktir; çalışan görev yalnız `PAUSED` ya da `HOLD` iken değişir.
 
 ### 2.7 Sayı tipleri ve derleme politikası
 
-- **Standart:** C17, `-std=c17 -pedantic-errors` (GCC, Clang), MSVC `/std:c17`; VLA, `complex`, `<stdatomic.h>`, `<threads.h>` ve GNU uzantıları yok (08 §2.6; Ç10; kullanıcı onayı A17 açık).
-- **Tipler:** `<stdint.h>` sabit genişlikli tamsayılar; kayan nokta yalnız `float`; çekirdekte `double` yoktur (2.3'teki tamsayı orijin sayesinde gerekmez). Sabitler `f` sonekli; matematik işlevleri `ida_math` sarmalayıcısıyla (`sinf`, `sqrtf` …), ileride kendi uygulamasına geçilebilsin diye; bu tek başına platformlar arası eşitlik vermez (Ç7).
-- **Kayan nokta derleme politikası:** GCC/Clang `-ffp-contract=off -fno-fast-math`; Apple Clang'de daralma varsayılanı `on` olduğu için açıkça kapatılır (09.6); MSVC `/fp:precise`, daralma açılmaz; clang-cl MSVC ile özdeş sayılmaz (09.6). FMA'yı kapatmak bit eşitliği sağlamaz (08.14, 09.5). Kartın FPSCR ayarı (yuvarlama, sıfıra yuvarlama) 01'de sabitlenip kaydedilir; subnormal davranışı iki tarafta farklı olabilir (09.5).
-- **SIL'in kartla aynı politikayı kullanması:** çekirdek tek bir CMake hedefinden, tek bir FP politikası arayüz hedefiyle derlenir; SIL kartın tiplerini ve üretimdeki firmware politikasını korur, fizik ise `double` kalır (Ö3, 09.5, D09 N3).
-- **Bellek ayırma yasağının denetimi:** (1) çekirdek kütüphanesi CI'da `-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free` ile ve sarmalayıcı tanımlanmadan bağlanır; başvuru varsa bağlantı hatası olur (08.13: tanımsız sarmalayıcı hata verir, "boş malloc" vermez). (2) Nesne dosyalarında `nm` ile `malloc`, `calloc`, `realloc`, `free`, `_malloc_r` ve `printf` ailesi aranır (08.13: yeniden girişli libc girişleri ayrıca denetlenmeli). (3) Kendi havuz ayırıcısı yazmak da yasaktır (kod incelemesi kuralı). (4) Özyineleme yasak; `-fstack-usage` ve `-Wstack-usage` ile yığın sınırı raporlanır. (5) Yapı boyutları `_Static_assert` ile sabitlenir.
-- **Statik analiz:** `-Wall -Wextra -Wconversion -Wdouble-promotion -Wfloat-conversion -Wshadow -Wvla`, GCC `-fanalyzer`, clang-tidy (`bugprone-*`, `cert-*`, `clang-analyzer-*`), cppcheck; MISRA'dan seçilmiş yazılı proje kural alt kümesi; "MISRA uyumlu" iddia edilmez (08 §2.6). Çekirdek hedefinin içerme yolunda HAL, CMSIS ve RTOS başlıkları yoktur.
+- **Standart:** C17, `-std=c17 -pedantic-errors`, MSVC `/std:c17`; VLA, `complex`, `<stdatomic.h>`, `<threads.h>`, GNU uzantıları yok (08 §2.6; Ç10; A17 açık).
+- **Tipler:** sabit genişlikli tamsayılar; kayan nokta yalnız `float`, çekirdekte `double` yok; sabitler `f` sonekli; aşkın işlevler `ida_math` sarmalayıcısından (Ç7: tek başına platform eşitliği vermez).
+- **FP politikası:** GCC/Clang `-ffp-contract=off -fno-fast-math` (Apple Clang varsayılanı `on`, açıkça kapatılır; 09.6); MSVC `/fp:precise`; clang-cl MSVC ile özdeş sayılmaz. FMA'yı kapatmak bit eşitliği sağlamaz (08.14, 09.5). Kartın FPSCR ayarı 01'de sabitlenip kaydedilir; subnormal davranışı farklı olabilir (09.5).
+- **SIL ile kart aynı politika:** çekirdek tek CMake hedefinden, tek FP politikası arayüz hedefiyle derlenir; SIL kartın tiplerini ve üretim politikasını korur, fizik `double` kalır (Ö3, 09.5).
+- **Matematik arka ucu:** `mat.h` taşınabilir C ile uygulanır. CMSIS-DSP hızlandırması seçilirse çekirdeğin içine değil, aynı `mat.h` arayüzünü uygulayan ve kart platformunda bağlanan ayrı arka uca girer (CMSIS başlıkları çekirdeğin içerme yolunda yasak kalır); SIL taşınabilir arka ucu kullanır ve aradaki fark M10'da ölçülür.
+- **Bellek ayırma yasağının denetimi:** (1) GNU ld ile bağlanan yapılandırmada (kart, arm-none-eabi) çekirdek `--wrap=malloc,calloc,realloc,free` ile sarmalayıcısız bağlanır; başvuru bağlantı hatası verir (08.13). (2) Her platformda çekirdek nesne dosyalarının sembolleri (`nm`; MSVC'de `dumpbin /symbols`) `malloc`, `calloc`, `realloc`, `free`, `_malloc_r` ve `printf` ailesi için taranır; macOS ld64 ve MSVC'de denetim budur. (3) Özel havuz ayırıcı yasak. (4) Özyineleme yasak; `-fstack-usage`, `-Wstack-usage`. (5) Yapı boyutları `_Static_assert` ile.
+- **Statik analiz:** `-Wall -Wextra -Wconversion -Wdouble-promotion -Wfloat-conversion -Wshadow -Wvla`, `-fanalyzer`, clang-tidy, cppcheck, yazılı proje kural alt kümesi; "MISRA uyumlu" iddia edilmez (08 §2.6). Çekirdekte koşullu derleme (`#ifdef SIL` vb.) yoktur ve otomatik taranır.
 
 ### 2.8 SIL koşucusu
 
-Çekirdeği PC'de kartın yerine çalıştıran ince katmandır (iskelet §2: C17 + C++).
+Çekirdeği PC'de kartın yerine çalıştıran ince katman (iskelet §2: C17 + C++); A1 ↔ A4 dönüştürücüsünün PC tarafı da onun parçasıdır, alan eşlemesini 06 tanımlar (iskelet §3).
 
-- **Bağlantı:** sim sunucusuna A1 üzerinden yerel soketle bağlanır; el sıkışma ve mesajlar kartınkiyle aynıdır (06). Sim sunucusu için kart ile SIL arasındaki fark yalnız taşımadır.
-- **Adımlama:** SIL'de bariyer hep açıktır. Koşucu soketten çerçeveleri okur; IMU çerçevesi gelince o ana dek gelen diğer örnekleri ve komutları `ida_step_in_t`'ye koyar, `ida_core_step` çağırır, aynı sıra numaralı aktüatör çerçevesini gönderir. Sim yanıtı bekler; zaman sanaldır, hızlandırılabilir, duraklatılabilir (iskelet §4).
-- **Duvar saati:** varsayılan olarak son alınan çerçevenin sim zamanından türetilen sanal saattir; duraklatma bağlantı arızası üretmez, SIL tekrarlanabilir kalır. Gerçek zamanlı davranışı sınamak için gerçek duvar saati seçeneği vardır.
-- **Kartla ortak olanlar:** çekirdek kaynağı ve derleme politikası; A1 kodlayıcısı (`protocol/`); A1 ↔ A4 dönüştürücüsü (öneri: kartla SIL'in paylaştığı tek C modülü; kartın simülasyondan haberdar olan tek parçası budur).
-- **Ortak olmayanlar:** taşıma (USB ↔ soket), zamanlama (kesme ↔ engelleyen döngü), gözetim zamanlayıcısı (SIL'de yok), parametre deposu (flash ↔ A5 dosyası; dönüştürücü C++), DWT ölçümü. Süre aşımı, kaçırılan adım ve IMU kesilmesi SIL'de koşucu tarafından enjekte edilebilir.
-- Küresel durum olmadığı için bir süreçte birden çok çekirdek koşabilir (Monte Carlo; 08 §2.6).
+- **Bağlantı:** sim sunucusuna A1 ile yerel soketten bağlanır; el sıkışma ve mesajlar kartınkiyle aynı. Sim için fark yalnız taşımadır.
+- **Adımlama:** SIL'de bariyer hep açıktır. Sim her kontrol periyodunda zaman çerçevesi gönderir (iskelet §4). Koşucu periyodun bütün çerçevelerini toplar; IMU varsa `ida_core_step`, yoksa `ida_core_tick` çağırır ve periyodun sıra numarasıyla tek aktüatör yanıtı döner. IMU kesilse de zaman ilerler, arıza çıktısı alınır, bariyer kilitlenmez.
+- **Duvar saati:** zaman çerçevesinin sim zamanından türetilir (iskelet §4); kullanıcı duraklatması bundan ayrıdır: duraklatılmış simde çerçeve gelmez, sanal duvar saati de durur, arıza üretilmez. Gerçek duvar saati seçeneği gerçek zaman davranışını sınamak içindir.
+- **Kartla ortak:** çekirdek kaynağı ve derleme politikası, A1 kodlayıcısı (`protocol/`). Dönüştürücü mantığı tek C modülü olarak paylaşılabilir (öneri; sahiplik iskelet §3'te 01 ve 02).
+- **Ortak olmayan:** taşıma, zamanlama (kesme ↔ engelleyen döngü), gözetim zamanlayıcısı, parametre deposu (flash ↔ A5; dönüştürücü C++), DWT. Süre aşımı, adım kaçırma ve IMU kesilmesi koşucuda enjekte edilebilir.
+- Küresel durum olmadığından bir süreçte birden çok çekirdek koşabilir (Monte Carlo; 08 §2.6).
 
 ## 3. Arayüzler
 
-### 3.1 A4: adım çağrısı
+### 3.1 A4 çağrıları
 
 ```c
-void         ida_core_init(ida_core_t *c, const ida_params_t *p, ida_wtime_t now_w);
-ida_step_rc  ida_core_step(ida_core_t *c, const ida_step_in_t *in, ida_step_out_t *out);
-void         ida_core_tick_wall(ida_core_t *c, ida_wtime_t now_w, ida_step_out_t *out);
-ida_rc       ida_core_nav_at(const ida_core_t *c, ida_stime_t t, ida_nav_t *nav);
-size_t       ida_core_sizeof(void);   /* platform statik ayırma doğrulaması için */
+void        ida_core_init(ida_core_t *c, const ida_params_t *p, uint32_t boot_id, ida_wtime_t now_w);
+ida_step_rc ida_core_step(ida_core_t *c, const ida_step_in_t *in, ida_out_t *out);
+void        ida_core_tick(ida_core_t *c, const ida_tick_in_t *in, ida_out_t *out);
+ida_rc      ida_core_nav_at(const ida_core_t *c, ida_stime_t t, ida_nav_t *nav);
 ```
 
-`ida_step_rc`: `OK`, `DUP_SEQ` (aynı IMU sıra numarası; adım çalışmaz, platform önceki çıktıyı yeniden gönderebilir), `OLD_SEQ`, `BAD_INPUT`. Çekirdek yeniden girişli değildir; aynı `ida_core_t` üzerinde çağrıları platform sıralar. Çekirdek geri çağırma kullanmaz: girdi ve çıktı yalnız veridir. Böylece adım girdisinin kaydı, aynı platformda adımın bit düzeyinde yeniden üretilmesine yeter (Ç7).
-
-**Zaman tipleri.** `ida_stime_t` (ölçüm zamanı; HIL ve SIL'de sim zamanı) ve `ida_wtime_t` (duvar saati) ikisi de `int64_t` ns taşıyan ayrı yapılardır; derleyici karıştırmayı reddeder. Ölçüm zamanı ns seçildi çünkü sim zamanı tamsayı ns'dir (iskelet §4).
-
-**`ida_step_in_t`:** `imu` (tetik örneği), `n_samples` + `samples[IDA_IN_MAX]` (etiketli birlik; varsayılan 16, tahmin), `ping360` (isteğe bağlı tek profil; platform tamponuna `const` işaretçi, çağrı süresince geçerli), `n_cmds` + `cmds[8]`, `now_w`, `plat` (platform durumu: önceki adım süre aşımı bayrağı ve süresi, kuyruk taşması sayacı, bağlantı olayları).
-
-**`ida_step_out_t`:** `seq` (IMU sıra numarası), `t_meas` (IMU zamanı), `armed`, `thr_cmd[8]` (`float`, [-1, 1]), `fire[2]` (03'ün tetik çıktısı; her adım sıfırla başlar), `n_telem` + `telem[8]`, `n_events` + `events[8]`, `param_save` (kalıcı kayıt isteği), `alive_ok` (gözetim zamanlayıcısı besleme koşulu, Bölüm 4).
+- `ida_core_t` kamuya açık tam tiptir (`ida_core_types.h`); platform `static ida_core_t` ayırır, boyut ve hizalama `_Static_assert` ile sabitlenir.
+- `ida_stime_t` (ölçüm zamanı) ve `ida_wtime_t` (duvar saati) `int64_t` ns taşıyan ayrı yapılardır; derleyici karıştırmayı reddeder; iki alan hiçbir yerde birbirinden çıkarılmaz.
+- `ida_step_rc`: `OK`; `DUP_SEQ`, `OLD_SEQ`, `BAD_INPUT` (adım çalışmaz; çıktı 3.4'teki yeniden gönderim kuralına göre üretilir; tazelik yenilenmez).
+- `ida_step_in_t`: `imu`, `n_samples` + `samples[16]` (etiketli birlik, tahmin), `sonar` (isteğe bağlı Ping360 dilimi, `const` işaretçi; çekirdek kopyalar, 3.8), `n_cmds` + `cmds[8]`, `time_frame` (varsa `t`, `seq`), `bg_result` (03 arka plan sonucunun tüketim jetonu, 3.7), `now_w`, `plat` (önceki çağrının süre aşımı, kuyruk taşması sayaçları, bağlantı servis durumu).
+- `ida_tick_in_t`: `now_w`, `time_frame` (varsa), `n_samples` + `samples[16]` (IMU dışı), `n_cmds` + `cmds[8]`, `plat`. Çalıştırdıkları: `ingest`, tazelik, `fs`, `mode` (komutlar dahil), izin. Kestirim, güdüm, kontrol ve 03 çalışmaz. IMU tazeyse itici çıktısı üretmez (`thr_valid = false`, sürekli komut adımın elindedir); IMU bayatsa, sayısal çökme ya da `DISARM` varsa nötr güvenli çıktı üretir (`thr_valid = true`, `src = TICK`).
 
 ### 3.2 Simülasyondan habersizlik
 
-Kart yazılımı simülasyonda olduğunu bilmez (iskelet §2); A4'te bu şöyle sağlanır:
-1. A4'te sim kipi, sim zamanı ya da sim kaynağı belirten hiçbir alan ve parametre yoktur; çekirdekte koşullu derleme (`#ifdef SIL` benzeri) yasaktır ve otomatik denetimle aranır.
-2. Örnekler gerçek bir sürücünün üretebileceği biçimdedir: derinlik değil basınç, DVL için geçerlilik bayrakları ve FOM, GNSS için fix türü ve `eph`. Gerçek sürücü geldiğinde aynı yapıyı doldurur (06 §2.8; HAL sınırı "SI birimli, zaman damgalı, çerçevesi tanımlı örnek").
-3. Ölçüm zamanı nötr bir alandır: HIL'de sim zamanı, gerçek donanımda sensörün veri hazır anındaki kart saati.
-4. Çıktılar sürücüye gidecek isteklerdir: normalleştirilmiş itici komutu ve tetik isteği.
-5. Yer gerçeği (ground truth) çekirdeğe hiçbir yoldan girmez; değerlendirme sim tarafında A3/A6 ile yapılır.
-6. Algılama kaydı, algılamanın kartta, PC'de ya da simülatörde yapılmasından bağımsız aynı biçimdedir (iskelet §3).
+1. A4'te sim kipi, sim kaynağı ya da gerçeklik bilgisi taşıyan hiçbir alan ve parametre yoktur; koşullu derleme yasaktır (2.7).
+2. Örnekler gerçek sürücünün üreteceği anlamdadır: derinlik değil basınç; DVL geçerlilik bayrakları ve FOM; GNSS fix türü ve `eph` (06 §2.8).
+3. Ölçüm zamanı, ölçümün geçerli olduğu andır ve ortak zaman alanındadır; HIL'de sim zamanı, gerçek donanımda sürücünün sensör saatini bu alana eşlediği değer (eşleme 01 ve 05'in işi). Alım zamanı ayrı bir alandır (iskelet §3.1).
+4. Çıktılar sürücü istekleridir: normalleştirilmiş itici komutu ve atış olayı.
+5. Yer gerçeği çekirdeğe girmez; değerlendirme A3/A6 ile sim tarafında.
+6. Algılama kaydı, algılamanın nerede yapıldığından bağımsız aynı biçimdedir (iskelet §3).
 
 ### 3.3 Sensör örnekleri
 
-Ortak başlık `ida_hdr_t`: `t_meas` (`ida_stime_t`), `seq` (`uint32_t`), `inst` (`uint8_t`, sensör örneği), `flags` (`uint16_t`: geçerli, doymuş, sensör arızası). Birimler SI, `float`; çerçeveler: gövde FRD, yerel NED, sensör çerçeveleri montaj parametreleriyle. Derinlik aşağı pozitiftir.
+Ortak başlık `ida_hdr_t`: `t_meas` (`ida_stime_t`, geçerlilik anı), `t_rx` (`ida_wtime_t`, alım anı; platform damgalar), `seq` (`uint32_t`), `inst` (`uint8_t`), `flags` (`uint16_t`: geçerli, doymuş, sensör arızası, isteğe bağlı alanların varlık bitleri). Değerler `float`, SI, sensör çerçevesinde; montaj dönüşümleri çekirdek parametrelerindedir.
 
-| Yapı | Alanlar |
+| Yapı | Alanlar ve zaman anlamı |
 |---|---|
-| `ida_imu_t` | `gyro[3]` rad/s, `accel[3]` m/s² (özgül kuvvet), `interval_ns` (örnek aralığı; değerler aralık ortalaması, 05 §2.8 md.3), `temp_c` |
+| `ida_imu_t` | `gyro[3]`, `accel[3]` (özgül kuvvet), `interval_ns`; değerler `[t_meas − interval, t_meas]` aralığının ortalaması (05 §2.8 md.3), `temp_c` |
 | `ida_mag_t` | `field[3]` T |
-| `ida_baro_t` | `p_abs` Pa, `temp_c` |
-| `ida_gnss_t` | `lat_e7`, `lon_e7` (`int32_t`), `alt_mm` (`int32_t`), `vel_ned[3]` m/s, `eph`, `epv` m, `fix_type`, `n_sv` |
-| `ida_dvl_t` | `t_meas` = `time_of_validity` (yansıma anı, 05.3), `vel[3]` m/s (DVL çerçevesi), `fom` m/s, `cov[9]` (varsa), `vel_valid`, `beam_valid` (4 bit), `beam_dist[4]` m (çözülemeyen ışın −1, 00 Bölüm 6), `altitude` m, `track` (dip / su) |
-| `ida_ping1d_t` | `distance` m, `confidence` %, `ping_number` |
-| `ida_ping360_t` | `angle_grad` (0–399), `n_samples` (≤ 1200), `sample_period` (25 ns birim), `tx_duration`, `tx_freq_khz`, `gain`, `data[1200]` (`uint8_t`) (05 §2.1). Donanımda yakalama damgası yoktur (00 Bölüm 6); `t_meas` platformun verdiği ping zamanıdır |
-| `ida_batt_t` | `voltage` V, `current` A, `temp_c` |
-| `ida_leak_t` | `mask` (prob başına bit) |
-| `ida_detection_t` | 3.6 |
+| `ida_baro_t` | `p_abs` Pa, `temp_c`; `t_meas` dönüşüm ortası |
+| `ida_gnss_t` | `lat_e7`, `lon_e7`, `alt_mm` (`int32_t`), `vel_ned[3]`, `eph`, `epv`, `fix_type`, `n_sv` |
+| `ida_dvl_t` | `t_meas` = `time_of_validity` (yansıma anı, 05.3), `vel[3]`, `fom`, `cov[9]` (varlık biti ile), `vel_valid`, `beam_valid`, `beam_dist[4]` (çözülemeyen −1, 00 Bölüm 6), `altitude`, `track` |
+| `ida_ping1d_t` | `distance`, `confidence`, `ping_number` |
+| `ida_ping360_t` | `angle_grad` (0–399), `n_samples` ≤ 1200, `sample_period` (25 ns), `tx_duration`, `tx_freq_khz`, `gain`, `data[1200]` (05 §2.1); donanımda yakalama damgası yok (00 Bölüm 6), `t_meas` platformun ping zamanı |
+| `ida_batt_t` | `voltage`, `current`, `temp_c` |
+| `ida_leak_t` | `mask` |
+| `ida_detection_t` | 07 §3.2 "Detection v1" alan listesi (00 Bölüm 3 geçerli sayar), yakalama zamanı `ida_stime_t`; kesin alanlar 03'ün |
 
-Yüksek hızlı IMU'nun 400 Hz'e indirgenmesi (ortalama, FIFO) ve paketlemenin getirdiği bekleme (05.6) 05 ve 06'nın işidir; çekirdek adım başına bir IMU örneği alır.
+Yüksek hızlı IMU'nun kontrol hızına indirgenmesi 05 ve 06'nın işidir; çekirdek çağrı başına bir IMU örneği alır.
 
-### 3.4 Bağlantı
+### 3.4 Çıkışlar: sürekli komut ve tek seferlik olay
 
-Çekirdek bayt ya da MAVLink görmez; platform çözülmüş komut verir ve telemetri kaydını kodlar. Böylece A1 biçimi (M9) değişse çekirdek değişmez.
+`ida_out_t` (iskelet §3.2):
+- **Sürekli komut:** `thr_valid`, `src` (`STEP`/`TICK`), `seq` (IMU ya da zaman çerçevesi sıra numarası), `t_meas`, `thr_cmd[8]` (`float`, [−1, 1]), `armed`, `valid_for_ns` (kullanım süresi; 04'ün `komut_ömrü` ile aynı parametre, varsayılan 50 ms).
+- **Tek seferlik olaylar:** `n_events` + `events[4]`; her olay `event_id` (`boot_id` << 32 | sayaç), tür (`FIRE` tüp, `ARM_CHANGE`), değer. `FIRE` olayı yalnız 3.7'deki kapıdan geçerse yazılır.
+- `n_telem` + `telem[8]`, `param_save`, `alive_ok`.
+- **Yeniden gönderim:** platform önbellekteki çıktıyı ham olarak yeniden göndermez. `DUP_SEQ`/`OLD_SEQ` çağrısında çekirdek yalnız sürekli komutu yeniden üretir ve onu güncel güvenlik durumuyla kapılar: arm yoksa, arıza eylemi `PASSIVE_SURFACE` ya da üstüyse ya da bir duvar çağrısı güvenli çıktı vermişse nötr. Olay hiçbir zaman yeniden üretilmez. Alıcı (sim ya da gerçek sürücü) aynı `event_id`'yi bir kez uygular, kullanım süresi geçmiş sürekli komutu uygulamaz (06'dan ve 04'ten beklenen).
 
-- **Gelen `ida_cmd_t`:** `HEARTBEAT` (bağlantı canlılığı, duvar saati damgalı), `ARM`/`DISARM`, `SET_MODE`, `MANUAL_INPUT` (6 eksen, normalleştirilmiş), `GUIDED_SETPOINT`, `MISSION_BEGIN/ITEM/END/START/PAUSE/CLEAR`, `PARAM_SET`/`PARAM_GET`, `FAILSAFE_RESET`, `FC_CMD` (03'e aynen geçen atış komutları).
-- **Giden `ida_telem_t`** (etiketli birlik): nav durumu, sağlık, kip ve arıza durumu, itici komutları ve doyma, görev ilerlemesi, parametre değeri, komut yanıtı, olay metni.
+### 3.5 Bağlantı
 
-QGC'de hibrit kiplerin ve görev yüklemenin çalışması temel telemetriden ayrı kabul ölçütüdür (06.12, 09.15, M18).
+Çekirdek bayt ya da MAVLink görmez; A1 biçimi (M9) değişse çekirdek değişmez.
+- **Gelen `ida_cmd_t`** (`cmd_id` ile; yanıt aynı kimlikle): `HEARTBEAT`, `ARM`/`DISARM`, `SET_MODE`, `MANUAL_INPUT`, `GUIDED_SETPOINT`, `MISSION_*`, `PARAM_SET`/`PARAM_COMMIT`/`PARAM_GET`, `FAILSAFE_RESET`, `FC_CMD` (03'e), `FC_ABORT`.
+- **Giden `ida_telem_t`:** nav, sağlık, kip ve arıza, itici ve kalıntı, görev ilerlemesi, `scan_leg_active`, hizalanma durumu, parametre değeri, komut yanıtı, olay metni.
+- QGC'de hibrit kiplerin ve görev yüklemenin çalışması ayrı kabul ölçütüdür (06.12, 09.15, M18).
 
-### 3.5 Kalıcı parametreler
+### 3.6 Kalıcı parametreler
 
-`ida_params_t`: `version`, `size`, `crc32` ve gruplar: araç (itici geometrisi, eğriler, yüzerlik), sensör (montajlar, `ρ`, sapma açısı), kestirim (gürültü yoğunlukları, kapılar, histerezis), kontrol (iki rejimin kazançları), güdüm, arıza (eşikler, eylemler, süreler), görev varsayılanları. Statik `const` tanım tablosu her parametrenin kimliğini, adını (≤ 16 karakter, MAVLink parametre adı sınırı), tipini, en küçük, en büyük ve varsayılan değerini tutar. Platform açılışta bloğu yükler (kart: flash, 01; SIL: A5 dosyasından). Çalışırken `PARAM_SET` aralık denetiminden geçer; kalıcı kayıt yalnız devre dışıyken `param_save` ile istenir. CRC ya da sürüm hatasında varsayılanlar yüklenir ve arm reddedilir.
+- **Biçim:** açık kodlanmış (küçük uçlu, sabit genişlikli, sürümlü) kayıt; CRC32 bu kodlanmış biçim üzerindedir, ham `struct` üzerinde değil (08.11). Statik tanım tablosu: kimlik, ad (≤ 16 karakter, MAVLink sınırı), tip, en küçük, en büyük, varsayılan, sınıf.
+- **Sınıflar:** (A) çalışırken değişebilir: kazançlar, eşikler, süreler. (B) yalnız devre dışıyken: geometri (`B`), itki eğrisi, montajlar, gürültü yoğunlukları, kütle durumu tabloları; arm'lıyken reddedilir.
+- **İşlem:** `PARAM_SET` değeri bekletir; `PARAM_COMMIT` ilişkili grubu birlikte doğrular (aralık; `B` rankı ve koşul sayısı; `Q`, `R` köşegenlerinin pozitifliği; eğri monotonluğu), türetilmiş değerleri (`B⁺`, eğri tablosu) yeniden kurar ve bir adım sınırında atomik uygular. Geçersiz grup tamamen reddedilir.
+- **Açılış:** platform bloğu yükler (kart: flash, 01; SIL: A5). CRC ya da sürüm hatasında derlenmiş varsayılanlar yüklenir ve arm engellenir; engel ancak geçerli bir parametre kümesi `PARAM_COMMIT` ile uygulanıp `param_save` ile kalıcılaştırılınca kalkar.
 
-### 3.6 Atış kontrol modülüne sağlanan arayüz (içi 03'te)
+### 3.7 Atış kontrol modülüne sağlanan arayüz (içi 03'te)
 
-- **Seyrüsefer durumu `ida_nav_t`:** `t`, `p_ned[3]`, `v_ned[3]`, `q_nb[4]`, `omega_b[3]`, `depth`, `altitude`, `p_sigma[3]`, `v_sigma[3]`, `att_sigma[3]`, kaynak kipi, `reset_counter`, `est_level`.
-- **Geçmiş:** `ida_core_nav_at(t)` son 2 s'yi (100 Hz, 200 kayıt; tahmin, 03'ün gerek duyduğu ufukla düzeltilir) ara değerleyerek verir; sonar profili ve algılamaların yakalama anındaki pozu için (07.7: sensör ölçümünden dünya konumu poz gerektirir).
-- **İzin `ida_fc_permit_t`:** `armed`, `mode_ok` (`AUTO`'da `TARGET_ALIGN` öğesi ya da `GUIDED`), `est_ok`, `failsafe_clear`. Tetik kararı 03'ündür; çekirdek tetik çıktısını değiştirmez.
-- **Hizalanma isteği `ida_align_req_t`:** `valid`, `yaw_ref`, `depth_ref`, `hold_ne[2]` (isteğe bağlı), `max_speed`, `tol_yaw`, `tol_pos`, `dwell`. Kip yöneticisi yalnız izin koşulları sağlanırken uygular; arıza eylemi her zaman önceliklidir. Yanıt `ida_align_status_t`: `accepted`, `aligned`, hatalar.
-- **03'ün uygulayacağı imzalar:** `void ida_fc_step(ida_fc_t *fc, const ida_fc_in_t *in, ida_fc_out_t *out)` (adım içinde, hızlı) ve `void ida_fc_background(ida_fc_t *fc, ...)` (arka plan, algılama). `ida_fc_in_t`: nav, izin, adımdaki algılamalar, Ping360 profili, `FC_CMD`'ler, `now_w`. `ida_fc_out_t`: hizalanma isteği, `fire[2]`, telemetri.
-- **Algılama kaydı `ida_detection_t`:** 07 §3.2 "Detection v1" alan listesi (00 Bölüm 3 bu listeyi geçerli sayar): `seq`, yakalama zamanı (`ida_stime_t`), kaynak, çerçeve, tür ve değerleri (yön, menzil-yön, menzil, poz), `cov`, sınıf, güven, üretici ve sürüm. Kesin alanlar 03'ün, A1 karşılığı 06'nındır.
+- **`ida_nav_t`:** çıkış durumu (`t`, `p_ned`, `v_ned`, `q_nb`, `omega_b`, `depth`, `altitude`, σ'lar, `reset_counter`, `est_level`).
+- **Geçmiş:** `ida_core_nav_at(t)` çıkış geçmişinden son 2 s'yi (100 Hz, 200 kayıt; tahmin) ara değerler (07.7: sensör ölçümünden dünya konumu poz gerektirir). Sorgu bir sıfırlama sınırına düşerse ara değerleme yapmaz, `IDA_RESET_BOUNDARY` ile sınırın doğru tarafındaki kaydı döner; ufuk dışı sorgu `IDA_OUT_OF_RANGE` döner.
+- **İzin `ida_fc_permit_t`:** `armed`, `mode_ok` (`AUTO`'da `TARGET_ALIGN` ya da `GUIDED`), `est_ok`, `failsafe_clear`. Adımın 4. sırasından sonra hesaplanır (2.2); 03 hep güncel izni görür.
+- **Çıkış kapısı:** 03'ün atış isteği (03'ün verdiği benzersiz `shot_id` ile) çekirdekte izin çıkış anında da geçerliyse `FIRE` olayına dönüşür; değilse atılır ve kayda geçer. Kabul edilen her `FIRE` olayında kütle durumu güncellenir (2.5).
+- **Hizalanma:** 03 `ida_align_req_t` (`valid`, `yaw_ref`, `depth_ref`, `hold_ne[2]`, `max_speed`, `tol_yaw`, `tol_pos`, `dwell`) verir; kip yöneticisi izin varken uygular; yanıt `ida_align_status_t` (`accepted`, `aligned`, hatalar) bir sonraki adımda `ida_fc_in_t` ile döner.
+- **03'ün imzaları:** `void ida_fc_step(ida_fc_t *fc, const ida_fc_in_t *in, ida_fc_out_t *out)` ve `void ida_fc_background(const ida_fc_bg_in_t *in, ida_fc_bg_out_t *out)`. Arka plan işi `ida_core_t`'ye ve `ida_fc_t`'ye dokunmaz: girdisi çekirdeğin kopyaladığı değişmez sonar dilimi ve poz özeti, çıktısı platformun sahip olduğu sonuç yapısıdır. Sonuç çekirdeğe yalnız bir adımın `bg_result` jetonuyla girer; tüketim adımı böylece kayda geçer.
+
+### 3.8 Kapasiteler ve sahiplik (tahmin)
+
+| Tampon | Kapasite | Taşma |
+|---|---|---|
+| Çağrı başına örnek / komut | 16 / 8 | Fazlası atılır, sayılır; platform sonraki çağrıya taşıyabilir |
+| Bekleyen ölçüm (sensör başına) | Basınç 8, DVL 4, manyetometre 4, GNSS 4 | Aynı sensörün en eskisi atılır, sayılır |
+| IMU ve çıkış geçmişi | 80 kayıt | Yapı gereği taşmaz (2.3.2) |
+| Seyrüsefer geçmişi | 200 kayıt | Halka |
+| Sonar dilimi | 2 yuva; çekirdek kopyalar | Arka plan bitmeden yeni dilim gelirse eski yuva bırakılır, sayılır |
+| Görev | 128 öğe | Yükleme reddedilir |
+
+### 3.9 Tekrar üretim için kayıt
+
+Aynı ikilide bit düzeyinde tekrar için kaydedilenler (iskelet A6'nın çekirdek tarafı): kodlanmış parametre bloğu ve `boot_id`; `init`, `step`, `tick` çağrılarının sıralı izi ve her birinin tam girdisi (işaretçiyle gelen sonar dilimi içeriğiyle); her `bg_result` jetonu ve içeriği; `ida_out_t` (karşılaştırma için). Arka plan işi deterministik olduğundan tekrar oynatmada yeniden hesaplanabilir ama tüketim adımı kayıttan alınır.
 
 ## 4. Hata durumları ve davranışı
 
-**Saat alanı kuralı** (iskelet §4): bir koşulun *verisi* ölçüm zamanında değerlendirilir (örnek yaşı, ölçüm tutarlılığı); koşulun *ne kadar sürdüğü* ve zaman aşımları duvar saatindedir. SIL'de duvar saati koşucunun sanal saatidir (2.8); bu yüzden süreler SIL'de de tekrarlanabilir.
+### 4.1 Kabul ve tazelik
 
-Eylem sırası: `WARN < HOLD < SURFACE < PASSIVE_SURFACE < DISARM`; aynı anda birden çok arızada en ağırı uygulanır. `HOLD` ve üstü 03'e `failsafe_clear = false` verir.
+- **Kabul:** örnek sonlu, `flags` geçerli, `seq` ve `t_meas` o sensörün son kabul edileninden kesin büyük olmalıdır. Yinelenen, eski ya da geçersiz örnek atılır, sayılır ve tazeliği yenilemez (iskelet §4).
+- **İki ölçüt** (iskelet §4): (a) alım: son kabul edilen örneğin `t_rx`'inden bu yana geçen duvar süresi; (b) ölçüm zamanının ilerlemesi: aynı sensörün art arda kabul edilen örneklerinde `Δt_meas` ile `Δt_rx` artışları karşılaştırılır (farklı alanlar birbirinden çıkarılmaz). 1 s'lik pencerede oran HIL'de [0,9; 1,1] dışındaysa akış "gecikiyor", 0,5'in altındaysa "durmuş" sayılır (tahmin; SIL'de oran yapı gereği 1). Ayrıca zaman çerçevesi ilerlediği halde IMU'nun `t_meas`'ı ilerlemiyorsa IMU ölçüm zamanında da bayattır.
+- **Sınır:** sabit bir teslim gecikmesi (akış hızı doğru ama hep geride) kart tarafından ölçülemez; ortak saat olmadan bu 06'nın gidiş-dönüş ölçümünün işidir.
+- **Tazelik sınırları** (alım; tahmin): IMU 20 ms, basınç 200 ms, manyetometre 500 ms, DVL 1 s, GNSS 1 s (yalnız `YÜZEY`), batarya 2 s, sızıntı 2 s.
 
-| Arıza | Tetik (veri, ölçüm zamanı) | Süre (duvar saati) | Eylem (varsayılan; parametre) | Dayanak |
-|---|---|---|---|---|
-| Sızıntı | Sızıntı biti, 2 ardışık örnekte (tahmin) | Bekleme yok | Arm'lıysa `SURFACE` ve yüzeyde konum bildirimi; devre dışıysa uyarı. Mandallı | 06 §2.5; ArduSub'da eylem seçime ve arm durumuna bağlı (06.10) |
-| Bağlantı kaybı | — (son `HEARTBEAT`'in duvar saati damgası) | 3 s ve 60 s (tahmin) | `MANUAL`/`STABILIZE`/`GUIDED`: 3 s → `HOLD`, 60 s → `SURFACE`. `AUTO`'da su altında kayıp beklenir: eylem yok; görev süresi ve coğrafi sınır denetlenir | 06 §2.5 |
-| Düşük batarya | Filtrelenmiş gerilim ve tüketilen enerji; iki düzey | 10 s sürekli | Düşük: uyarı + görev iptali + `SURFACE`; kritik: `SURFACE`, sürerse `PASSIVE_SURFACE` | Süre 10 s doğru (11.4). ArduSub'ın 10,5 V'u Copter varsayılanıdır, Sub'da gerilim tetiği varsayılan kapalıdır (11.4); eşikler İDA-0 paketinden (04) gelir. Kritik eşik paketin üretici en düşük güvenli geriliminin altına inmez (11.12'deki paket için 12 V) |
-| Derinlik sınırı | `d > d_max − pay` (pay 0,5 m, tahmin); irtifa < `a_min` | Anında | İniş setpoint'i kırpılır, yükselme setpoint'i verilir; tekrar ya da `d > d_max` → `SURFACE` | 06 §2.5; `d_max` araç parametresi (04) |
-| Kestirim güveni | `EST_DEGRADED` / `EST_BAD` (2.3) | `DEGRADED` anında alt kip; 30 s sürerse (tahmin) `SURFACE`. `BAD` 2 s sürerse | `DEGRADED`: `AUTO`/`STATION_KEEP` → `DEPTH_HOLD` + yön tutma. `BAD`: tutum güvenilmez sayılır → `PASSIVE_SURFACE` | 06 §2.5; ArduSub "EKF kötü" 2 s (06 §2.1) |
-| Adım kaçırma | IMU sıra boşluğu ya da `t_meas` aralığı > 1,5 periyot; platformun bildirdiği süre aşımı | 1 s içinde > 4 kaçırma (tahmin) | `WARN` + telemetri; sürerse `HOLD` | Ç1, iskelet §4; HIL'de sim de sayar ve çalıştırmayı geçersiz işaretler |
-| IMU akışı yok | — | > 10 ms (4 periyot; tahmin): platform `ida_core_tick_wall` çağırır | Motorlar nötr (`PASSIVE_SURFACE`); `alive_ok = false` uzun sürerse gözetim zamanlayıcısı 01'in tanımıyla resetler | Ana döngü kilitlenmesi 2 s (06 §2.1); IWDG aralığı 07.10 |
-| Sensör bayatlığı | Sensörün son örnek yaşı > sınır | Sınır sensör başına | İlgili güncelleme kapanır; kestirim düzeyine yansır | D08 Y8 (bayat veri davranışı tanımlanmalı) |
-| Parametre hatası | CRC/sürüm | Açılışta | Varsayılanlar, arm reddi | — |
+### 4.2 Eylemler
 
-**Gözetim zamanlayıcısı beslemesi.** `alive_ok` yalnız 400 Hz adımın çalıştığını değil, IMU tazeliğini, son başarılı bağlantı servisini (platformun bildirdiği) ve kestirimde NaN olmadığını birlikte gösterir; yalnız ISR'den besleme yetmez (00 Bölüm 6, D08 E). IWDG süresi ve reset boyunca çıkışların elektriksel güvenliği 01'in ve M19'un konusudur.
+Sıra `WARN < HOLD < SURFACE < PASSIVE_SURFACE < DISARM`; en ağırı uygulanır. `HOLD` ve üstü `failsafe_clear = false`.
+- `HOLD`: derinlik (yüzeyde dikey kapalı) ve yön tutulur; `EST_OK` ise konum tutulur, değilse yatay itki sıfır.
+- `SURFACE`: güdüm `ASCENT` (`v_asc`, yön tutma, yatay `HOLD` kuralı); fiziksel rejim `YÜZEY` olunca dikey kapanır, yatay `HOLD` kuralı sürer. GNSS beklenmez.
+- `PASSIVE_SURFACE`: sekiz itici nötr, arm korunur; araç ≈ 0,044–0,047 m/s ile yükselir (2.5).
+- `DISARM`: nötr ve devre dışı.
 
-**Girdi hataları.** NaN/Inf içeren örnek, sınır dışı değer ya da kapasiteyi aşan girdi atılır ve sayılır; adım her durumda tanımlı bir çıktı üretir. Ping360 profilinde `n_samples > 1200` reddedilir.
+### 4.3 Kip × arıza matrisi
 
-**HIL'de duraklatma.** Sim duraklarsa kartın duvar saati ilerler ve bağlantı/IMU arızaları tetiklenir; bu istenen davranıştır (Ç1: bariyer bütün firmware zamanını sim zamanına bağlamaz). 06'dan beklenen: HIL'de duraklatmanın ya desteklenmemesi ya da çalıştırmanın geçersiz sayılması.
+Saat kuralı (iskelet §4): koşulun verisi ölçüm zamanında, süresi duvar saatinde. Süreler tahmindir ve parametredir. Sütunlar: **M** = `MANUAL`/`STABILIZE`, **T** = `DEPTH_HOLD`/`STATION_KEEP`, **G** = `GUIDED`, **A** = `AUTO`, **D** = `DISARMED`.
+
+| Arıza (tetik; süre) | M | T | G | A | D | Temizleme | Dayanak |
+|---|---|---|---|---|---|---|---|
+| Sızıntı (2 ardışık örnek) | SURFACE | SURFACE | SURFACE | SURFACE | WARN, arm reddi | Devre dışı + `FAILSAFE_RESET` | 06 §2.5; 06.10 |
+| Bağlantı kaybı (`HEARTBEAT`; 3 s / 60 s) | HOLD / SURFACE | WARN / SURFACE | HOLD / SURFACE | Su altında yok; yüzeyde 60 s SURFACE sürer | — | Bağlantı geri gelince otomatik | 06 §2.5 |
+| Düşük batarya (10 s) | WARN | WARN | WARN | Görev iptali + SURFACE | WARN | Gerilim eşik + histerezis üstünde ve `FAILSAFE_RESET` | 11.4 (süre 10 s doğru) |
+| Kritik batarya (10 s; 60 s) | SURFACE / PASSIVE | aynı | aynı | aynı | Arm reddi | Aynı | 11.4, 11.12 |
+| Derinlik sınırı (`d > d_max − 0,5 m`) | Aşağı girdi kırpılır | Setpoint kırpılır | aynı | aynı | — | Otomatik; 60 s içinde ikinci ihlal → SURFACE, mandallı | 06 §2.5 |
+| En az irtifa (`a < a_min`) | Aşağı girdi kırpılır | Yükselme | aynı | aynı | — | Otomatik | 06 §2.3 |
+| Coğrafi sınır (yatay yarıçap; toplam görev süresi) | WARN | WARN | SURFACE | SURFACE | — | `FAILSAFE_RESET` | 06 §2.5 |
+| `EST_DEGRADED` (anında; 30 s) | — | `STATION_KEEP` → `DEPTH_HOLD`; 30 s SURFACE | HOLD; 30 s SURFACE | HOLD (görev durur); 30 s SURFACE | — | `EST_OK` 2 s | 06 §2.5 |
+| `EST_BAD` (2 s) | `MANUAL`: WARN; `STABILIZE`: PASSIVE | PASSIVE | PASSIVE | PASSIVE | Arm reddi | `FAILSAFE_RESET` + `EST_OK` 2 s | 06 §2.1 (EKF kötü 2 s) |
+| Sayısal çökme (beklemesiz) | PASSIVE, aynı çağrıda | aynı | aynı | aynı | Arm reddi | 2.3.6 | inceleme #6 |
+| IMU bayat (20 ms ya da akış durmuş) | PASSIVE (`tick` ile) | aynı | aynı | aynı | — | Taze IMU 1 s + `FAILSAFE_RESET` | iskelet §4 |
+| IMU akışı gecikiyor (4.1 b; 2 pencere) | WARN | HOLD | HOLD | HOLD | — | Oran 2 s normal | iskelet §4 |
+| Adım kaçırma (1 s'de > 4) | WARN | HOLD | HOLD | HOLD | — | 5 s kaçırmasız | Ç1 |
+| Sensör bayat (4.1) | İlgili füzyon kapanır; sağlık düzeyine yansır; sızıntı bayatsa WARN ve dalış reddi | | | | | Taze örnek | D08 Y8 |
+| Parametre hatası | — | — | — | — | Arm reddi | 3.6 | 08.11 |
+
+Batarya eşikleri İDA-0 paketinden gelir (04); ArduSub'ın 10,5 V'u Copter varsayılanıdır, Sub'da gerilim tetiği varsayılan kapalıdır (11.4); kritik eşik paketin üretici en düşük güvenli geriliminin altına inmez (11.12'deki paket için 12 V).
+
+### 4.4 Gözetim, girdi hataları, duraklatma
+
+- **`alive_ok`:** taze IMU, son başarılı bağlantı servisi (platform bildirir), sayısal çökme yokluğu ve son `tick`'in zamanında çalışması birlikte; yalnız ISR'den besleme yetmez (00 Bölüm 6, D08 E). IWDG süresi ve reset boyunca çıkışların elektriksel güvenliği 01 ve M19'un konusudur.
+- **Girdi hataları:** sınır dışı ya da kapasiteyi aşan girdi atılır, sayılır; her çağrı sonlu ve tanımlı bir çıktı üretir; `n_samples > 1200` sonar dilimi reddedilir.
+- **HIL'de duraklatma:** kartın duvar saati ilerler, IMU ve bağlantı arızaları tetiklenir; bu istenen davranıştır (Ç1). 06'dan beklenen: HIL'de duraklatmanın desteklenmemesi ya da çalıştırmanın geçersiz sayılması.
 
 ## 5. Kalite kademelerinin etkisi
 
-Otopilot her kademede tam çalışır (iskelet §6); çekirdekte kademe parametresi yoktur. Dolaylı etkiler: sonar kademesi Ping360 profilinin içeriğini değiştirir, biçimini değiştirmez; kamera kapalıysa dışarıdan algılama gelmez ve çekirdek ile 03 sıfır algılamayla çalışabilmelidir. SIL gerçek zamandan yavaş koşarsa sanal zaman nedeniyle çekirdek davranışı değişmez.
+Otopilot her kademede tam çalışır (iskelet §6); çekirdekte kademe parametresi yoktur. Sonar kademesi dilimin içeriğini değiştirir, biçimini değiştirmez; kamera kapalıysa dış algılama gelmez, çekirdek ve 03 sıfır algılamayla çalışır. SIL'in gerçek zamandan yavaş koşması sanal zaman nedeniyle davranışı değiştirmez. Ölçüme bağlı yedekler kademe değildir (iskelet §6).
 
 ## 6. Ölçüme bağlı kararlar
 
 | Karar | Birincil | Yedek | Ölçüm |
 |---|---|---|---|
-| Kontrol adımı hızı | 400 Hz | 200 Hz (06 §3.2) | M5 |
-| Kovaryans yayılımı | 100 Hz, sabit boyutlu `mat.h` döngüleri | Seyrekliği açık elle açılmış çarpım; 50 Hz; CMSIS-DSP | M5 |
-| Ölçüm güncelleme formu | Optimize skaler Joseph | Genel Joseph (sayısal sorun çıkarsa) | M5 + SIL `double` referans karşılaştırması |
-| Gecikme telafisi | Geçmiş durumla yenilik | Gecikmeli ufuk (PX4) | SIL ölçümü (yeni ölçüm önerisi, 8. başlık) |
-| Adım başına skaler güncelleme sınırı | 8 | Dağıtılmış ölçüm kuyruğu | M5 |
-| Kartla SIL arasındaki fark eşikleri | 7. başlıktaki yöntemle belirlenir | — | M10 |
-| Geciken/yinelenen adım | `DUP_SEQ` ile önceki çıktı | Güvenli duruma geçiş | M17, A8 (06 karar verir) |
-| Kontrolcü | Kademeli PID | LQR (kazançlar SIL'de çevrimdışı; 06 §2.4) | SIL ayar sonuçları |
+| Kontrol hızı | 400 Hz | 200 Hz (iskelet §4) | M5 |
+| Kovaryans yayılımı | 10 ms birikimle, sabit boyutlu `mat.h` | Elle açılmış seyrek çarpım; CMSIS-DSP arka ucu (2.7) | M5 |
+| Güncelleme formu | Açılmış skaler Joseph, adım başına ≤ 8 | Genel yoğun Joseph, adım başına ≤ 1 (2.2) | M5 + `double` referans karşılaştırması |
+| Füzyon ufku `D` | 150 ms | Sensör gecikmeleri 05'te ölçülünce yeniden seçilir | 05'in gecikme modeli; SIL geç örnek oranı |
+| Çıkış öngörücüsü `τ_o` | 0,25 s | Ufuktan tam yeniden yayılım (adım başına ≈ 60 entegrasyon) | M5 + SIL |
+| Kartla SIL farkı | 7. başlıktaki dondurulmuş sınırlar | — | M10 |
+| Bariyerde geciken adım | İskelet §4: sim son komutla ilerler, çalıştırmayı geçersiz sayar; çekirdek `DUP_SEQ` ile kapılanmış yeniden üretim | — | M17 |
+| Kontrolcü | Kademeli PID | LQR (kazançlar çevrimdışı; 06 §2.4) | SIL ayarı |
 
 ## 7. Test yaklaşımı ve kabul ölçütleri
 
-**Birim testleri** (Unity; aynı testler kartta da koşar, 08 §2.6): kuaterniyon normu ve açı sarma; tahsisin doymasızken `τ`'yu geri üretmesi ve doymada sınır içinde kalması; integral dondurma yönü; kip geçiş tablosunun her durum × olay çifti; görev doğrulama ve atomik yükleme; parametre aralık denetimi; zaman tiplerinin karışmadığı (derleme hatası testi). Rastgele testler sabit tohumla, tekrarlanabilir koşar.
+**Birim testleri** (Unity, PC ve kartta; 08 §2.6): kuaterniyon normu ve açı sarma; `B`'nin 04 tablosundan kurulumu ve rankı; tahsisin doymasızken `τ`'yu geri üretmesi, doymada sınır içinde kalması ve kalıntı işareti; integral dondurma yönü ve kazanç değişiminde süreklilik; eğri tersinin 04'ün ileri modeliyle gidiş-dönüşü ve ölü bant sınırı; kip geçiş tablosunun her durum × olay çifti; görev ve parametre işlemi doğrulaması; zaman tiplerinin karışmaması (derleme hatası testi). Rastgele testler sabit tohumla koşar.
 
-**Yayımlanmış referansla karşılaştırma.** ESKF: MSS `ins_mekf` (D06 #24); ILOS: MSS `ILOSpsi.m`; referans modeli: PythonVehicleSimulator `refModel3` (MIT) (06 §2.10). Referans çıktıları sabitlenmiş sürümle üretilip altın dosya olarak depoda tutulur; Python/Matlab bağımlılığı A16'ya bağlıdır. Referansla karşılaştırma tek başına yetmez (D06 E): kovaryans sıfırlama dönüşümü ve `S` tabanlı kapı ayrı testlerle sınanır; SIL Monte Carlo koşularında sim yer gerçeğiyle NEES/NIS tutarlılık testi yapılır.
+**Kritik yol testleri:**
+1. *Kovaryans zaman eşlemesi:* IMU aralığının içine düşen ölçümün füzyonu, aralığı bölmeden ince adımlı referansla aynı sonucu verir.
+2. *Gecikmeli füzyon eşdeğerliği:* ufuk yöntemi, her ölçümde geçmişten itibaren tam yeniden işleyen kaba kuvvet referansıyla karşılaştırılır.
+3. *Sayısal çökme:* NaN enjeksiyonunda aynı çağrının çıktısı nötr ve izin kapalıdır.
+4. *Aynı adımda `DISARM` + atış isteği:* `FIRE` olayı üretilmez.
+5. *Tetik tekrarı:* `DUP_SEQ` ve yeniden bağlanma olay üretmez; alıcı aynı `event_id`'yi bir kez uygular.
+6. *Duvar arızasından sonra yeniden gönderim* eski itki komutunu geri getirmez.
+7. *IMU'suz SIL:* IMU kesilince zaman ilerler, 20 ms + bir çağrı periyodu içinde nötr çıktı, bariyer kilitlenmez.
+8. *Gecikmiş ve duran HIL akışı:* yinelenen ya da eski IMU tazeliği yenilemez; oran ölçütü tetiklenir.
+9. *Sıfırlama sınırı:* `nav_at` sınır üzerinden ara değerleme yapmaz.
 
-**SIL senaryoları** (ArduSub autotest örnek alınır, 06 §2.10): derinlik tutma; akıntıda istasyon tutma; akıntıda ILOS ile rota; dalış–ölü hesap–yüzeye çıkış–GNSS ile konum sıfırlama; DVL kesintisi; GNSS gecikmesi; her kipte bağlantı kaybı; sızıntı; düşük batarya; derinlik sınırı; kestirim bozulması; kaçırılan adım ve IMU kesilmesi; tarama deseninin kapsaması. Her senaryonun geçti/kaldı ölçütü (çapraz hata RMS, derinlik hatası, aşım, arıza eylemi ve süresi) SIL'de ilk ayardan sonra sayıyla yazılır; şimdiden sayı verilmez.
+**Yayımlanmış referanslar:** ESKF için MSS `ins_mekf` (D06 #24), ILOS için `ILOSpsi.m`, referans modeli için PythonVehicleSimulator `refModel3` (MIT) (06 §2.10); altın dosyalar sabitlenmiş sürümle üretilir (A16 açık). Referans karşılaştırması yetmez (D06 E): SIL Monte Carlo koşularında yer gerçeğiyle NEES/NIS tutarlılığı ölçülür.
 
-**Kontrolcü ayarı simülasyonda yapılır** (06 §2.10): basamak yanıtlarıyla sistem tanılama; maliyet (IAE, aşım, aktüatör eforu) üzerinde ızgara ya da Nelder–Mead araması, SIL'de gerçek zamandan hızlı; her rejim için ayrı kazanç seti parametre dosyasına; sonuç HIL'de doğrulanır; model farkı için kazanç payı bırakılır.
+**SIL senaryoları** (ArduSub autotest örnek, 06 §2.10): derinlik tutma; akıntıda istasyon tutma ve ILOS; dalış, ölü hesap, yüzeye çıkış ve GNSS sıfırlaması; DVL kesintisi; GNSS gecikmesi; her kipte bağlantı kaybı; sızıntı; batarya; derinlik ve coğrafi sınır; kestirim bozulması; tarama kapsaması.
 
-**Kart ile SIL arasındaki sayısal fark (M10).** Adım girdileri kaydedilir (A6). (1) Aynı ikilide iki koşu bit düzeyinde aynı olmalı. (2) macOS-arm64 ile Windows-x64 ve (3) kart ile SIL, kayıt açık çevrimde yeniden oynatılarak karşılaştırılır; kapalı çevrimde küçük farklar yörüngeyi ayırır, bu yüzden açık çevrim esastır. Her çıktı alanı için en büyük mutlak ve göreli fark ile ilk ayrışma adımı raporlanır; eşikler bu ilk ölçümden sonra konur (Ç7: platformlar arası bit eşitliği beklenmez).
+**Kontrolcü ayarı simülasyonda** (06 §2.10): sistem tanılama, IAE + aşım + efor maliyetinde ızgara ya da Nelder–Mead araması (SIL, gerçek zamandan hızlı), rejim başına kazanç seti, HIL'de doğrulama, model farkı için pay.
 
-**Kabul ölçütleri:** birim testleri iki işletim sisteminde ve kartta geçer; bellek ayırma denetimi (2.7) ve statik analiz temiz; aynı ikilide tekrar üretim bit düzeyinde; M5 ölçümüyle en kötü durum adım süresi bütçe içinde; SIL senaryoları yazılı ölçütlerle geçer; M10 raporu çıkmıştır.
+**Kabul sınırlarının dondurulması.** Ayar senaryoları ve tohumları ile kabul senaryoları ve tohumları ayrıdır; ayar verisi kabulde kullanılmaz. Kabul sınırları ilk kabul koşusundan önce yazılır ve dondurulur; sonuç görüldükten sonra gevşetmek mimar kararı ve kayıt gerektirir. Bu bölümün dondurduğu emniyet sınırları: sayısal çökmede ve `DISARM`'da güvenli çıktı aynı çağrıda; IMU bayatlığında nötr çıktı ≤ 20 ms + bir duvar çağrısı periyodu; yinelenen atış olayı sıfır; arıza tablosu eylemleri tablodaki sürelerde. M10 açık çevrim tekrar oynatma sınırları (tahmin, ilk ölçümden önce donmuş): 60 s'de konum farkı ≤ 1 mm, tutum ≤ 1e-4 rad, itici komutu ≤ 1e-3. Doğruluk sınırları (çapraz hata, derinlik hatası) 09'un sahipliğinde, aynı kuralla ayar koşularından önce dondurulur.
+
+**Kart ile SIL farkı (M10):** (1) aynı ikilide iki koşu bit düzeyinde aynı; (2) macOS-arm64 ile Windows-x64 ve (3) kart ile SIL, 3.9'daki kayıt açık çevrimde yeniden oynatılarak karşılaştırılır (kapalı çevrimde küçük farklar yörüngeyi ayırır). Çıktı alanı başına en büyük mutlak ve göreli fark ile ilk ayrışma adımı raporlanır (Ç7).
+
+**Kabul ölçütleri:** birim ve kritik yol testleri iki işletim sisteminde ve kartta geçer; bellek denetimi (2.7) ve statik analiz temiz; aynı ikilide bit düzeyinde tekrar; M5 ile en kötü durum adım süresi ≤ 1,0 ms; SIL senaryoları donmuş sınırlarla geçer; M10 donmuş sınırlar içinde.
 
 ## 8. Açık noktalar ve iskelete öneriler
 
-### 8.1 Açık noktalar
+### 8.1 Sözleşme aşamasında tamamlanacaklar
 
-1. **Gecikme telafisi ve ESKF tutarlılığı** için ölçüm numarası yok; 00 belgesinin Bölüm 7'sine "ESKF gecikme telafisi ve NEES/NIS tutarlılığı (SIL)" maddesi eklenmesi önerilir.
-2. **Çekirdeğin araç parametreleri ile fiziğin gerçek değerleri ayrı tutulmalı:** A5 araç tanımı (08) "fizik gerçeği" ile "otopilot parametreleri"ni ayırmalı; aksi halde model hatasına dayanıklılık sınanamaz.
-3. **Zaman birimi:** 07'nin algılama kaydı `t_capture_us` kullanıyor; A4'te ns seçildi. 03 ve 06'ya ns önerilir.
-4. **Geciken adım politikası** (A8, M17) 06'da kesinleşir; çekirdek yinelenen sıra numarasını tanır ve üç politikayı da destekler.
-5. **İç basınç ve iç sıcaklık** ArduSub'da arıza girdisidir (06 §2.1) ama iskeletin sensör setinde yok; eklenip eklenmeyeceği mimarın kararıdır.
-6. **Batarya eşikleri** İDA-0 paketine (04) ve açık soru A19'a bağlıdır.
-7. **A16:** referans karşılaştırmasında Python/Matlab ve tasarım betiklerinde SymPy kullanımı kullanıcı onayı bekliyor.
+Mimari karar bu bölümde verildi; aşağıdaki tanımlar A4 sözleşmesi yazılırken tamamlanır (iskelet §3):
+1. `Q_c` bloklarının IMU gürültü yoğunluklarından ve sapma rastgele yürüyüşünden kuruluşu, `L` matrisi, `P₀` değerleri ve başlangıç hizalamasının kabul ölçütü (inceleme #1).
+2. Manyetometre yön ölçümünün Jacobian'ı, eğim telafisi formülü, sapma açısı ve alan normu/eğim açısı geçerlilik koşulları (#4).
+3. GNSS anten konumu ve hızı Jacobian'ları; `eph`'in `σ`'ya dönüşüm ölçeğinin anlamı (05 ile: HDOP tabanlı mı, 1σ mı) (#4).
+4. DVL kovaryansının sensörden gövdeye dönüşümü `R_b = R_dvl R_s R_dvlᵀ` ve FOM → `σ` ölçeği (#4).
+5. Bütün `ida_cmd_t` türlerinin yük alanları: `MANUAL_INPUT`'un altı ekseninin `τ_maks,manuel` ile kuvvete ölçeklenmesi, `STABILIZE`'da girdinin anlamı, `GUIDED_SETPOINT` türleri (konum, hız, derinlik, irtifa) ve çerçeveleri (#13).
+6. `ida_telem_t` ve olay kayıtlarının alanları; `plat` alanının tam listesi; her hata dönüşünün çıktı anlamı (#13).
+7. `ida_fc_in_t`, `ida_fc_out_t`, `ida_fc_bg_in_t`, `ida_fc_bg_out_t` alanları (03 ile birlikte) (#13, #15).
+8. Kapasitelerin son değerleri ve yapı boyut/hizalama `_Static_assert` değerleri (#15).
+9. Parametre tablosunun tam listesi ve sınıfları; kodlanmış kalıcı biçimin bayt düzeni (#23).
 
-### 8.2 İskelete öneriler
+### 8.2 Açık noktalar
 
-1. **§4 iki saat alanı:** çekirdek için "sim zamanı" yerine "ölçüm zamanı (HIL/SIL'de sim zamanı)" denmesi; gerçek sensörde aynı alanın kart saatine geçtiği açık olur.
-2. **§4 emniyet süreleri:** "koşulun verisi ölçüm zamanında, süresi duvar saatinde" ayrımı ve SIL'de duvar saatinin sanal saat olduğu iskelete eklenmeli; yoksa SIL'de süreler bilgisayar hızına bağlı kalır.
-3. **§4:** IMU akışı kesildiğinde platformun duvar saatiyle çekirdeği çağırdığı (`ida_core_tick_wall`) yazılmalı; adımı yalnız IMU'nun tetiklemesi, IMU kaybında arıza güvenliğini durdurur.
-4. **§2 tablosu:** A1 ↔ A4 dönüştürücüsünün kart ve SIL koşucusunca paylaşılan C modülü olduğu ve sahibinin 06 mı 02 mi olduğu belirtilmeli.
+1. **Fizik gerçeği ile otopilot parametreleri ayrı tutulmalı:** A5 (08) iki kümeyi ayırmalı; aksi halde model hatasına dayanıklılık sınanamaz.
+2. **İç basınç ve iç sıcaklık** ArduSub'da arıza girdisidir (06 §2.1), iskeletin sensör setinde yok; mimarın kararı.
+3. **Batarya eşikleri** İDA-0 paketine (04) ve A19'a bağlı.
+4. **A16:** referans karşılaştırmasında Python/Matlab, tasarım betiklerinde SymPy kullanımı kullanıcı onayı bekliyor.
+5. **Sabit teslim gecikmesi** kart tarafından ölçülemez (4.1); 06'nın gidiş-dönüş ölçümüyle tamamlanmalı.
 
-İskelete aykırı bir gereklilik bulunmadı. Ham rapor 06'nın 200 Hz IMU önerisi yerine iskeletin 400 Hz hedefi kullanıldı; 200 Hz yedektir.
+### 8.3 Komşu bölümlere notlar
+
+- **03:** açılış içinde benzersiz `shot_id` (yeniden başlatmalar arası benzersizliği çekirdeğin `event_id`'sindeki `boot_id` sağlar), arka plan işinin `ida_core_t`'ye dokunmaması, geçmiş sorgu dönüş kodlarına uyum.
+- **06:** zaman çerçevesinin alanları; `src = TICK` eş zamansız güvenli çıktının ve `event_id` tekrar elemesinin A1'deki karşılığı; sürekli komutun kullanım süresinin alıcıda uygulanması.
+- **01:** ≥ 100 Hz `tick`, `t_rx` damgası, `alive_ok` ile IWDG beslemesinin bağlanması, FPSCR kaydı.
+- **04:** itki eğrisi ve `B` kaynağının aynı A5 sürümünden okunması; kütle durumu geçişinin atış olayıyla eşlenmesi.
+
+İskelete aykırı bir gereklilik bulunmadı.
