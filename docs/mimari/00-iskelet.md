@@ -1,6 +1,10 @@
 # Mimari iskelet
 
-Sürüm: 0.1 (2026-11-12). Durum: taslak; kullanıcı onayı bekliyor.
+Sürüm: 0.3 (2026-11-13). Durum: taslak; kullanıcı onayı bekliyor.
+
+Sürüm 0.2 değişiklikleri: fizik adımı 1 ms yerine 1,25 ms (kontrol periyodunun tam böleni olması için); ölçüme bağlı yedeklerin kalite kademesi olmadığı notu.
+
+Sürüm 0.3 değişiklikleri (02 ve 04 numaralı bölümlerin sol incelemelerinden çıkan, bölümler arası kararlar): ortak kabuller (3.1); tek seferlik olayların sürekli komutlardan ayrılması (3.2); zaman çerçevesi ve iki ölçütlü tazelik (4); tekrar oynatma için kayıt gereği (A6); torpidonun kütle muhasebesi ve fırlatma modeli kademesi (5).
 
 Bu belge sistemin parçalarını, parçalar arasındaki arayüzleri ve bölümlerin sınırlarını sabitler. Mimari bölümleri (`01`–`09`) bu iskelete göre yazılır. Bir bölüm iskeletle çelişirse iskelet geçerlidir; iskeleti yalnızca mimar oturum değiştirir. Kararların dayanağı [../research/00-duzeltmeler-ve-kararlar.md](../research/00-duzeltmeler-ve-kararlar.md) belgesidir: `K` kesin karar, `Ö` öneri, `M` ölçülecek konu, `Ç` çözülmüş çelişki.
 
@@ -61,18 +65,45 @@ Her arayüz bir sözleşmedir. Sözleşmeler mimari onaylandıktan sonra ayrı b
 | A3 | Sim sunucusu ↔ web panelleri | WebSocket (ikili telemetri akışı), HTTP (kontrol) | Telemetri, sonar görüntüsü, olaylar; senaryo yükleme, çalıştırma kontrolü, hata enjeksiyonu, kayıt yönetimi | K9, Ö10; M20 |
 | A4 | Ortak çekirdek ↔ çevresi | C işlev arayüzü (`port`) | Zaman, birimli ve zaman damgalı sensör örnekleri, aktüatör çıkışı, bağlantı, kalıcı parametreler. Kartta BSP ve HIL bağlantısı, PC'de SIL koşucusu uygular | Kesin tasarım ilkesi |
 | A5 | Senaryo ve araç tanımı | Dosya (TOML) | Araç parametreleri, ortam, hedefler, görev, arıza zaman çizelgesi, rastgelelik tohumu, kalite kademesi | — |
-| A6 | Kayıt | Dosya (MCAP) | Bütün A1 ve A3 trafiği, fizik durumu, olaylar; tekrar oynatma bu dosyadan yapılır | Ö7 |
+| A6 | Kayıt | Dosya (MCAP) | Bütün A1 ve A3 trafiği, fizik durumu, olaylar; tekrar oynatma bu dosyadan yapılır. Tekrar oynatılabilir bir kayıt, mesaj içeriğine ek olarak her komutun uygulandığı fizik adımını, bariyer zaman aşımı kararlarını ve düşürülen verileri içerir; "yalnızca olaylar" kademesinde tekrar oynatma güvencesi yoktur | Ö7 |
 | A7 | Sahne ve varlıklar | glTF + manifest | Tek kaynaktan görsel model, sonar geometrisi, yüzerlik ve çarpışma ağları, malzemelerin akustik ve optik özellikleri | 12 numaralı rapor; D12 |
+
+A1 ile A4 arasındaki dönüştürücü: A1 mesajlarını port örneklerine, port çıkışlarını A1 mesajlarına çeviren ince katman. Kartta kart yazılımının (01), PC'de SIL koşucusunun (02) parçasıdır; mesaj alanları ile port alanları arasındaki eşlemeyi 06 numaralı bölüm tanımlar.
 
 A1 üzerindeki sonar verisi: tek bir tarama satırı MAVLink'in 255 baytlık yük sınırını aşar; profil parçalanarak taşınır (06 numaralı bölüm tasarlar, M9 ölçer).
 
 Kamera ile hedef algılama kartta yapılmaz. PC'de sim sunucusuna bağlı ayrı bir algılama bileşeni kamera karelerini işler ve sonucu A1 üzerinden karta "algılama" mesajı olarak gönderir. Mesaj, sonar tabanlı algılamanın kart içinde ürettiği kayıtla aynı biçimdedir (yakalama zamanı, konum, belirsizlik, kaynak); böylece algılamanın yeri atış kontrol mantığını etkilemez.
 
+### 3.1 Ortak kabuller
+
+Bütün bölümler ve bütün arayüzler aynı kabulleri kullanır; bir bölüm başka bir kabul kullanamaz.
+
+- **Birimler:** SI. Açı radyan, zaman tamsayı nanosaniye, basınç pascal, gerilim volt, akım amper.
+- **Dünya çerçevesi:** NED (kuzey, doğu, aşağı); orijin senaryoda tanımlanır.
+- **Gövde çerçevesi:** x ileri, y sancak, z aşağı. Gövde referans noktası A5 dosyasında tanımlıdır; genelleştirilmiş hızlar, kuvvetler ve momentler bu noktaya göre yazılır.
+- **Yönelim:** birim kuaterniyon, bileşen sırası (w, x, y, z), Hamilton çarpımı; gövdeden dünyaya dönüşü temsil eder.
+- **Zaman damgası:** her ölçüm iki ayrı zaman taşır: ölçümün geçerli olduğu an (ölçüm zamanı) ve alıcıya ulaştığı an (alım zamanı). Bunlar birbirinin yerine kullanılmaz.
+
+### 3.2 Sürekli komutlar ve tek seferlik olaylar
+
+A1 ve A4 üzerinde iki tür çıkış ayrı taşınır:
+
+- **Sürekli komut** (itici çıkışları): her adımda yenilenir; yeniden gönderilmesi zararsızdır; en son geçerli olan uygulanır ve kullanım süresi sınırlıdır.
+- **Tek seferlik olay** (atış tetiği, silahlandırma değişikliği): benzersiz bir olay kimliği taşır; alıcı aynı kimliği yalnızca bir kez uygular. Yeniden gönderilen ya da önbellekten tekrarlanan bir çıkış olay üretmez.
+
+Silahlandırmayı kaldıran ve izni daraltan komutlar, aynı adımda atış kontrol modülünden önce uygulanır; modül her adımda güncel izni görür.
+
 ## 4. Zaman
 
-- Sim zamanı tamsayı nanosaniyedir. Fizik sabit adımla ilerler; başlangıç değeri 1 ms.
-- Kontrol döngüsü hedefi 400 Hz (M5 ile kesinleşir). Kartta döngüyü yeni IMU örneğinin gelişi tetikler.
-- İki saat alanı vardır ve karışmaz: **sim zamanı** (sensör örneklerinin zaman damgası; kestirim ve kontrol hesapları bunu kullanır) ve **duvar saati** (bağlantı zaman aşımı, gözetim zamanlayıcısı, emniyet süreleri).
+- Sim zamanı tamsayı nanosaniyedir. Fizik sabit adımla ilerler; adım 1,25 ms (800 Hz).
+- Kontrol döngüsü hedefi 400 Hz (M5 ile kesinleşir); yedeği 200 Hz. Kartta döngüyü yeni IMU örneğinin gelişi tetikler.
+- Kontrol periyodu fizik adımının tam katıdır: 400 Hz'te iki, 200 Hz'te dört fizik adımı. Kontrolü tetikleyen IMU örneği her zaman bir fizik adımının sınırına denk gelir. (Sürüm 0.1'deki 1 ms adım 400 Hz ile tam bölünmüyordu; 04 numaralı bölümün bildirimiyle düzeltildi.)
+- Diğer sensörler kendi hızlarında örneklenir; periyodu fizik adımının tam katı olmayanlar (ör. kamera) rasyonel zamanlamayla en yakın adım sınırına bağlanır ve gerçek örnekleme zamanını taşır.
+- İki saat alanı vardır ve karışmaz: **sim zamanı** (sensör örneklerinin zaman damgası; kestirim ve kontrol hesapları bunu kullanır) ve **duvar saati** (bağlantı zaman aşımı, gözetim zamanlayıcısı, emniyet süreleri). Çekirdek simülasyonu bilmediği için sim zamanını **ölçüm zamanı** adıyla görür.
+- Arıza koşullarında verinin tazeliği ölçüm zamanıyla, koşulun ne kadar sürdüğü duvar saatiyle değerlendirilir. SIL'de duvar saati sim zamanından türetilir; böylece hızlandırılmış koşuda emniyet süreleri de ölçeklenir.
+- IMU örnekleri kesilirse çekirdek duvar saatiyle çağrılmaya devam eder; arıza güvenliği sensör akışına bağımlı kalmaz.
+- **Zaman çerçevesi:** sim sunucusu her kontrol periyodunda, IMU örneği üretilsin ya da üretilmesin, sim zamanını ve sıra numarasını taşıyan bir zaman çerçevesi gönderir. Kartta duvar çağrılarını donanım zamanlayıcısı, SIL'de bu çerçeve sürer. Böylece IMU'nun kesildiği bir senaryoda SIL'de zaman ilerlemeye devam eder ve adım bariyeri kilitlenmez; kullanıcının duraklatması bundan ayrı bir durumdur.
+- **Tazelik iki ölçütle denetlenir:** ölçüm zamanının ilerlemesi ve alım zamanı. Yinelenen, eski ya da geçersiz örnekler veri akışını canlı saymaz.
 
 | Kip | Kim koşar | Zaman | Kullanım |
 |---|---|---|---|
@@ -89,6 +120,8 @@ Araç parametrelerini mimar oturum belirler (K10). Başlangıç aracı **İDA-0*
 - BlueROV2 Heavy sınıfı açık çerçeveli araç; sekiz itici (dördü yatay düzlemde vektörlü, dördü dikey).
 - Hafif pozitif yüzerlik: yüzeyde kısmen batık seyreder, dikey iticilerle dalar; balast sistemi yoktur.
 - Hidrodinamik parametreler yayımlanmış ve test tankında ölçülmüş sönüm değerlerine dayanır (von Benzon 2022; 00 belgesi, 04 düzeltmeleri). Bütün parametreler A5 dosyasında durur ve değiştirilebilir.
+- **Yük muhasebesi:** araç üç kütle durumunda tanımlanır: iki torpido yüklü, bir torpido yüklü, boş. Torpido tüpten ayrılana kadar aracın bağlı kütlesidir; ayrılma anında ayrı bir gövdeye dönüşür ve aracın kütlesi, kütle merkezi, ataleti ve deplasmanı aynı fizik adımında güncellenir. Hiçbir anda torpidonun kütlesi iki gövdede birden sayılmaz.
+- **Fırlatma modeli:** ilk kademe, ayrılmayı tek bir anda çözen darbe modelidir (araç ve torpido etkin kütleleriyle birlikte; 00 belgesi, 04 düzeltmeleri). Tüp boyunca sonlu süreli hareketi çözen model sonraki kademedir ve ilk sürümün kapsamında değildir.
 
 | Simüle edilen | Öğeler |
 |---|---|
@@ -112,6 +145,8 @@ Windows hedef bilgisayarı düşük donanımlıdır (Ö11). Ağır özelliklerin
 | Kayıt | Yalnızca olaylar | Telemetri | Telemetri, sonar, kamera |
 
 Fizik, kamera dışı sensörler, otopilot ve HIL her kademede tam çalışır. Sim sunucusu gerçek zamanı kaçırdığı adımları her kipte sayar ve A3 üzerinden bildirir.
+
+Kalite kademesi kullanıcının seçtiği bir ayardır. 8. bölümdeki ölçüme bağlı yedekler kademe değildir: bir ölçüm sonucunda tasarımın kendisi yedeğe geçer ve bu bütün kademeler için geçerli olur.
 
 ## 7. Depo düzeni (planlanan)
 
