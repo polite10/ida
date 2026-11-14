@@ -17,6 +17,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
 - **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
 - **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
+- **W0 durumu (2026-11-14, oturum kullanıcı isteğiyle durduruldu):** W0-MP1a tamamlandı, dal `olcum/mp1-arac-zinciri` gönderildi, rapor o dalda `docs/olcumler/MP1-arac-zinciri.md`; K0 (fabrika durumu), flash yedeği ve K1 (derle-yükle-ayıkla) geçti; K2'de 160 MHz ve SMPS/LDO turları hatasız, tolerans karşılaştırması kalibre referans olmadığından yapılamadı (ölçüt mimarca düzeltilecek); sol incelemesi başlatıldı, sonucu henüz işlenmedi; dal main'e birleştirilmedi. W0-MP6a (Godot kamera) koşuları sürerken oturum durdu: çalışma kopyası `olcum/mp6-godot-kamera` dalında, commit'lenmedi, ham veri yerel önbellekte; rapor yazılmadı. W0-MP7a (sonar süresi) kullanıcı isteğiyle başlamadan durduruldu; görev belgesi hazır.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
 ### Bölüm durumu
@@ -35,6 +36,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
+0. Devam edildiğinde önce MP1 sol incelemesinin sonucu işlenir ve MP6a raporu tamamlanıp kaydedilir; sonra MP7a başlatılır.
 1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Sürüyor: MP1a, MP6a. Sırada: MP7 sonar süresi, sol yazma denemesi, MP2–MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
@@ -63,6 +65,12 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · W0: MP1a tamam, oturum durduruldu
+
+- MP1a tamamlandı (dal `olcum/mp1-arac-zinciri` gönderildi, main'e birleştirilmedi); K0, flash yedeği, K1 geçti; K2 turları hatasız, tolerans ölçütü mimarca düzeltilecek; sol incelemesi sonucu işlenmedi.
+- MP6a koşuları sürerken durdu (`olcum/mp6-godot-kamera`, commit'siz, rapor yok); MP7a başlamadan durduruldu, görev belgesi hazır.
+- MP1a'nın mimari için bulguları (açık bulgulara işlenecek): Picolibc CubeIDE'nin 14.3.rel1 macOS paketinde yok (newlib-nano kullanıldı); ST'nin kart örneklerinin çoğu PLL'i MSIS'ten besliyor, HSE dizisi yalnız USBX örneklerinde; fabrika demosu silindi, yedeği yerel önbellekte.
 
 ### 2026-11-14 · mimari onaylandı, W0 başladı
 
