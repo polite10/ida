@@ -1,6 +1,8 @@
 # Mimari iskelet
 
-Sürüm: 0.6 (2026-11-13). Durum: taslak; kullanıcı onayı bekliyor.
+Sürüm: 0.7 (2026-11-13). Durum: taslak; kullanıcı onayı bekliyor.
+
+Sürüm 0.7 değişiklikleri: 0.5'te alınan "torpido itkilidir, yaklaşık 3 m/s ve 10 m menzil hedefi" kararı geri alındı (5). Torpido ilk tanımındaki gibi itkisiz, kısa menzilli basit bir simülasyon nesnesidir; atış kontrol bölümünün kapsamı emniyet zinciri ve arayüzlerle sınırlandı (9).
 
 Sürüm 0.6 değişiklikleri (07 numaralı bölümün bildirdikleri üzerine): kamera algılama bileşeninin bağlantısı A8 olarak adlandırıldı; malzeme özelliklerinin yeri ve türetilmiş ağların depoya girmemesi (A7).
 
@@ -130,8 +132,8 @@ Araç parametrelerini mimar oturum belirler (K10). Başlangıç aracı **İDA-0*
 - Hidrodinamik parametreler yayımlanmış ve test tankında ölçülmüş sönüm değerlerine dayanır (von Benzon 2022; 00 belgesi, 04 düzeltmeleri). Bütün parametreler A5 dosyasında durur ve değiştirilebilir.
 - **Yük muhasebesi:** araç üç kütle durumunda tanımlanır: iki torpido yüklü, bir torpido yüklü, boş. Torpido tüpten ayrılana kadar aracın bağlı kütlesidir; ayrılma anında ayrı bir gövdeye dönüşür ve aracın kütlesi, kütle merkezi, ataleti ve deplasmanı aynı fizik adımında güncellenir. Hiçbir anda torpidonun kütlesi iki gövdede birden sayılmaz.
 - **Fırlatma modeli:** ilk kademe, ayrılmayı tek bir anda çözen darbe modelidir (araç ve torpido etkin kütleleriyle birlikte; 00 belgesi, 04 düzeltmeleri). Tüp boyunca sonlu süreli hareketi çözen model sonraki kademedir ve ilk sürümün kapsamında değildir.
-- **Torpido itkilidir:** ayrıldıktan sonra kendi itkisiyle, belirli bir süre boyunca sabit itki üreterek seyreder. Tasarım hedefi yaklaşık 3 m/s seyir hızı ve 10 m mertebesinde etkili menzildir; itki, itki süresi ve sürükleme 04 numaralı bölümde bu hedefi verecek biçimde seçilir ve mimari varsayımı olarak işaretlenir. Gerekçe: itkisiz torpidonun etkili menzili yaklaşık 1 m çıkıyor (03 numaralı bölümün hesabı) ve bu, taramalı sonarın göremediği yakın bölgeye düşüyor; sonarla algılanan bir hedefe atış ancak daha uzun menzille anlamlıdır.
-- **Sonarın göremediği yakın bölge:** hedef taramalı sonarın en kısa menzilinin içine girdiğinde konumu, kamera algılaması ve mevcut izin öngörüsüyle sürdürülür; öne bakan ikinci bir menzil ölçer eklenmez.
+- **Torpido itkisizdir:** ayrıldıktan sonra yalnızca ayrılma hızıyla ilerleyen, kısa menzilli basit bir simülasyon nesnesidir. Etkili menzili yaklaşık 1 m mertebesindedir (03 numaralı bölümün hesabı; ölçüm değil). İtkili torpido, daha uzun menzil ve hareketli hedefe önleme hesabı bu projenin kapsamında değildir.
+- **Bilinen sınır:** bu menzil, taramalı sonarın göremediği yakın bölgeyle çakışır. Hedef sonarın en kısa menzilinin içine girdiğinde konumu, kamera algılaması ve mevcut izin öngörüsüyle sürdürülür; öne bakan ikinci bir menzil ölçer eklenmez. Bu çakışma modelin kabul edilen bir sınırıdır; giderilmesi için torpidonun yetenekleri artırılmaz.
 
 | Simüle edilen | Öğeler |
 |---|---|
@@ -194,7 +196,7 @@ Aşağıdaki kararlar ilgili ölçüm yapılmadan kesinleşmez. Bölümler birin
 |---|---|---|---|
 | 01 | `01-kart-yazilimi.md` | Başlatma, saat, bağlantı sürücüsü, döngü zamanlaması, portun kart tarafı, bellek ve kesme düzeni, gözetim zamanlayıcısı, karttaki ekranın kullanımı | Kestirim ve kontrol algoritmaları (02), mesaj içerikleri (06) |
 | 02 | `02-ortak-cekirdek.md` | Port arayüzü (A4), kestirim, güdüm, kontrol, itki tahsisi, kipler, görev yönetimi, arıza güvenliği, sayı tipleri, SIL koşucusu | Atış kontrol (03), donanım (01) |
-| 03 | `03-atis-kontrol.md` | Sonar verisinde hedef algılama, takip, atış çözümü, durum makinesi, emniyet zinciri, algılama mesajı, torpidonun simülasyondaki modeli için gerekler | Torpido fiziğinin kendisi (04), kamera görüntüsünün üretimi (07) |
+| 03 | `03-atis-kontrol.md` | Algılama kaydının arayüzü, sonar verisinde hedef algılama ve takip, durum makinesi, emniyet zinciri, atış olayının sözleşmesi, sanal emniyet girdileri. Atış ölçütü basit bir hizalanma ve menzil koşuluyla sınırlıdır | Torpido fiziğinin kendisi (04), kamera görüntüsünün üretimi (07). Atış çözümünün ayrıntılandırılması (hareketli hedefe önleme, yörünge eniyileme) ve torpidonun yeteneklerinin artırılması kapsam dışıdır |
 | 04 | `04-simulator-cekirdegi.md` | Fizik (6 serbestlik dereceli model, yüzerlik, dalga, akıntı, rüzgar), İDA-0 parametre seti, iticiler ve güç modeli, torpido ve hedef fiziği, çarpışma, zaman yöneticisi, iç yapı ve iş parçacıkları, tekrar üretilebilirlik | Sensör modelleri (05), mesajlaşma (06) |
 | 05 | `05-sensorler-ve-sonar.md` | Sensör eklenti arayüzü, her sensörün modeli ve hata kaynakları, zamanlama, sonar (ışın izleme, kademeler), arıza modelleri | Kamera görüntüsünün çizimi (07), taşıma (06) |
 | 06 | `06-protokol-ve-hil.md` | A1'in mesaj kümesi ve gerekleri, sonar profilinin parçalanması, adım bariyeri, iki saat alanı, bağlantı kurma ve kopma, bağlantı emülatörü, yer istasyonu bağlantısı | Mesajların üretildiği modeller (04, 05), kart sürücüsü (01) |
