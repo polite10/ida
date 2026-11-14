@@ -37,3 +37,8 @@ vcpkg_installed/
 
 # Simülasyon kayıtları (büyük dosyalar depoya girmez)
 *.mcap
+
+# Godot proje önbelleği ve ölçüm ham kare dökümleri (MP6)
+.godot/
+kare_*.rgb
+kare_*.rgba
