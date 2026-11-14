@@ -7,14 +7,16 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 ## Şu an
 
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
-- **Mimari çalışması taslak olarak tamamlandı, kullanıcı onayı bekliyor:** iskelet 0.7 (`docs/mimari/00-iskelet.md`), dokuz bölüm taslağı, incelemeler ve açık bulgular kaydı (`docs/mimari/acik-bulgular.md`). İskelet 0.7'de mimar itkili torpido kararını geri aldı: torpido itkisiz, kısa menzilli basit simülasyon nesnesidir; 03 kapsamı emniyet zinciri ve arayüzlerle sınırlıdır.
+- **Mimari çalışması tamamlandı; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15).** Belgeler taslak sürüm numaralarını korur; açık bulgular sözleşme ve uygulama işlerinde kapatılır: iskelet 0.7 (`docs/mimari/00-iskelet.md`), dokuz bölüm taslağı, incelemeler ve açık bulgular kaydı (`docs/mimari/acik-bulgular.md`). İskelet 0.7'de mimar itkili torpido kararını geri aldı: torpido itkisiz, kısa menzilli basit simülasyon nesnesidir; 03 kapsamı emniyet zinciri ve arayüzlerle sınırlıdır.
 - **Açık bulgular kaydı:** 233 bulgu (AB-001…AB-233); 224'ü açık (33 kritik, 94 önemli, 8 küçük, 89 önem belirtilmemiş), 9'u kapsam dışı. En çok bulgu A1 sözleşmesinde (47), A4 sözleşmesinde (26) ve atış kontrol uygulamasında (23). Belge ayrıca 29 satırlık bölümler arası uyumsuzluk tablosu ve 26 maddelik iskelet önerisi listesi içerir.
 - **sol ikinci incelemeleri:** 01 (`inceleme/01-sol-2.md`): koşulsuz kabul yok; açık bulgularla sözleşme aşamasına taşınabilir; 4 kritik, 12 önemli, 1 küçük yeni bulgu. 05 (`inceleme/05-sol-2.md`): koşulsuz kabul yok; 1 kritik, 15 önemli yeni bulgu; yeni belge düzeltme turu önerilmiyor.
 - **Süreç kararı (mimar, 2026-11-14):** inceleme-düzeltme döngüsü kesildi; kapanmamış bulgular sözleşme ya da uygulama aşamasında kapatılır.
-- **Dalga sırası önerisi (mimar önerisi, kullanıcı onayı mimari onayıyla birlikte bekleniyor):** ölçüm prototipleri W0, arayüz sözleşmeleri W1; A1 ölçüm sonuçlarıyla tek aşamada donar. `docs/mimari/09-test-ve-is-akisi.md` sürüm 0.2.
+- **Dalga sırası (kullanıcı onayladı, K15):** ölçüm prototipleri W0, arayüz sözleşmeleri W1; A1 ölçüm sonuçlarıyla tek aşamada donar. `docs/mimari/09-test-ve-is-akisi.md` sürüm 0.2.
 - **`tools/sol-incele.sh`:** Claude'un yazdığı belge ya da kodun sol incelemesini başlatan betik (ilk ve ikinci inceleme kipi). sol'un yazma kipi bu depoda henüz denenmedi (ilk deneme W0'da).
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
-- **Kod yok.** Kod dizinleri mimari belge onaylanınca eklenecek.
+- **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
+- **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
+- **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
 ### Bölüm durumu
@@ -33,10 +35,9 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-1. Mimarinin kullanıcı onayı ("taslak ve bilinen açık bulgular").
-2. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Kartsız olanlar (MP6 Godot görünmeyen pencere, MP7 sonar süresi) kart beklemeden başlayabilir.
-3. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
-4. Uygulama dalgaları (W2–W6).
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Sürüyor: MP1a, MP6a. Sırada: MP7 sonar süresi, sol yazma denemesi, MP2–MP5, MP8 betiği.
+2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
+3. Uygulama dalgaları (W2–W6).
 
 ## Kodlamanın ilk işleri: ölçümler
 
@@ -54,14 +55,21 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 
 ## Açık konular
 
-- Windows hedef bilgisayarının işlemci, bellek ve ekran kartı bilgisi bilinmiyor; kalite kademelerinin tabanı buna göre sabitlenecek (00 belgesi, Ö11).
+- Windows hedef bilgisayarı: 8 GB bellek, dahili ekran kartı (K16); işlemci bilinmiyor; kalite kademesi tabanı MP8 ile sabitlenecek (Ö11).
 - Bölüm 03'ün dar kapsamlı (yalnız emniyet zinciri ve arayüzler) düzeltme turu için kullanıcı yanıtı bekleniyor.
-- Kartın Mac'e bağlanması ve araç kurulum izni bekleniyor.
+- Kartın kullanıcı USB bağlantısı (ikinci kablo) MP2 için bekleniyor.
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · mimari onaylandı, W0 başladı
+
+- Kullanıcı mimariyi bilinen açık bulgularla onayladı; sıra W0 → W1 → uygulama (K15). Ölçümler için araç kurulumuna izin verildi.
+- Windows hedef bilgisayarı: 8 GB bellek, dahili ekran kartı (K16); işlemci bilinmiyor.
+- Kart Mac'e bağlı; STLINK_V3 numaralanıyor (mimarın gözlemi). Mac'te STM32CubeIDE var; cmake, ninja ve Godot kurulu değil.
+- İki görev belgesi yazıldı (`docs/gorevler/W0-MP1a.md`, `docs/gorevler/W0-MP6a.md`); işler başlatılıyor.
 
 ### 2026-11-14 · dalga sırası önerisi ve sol inceleme betiği
 

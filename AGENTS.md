@@ -31,12 +31,12 @@ Bunlar kullanıcı tarafından verilmiştir; yeniden tartışmaya açma, alterna
 
 Önerilen ama henüz onaylanmamış yığın ve gerekçeleri için `docs/research/00-duzeltmeler-ve-kararlar.md` belgesinin karar günlüğüne bak.
 
-Windows hedef bilgisayarı düşük donanımlıdır; simülatör kısılabilir kalite kademeleriyle tasarlanır (00 belgesi, Ö11). Ödevin teslim tarihi ya da kapsamı hakkında kullanıcıya soru sorma.
+Windows hedef bilgisayarı düşük donanımlıdır (8 GB bellek, dahili ekran kartı; K16); simülatör kısılabilir kalite kademeleriyle tasarlanır (00 belgesi, Ö11). Ödevin teslim tarihi ya da kapsamı hakkında kullanıcıya soru sorma.
 
 ## Belgeleri okuma sırası
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
-2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; taslak, kullanıcı onayı bekliyor.
+2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15).
 3. **`docs/mimari/acik-bulgular.md`** — mimari bölümlerinin incelemelerinde kapanmamış bulgular; her biri kapatılacağı sözleşme ya da uygulama işiyle etiketli.
 4. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
 5. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
@@ -97,13 +97,15 @@ Her agent işe sıfır bilgiyle başlar; depodaki dosyalar projenin tek kalıcı
 ```
 docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
 docs/mimari/               mimari belgeler: iskelet, dokuz bölüm, incelemeler, açık bulgular (taslak)
+docs/gorevler/             mimarın yazdığı görev belgeleri
+docs/olcumler/             ölçüm raporları
 docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
 docs/research/dogrulama/   bağımsız doğrulamalar
 tools/                     yardımcı betikler
 .claude/agents/            agent tanımları
 ```
 
-Kod dizinleri mimari belge onaylandıktan sonra eklenecek.
+Ürün kodu dizinleri sözleşmeler (W1) dondurulduktan sonra eklenecek; ölçüm prototipleri `olcum/` dallarında `tools/olcum/` altında yaşar.
 
 ## Git
 
