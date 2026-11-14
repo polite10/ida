@@ -8,10 +8,11 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
 - **Mimari iskelet sürüm 0.7** (`docs/mimari/00-iskelet.md`, taslak, kullanıcı onayı bekliyor). 0.4: gövde referans noktası sabit geometrik nokta; aralık boyunca toplanan ölçümlerin zaman damgası. 0.5: sanal emniyet girdileri ve fırlatıcı durum geri okuması; olay kimliğinin kapsamı; sonar tarama satırının zaman damgası. 0.6: kamera algılama bileşeninin bağlantısı A8; malzeme değerlerinin yeri; türetilmiş ağların depoya girmemesi. **0.7: mimar, 0.5'teki "torpido itkilidir (yaklaşık 3 m/s, 10 m menzil)" kararını geri aldı; 0.5'teki itkili torpido ifadesi artık geçerli değil.** Torpido yeniden itkisiz, kısa menzilli basit bir simülasyon nesnesidir; itkili torpido ve hareketli hedefe önleme hesabı proje kapsamı dışındadır; sonarın göremediği yakın bölgeyle çakışma kabul edilen bir sınırdır. 03 numaralı bölümün kapsamı emniyet zinciri ve arayüzlerle sınırlandı.
-- **Bölüm taslakları:** 01–07 yazıldı (hepsi taslak, kullanıcı onayı yok). 08 ve 09 yazılmadı.
-- **Süren işler:** 05 düzeltme turu (dosya yarı düzenlenmiş), 01 düzeltme turu. 03 düzeltmesi durdu (aşağıda).
-- **03 durumu:** düzeltmeyi yapan agent çıktısı bir güvenlik sınıflandırıcısı tarafından durdurulduğu için işi bıraktı; dosyaya dokunmadı, ilk taslak olduğu gibi duruyor. Mimar aynı işi başka agent'a yazdırmama ve kapsamı daraltma kararı aldı; dar kapsamlı düzeltme için kullanıcı onayı bekleniyor.
-- **Çalışma kuralı (mimarın önerisi, karar değil):** bir bölüm kritik bulgusu kalmadığında kabul edilir; her bölüm en fazla iki düzeltme turu görür; ikinci turdan sonra kalan önemli bulgular sözleşme aşamasının açık noktalar listesine girer.
+- **Dokuz mimari bölümün hepsi yazıldı.** 08 (laboratuvar uygulaması) ve 09 (test ve iş akışı) kısa biçimde yazıldı; sol incelemesinden geçmedi. 01 (sürüm 0.2) ve 05 için düzeltme turu tamamlandı.
+- **Süreç kararı (mimar, 2026-11-14):** inceleme ve düzeltme döngüsü yakınsamadığı ve her tur yüz binlerce token tükettiği için döngü kesildi; başka düzeltme turu başlatılmayacak. Kapanmamış bulgular tek bir açık bulgular kaydında (`docs/mimari/acik-bulgular.md`, henüz yazılmadı) toplanacak; her bulgu kodlamadan önceki arayüz sözleşmesinde ya da ilgili uygulama işinde kapatılacak. Mimari "taslak ve bilinen açık bulgular" durumunda kullanıcı onayına sunulacak.
+- **Süren işler (bu kayda dahil değil):** 01 ve 05 için sol ikinci incelemesi.
+- **03 durumu:** düzeltme yapılmadı; ilk taslak duruyor (kapsam emniyet zinciri ve arayüzlerle sınırlı, iskelet 0.7).
+- **Çalışma kuralı (mimarın önerisi, karar değil):** inceleme-düzeltme döngüsü kesildi; kalan bulgular açık bulgular kaydında toplanır ve sözleşme ya da uygulama aşamasında kapatılır.
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
 - **Kod yok.** Kod dizinleri mimari belge onaylanınca eklenecek.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
@@ -20,23 +21,22 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 | Bölüm | Yazım | İlk inceleme | Düzeltme | İkinci inceleme |
 |---|---|---|---|---|
-| 01 kart yazılımı | var | var (kabul yok) | sürüyor | - |
-| 02 ortak çekirdek | var | var | yapıldı | var: 4 kritik yeni bulgu, kabul yok |
-| 03 atış kontrol | var | var (kabul yok) | durdu (kapsam daraltma, kullanıcı onayı bekliyor) | - |
-| 04 simülatör çekirdeği | var | var | yapıldı | var: kritik yok, 5 önemli yeni bulgu, henüz kabul yok |
-| 05 sensörler ve sonar | var | var (kabul yok) | sürüyor | - |
-| 06 protokol ve HIL | var | var (kabul yok) | yapıldı (sürüm 0.2) | var: 5 kritik, 15 önemli yeni bulgu, kabul yok |
-| 07 görselleştirme | var | var: 8 kritik, 15 önemli bulgu, kabul yok | bekliyor | - |
-| 08, 09 | yazılmadı | - | - | - |
+| 01 kart yazılımı | var | var (kabul yok) | yapıldı (0.2) | ikinci inceleme sürüyor |
+| 02 ortak çekirdek | var | var | yapıldı | var: 4 kritik açık, kabul yok |
+| 03 atış kontrol | var | var: 12 kritik açık, kabul yok | yapılmadı | - |
+| 04 simülatör çekirdeği | var | var | yapıldı | var: kritik yok, 5 önemli açık |
+| 05 sensörler ve sonar | var | var (kabul yok) | yapıldı | ikinci inceleme sürüyor |
+| 06 protokol ve HIL | var | var (kabul yok) | yapıldı (0.2) | var: 5 kritik açık, kabul yok |
+| 07 görselleştirme | var | var: 8 kritik açık, kabul yok | yapılmadı | - |
+| 08 laboratuvar uygulaması | var | - | - | - |
+| 09 test ve iş akışı | var | - | - | - |
 
 ## Sıradaki adım
 
-1. 03 için dar kapsamlı düzeltmenin kullanıcı onayı; 06 ikinci incelemesinin bulgularının ele alınması.
-2. 01 ve 05 düzeltme turlarının bitirilmesi; 07 düzeltme turu.
-3. 08 ve 09 bölümlerinin yazımı.
-4. Bütün bölümlerin tutarlılık denetimi ve son düzeltme turu.
-5. İskeletin ve bölümlerin kullanıcı onayı.
-6. Kodlama iş akışı (görev belgesi, dal ve pull request, yazan/inceleyen farklı aile, Mac ve Windows'ta otomatik derleme ve test, ölçüm kaydı). Kullanıcıya önerildi; onayı bekleniyor.
+1. Açık bulgular kaydının derlenmesi (`docs/mimari/acik-bulgular.md`).
+2. Mimarinin kullanıcı onayı ("taslak ve bilinen açık bulgular").
+3. Arayüz sözleşmeleri ve ölçüm işleri; açık bulgular bu aşamada kapatılır.
+4. Kodlama iş akışı (görev belgesi, dal ve pull request, yazan/inceleyen farklı aile, Mac ve Windows'ta otomatik derleme ve test, ölçüm kaydı). Kullanıcıya önerildi; onayı bekleniyor.
 
 ## Kodlamanın ilk işleri: ölçümler
 
@@ -58,6 +58,13 @@ Web araştırmasıyla kapanmayan belirsizlikler. Sonuçları çıkmadan ilgili t
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · dokuz bölüm tamam, döngü kesildi
+
+- 08 ve 09 yazıldı (kısa biçim, incelenmedi); dokuz bölümün hepsi taslak olarak mevcut.
+- 01 (0.2) ve 05 düzeltme turları yapıldı (`inceleme/01-yanit.md`, `inceleme/05-yanit.md`).
+- Mimarın süreç kararı: inceleme-düzeltme döngüsü yakınsamadığı ve çok token tükettiği için kesildi; kalan bulgular `acik-bulgular.md` kaydında toplanacak, sözleşme ya da uygulama aşamasında kapatılacak.
+- Süren (bu kayda dahil değil): 01 ve 05 sol ikinci incelemesi.
 
 ### 2026-11-14 · iskelet 0.7, bölüm 06 düzeltmesi, 03 durdurması
 
