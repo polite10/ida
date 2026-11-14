@@ -11,6 +11,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **Açık bulgular kaydı:** 233 bulgu (AB-001…AB-233); 224'ü açık (33 kritik, 94 önemli, 8 küçük, 89 önem belirtilmemiş), 9'u kapsam dışı. En çok bulgu A1 sözleşmesinde (47), A4 sözleşmesinde (26) ve atış kontrol uygulamasında (23). Belge ayrıca 29 satırlık bölümler arası uyumsuzluk tablosu ve 26 maddelik iskelet önerisi listesi içerir.
 - **sol ikinci incelemeleri:** 01 (`inceleme/01-sol-2.md`): koşulsuz kabul yok; açık bulgularla sözleşme aşamasına taşınabilir; 4 kritik, 12 önemli, 1 küçük yeni bulgu. 05 (`inceleme/05-sol-2.md`): koşulsuz kabul yok; 1 kritik, 15 önemli yeni bulgu; yeni belge düzeltme turu önerilmiyor.
 - **Süreç kararı (mimar, 2026-11-14):** inceleme-düzeltme döngüsü kesildi; kapanmamış bulgular sözleşme ya da uygulama aşamasında kapatılır.
+- **Dalga sırası önerisi (mimar önerisi, kullanıcı onayı mimari onayıyla birlikte bekleniyor):** ölçüm prototipleri W0, arayüz sözleşmeleri W1; A1 ölçüm sonuçlarıyla tek aşamada donar. `docs/mimari/09-test-ve-is-akisi.md` sürüm 0.2.
+- **`tools/sol-incele.sh`:** Claude'un yazdığı belge ya da kodun sol incelemesini başlatan betik (ilk ve ikinci inceleme kipi). sol'un yazma kipi bu depoda henüz denenmedi (ilk deneme W0'da).
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
 - **Kod yok.** Kod dizinleri mimari belge onaylanınca eklenecek.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
@@ -32,9 +34,9 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 ## Sıradaki adım
 
 1. Mimarinin kullanıcı onayı ("taslak ve bilinen açık bulgular").
-2. Arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır.
-3. Ölçüm işleri (`docs/mimari/09-test-ve-is-akisi.md`).
-4. Uygulama dalgaları (kodlama iş akışı; kullanıcı onayı bekleniyor).
+2. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Kartsız olanlar (MP6 Godot görünmeyen pencere, MP7 sonar süresi) kart beklemeden başlayabilir.
+3. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
+4. Uygulama dalgaları (W2–W6).
 
 ## Kodlamanın ilk işleri: ölçümler
 
@@ -48,14 +50,25 @@ Web araştırmasıyla kapanmayan belirsizlikler. Sonuçları çıkmadan ilgili t
 | Kartta 400 Hz döngünün yükü ve en kötü durum süresi | M5 |
 | Windows hedef bilgisayarının kaldırdığı kalite kademesi | M12, M20, M21, M30 |
 
+Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı portu ve kullanıcı USB portu) bağlanır; araç kurulumu için kullanıcı izni gerekir.
+
 ## Açık konular
 
 - Windows hedef bilgisayarının işlemci, bellek ve ekran kartı bilgisi bilinmiyor; kalite kademelerinin tabanı buna göre sabitlenecek (00 belgesi, Ö11).
+- Bölüm 03'ün dar kapsamlı (yalnız emniyet zinciri ve arayüzler) düzeltme turu için kullanıcı yanıtı bekleniyor.
+- Kartın Mac'e bağlanması ve araç kurulum izni bekleniyor.
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · dalga sırası önerisi ve sol inceleme betiği
+
+- Mimar önerisi: ölçüm prototipleri W0, arayüz sözleşmeleri W1; A1 ölçüm sonuçlarıyla tek aşamada donar. `09-test-ve-is-akisi.md` sürüm 0.2; `acik-bulgular.md` yalnız dalga etiketleri güncellendi (bulgu içeriği ve sayılar değişmedi). Kullanıcı onayı mimari onayıyla birlikte bekleniyor.
+- `tools/sol-incele.sh` eklendi (hafif uygulayıcı yazdı; sol inceledi: 4 bulgu, 1 kritik ve 3 önemli, tek turda giderildi). Düzeltmeden önce gerçek sol çağrısıyla bir kez çalıştı; düzeltmeden sonra yalnız kuru çalıştırma (`DRY_RUN=1`) ve macOS bash 3.2 ile denendi.
+- `AGENTS.md` "Belge kuralları"na betiğin kullanımını söyleyen madde eklendi.
+- sol'un yazma kipi bu depoda henüz denenmedi (ilk deneme W0'da).
 
 ### 2026-11-14 · açık bulgular kaydı, mimari onaya hazır
 

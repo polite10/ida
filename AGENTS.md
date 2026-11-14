@@ -49,6 +49,7 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 - Ham raporların içeriğini yeniden yazma ya da silme. Düzeltme gerekiyorsa `00-duzeltmeler-ve-kararlar.md` belgesine eklenir.
 - Yeni araştırma raporu `docs/research/NN-konu.md` adıyla, sıradaki numarayla yazılır ve sonunda "Bağımsız doğrulanması gereken kritik iddialar" bölümü bulunur.
 - Her yeni rapor `tools/codex-dogrula.sh NN` ile doğrulanır; doğrulamanın düzeltmeleri 00 numaralı belgeye işlenir.
+- Claude'un yazdığı mimari belge, sözleşme ya da kodun sol incelemesi `tools/sol-incele.sh <hedef> <çıktı>` ile başlatılır; çağrıyı mimar başlatır.
 - Her önemli iddianın yanında kaynak bulunur. Doğrulanamayan şey "doğrulanmadı" diye işaretlenir.
 - Ölçülmemiş bir performans, gecikme ya da işlemci yükü rakamını gerçek gibi yazma; tahmin olduğunu belirt.
 - Dosya yolları depo köküne göre göreli yazılır; kişisel makine yolları depoya girmez.

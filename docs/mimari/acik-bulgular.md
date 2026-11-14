@@ -2,6 +2,8 @@
 
 Durum: 2026-11-14 tarihli inceleme durumu. Kaynak: `docs/mimari/inceleme/` altındaki sol incelemeleri ve `docs/mimari/01`–`09` belgelerinin "8. Açık noktalar ve iskelete öneriler" başlıkları. Bu belge toplama ve etiketlemedir; çözüm içermez, önemi değiştirmez.
 
+Dalga etiketleri 09 sürüm 0.2'ye göre güncellendi (ölçümler W0, sözleşmeler W1).
+
 ## 1. Nasıl kullanılır
 
 - Kayıt, mimari bölümlerin (01–09) incelemelerinde kapanmamış bulguları ve bölümlerin kendi açık noktalarını tek yerde toplar. İnceleme ve düzeltme döngüsü yakınsamadığı için mimar döngüyü kesti: bulgular belgelerde değil, A1–A8 sözleşmeleri yazılırken ve uygulama işleri yapılırken kapatılır.
@@ -61,7 +63,7 @@ Yeri belirsiz olarak işaretlenen bulgu sayısı: 3 (AB-103, AB-206, AB-213); No
 
 Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir bulgu birden çok yerde kapanacaksa en çok ilgili gruba konmuş, diğer yer Not sütununda belirtilmiştir. Kapsam dışı bulgular 5. bölümdedir.
 
-### A1 — Sim sunucusu ↔ kart (MAVLink 2 + özel dialect; W0 anlam sözleşmesi, W1 sonrası taşıma ve tel biçimi eki)
+### A1 — Sim sunucusu ↔ kart (MAVLink 2 + özel dialect; W1, ölçüm sonuçlarıyla tek aşamada)
 
 47 bulgu.
 
@@ -115,7 +117,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-046 | 06 · 06-protokol-ve-hil.md §8 (açık noktalar) | belirtilmemiş | `sysid` değerleri, mesaj kimliği aralığı, şema özetinin kanonik metin kuralı, altı eksenli elle kumandada `MANUAL_CONTROL`'ün yeterliliği ve c_library_v2'nin örnek başına durumla kullanımı sözleşme işinde sabitlenip doğrulanacak. | — |
 | AB-047 | 07 · 07-sol.md notlar (06 ile komşu) | belirtilmemiş | 06 en çok 4 algılama/kare, 07 ve 03 en çok 8 kabul ediyor; 06'daki 120 kayıt/s ve 10.200 B/s hesabı sekiz kayıtla (85 B çerçevede 20.400 B/s) aynı kalamaz. | 06 değişmeli; `t_sigma_ns` ve `calib_ver` eklenince yeniden hesaplanmalı |
 
-### A2 — Sim sunucusu ↔ görselleştirici (W0)
+### A2 — Sim sunucusu ↔ görselleştirici (W1)
 
 8 bulgu.
 
@@ -130,7 +132,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-054 | 07 · 07-sol.md #18 | önemli | Sade kademede görüntü–fizik tutarsızlığı için üst veri şemasında `dalga_görseli` alanı yok; yarı batık kamerada tek ortam uygulanması deney geçerliliğini belirsizleştiriyor. | — |
 | AB-055 | 07 · 07-sol.md notlar (04 ile komşu) | belirtilmemiş | `VizState` hızları, süreklilik bilgisi ve olay öncesi/sonrası durumlar eksik. | — |
 
-### A3 — Sim sunucusu ↔ web panelleri (W0)
+### A3 — Sim sunucusu ↔ web panelleri (W1)
 
 3 bulgu.
 
@@ -140,7 +142,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-057 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.3) | belirtilmemiş | Çoklu istemci için kontrol sahipliğinin devri ve "izleyici" rolünün kapsamı için kullanıcı kararı yok. | — |
 | AB-058 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.3) | belirtilmemiş | Foxglove SDK'nın canlı yayın için kullanılıp kullanılmayacağı çözülmemiş. | 00 A2, K3 kapsamı |
 
-### A4 — Ortak çekirdek ↔ çevresi (`port`; W0)
+### A4 — Ortak çekirdek ↔ çevresi (`port`; W1)
 
 26 bulgu.
 
@@ -173,7 +175,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-083 | 06 · 06-sol-2.md Y14; 06-sol.md #24 | önemli | Kalıcı açılış sayacının atomik artırımı, bozuk kayıt ve tükenme davranışı yok; olay sayacı sararak aynı açılışta kimlik tekrar üretebiliyor. | 01 Y9 ve 03 #5 ile birlikte; 01, 02 ve 06 birlikte; ilk incelemede #24 önemli |
 | AB-084 | 06 · 06-sol-2.md notlar (02 §3.1–3.4) | belirtilmemiş | 02'de emniyet/tüp örneği, olay ACK yolu ve olayın son geçerlilik alanları eksik; kimlik hâlâ rastgele `boot_id` temelli. | 02 değişmeli (iskelet 0.6 ve tamamlanmış 03/06 sözleşmesine) |
 
-### A5 — Senaryo ve araç tanımı (W0)
+### A5 — Senaryo ve araç tanımı (W1)
 
 11 bulgu.
 
@@ -191,7 +193,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-094 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.2, 06'dan beklenen i) | belirtilmemiş | `FaultInjector` ve bağlantı emülatörü profil alanlarının A5 biçimi 08'de yalnız tablo satırı; alan listesi 06 ile tamamlanmalı. | — |
 | AB-095 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.2, 02'den beklenen) | belirtilmemiş | Otopilot parametre bloğunun A5'teki yeri ve `PARAM_*` dönüştürücüsü tanımsız. | — |
 
-### A6 — Kayıt (W0)
+### A6 — Kayıt (W1)
 
 6 bulgu.
 
@@ -204,7 +206,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-100 | 06 · 06-sol-2.md Y20; 06-sol.md #20 | önemli | HIL tekrar testinde her koşuda kart yeniden açıldığı için kanonik izdeki ham olay kimlikleri farklı çıkıyor; karşılaştırma için normalizasyon ve girdi bağlama tanımsız. | ilk incelemede #20 önemli |
 | AB-101 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.2, 04'ten beklenen iii) | belirtilmemiş | A6 için `StepResult` sürümlü ve donmuş olmalı. | — |
 
-### A7 — Sahne ve varlıklar (W0)
+### A7 — Sahne ve varlıklar (W1)
 
 2 bulgu.
 
@@ -213,7 +215,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-102 | 07 · 07-sol.md #21 | önemli | Türetilmiş dışbükey ağları depoya koyma önerisi iskelet A7 ile çelişiyor ve manifest türetilmiş çıktıların özetini listelemiyor; yeniden üretim özeti tutmazsa başarısızlık politikası yok. | CoACD çıktısı platformlar arası aynı olmayabilir |
 | AB-103 | 07 · 07-gorsellestirme.md §8 (açık noktalar); 02 · 02-ortak-cekirdek.md §8.2 md.4; 09 · 09-test-ve-is-akisi.md §8.2 md.2 | belirtilmemiş | A16 (yapı zamanında Python) yanıtlanmazsa Blender dışa aktarma adımı ve A7 hattı yeniden düşünülmeli. | 00 A16; yer belirsiz |
 
-### A8 — Sim sunucusu ↔ kamera algılama bileşeni (W0)
+### A8 — Sim sunucusu ↔ kamera algılama bileşeni (W1)
 
 3 bulgu.
 
@@ -390,7 +392,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-209 | 09 · 09-test-ve-is-akisi.md §8.2 md.4 | belirtilmemiş | CI olanakları (özel depoda dal koruma, dakika kotası, macOS ve Windows iş süresi maliyeti, ST ve Arm araç zincirinin CI'da kurulabilirliği) doğrulanmadı. | W2'nin ilk işi kayda geçirecek |
 | AB-210 | 09 · 09-test-ve-is-akisi.md §8.1 md.5 | belirtilmemiş | 01–08'deki "09'da kesinleşir" eşikleri "sözleşme işinde dondurulur" olarak yansıtılmalı ve her sözleşme işine sınır dosyası sahibi (test yazarı) atanmalı. | — |
 
-### Ölçüm işleri (W1 MP1–MP9; ölçümle kapanacak olanlar)
+### Ölçüm işleri (W0: MP1–MP8; MP9 W3 sonu ve W6; ölçümle kapanacak olanlar)
 
 14 bulgu.
 
@@ -408,7 +410,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-220 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.1 md.4) | belirtilmemiş | Kayıt yazıcı verimi ve kamera kare sıkıştırma maliyeti için ölçüm tanımı yok. | 00 §7; M20 yanına eklenmesi öneriliyor |
 | AB-221 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.3) | belirtilmemiş | Windows hedef bilgisayarının özellikleri bilinmediği için panel yoğunluğu ve kademe sınırları ölçülmedi; uygulama kabuğu gerekliliği M20 sonrasına bırakıldı. | MP8 (M20, Ö11) |
 | AB-222 | 09 · 09-test-ve-is-akisi.md §8.2 md.6 | belirtilmemiş | Windows hedef bilgisayarının özellikleri bilinmiyor; MP8 öncesi kalite kademesi tabanı varsayım. | MP8; Ö11 |
-| AB-223 | 09 · 09-test-ve-is-akisi.md §8.2 md.7 | belirtilmemiş | Kod gerektiren ölçümler (M10, M15, MP4'ün gerçek çekirdekli turu) W3 sonrasına kalıyor; W1 yalnız yer tutucu yükle ön bilgi verir. | MP4, MP9 |
+| AB-223 | 09 · 09-test-ve-is-akisi.md §8.2 md.7 | belirtilmemiş | Kod gerektiren ölçümler (M10, M15, MP4'ün gerçek çekirdekli turu) W3 sonrasına kalıyor; W0 yalnız yer tutucu yükle ön bilgi verir. | MP4, MP9 |
 | AB-224 | 09 · 09-test-ve-is-akisi.md §8.1 md.8 | belirtilmemiş | 06 §7 kablo çıkarma için yazılımla kesilebilen USB hub'ı anıyor, aracı seçilmemiş; MP2 ve T7'nin HIL kısmı kullanıcıdan donanım gerektirebilir. | MP2 |
 
 ## 4. Bölümler arası uyumsuzluklar
@@ -480,7 +482,7 @@ Bölümlerin ve incelemelerin iskeletin (sürüm 0.7) değişmesini önerdiği n
 11. §7 depo düzeni: `firmware/third_party/`, `firmware/cubemx/`, `firmware/bsp/`, `docs/sozlesmeler/`, `docs/olcumler/`, `docs/gorevler/`, `docs/mimari/acik-bulgular.md`, `cmake/`, `CMakePresets.json`, `vcpkg.json`, `.github/workflows/`, `tests/kabul/`; 01 §8.4 md.3 ve 09 §8.1 md.2 `protocol/conv/` yolunu da öneriyor, 01-sol-2.md notlar ise tek modül `protocol/ida_link` ister (01 §8.4 md.3; 09 §8.1 md.2; 01-sol-2.md notlar).
 12. §2 tablosu "Kart yazılımı C17": çekirdek ISO C17, platform kodu `gnu17` ve uzantılar yalnız `firmware/` içinde (01 §8.4 md.2).
 13. §8 A1 taşıması yedeği: "ST'nin USB yığını" yerine "HAL PCD + upstream Eclipse USBX (MIT)" (01 §8.4 md.4).
-14. §3 ve §8: A1 iki aşamalı dondurulur (anlam W0'da, taşıma ve tel biçimi eki W1 sonucundan sonra) (09 §8.1 md.1).
+14. §3 ve §8: A1 iki aşamalı dondurulur (anlam W0'da, taşıma ve tel biçimi eki W1 sonucundan sonra) (09 §8.1 md.1). **09 sürüm 0.2: sıra değişikliğiyle gereksiz kaldı (09 §2.1).**
 15. §6: "emniyet kabulü kalite kademesinden bağımsızdır; kameraya bağlı davranış yalnız kamera açıkken sınanır" (09 §8.1 md.3).
 16. §8 A1 taşıması ile kontrol hızı: VCP yedeğinin 200 Hz ve `L_act = 3h` gerektirdiği notu; 06-sol-2.md notlar hesabın bu zorunluluğu kanıtlamadığını söylüyor, koşulsuz bağ eklenmemeli (06 §8 md.1; 06-sol-2.md notlar).
 17. §3 yeni dış arayüz: emülatör arkasında "sim sunucusu ↔ harici yer istasyonu" (MAVLink/UDP) arayüzü ve numarası; QGC'nin hedef mi prova mı olduğu yanıtsız (06 §8 md.4; 08 §8; 09 §8.2 md.5).

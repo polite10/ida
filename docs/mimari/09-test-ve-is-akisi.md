@@ -1,6 +1,8 @@
 # 09 — Test ve iş akışı
 
-Sürüm 0.1 (2026-11-14). Durum: taslak; kullanıcı onayı yok.
+Sürüm 0.2 (2026-11-14). Durum: taslak; kullanıcı onayı yok.
+
+0.2'de dalga sırası değişti (ölçüm prototipleri W0, sözleşmeler W1); bu mimar önerisidir, kullanıcı onayı bekliyor.
 
 Bu bölüm [00-iskelet.md](00-iskelet.md) (sürüm 0.7) Bölüm 9, satır 09'un kapsamını yazar: kodlama aşamasının nasıl yürüyeceği ve neyin ne zaman "bitti" sayılacağı. Dayanak [../research/00-duzeltmeler-ve-kararlar.md](../research/00-duzeltmeler-ve-kararlar.md) belgesidir (`K` kesin karar, `Ö` öneri, `M` ölçülecek konu, `Ç` çözülmüş çelişki); ham rapor değerleri önce oradaki düzeltmeden geçirilmiştir. Diğer bölümlerin "09'da kesinleşir" dediği eşiklerin **rakamlarını** bu bölüm vermez; rakamlar sözleşme ve görev belgelerinde, kabul koşusundan önce dondurulur (7.3). Test kimlikleri 00'daki `K`/`Ö`/`M` kimlikleriyle çakışmasın diye raporlarda `B<bölüm>/<kimlik>` yazılır (ör. `B01/K7`, `B07/P5`).
 
@@ -32,11 +34,13 @@ Kullanıcının gerektiği üç yer: mimari onayı, kartın bağlanması, Window
 ### 2.1 Sıra
 
 ```
-mimari onayı (kullanıcı) -> açık bulgular kaydı -> W0 sözleşmeler (A1-A8; yaz, incele, dondur)
-  -> W1 ölçüm işleri -> W2 temel -> W3 çekirdek -> W4 bağlantı -> W5 görünür kısım -> W6 bütünleme
+mimari onayı (kullanıcı) -> açık bulgular kaydı (hazır) -> W0 ölçüm prototipleri
+  -> W1 sözleşmeler (A1-A8; yaz, incele, dondur) -> W2 temel -> W3 çekirdek -> W4 bağlantı -> W5 görünür kısım -> W6 bütünleme
 ```
 
-**Sözleşmeler dondurulmadan paralel kodlama başlamaz**; tek istisna sözleşmeye dokunmayan ölçüm araçlarıdır (W1). A1'in taşıması ve biçimi M1–M3 ve M9 sonucuna bağlıdır, ölçüm ise sözleşmeden sonra gelir. Çözüm (8.1 md.1): A1 iki aşamada donar; mesaj anlamı, alanlar, oturum, bariyer ve olay kuralları W0'da (taşımadan bağımsız), taşıma ve tel biçimi eki W1 sonucundan sonra.
+Gerekçe: A1'in taşıması, biçimi ve kontrol hızı M1–M3, M5, M9 sonucuna; A2 ve A8'in kamera yolu M13/M28'e; sonar ayrıntısı M11'e bağlıdır. Sözleşme ölçümden önce yazılırsa A1 iki aşamada donmak zorunda kalır ve ölçüm sonucu sözleşmeyi yeniden açar; ayrıca kurulumun bu kartta ve bu bilgisayarlarda çalışıp çalışmadığı en ucuz yoldan, en başta öğrenilir. Açık bulguların en kalabalık kümesi (A1) ölçülmüş veriyle kapatılır.
+
+**Sözleşmeler dondurulmadan paralel kodlama başlamaz.** W0 ölçüm araçları atılabilir prototiptir: kendi dalında (`olcum/mp<n>-<ad>`) yaşar, sözleşmeye dayanmaz, ürün koduna taşınmaz; ürüne girecek her şey W2 ve sonrasında görev belgesiyle yeniden yazılır. A1 tek aşamada, W1'de, ölçüm sonuçlarıyla donar (eski iki aşamalı çözüm, 8.1 md.1, gereksiz kaldı). Kart bağlanana kadar kartsız ölçümler (MP6, MP7) yürür; kart uzun süre bağlanamazsa karta bağlı olmayan sözleşmeler (A3, A5, A6, A7) W1'den öne alınabilir, A1 kart ölçümlerini bekler. Açık bulgular kaydındaki iskelet önerileri W1'in başında mimarca karara bağlanır.
 
 ### 2.2 Açık bulgular kaydı
 
@@ -125,14 +129,15 @@ Kısaltmalar: Fable = `ida-kritik-uygulayici`, Opus = `ida-uygulayici`, Sonnet =
 
 | Dalga | Görev | Yazan | TY | İnceleyen |
 |---|---|---|---|---|
-| W0 | Açık bulgular kaydı (toplama) | Sonnet | — | Mimar |
-| W0 | A1 (anlam) + A4 + zaman çerçevesi + olay kuralları + A8 | Fable | — (uygunluk testleri W2'de) | sol |
-| W0 | A2 + A7; A3 + A5 + A6 (iki ayrı iş) | Fable | — | sol |
-| W0 | **sol denemesi:** `tools/` altında bellek ayırma denetim betiği, geçen ve geçmeyen örnek nesneler | sol | — | İnc |
-| W1 | MP1–MP4 test aygıt yazılımı, PC ölçüm araçları, ölçümler | Opus | — | sol |
-| W1 | MP5 aday düzeneği (deneme geçerse) | sol | — | İnc |
-| W1 | MP6, MP7 prototip ve ölçüm; MP8 betiği | Opus | — | sol |
-| W1 sonu | A1 taşıma ve biçim eki; iskelet 8. başlık güncellemesi | Fable | — | sol |
+| W0 | Açık bulgular kaydı (toplama); **yapıldı (2026-11-14)** | Sonnet | — | Mimar |
+| W0 | **sol denemesi:** `tools/` altında bellek ayırma denetim betiği, geçen ve geçmeyen örnek nesneler (ölçümlerden bağımsız; ilk iş olarak koşabilir) | sol | — | İnc |
+| W0 | MP1–MP4 test aygıt yazılımı, PC ölçüm araçları, ölçümler | Opus | — | sol |
+| W0 | MP5 aday düzeneği (deneme geçerse sol, geçmezse Opus; nihai dialect yerine temsili mesaj kümesiyle ölçer: IMU örneği, aktüatör komutu, Ping360 profil parçası) | sol | — | İnc |
+| W0 | MP6, MP7 prototip ve ölçüm; MP8 betiği | Opus | — | sol |
+| W0 sonu | Ölçüm sonuçlarının iskelet 8. başlığa işlenmesi | Mimar | — | — |
+| W1 | A1 (anlam + taşıma ve tel biçimi, tek aşama) + A4 + zaman çerçevesi + olay kuralları + A8 | Fable | — (uygunluk testleri W2'de) | sol |
+| W1 | A2 + A7 | Fable | — | sol |
+| W1 | A3 + A5 + A6 | Fable | — | sol |
 | W2 | Depo iskeleti, CMake ön ayarları, vcpkg, CI, belge denetimi | Sonnet | — | sol |
 | W2 | Protokol kütüphanesi (şemadan C ve C++ kodlayıcı/çözücü, altın baytlar) | sol | TY | İnc |
 | W2 | Çekirdek iskeleti: tipler, `port.h`, `mat.h`, zaman tipleri, test düzeneği | Fable | TY | sol |
@@ -149,7 +154,7 @@ Kısaltmalar: Fable = `ida-kritik-uygulayici`, Opus = `ida-uygulayici`, Sonnet =
 | W5 | Hata enjeksiyonu (04, 05, 06 arayüzleriyle) | Opus | TY | sol |
 | W6 | Kabul koşuları, M10 tam turu, MP4 yinelemesi, uçtan uca HIL, kalan `AB-nnn`; Windows denemesi kullanıcıda | TY + Opus | TY | sol |
 
-**sol'un payı:** 23 görev satırından 6'sı (bir satır birden çok iş içerebilir) sol'dadır, yani kabaca dörtte bir; hedef üçte birdir. Sayı görev sayısıdır, iş büyüklüğü ölçülmedi; W6 sonrasındaki düzeltme işleri payı artırabilir. **sol'un yazma kipi bu depoda henüz denenmemiştir:** W0'daki küçük görev denemedir. Denemede bakılanlar: görev belgesine ve dosya sahipliğine uyum, commit atmaması, ASCII dal adı ve göreli yol, testi gerçekten koşturup sonucu doğru raporlaması, İnc'in sol çıktısını inceleyebilmesi. Deneme geçmezse sol'a ayrılan yazım işleri Opus'a verilir, sol yalnız inceler. **Paralellik:** her dalgada aynı anda en fazla iki Claude agent'ı; aynı dosyaya dokunan görevler aynı anda koşmaz.
+**sol'un payı:** 24 görev satırından 6'sı (bir satır birden çok iş içerebilir) sol'dadır, yani kabaca dörtte bir; hedef üçte birdir. Sayı görev sayısıdır, iş büyüklüğü ölçülmedi; W6 sonrasındaki düzeltme işleri payı artırabilir. **sol'un yazma kipi bu depoda henüz denenmemiştir:** W0'daki küçük görev denemedir. Denemede bakılanlar: görev belgesine ve dosya sahipliğine uyum, commit atmaması, ASCII dal adı ve göreli yol, testi gerçekten koşturup sonucu doğru raporlaması, İnc'in sol çıktısını inceleyebilmesi. Deneme geçmezse sol'a ayrılan yazım işleri Opus'a verilir, sol yalnız inceler. **Paralellik:** her dalgada aynı anda en fazla iki Claude agent'ı; aynı dosyaya dokunan görevler aynı anda koşmaz.
 
 ---
 
@@ -226,21 +231,21 @@ Düşük donanımlı Windows'ta kabul edilen kademe MP8'in sonucudur; öncesinde
 
 ### 6.1 Ölçüm işleri
 
-Ölçüm işleri kodlamadan önce gelir; sonucu çıkmayan karar kesinleşmiş sayılmaz. Her ölçüm kendi dalında (`olcum/mp<n>-<ad>`) aracını ve raporunu yazar (3.3). **Geçme ölçütleri ilgili bölümlerin başlangıç önerisidir (kaynaklı eşik değil, ölçülmemiştir);** ölçümden önce dondurulur (7.3). Yedeğe geçiş ölçütleri B01 §6, B05 §6, B06 §6, B07 §6'dadır.
+Ölçüm işleri sözleşmelerden ve kodlamadan önce gelir (MP9 hariç; kod gerektirir); sonucu çıkmayan karar kesinleşmiş sayılmaz. Her ölçüm kendi dalında (`olcum/mp<n>-<ad>`) aracını ve raporunu yazar (3.3). **Geçme ölçütleri ilgili bölümlerin başlangıç önerisidir (kaynaklı eşik değil, ölçülmemiştir);** ölçümden önce dondurulur (7.3); sözleşme henüz olmadığından ölçütü ölçümün görev belgesi dondurur. Yedeğe geçiş ölçütleri B01 §6, B05 §6, B06 §6, B07 §6'dadır.
 
 | MP | M | Amaç ve ölçülen büyüklük | Yöntem | Geçme ölçütü | Kesinleştirdiği karar | Kim, nerede |
 |---|---|---|---|---|---|---|
 | MP1 | M6, M4, M21 (Mac) | Fabrika durumu; 160 MHz ve regülatör; derle-yükle-ayıkla. `TZEN`, `RDP`, `BOR_LEV`, `REV_ID`; `SYSCLK`; DWT/PC saat oranı | B01 K0–K2: salt okunur seçenek baytı (yazma yok); SMPS ve LDO ayrı 1 saat, USB HS yükü altında | K0 yazma yok ve kayıtlı; K1 kesme noktası ve yığın izi, durdurulunca IWDG sıfırlamaz; K2 160 MHz ± HSE toleransı, hatasız | Regülatör, PLL dizisi, Mac araç zinciri | Opus, Mac + kart; kartı kullanıcı bağlar |
 | MP2 | M2, M1 | USB HS numaralandırma, kayıp, gecikme, jitter; CDC ve vendor-bulk; PHY varyantı | B01 K3 (100 tekrar × 2 PHY × OS), K4 (256 B × 1 kHz iki yönlü, ≥ 30 dk, sıra + CRC), K5 (yankı turu, 200/400/1000 Hz, 64/256 B, ≥ 30 dk, p50/p99/p99,9/maks, host duraklaması ve kablo çekme dahil) | K3 %100 ve HS; K4 kayıp 0; K5: 400 Hz'te gidiş-dönüş p99,9 + kart adım süresi ≤ 2,5 ms ise 400 Hz bariyer uygun | A1 taşıması (TinyUSB / USBX), PHY, VBUS, CDC / bulk, `L_act`, kontrol hızı | Mac: Opus; Windows yarısı: kullanıcı (MP8) |
 | MP3 | M3 | ST-LINK VCP gerçek hız ve gecikme (yedek taşıma); 15 Mbaud garanti sayılmaz | K6: USART1 DMA, 921600 ve 2/3/6/12 Mbaud, sayaç + CRC, ≥ 10 dk | Kayıpsız en yüksek baud ve gecikme raporlanır | Yedek taşıma kullanılabilirliği (06: ≥ 3 Mbaud, 200 Hz, `L_act = 3h`) | Opus, Mac + kart; MP2 birincil geçse de yedeğin kanıtı için |
-| MP4 | M5, M19, M17 (kart) | 400 Hz döngü yükü ve en kötü süre; gözetim; bariyer bütçesi | K7: DWT histogramı, `fw-measure`, ≥ 1 saat; boşta, tam sensör, Ping360 en yüksek hız, 03 arka planı, ekran açık/kapalı. K8: sonsuz döngü enjeksiyonu, LSI ölçümü. **İki aşamalı:** W1'de yer tutucu yük, W3 sonu ve W6'da gerçek çekirdek | Çekirdek adımı en kötü ≤ 1,0 ms; varıştan çıktıya p99,9 ≤ 1,5 ms; bariyerli 1 saatte kaçırılan adım 0; her iç kilitlenme ölçülen LSI'ye göre sıfırlar | Kontrol hızı (400/200 Hz), RTOS'suz ya da FreeRTOS, IWDG süresi, ekran | Opus, Mac + kart |
-| MP5 | M9 | MAVLink 2 + dialect ile açık serileştirmeli özel biçimin maliyeti (aynı semantik) | İki aday: kartta ayrıştırma/kodlama çevrimi (DWT), RAM ve flash, Ping360 1200 örnek parçalama, uçtan uca gecikme, bakım yükü (B06 §6) | Sayısal eşik 06'da yok; ölçümden önce yazılır: kart adım bütçesinin payı, parçalama sorunsuzluğu | A1 biçimi | Düzenek sol (W1); koşu Mac + kart |
+| MP4 | M5, M19, M17 (kart) | 400 Hz döngü yükü ve en kötü süre; gözetim; bariyer bütçesi | K7: DWT histogramı, `fw-measure`, ≥ 1 saat; boşta, tam sensör, Ping360 en yüksek hız, 03 arka planı, ekran açık/kapalı. K8: sonsuz döngü enjeksiyonu, LSI ölçümü. **İki aşamalı:** W0'da yer tutucu yük, W3 sonu ve W6'da gerçek çekirdek | Çekirdek adımı en kötü ≤ 1,0 ms; varıştan çıktıya p99,9 ≤ 1,5 ms; bariyerli 1 saatte kaçırılan adım 0; her iç kilitlenme ölçülen LSI'ye göre sıfırlar | Kontrol hızı (400/200 Hz), RTOS'suz ya da FreeRTOS, IWDG süresi, ekran | Opus, Mac + kart |
+| MP5 | M9 | MAVLink 2 + dialect ile açık serileştirmeli özel biçimin maliyeti (aynı semantik) | İki aday: kartta ayrıştırma/kodlama çevrimi (DWT), RAM ve flash, Ping360 1200 örnek parçalama, uçtan uca gecikme, bakım yükü (B06 §6) | Sayısal eşik 06'da yok; ölçümden önce yazılır: kart adım bütçesinin payı, parçalama sorunsuzluğu | A1 biçimi | Düzenek sol (W0; geçmezse Opus); koşu Mac + kart. Temsili mesaj kümesiyle ölçer (nihai dialect henüz yok); sonuç W1'de A1'e girer |
 | MP6 | M33, M13, M28, M12, M30, M29 | Godot'da pencere görünmezken kamera görüntüsü; kamera hattı; uzantı derlemesi; uzun koşu | B07 P1, P2, P4, P5 (macOS: tamamen örtülü, gizli, simge durumu; ekran koruyucu, kapalı ekran), P6, P11; `force_draw(false, dt)`; her durumda ≥ 30 dk | P5: her durumda kare üretimi, ortalama mutlak piksel farkı ≤ 2/255, hedef ≤ 1 piksel (mimari varsayımı); P4: düşen kare < %1; P11: 2 saat, "timeout waiting for fence" yok | Kamera birincil / yedek (A23), Godot sürümü, CMake / SCons, geri okuma yolu | Opus, Mac (GPU); Windows durumları kullanıcı (MP8) |
 | MP7 | M11 | Sonar hesap süresi ve ışın yakınsaması | Ping360 coherent + multipath, sabit ışın/saçıcı/yol/darbe; Embree CPU süresi; topluluk yakınsama (B05 §6); platform eşdeğerliği; alt sahne paylaşımının belge doğrulaması | Işın ×2'de kutu ortalama enerjisi, varyansı ve ilintisi değişimi %5 güven aralığında; p99 hesap süresi ping aralığı ve dünya iş parçacığı bütçesi içinde (bütçe 04/05'ten, ölçümden önce yazılır) | Sonar ayrıntısı (HIL'de tam / yalnız SIL), ışın sayısı, Embree sahne yapısı | Opus, Mac; Windows CPU süresi CI'dan (hızı temsil etmez) ve MP8 |
 | MP8 | M12, M20, M21 (Win), M30 | Windows hedef bilgisayarının kaldırdığı kademe; ön yüz ve kart zinciri | `tools/olcum/windows/` betiği donanımı kaydeder (CPU, bellek, GPU, sürücü, OS) ve tarar: SIL hızı, HIL 1x'te kaçırılan adım, kamera hattı (MP6 Windows yarısı), MapLibre + uPlot 60 Hz, MP2 Windows yarısı ve ST-LINK sürücü akışı | Seçilen kademede HIL 1x 30 dk kaçırılan adım 0 (Ö11); en eski hedef tarayıcıda panel kabulü (B08 §7 md.10); yoksa bir alt kademe | Kademe tabanı (iskelet §8); Windows'ta kamera | Betiği agent hazırlar, **kullanıcı çalıştırır**; Windows özellikleri bilinmiyor |
 | MP9 | M10, M15 | Kart–SIL sayısal fark; fizik yakınsama | **Kod gerektirir** (W3 sonu, W6): açık çevrim tekrar oynatma (B02 §7); macOS-arm64 ve Windows-x64 farkı; h = 1,25 → 0,625 → 0,3125 ms (B04 §7 md.15) | Dondurulmuş sınırlar (7.3); yakınsama mertebesi raporlanır | libm/FMA politikası, libc, `h` ve alt adım | TY + Opus; Mac + kart; Windows izleri CI'dan |
 
-"Geçme ölçütü" sütunu hedeftir; hiçbiri sonuç gibi okunamaz. Kart gerektiren ölçümler kart bağlanana kadar başlamaz; bu sürede SIL-yalnız işler (W0, W2'nin büyük kısmı, W3'ün fizik, kestirim ve sensör işleri) sürer.
+"Geçme ölçütü" sütunu hedeftir; hiçbiri sonuç gibi okunamaz. Kart gerektiren ölçümler kart bağlanana kadar başlamaz; bu sürede kartsız ölçümler (MP6, MP7) ve 2.1'deki istisna (karta bağlı olmayan sözleşmelerin öne alınması) yürür.
 
 ### 6.2 Bu bölümün kendi seçimleri
 
@@ -269,7 +274,7 @@ Ayrıntılı test koşulları 01–08 §7'dedir; bu tablo katmanı, yerini ve za
 | T6 | Sensör istatistik | Allan eğrisi, GM süreci, ≥ 20 tohum ve %95 güven aralığı, açık veri kümesi karşılaştırması (B05 §7) | Mac, CI kısa; gece uzun | Sensör PR'ı; gece |
 | T7 | Emniyet ve arıza enjeksiyonu | B03 F1–F10, B02 kritik yol 1–9, B06 hata enjeksiyonu, B01 K8–K9; "sıfır yanlış atış" | SIL: Mac, CI; HIL: Mac + kart | Her PR (SIL); HIL'de her dalga sonunda en az bir kez (B03 §7) |
 | T8 | Kart–SIL farkı (M10) | Aynı ikilide bit eşitliği; macOS-arm64 ve Windows-x64 farkı; kart ve SIL açık çevrim tekrar oynatma farkı, ilk ayrışma adımı | Kart: Mac; Windows: CI artefaktı | Gece; kartla W3 sonu ve W6 |
-| T9 | Görsel hat | B07 P1–P13: poz akışı, kamera, görünmeyen pencere, iki zamanlı çizim, dalga tutarlılığı, A7, uzun koşu | GPU: Mac (agent), Windows: kullanıcı; CI yalnız GPU'suz kısım | W1, W5, W6 |
+| T9 | Görsel hat | B07 P1–P13: poz akışı, kamera, görünmeyen pencere, iki zamanlı çizim, dalga tutarlılığı, A7, uzun koşu | GPU: Mac (agent), Windows: kullanıcı; CI yalnız GPU'suz kısım | W0 (MP6), W5, W6 |
 | T10 | Laboratuvar | Yavaş istemci, erişim, emniyet girdisi eylemi, doğrulayıcı, hata enjeksiyonu, kayıt ve tekrar oynatma (B08 §7); ön yüz taban kabulü en eski hedef tarayıcıda (M20) | Mac, CI | Sunucu: her PR; ön yüz: W5 |
 
 Aşağı katman yeşil değilse yukarısı kabul için koşulmaz (T1, T2 → T3, T5, T6 → T4, T7, T8).
@@ -299,7 +304,7 @@ B02, B03, B04, B05, B07 ve B08'de "09'da kesinleşir" denen her eşik için geç
 
 ### 8.1 İskelete ve komşu bölümlere öneriler (mimar karar verir)
 
-1. **A1 iki aşamalı dondurma** (2.1): iskelet §3 sözleşmeleri kodlamadan önce dondurur, §8 ise A1 taşımasını ve biçimini ölçüme bağlar. Öneri: §3'e "A1 anlamı W0'da, taşıma ve tel biçimi eki W1 sonucundan sonra donar".
+1. **A1 iki aşamalı dondurma** (2.1): iskelet §3 sözleşmeleri kodlamadan önce dondurur, §8 ise A1 taşımasını ve biçimini ölçüme bağlar. Öneri: §3'e "A1 anlamı W0'da, taşıma ve tel biçimi eki W1 sonucundan sonra donar". **0.2: sıra değişikliğiyle gereksiz kaldı (2.1).**
 2. **Depo düzeni (§7):** `docs/sozlesmeler/`, `docs/olcumler/`, `docs/gorevler/`, `docs/mimari/acik-bulgular.md`, `cmake/`, `CMakePresets.json`, `vcpkg.json`, `.github/workflows/`, `tests/kabul/`; 01'in önerileri (`firmware/third_party/`, `firmware/cubemx/`, `firmware/bsp/`, `protocol/conv/`) ile birlikte.
 3. **Kalite kademesi:** iskelet §6'ya: "emniyet kabulü kademeden bağımsızdır; kameraya bağlı davranış yalnız kamera açıkken sınanır" (5. başlık).
 4. **Test kimlikleri çakışıyor:** B01 `K0–K12`, B07 `P1–P13`, B03 `F1–F10` kimlikleri 00'ın `K`/`Ö` kimlikleriyle karışıyor; raporlarda `B<bölüm>/<kimlik>` yazılsın (bu bölümde uygulandı).
@@ -316,6 +321,6 @@ B02, B03, B04, B05, B07 ve B08'de "09'da kesinleşir" denen her eşik için geç
 4. **CI olanakları doğrulanmadı:** özel depoda dal koruma kuralı, dakika kotası, macOS ve Windows iş süresi maliyeti, ST ve Arm araç zincirinin CI'da kurulabilirliği. W2'nin ilk işi bunları kayda geçirir; sonuca göre 2.7 ve 2.8 ayarlanır. Dal koruma kullanılamazsa mimar denetimi tek kapıdır.
 5. **QGC hedef mi prova mı** (00 A6) yanıtsız: B06 M18 ve B08'in UDP uç noktası için bu bölümde test işi tanımlanmadı.
 6. **Windows hedef bilgisayarının özellikleri bilinmiyor** (Ö11): MP8 öncesi kademe tabanı varsayımdır.
-7. **Kod gerektiren ölçümler** (M10, M15, MP4'ün gerçek çekirdekli turu) W3 sonrasına kalır; W1 yalnız yer tutucu yükle ön bilgi verir.
+7. **Kod gerektiren ölçümler** (M10, M15, MP4'ün gerçek çekirdekli turu) W3 sonrasına kalır; W0 yalnız yer tutucu yükle ön bilgi verir.
 8. **Linux CI işi:** R09 uyarı çeşitliliği için ek bir Linux işi önerir; K4 yalnız macOS ve Windows'u kapsadığı için eklenmesi mimar kararıdır, eklenmedi.
 9. **Self-hosted kartlı runner** kurulmadı; kartlı testler Mac'te betikle koşar. İleride istenirse ayrı karar.
