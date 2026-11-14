@@ -52,6 +52,16 @@ Godot API davranışına ilişkin her iddia (ör. `RenderingServer.force_draw`, 
 
 G2 ya da G3 geçmezse zorlamadan raporla: hangi durumda hangi yol ne yaptı (kare durdu mu, yavaşladı mı, içerik bayatladı mı). "Geçmedi" geçerli bir sonuçtur ve yedek kamera yolu kararını tetikler.
 
+### İlk turdan sonra (mimar, 2026-11-14)
+
+İlk tur yarım kaldı: Mac pildeyken kapağı kapandı ve uykuya girdi; `force_draw` yolunun 5 dakikalık koşuları yapılamadı. Kalan iş ve netleştirmeler:
+
+- **Koşu koşulları (şart):** Mac prize takılı, kapak açık, ekran uyanık; koşular boyunca kullanıcı masaüstünü (Space) değiştirmez. Koşu süresince uykuyu engellemek için `caffeinate` kullanılır (ayar değiştirmez). Kalan koşular: `tools/olcum/mp6/kampanya.sh` (yaklaşık 70 dakika; tam ekran koşusu ekranı 5 dakika kaplar). Kullanıcıya önceden haber verilir.
+- **"Gizli" durumu:** uygulamanın gizlenmesi (Cmd+H eşdeğeri) olarak tanımlanır; Godot 4.7.2 ana pencereyi içeriden gizleyemiyor.
+- **G3 gölge ölçütü:** gölgeli bölgenin parlaklık oranı ≤ 0,75 (ilk turda ölçümden önce donduruldu; kabul edildi).
+- **İndirme özeti:** resmî dağıtım SHA-512 yayımlıyor; SHA-512 ile ya da sürüm varlığının yayımlanan özetiyle karşılaştırma yeterlidir.
+- Yinelenecekler: yol (a) görünür ve tam ekran; yol (b) beş durumun hepsi; 1280 × 720 ve asenkron geri okumanın tam süreli ölçümü.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp6/**`, `docs/olcumler/MP6-godot-kamera.md`, gerekirse `.gitignore` (Godot'nun `.godot/` önbelleği ve ham veri için ek satır).

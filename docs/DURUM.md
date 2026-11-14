@@ -17,7 +17,11 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
 - **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
 - **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
-- **W0 durumu (2026-11-14, oturum kullanıcı isteğiyle durduruldu):** W0-MP1a tamamlandı, dal `olcum/mp1-arac-zinciri` gönderildi, rapor o dalda `docs/olcumler/MP1-arac-zinciri.md`; K0 (fabrika durumu), flash yedeği ve K1 (derle-yükle-ayıkla) geçti; K2'de 160 MHz ve SMPS/LDO turları hatasız, tolerans karşılaştırması kalibre referans olmadığından yapılamadı (ölçüt mimarca düzeltilecek); sol incelemesi başlatıldı, sonucu henüz işlenmedi; dal main'e birleştirilmedi. W0-MP6a (Godot kamera) koşuları sürerken oturum durdu: çalışma kopyası `olcum/mp6-godot-kamera` dalında, commit'lenmedi, ham veri yerel önbellekte; rapor yazılmadı. W0-MP7a (sonar süresi) kullanıcı isteğiyle başlamadan durduruldu; görev belgesi hazır.
+- **W0 durumu (2026-11-14, oturum kullanıcı isteğiyle durdu; çalışan agent yok):**
+  - **W0-MP1a (kart araç zinciri):** dal `olcum/mp1-arac-zinciri`. K0, flash yedeği ve K1 geçti; 160 MHz ve SMPS/LDO turları hatasız. sol incelemesi yapıldı (`docs/olcumler/inceleme/MP1-sol.md`, o dalda): ölçüm hesaplarını ve yedeği doğruladı; 7 bulgu (5 kritik, 2 önemli). En önemlisi: STM32U59x/5Ax'te 160 MHz'e geçişte geçici AHB ÷2 adımı eksik (ürün yazılımı ve bölüm 01 §2.2 için de geçerli). Düzeltme turu başlatılmadı; kapsamı ve düzeltilmiş K0/K2 ölçütleri `docs/gorevler/W0-MP1a.md` içinde.
+  - **W0-MP6a (Godot kamera):** dal `olcum/mp6-godot-kamera`, rapor o dalda `docs/olcumler/MP6-godot-kamera.md`. Yarım: Mac pildeyken kapağı kapandı ve uykuya girdi. Ön sonuç: olağan çizim döngüsü pencere örtülü, gizli ve simge durumundayken 5 dakika boyunca kare üretmedi; `force_draw` yolu kısa koşularda (10–25 s) kare kaybı olmadan ve görünür referansla bit düzeyinde aynı içerikle üretti, 5 dakikalık koşular yapılamadı; 640 × 480 geri okuma p99 6,40 ms (300 s); başsız kipte kare yok. G1–G3 tamamlanamadı, G4 geçti. Kalan koşular `docs/gorevler/W0-MP6a.md` içinde (prize takılı, kapak açık, yaklaşık 70 dakika).
+  - **W0-MP7a (sonar süresi):** kullanıcı isteğiyle başlamadan durduruldu; görev belgesi hazır.
+  - Yerel çalışma kopyaları (`.claude/worktrees/` altında iki dizin) ve ham veri önbelleği duruyor; depoya girmez.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
 ### Bölüm durumu
@@ -36,7 +40,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. Devam edildiğinde önce MP1 sol incelemesinin sonucu işlenir ve MP6a raporu tamamlanıp kaydedilir; sonra MP7a başlatılır.
+0. Devam edildiğinde, sırayla: (1) MP1a düzeltme turu; (2) MP6a'nın kalan koşuları (kullanıcıya haber verilerek); (3) MP7a; sonra sol yazma denemesi, MP2–MP5, MP8 betiği. MP1a ve MP6a'nın mimari için bulguları (saat geçiş dizisi, Picolibc yokluğu, ST örneklerinin PLL kaynağı, `get_image()` RGB8 döndürmesi, olağan çizim döngüsünün görünmeyen pencerede durması) açık bulgular kaydına işlenecek.
 1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Sürüyor: MP1a, MP6a. Sırada: MP7 sonar süresi, sol yazma denemesi, MP2–MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
@@ -65,6 +69,13 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · W0: MP1a incelendi, MP6a yarım, oturum durdu
+
+- MP1a: sol incelemesi 7 bulgu verdi (5 kritik, 2 önemli); en önemlisi 160 MHz geçişinde eksik geçici AHB ÷2 adımı. Düzeltme turu bekliyor.
+- MP6a: olağan çizim döngüsü görünmeyen pencerede kare üretmedi; `force_draw` kısa koşularda bit düzeyinde aynı kare üretti; G1–G3 tamamlanamadı, G4 geçti.
+- MP7a başlamadan durduruldu; görev belgesi hazır.
+- Sıra: MP1a düzeltme turu, MP6a kalan koşular, MP7a; ölçüm bulguları açık bulgular kaydına işlenecek.
 
 ### 2026-11-14 · W0: MP1a tamam, oturum durduruldu
 
