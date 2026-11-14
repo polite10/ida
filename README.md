@@ -4,7 +4,7 @@ Tek bir hibrit insansız deniz aracı (su üstünde seyreden ve dalabilen tek ar
 
 ## Durum
 
-**Araştırma aşaması tamamlandı.** Bu depoda henüz kod yok. On üç araştırma raporu yazıldı, her biri bağımsız bir model tarafından doğrulandı ve düzeltmeler tek belgede toplandı. Mimari iskelet yazıldı (`docs/mimari/00-iskelet.md`, taslak) ve bölümler yazılmakta; sıradaki adım mimarinin onayı; kod geliştirmeleri onun onayından sonra bu depoya eklenecek.
+**Araştırma aşaması tamamlandı.** Bu depoda henüz kod yok. On üç araştırma raporu yazıldı, her biri bağımsız bir model tarafından doğrulandı ve düzeltmeler tek belgede toplandı. Mimari iskelet ve dokuz bölüm taslak olarak yazıldı (`docs/mimari/`); incelemelerden çıkan açık bulgular `docs/mimari/acik-bulgular.md` belgesinde toplandı; kullanıcı onayı bekleniyor. Kod yok; kod geliştirmeleri onaydan sonra bu depoya eklenecek.
 
 Proje bir araştırma ödevidir; bir yarışmaya hazırlık değildir. Raporlar başlangıçta yarışma varsayımıyla yazıldı; yarışma kurallarına dayalı çıkarımlar tasarımı bağlamaz.
 

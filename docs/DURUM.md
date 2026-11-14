@@ -7,12 +7,10 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 ## Şu an
 
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
-- **Mimari iskelet sürüm 0.7** (`docs/mimari/00-iskelet.md`, taslak, kullanıcı onayı bekliyor). 0.4: gövde referans noktası sabit geometrik nokta; aralık boyunca toplanan ölçümlerin zaman damgası. 0.5: sanal emniyet girdileri ve fırlatıcı durum geri okuması; olay kimliğinin kapsamı; sonar tarama satırının zaman damgası. 0.6: kamera algılama bileşeninin bağlantısı A8; malzeme değerlerinin yeri; türetilmiş ağların depoya girmemesi. **0.7: mimar, 0.5'teki "torpido itkilidir (yaklaşık 3 m/s, 10 m menzil)" kararını geri aldı; 0.5'teki itkili torpido ifadesi artık geçerli değil.** Torpido yeniden itkisiz, kısa menzilli basit bir simülasyon nesnesidir; itkili torpido ve hareketli hedefe önleme hesabı proje kapsamı dışındadır; sonarın göremediği yakın bölgeyle çakışma kabul edilen bir sınırdır. 03 numaralı bölümün kapsamı emniyet zinciri ve arayüzlerle sınırlandı.
-- **Dokuz mimari bölümün hepsi yazıldı.** 08 (laboratuvar uygulaması) ve 09 (test ve iş akışı) kısa biçimde yazıldı; sol incelemesinden geçmedi. 01 (sürüm 0.2) ve 05 için düzeltme turu tamamlandı.
-- **Süreç kararı (mimar, 2026-11-14):** inceleme ve düzeltme döngüsü yakınsamadığı ve her tur yüz binlerce token tükettiği için döngü kesildi; başka düzeltme turu başlatılmayacak. Kapanmamış bulgular tek bir açık bulgular kaydında (`docs/mimari/acik-bulgular.md`, henüz yazılmadı) toplanacak; her bulgu kodlamadan önceki arayüz sözleşmesinde ya da ilgili uygulama işinde kapatılacak. Mimari "taslak ve bilinen açık bulgular" durumunda kullanıcı onayına sunulacak.
-- **Süren işler (bu kayda dahil değil):** 01 ve 05 için sol ikinci incelemesi.
-- **03 durumu:** düzeltme yapılmadı; ilk taslak duruyor (kapsam emniyet zinciri ve arayüzlerle sınırlı, iskelet 0.7).
-- **Çalışma kuralı (mimarın önerisi, karar değil):** inceleme-düzeltme döngüsü kesildi; kalan bulgular açık bulgular kaydında toplanır ve sözleşme ya da uygulama aşamasında kapatılır.
+- **Mimari çalışması taslak olarak tamamlandı, kullanıcı onayı bekliyor:** iskelet 0.7 (`docs/mimari/00-iskelet.md`), dokuz bölüm taslağı, incelemeler ve açık bulgular kaydı (`docs/mimari/acik-bulgular.md`). İskelet 0.7'de mimar itkili torpido kararını geri aldı: torpido itkisiz, kısa menzilli basit simülasyon nesnesidir; 03 kapsamı emniyet zinciri ve arayüzlerle sınırlıdır.
+- **Açık bulgular kaydı:** 233 bulgu (AB-001…AB-233); 224'ü açık (33 kritik, 94 önemli, 8 küçük, 89 önem belirtilmemiş), 9'u kapsam dışı. En çok bulgu A1 sözleşmesinde (47), A4 sözleşmesinde (26) ve atış kontrol uygulamasında (23). Belge ayrıca 29 satırlık bölümler arası uyumsuzluk tablosu ve 26 maddelik iskelet önerisi listesi içerir.
+- **sol ikinci incelemeleri:** 01 (`inceleme/01-sol-2.md`): koşulsuz kabul yok; açık bulgularla sözleşme aşamasına taşınabilir; 4 kritik, 12 önemli, 1 küçük yeni bulgu. 05 (`inceleme/05-sol-2.md`): koşulsuz kabul yok; 1 kritik, 15 önemli yeni bulgu; yeni belge düzeltme turu önerilmiyor.
+- **Süreç kararı (mimar, 2026-11-14):** inceleme-düzeltme döngüsü kesildi; kapanmamış bulgular sözleşme ya da uygulama aşamasında kapatılır.
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
 - **Kod yok.** Kod dizinleri mimari belge onaylanınca eklenecek.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
@@ -21,11 +19,11 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 | Bölüm | Yazım | İlk inceleme | Düzeltme | İkinci inceleme |
 |---|---|---|---|---|
-| 01 kart yazılımı | var | var (kabul yok) | yapıldı (0.2) | ikinci inceleme sürüyor |
+| 01 kart yazılımı | var | var (kabul yok) | yapıldı (0.2) | var: koşulsuz kabul yok; 4 kritik, 12 önemli, 1 küçük yeni bulgu |
 | 02 ortak çekirdek | var | var | yapıldı | var: 4 kritik açık, kabul yok |
 | 03 atış kontrol | var | var: 12 kritik açık, kabul yok | yapılmadı | - |
 | 04 simülatör çekirdeği | var | var | yapıldı | var: kritik yok, 5 önemli açık |
-| 05 sensörler ve sonar | var | var (kabul yok) | yapıldı | ikinci inceleme sürüyor |
+| 05 sensörler ve sonar | var | var (kabul yok) | yapıldı | var: koşulsuz kabul yok; 1 kritik, 15 önemli yeni bulgu |
 | 06 protokol ve HIL | var | var (kabul yok) | yapıldı (0.2) | var: 5 kritik açık, kabul yok |
 | 07 görselleştirme | var | var: 8 kritik açık, kabul yok | yapılmadı | - |
 | 08 laboratuvar uygulaması | var | - | - | - |
@@ -33,10 +31,10 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-1. Açık bulgular kaydının derlenmesi (`docs/mimari/acik-bulgular.md`).
-2. Mimarinin kullanıcı onayı ("taslak ve bilinen açık bulgular").
-3. Arayüz sözleşmeleri ve ölçüm işleri; açık bulgular bu aşamada kapatılır.
-4. Kodlama iş akışı (görev belgesi, dal ve pull request, yazan/inceleyen farklı aile, Mac ve Windows'ta otomatik derleme ve test, ölçüm kaydı). Kullanıcıya önerildi; onayı bekleniyor.
+1. Mimarinin kullanıcı onayı ("taslak ve bilinen açık bulgular").
+2. Arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır.
+3. Ölçüm işleri (`docs/mimari/09-test-ve-is-akisi.md`).
+4. Uygulama dalgaları (kodlama iş akışı; kullanıcı onayı bekleniyor).
 
 ## Kodlamanın ilk işleri: ölçümler
 
@@ -58,6 +56,12 @@ Web araştırmasıyla kapanmayan belirsizlikler. Sonuçları çıkmadan ilgili t
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-14 · açık bulgular kaydı, mimari onaya hazır
+
+- `docs/mimari/acik-bulgular.md` yazıldı: 233 bulgu, 224'ü açık (33 kritik, 94 önemli, 8 küçük, 89 önem belirtilmemiş), 9'u kapsam dışı; 29 satırlık uyumsuzluk tablosu ve 26 maddelik iskelet önerisi listesi.
+- sol ikinci incelemeleri kayda geçti: `inceleme/01-sol-2.md` ve `inceleme/05-sol-2.md`.
+- Mimari çalışması taslak olarak tamamlandı; kullanıcı onayı bekleniyor. Sıradaki: onay, arayüz sözleşmeleri, ölçüm işleri.
 
 ### 2026-11-14 · dokuz bölüm tamam, döngü kesildi
 

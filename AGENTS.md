@@ -37,9 +37,10 @@ Windows hedef bilgisayarı düşük donanımlıdır; simülatör kısılabilir k
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
 2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; taslak, kullanıcı onayı bekliyor.
-3. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
-4. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
-5. **`docs/research/dogrulama/NN-codex.md`** — her raporun bağımsız doğrulaması.
+3. **`docs/mimari/acik-bulgular.md`** — mimari bölümlerinin incelemelerinde kapanmamış bulgular; her biri kapatılacağı sözleşme ya da uygulama işiyle etiketli.
+4. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
+5. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
+6. **`docs/research/dogrulama/NN-codex.md`** — her raporun bağımsız doğrulaması.
 
 Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham rapordan bilgi alacaksan önce o raporun doğrulamasına ve 00'daki düzeltme tablosuna bak.
 
@@ -94,7 +95,7 @@ Her agent işe sıfır bilgiyle başlar; depodaki dosyalar projenin tek kalıcı
 
 ```
 docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
-docs/mimari/               mimari belgeler (iskelet taslak)
+docs/mimari/               mimari belgeler: iskelet, dokuz bölüm, incelemeler, açık bulgular (taslak)
 docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
 docs/research/dogrulama/   bağımsız doğrulamalar
 tools/                     yardımcı betikler
