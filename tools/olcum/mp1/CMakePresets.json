@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "mp1-fw",
+      "displayName": "MP1 aygıt yazılımı (hata ayıklama, -Og -g3)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/fw",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP1_HEDEF": "fw",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-Og -g3",
+        "CMAKE_ASM_FLAGS_DEBUG": "-g3"
+      }
+    },
+    {
+      "name": "mp1-pc",
+      "displayName": "MP1 PC seri aracı",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc",
+      "cacheVariables": {
+        "MP1_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mp1-fw", "configurePreset": "mp1-fw" },
+    { "name": "mp1-pc", "configurePreset": "mp1-pc" }
+  ]
+}

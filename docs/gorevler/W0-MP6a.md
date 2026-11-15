@@ -62,6 +62,22 @@ G2 ya da G3 geçmezse zorlamadan raporla: hangi durumda hangi yol ne yaptı (kar
 - **İndirme özeti:** resmî dağıtım SHA-512 yayımlıyor; SHA-512 ile ya da sürüm varlığının yayımlanan özetiyle karşılaştırma yeterlidir.
 - Yinelenecekler: yol (a) görünür ve tam ekran; yol (b) beş durumun hepsi; 1280 × 720 ve asenkron geri okumanın tam süreli ölçümü.
 
+### Tam kampanyadan sonra: düzeltme turu (mimar, 2026-11-15; 1. tur)
+
+Tam kampanya 2026-11-14 23:12 – 2026-11-15 00:21 arasında kesintisiz koştu. sol incelemesi: `docs/olcumler/inceleme/MP6-sol.md` (dal `olcum/mp6-godot-kamera`); 2 kritik, 4 önemli bulgu. Mimarın kararları:
+
+- **Yol (a) (olağan çizim döngüsü) birincil yol olarak elendi:** örtülü, gizli ve simge durumlarında 5 dakika boyunca kare üretmedi. Geçersiz kalan `a_gorunur` ve `a_tamekran` koşuları **yinelenmez**; raporda "geçersiz, yinelenmedi; yol (a) tam ekran sonucu doğrulanmadı" diye yazılır ve §6'daki "dört durumda" genellemesi üç doğrulanmış duruma indirilir (sol md.5).
+- **sol md.1:** `b_gorunur` bir kez daha, kesintisiz 300 saniye, görünürlük doğrulamasıyla koşulur (kullanıcıya haber verilir; 5 dakika masaüstü değişmez). G1 ve G3'ün görünür referansı bu koşudan alınır; diğer durumların kareleri bu referansla yeniden karşılaştırılır. Önceki koşudaki 11 saniyelik çizimsiz aralık açıklanamazsa "doğrulanmadı"da kalır.
+- **sol md.2, md.4, md.6:** rapor ve çözümleme düzeltmeleri: asenkron 1280 × 720 p99 değeri ham özetten; koşu başına gerçek referans ve karşılaştırılan/karşılaştırılmayan kare sayısı; konumu bulunamayan kare sayısı tabloya girer ve G3, bütün karelerde konumun bulunmasını şart koşar.
+- **sol md.3:** ikinci okuma "yeni çizim olmadan yinelenen eşzamanlı geri okuma" olarak adlandırılır; "saf aktarım" ve "büyük kısmı çizim beklemesi" ifadeleri çıkarılır. Hazır olma zamanı ilk okumadan hemen sonra kaydedilecek biçimde düzeltilir ve 640 × 480 eşzamanlı okuma koşusu (2 dakika) yinelenir.
+- "Durum tutuldu 299/299" ifadesi kayıt aralığı sayısı olarak yazılır; süre zaman damgalarından hesaplanır. Doğrulanmayanlara eklenir: operatör zamanı ile kamera zamanı arasında gidip gelen çizim düzeni (07 §2.4) bu prototipte sınanmadı.
+- `docs/olcumler/inceleme/MP6-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
+
+**İkinci sol incelemesinden sonra (mimar, 2026-11-15; 2. ve son tur):** kritik bulgu yok, iki önemli bulgu (`docs/olcumler/inceleme/MP6-sol-2.md`).
+
+- **Güç koşulu (sol-2 md.2):** yeni görünür referans (`b_gorunur_2`) ve yinelenen koşular pilde alındı. "Prize takılı" şartının amacı uykuyu önlemekti; koşular `caffeinate -dims` altında kesintisiz tamamlandığı ve kare sayımı, kimlik sürekliliği ile bit düzeyinde eşitlik güç kaynağına bağlı bir büyüklük olmadığı için **mimar pildeki kanıtı G1 ve G3 için kabul eder**. Süre ölçümleri (G4) prizdeki gece kampanyasına dayanır. Rapor bu sapmayı ve kabulü G1/G3 hükmünde belirtir.
+- **Tam ekran doğrulaması (sol-2 md.1):** çözümleme ekran sınırlarını ölçmediği için "başka uygulama tam ekranda" durumunun sürdüğü kanıtlanmış sayılmaz; yol (b)'nin tam ekran sonucu da "doğrulanmadı"ya indirilir (üretilen kare sayısı ve içerik eşitliği gözlem olarak kalır). G2'nin üç zorunlu durumu (örtülü, gizli, simge) etkilenmez. Tam ekran durumu Windows turuyla birlikte yeniden ölçülür.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp6/**`, `docs/olcumler/MP6-godot-kamera.md`, gerekirse `.gitignore` (Godot'nun `.godot/` önbelleği ve ham veri için ek satır).
