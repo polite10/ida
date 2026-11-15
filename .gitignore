@@ -37,3 +37,6 @@ vcpkg_installed/
 
 # Simülasyon kayıtları (büyük dosyalar depoya girmez)
 *.mcap
+
+# Ölçüm prototiplerinin derleme dizinleri ve ham verisi (ham veri $IDA_CACHE altında tutulur)
+tools/olcum/*/derleme/

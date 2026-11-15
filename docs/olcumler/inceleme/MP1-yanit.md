@@ -1,0 +1,32 @@
+# MP1a — sol incelemesine yanıt (düzeltme turu 1)
+
+İnceleme: [MP1-sol.md](MP1-sol.md). Rapor: [../MP1-arac-zinciri.md](../MP1-arac-zinciri.md). Tarih: 2026-11-15. Uygulayan: `ida-uygulayici` (Opus).
+
+| # | Önem | Durum | Yer | Ne yapıldı / gerekçe |
+|---|---|---|---|---|
+| 1 | kritik | **Giderildi** (dayanağın bir kısmı doğrulanmadı) | `tools/olcum/mp1/fw/main.c` (`saat_kur`); rapor 3.4 | PLL1'e geçiş artık AHB ÷2 ile yapılıyor (`HAL_RCC_ClockConfig` bölücü büyürken `HPRE`'yi SYSCLK geçişinden önce yazar), DWT ile en az 5 µs bekleniyor, sonra AHB ÷1. Açılış satırı geçişi kaydediyor: `gecis_hpre=0x8`, `gecis_bekleme_cyc=420` (80 MHz'te 5,25 µs). Dayanak: ST teknik moderatörünün 2024-03-08 yanıtı (5 µs; RM0456 revizyonu belirtilmemiş). AN5766 sayfası ve RM0456 PDF'i bu ortamdan açılamadı; AN5766'nın 3 µs'si sol'un aktarımı, **doğrulanmadı**. İki süreden büyüğü kullanıldı. K1 (iki temiz derleme + yükleme, gdb/IWDG) ve K2 (SMPS ve LDO, 640 s) yeni imajla yinelendi: K1 geçti; iki K2 koşusu da çözümleyicide `GEÇERLİ KOŞU` (637 s pencere, sıfırlama, hata, boşluk ve UART hatası yok, `REGS` eşleşti). |
+| 2 | kritik | **Giderildi** | `yukle.sh`, `k1-derle-yukle.sh`, `k2-tur.sh`, `k2-iki-tur.sh`, `pc/mp1_seri.cpp` | Programlayıcı çıktısı önce dosyaya yazılıp çıkış kodu saklanıyor; kod ≠ 0 ya da "Download verified successfully" yoksa `yukle.sh` 1 ile çıkar. K1 ve K2 betikleri yükleme, kayıt ve çözümleme çıkış kodlarını denetler, ilk hatada durur; K2 eski imajla sürmez. Çözümleyici istenen regülatörü (`SMPS`/`LDO`) alır: pencere o regülatörle açılan imajın `B` satırından başlar ve her `P` satırında `regs=<istenen>` aranır. |
+| 3 | kritik | **Giderildi** (yedek yeniden okunmadı) | `yedek-al.sh`, yeni `yedek-dogrula.sh`, `yukle.sh` | `yedek-al.sh` her okumanın çıkış kodunu, başarı satırını ve 4.194.304 baytlık boyutunu ayrı ayrı denetler; hata olursa dosyaları `.gecersiz` adıyla kenara alır ve `TAMAM` işaretini yazmaz. `yedek-dogrula.sh` iki dosyanın tam boyutunu, özet eşitliğini, `SHA256SUMS` tutarlılığını ve okuma günlüklerini denetler; `yukle.sh` bu denetimden geçmeden yüklemez. Mevcut yedek doğrulandı (çıkış 0). Boş bir önbellekle sınandı: `yukle.sh` karta dokunmadan çıkış 3 verdi. Fabrika görüntüsü artık bozuk olduğundan yedek yeniden alınmadı; ilk turdaki okumaların çıkış kodu kaydedilmemişti (raporun "Doğrulanmayanlar" bölümünde). |
+| 4 | kritik | **Giderildi** | `pc/mp1_seri.cpp` (`analiz`, `egim`) | Pencerede yeni açılış, `E` satırı, sıra boşluğu, kesin artmayan çevrim sayacı, geri giden PC zamanı, < 600 s pencere, PLL1/160 MHz olmayan `K`, istenenden farklı `REGS` ya da `uart_hata` ≠ 0 varsa eğim hesaplanmaz, `RED:` satırları basılır, çıkış kodu 1 olur. `sxx > 0` ve sonlu sonuç denetleniyor; sayaç monotonluğu regresyondan önce denendiği için işaretsiz çıkarma sarmaz. Sentetik kayıtlarla sınandı: geçerli koşu kabul edildi, yanlış regülatör ve tur ortasında sıfırlama reddedildi. İlk turun iki kaydı yeni çözümleyiciyle reddedilir (`uart_hata` alanı yok; LDO'da açılış satırı kaybolmuş). Yeni açılış ayrı bir pencere olarak kullanılmaz; koşu geçersiz sayılır. |
+| 5 | kritik | **Giderildi** | rapor 3.4 ("İki PC saati") | "Referans belirsizliğinin alt sınırı" ifadesi kaldırıldı. Yeni ifade: iki Mac saati arasında bağıl hız farkı ölçüldü; mutlak referans hatası ve belirsizlik sınırı belirlenmedi. K2 hükmü düzeltilmiş ölçüte göre yeniden verildi (tolerans karşılaştırması ölçütten çıkarıldı; oran yalnız raporlanır). |
+| 6 | önemli | **Giderildi** | rapor 3.4 tablo | `PLL1M[11:8]` = 0x3 → M = 4 olarak düzeltildi; `PLL1DIVR`'ın ham alanları (79/7/1/1) de yazıldı. |
+| 7 | önemli | **Giderildi** | rapor 3.4, 3.5, 5; `fw/main.c` | Rapor "kodun açılışta yaptığı" ile "kayıtta gözlenen"i ayırıyor. Gerçekten denenen saat hatası yolunun yalnız adım 6 olduğu, HSE açılmaması ve PLL kilitlenmemesinin denenmediği yazıldı. UART hata sayacı her `P` satırına (`uart_hata=`) eklendi ve çözümleyici sıfırdan farklıysa koşuyu reddediyor. İlk turun LDO kaydında açılış geri okumasının bulunmadığı tarihçe bölümünde belirtildi; düzeltme turunda kayıt yüklemeden önce açıldığı için iki turun açılış satırları kayıtta. |
+
+## İkinci tur
+
+İnceleme: [MP1-sol-2.md](MP1-sol-2.md), "Yeni bulgular". Tarih: 2026-11-15.
+
+| # | Önem | Durum | Yer | Ne yapıldı |
+|---|---|---|---|---|
+| 1 | kritik | **Giderildi** | `tools/olcum/mp1/pc/mp1_seri.cpp` (`alan`, `t_coz`, `analiz`) | İlk T sırası 1 olmalı; sıra 0 ve son T'den önceki her 60'ın katı için tam bir `K` ve bir `P` aranır; `T` satırları ve `sira`, `hesap_hz`, `uart_hata`, `saat_adim` alanları kesin sayısal çözülür (bozuk değer 0 sayılmaz, eksik ya da bozuk alan reddedilir). Sınandı: SMPS kaydından ilk dokuz T çıkarılınca "ilk T sırası 1 değil" ile ret; `uart_hata=abc` ile ret; `K sira=300` silinince ret. 2026-11-15 SMPS ve LDO kayıtları yine `GEÇERLİ KOŞU`; oranlar değişmedi (−6,668 / −3,829 ppm). |
+| 2 | kritik | **Giderildi** | `k1-hata-ayikla.sh`, `gdb/k1-iwdg.gdb`, `k2-iki-tur.sh`; rapor §2 | gdb ve kayıt çıkış kodları saklanıyor; gdb betiği `SIFIRLAMA_VAR`'da 2 ile çıkıyor; betik gdb/kayıt hatasında, `SIFIRLAMA_YOK` ya da `main`'e uzanan yığın izi yoksa veya karşı denemede `iwdgrst=1` gelmezse 1 dönüyor. `k2-iki-tur.sh` SMPS turu başarısızsa LDO'ya geçmiyor; rapor ifadesi buna göre yazıldı. Kartta bir kez koşuldu: betik çıkış 0 (gdb 0, kayıt 0, `SIFIRLAMA_YOK`, `iwdgrst=1`). |
+| 3 | önemli | **Giderildi** | rapor §3.4 | "Her adımda MSIS 4 MHz'te kalır" ifadesi kaldırıldı: hata sonrasında ölçüm o anki saat durumunda durdurulur; MSIS'te kalma yalnız adım 1–4 için yazıldı, adım 5'te MSIS ya da PLL1 (÷2), adım 6–7'de PLL1. |
+
+Rapora ayrıca AN5766'nın 3 µs değerinin (ST HTML metni) ve ES0553 Rev 6 listesinin (0x3001 X, 0x3003 W; 0x3000 yok) sol ikinci incelemesinde doğrulandığı notu eklendi.
+
+## Notlara yanıt
+
+- **01 §2.2'ye taşıma:** bölüm 01'e dokunmak bu işin dosya sahipliğinde değil; raporun 4. başlığı (bulgu 2) mimara iletir.
+- **`PLLRGE` 4–8 MHz:** sabitlenen HAL'in `__HAL_RCC_PLL_VCIRANGE` açıklaması rapora birincil yazılım kaynağı olarak eklendi; RM0456 tablosunun doğrulandığı iddia edilmedi.
+- **`REV_ID` ve ES0553:** rapordaki doğrulanmamış "Rev 5: 0x3001/0x3002" ifadesi geri alındı; yerine sol'un okuduğu ES0553 Rev 6 değerleri (0x3001 X, 0x3003 W) kaynak bağlantısıyla yazıldı. PDF bu ortamdan açılamadığı için "tarafımdan doğrulanmadı" işaretli.
+- **Kapsam:** ön tur; M4/M6/M21'in bütünü kapanmış sayılmıyor (raporun girişi ve 5. başlık).
