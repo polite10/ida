@@ -20,6 +20,7 @@ Bunlar kullanıcı tarafından verilmiştir; yeniden tartışmaya açma, alterna
 |---|---|
 | Araç | Tek hibrit araç: yüzey + dalış |
 | Kart | STM32U5A9J-DK; bu aşamadaki tek hedef kart |
+| Bağlantı | Tek kablo: yalnız kartın ST-LINK portu (yükleme, hata ayıklama ve kart–simülatör bağlantısı sanal seri porttan); kullanıcı USB girişi kullanılmaz (K17) |
 | Odak | Simülasyon ortamını kurup bu kartta çalıştırmak. Ardıl kart, başka mikrodenetleyici ya da gerçek sensör tedariki gündem değildir; önerilmez |
 | Kart yazılımı ve ortak çekirdek | C |
 | PC tarafı (simülatör, laboratuvar uygulaması) | C++ |

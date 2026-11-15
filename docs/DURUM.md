@@ -1,11 +1,12 @@
 # Durum
 
-Son güncelleme: 2026-11-15
+Son güncelleme: 2026-11-16
 
 Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bittiğinde güncellenir. Kararlar ve düzeltmeler için [research/00-duzeltmeler-ve-kararlar.md](research/00-duzeltmeler-ve-kararlar.md) belgesine bakılır.
 
 ## Şu an
 
+- **Tek kablo kararı (K17, 2026-11-16):** sistem yalnız kartın ST-LINK portuyla çalışır; yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) sanal seri porttan (USART1) geçer; kullanıcı USB girişi (USB HS) kullanılmaz; MP2 ve kart tarafı USB yığını plandan çıktı; kontrol hızı ve bariyer bütçesi MP3'e göre belirlenir.
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
 - **Mimari çalışması tamamlandı; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15).** Belgeler taslak sürüm numaralarını korur; açık bulgular sözleşme ve uygulama işlerinde kapatılır: iskelet 0.7 (`docs/mimari/00-iskelet.md`), dokuz bölüm taslağı, incelemeler ve açık bulgular kaydı (`docs/mimari/acik-bulgular.md`). İskelet 0.7'de mimar itkili torpido kararını geri aldı: torpido itkisiz, kısa menzilli basit simülasyon nesnesidir; 03 kapsamı emniyet zinciri ve arayüzlerle sınırlıdır.
 - **Açık bulgular kaydı:** 233 bulgu (AB-001…AB-233); 224'ü açık (33 kritik, 94 önemli, 8 küçük, 89 önem belirtilmemiş), 9'u kapsam dışı. En çok bulgu A1 sözleşmesinde (47), A4 sözleşmesinde (26) ve atış kontrol uygulamasında (23). Belge ayrıca 29 satırlık bölümler arası uyumsuzluk tablosu ve 26 maddelik iskelet önerisi listesi içerir.
@@ -15,12 +16,13 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **`tools/sol-incele.sh`:** Claude'un yazdığı belge ya da kodun sol incelemesini başlatan betik (ilk ve ikinci inceleme kipi). **sol yazma denemesi geçti (W0-SOL1, PR #3, 2026-11-15):** sol görev belgesine ve dosya sahipliğine uydu, commit atmadı, çalıştıramadığı ELF testlerini "atlandı" diye dürüstçe raporladı; `ida-inceleyici` 8 bulgu verdi (1 kritik: ELF arşivi denetlenemiyordu), sol bir düzeltme turunda hepsini giderdi; mimar bağımsız koşuyla doğruladı (58 denetim geçti). Sonuç: 09 §2.9'daki sol yazım işleri sol'da kalır; sol'a yazım görevi verilirken gereken araç zinciri ortamına (`PATH`) eklenir. Ürün: `tools/denetim/bellek-ayirma.sh`.
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
 - **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
-- **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
+- **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); tek kablo yeterli (K17).
 - **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
 - **W0 durumu (2026-11-15):**
   - **W0-MP1a tamamlandı ve main'e birleşti** (PR #1). Rapor `docs/olcumler/MP1-arac-zinciri.md`, kod `tools/olcum/mp1/` (atılabilir prototip). K0, yedek, K1, K2 düzeltilmiş ölçütlere göre geçti; sol iki tur inceledi, kritik bulgu kalmadı. Mimari için bulgular (açık bulgular kaydına işlenecek): STM32U59x/5Ax'te 160 MHz'e geçişte geçici AHB ÷2 ve en az 5 µs bekleme gerekli; Picolibc CubeIDE 14.3.rel1 macOS paketinde yok; ST kart örneklerinin çoğu PLL'i MSIS'ten besliyor; kart revizyonu `REV_ID` 0x3000 ES0553 Rev 6 listesinde yok.
   - **W0-MP6a tamamlandı ve main'e birleşti** (PR #2). Rapor `docs/olcumler/MP6-godot-kamera.md`, kod `tools/olcum/mp6/`. G1–G4 geçti: `force_draw(false, dt)` + `SubViewport` `UPDATE_ONCE` + eşzamanlı geri okuma yolu görünür, örtülü, gizli ve simge durumlarında 300 s boyunca 9000/9000 kare üretti, görünür referansla bit düzeyinde aynı; 640 × 480 geri okuma p99 5,69 ms; olağan çizim döngüsü görünmeyen pencerede kare üretmedi (elendi). Doğrulanmadı: tam ekran durumu, Windows, 5 dakikadan uzun koşular, GDExtension. sol iki tur inceledi, kritik bulgu kalmadı. Mimari için bulgular (açık bulgular kaydına işlenecek): kamera `force_draw` ile ana iş parçacığından çizdirilmeli; `get_image()` RGB8 döndürüyor; asenkron geri okuma gizli pencerede ≈ 70 ms.
-  - **W0-MP7a (sonar süresi):** ilk tur ve sol incelemesi (4 kritik, 2 önemli) tamam; süre tablosu geçerli bulundu; bölüm 05 §2.4.3'ün saçıcı hücresi kuralının hatalı olduğu (enerji ışın sayısıyla sınırsız büyüyor) sol tarafından bağımsız doğrulandı. Mimar hücre kuralını ve yakınsama büyüklüklerini `docs/gorevler/W0-MP7a.md` içinde yeniden tanımladı; düzeltme turu (model düzeltmesi, yeniden yakınsama ve daraltılmış süre taraması) sürüyor; dal `olcum/mp7-sonar-suresi` henüz commit'lenmedi.
+  - **W0-MP7a tamamlandı ve main'e birleşti** (PR #4). Sonuç: sade kademe (yalnız doğrudan yol, kutu başına benek) 5 000 ışınla dondurulmuş yakınsama ölçütünü sağlıyor ve tek iş parçacığında p99 0,93 ms (7 m) / 0,79 ms (50 m); tam kademe (eşevreli hücreler, çok yollu yayılım) ölçütü taranan en büyük ışın sayısına (≈ 2,56 milyon) kadar sağlamadı; `N` = 1 280 000'de tek iş parçacığı p99 504,4 ms (bütçe 9,33–25,17 ms); bütçeye giren ışın sayısı tek iş parçacığında 20 000–40 000, 11 iş parçacığında 80 000; azaltılmış ışın sayısının bilinen hatası raporda (7 m: enerji farkı 20 000'de 0,146, 160 000'de 0,057). Tekrar üretilebilirlik geçti. Mimari için: bölüm 05 §2.4.3 saçıcı hücresi kuralı hatalıydı; yeni kural ve yakınsama tanımı `docs/gorevler/W0-MP7a.md` içinde; iskelet §8 sonar kararı (kartlı çalışmada sade kademe varsayılan, tam ayrıntı yalnız kartsız koşuda) W0 sonunda mimarca işlenecek. sol iki tur inceledi; kapanış mimar kararıyla. Rapor `docs/olcumler/MP7-sonar-suresi.md`.
+  - **W0-MP4a (kartta 400 Hz döngü yükü, yer tutucu çekirdek adımı):** başladı (2026-11-16), sürüyor; görev belgesi `docs/gorevler/W0-MP4a.md`.
   - Yerel çalışma kopyaları (`.claude/worktrees/`) ve ham veri önbelleği depoya girmez.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
@@ -40,8 +42,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. Devam edildiğinde, sırayla: MP7a düzeltme turu, ikinci sol incelemesi, birleştirme; sonra MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
-1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a ve MP6a bitti; sürüyor: MP7a. Sırada: MP2–MP5, MP8 betiği.
+0. MP2 (USB HS) K17 ile plandan çıktı. Sıra: MP4a bitişi, sol incelemesi, birleştirme; MP3 (sanal seri port hızı ve kaybı; artık A1'in tek taşıması); MP5 (mesaj biçimi maliyeti; seri port üzerinden); MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının ve K17'nin iskelete (§3, §8) ve açık bulgulara işlenmesi; sonra W1 sözleşmeler.
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a, MP6a, MP7a bitti; sürüyor: MP4a. Sırada: MP3, MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
 
@@ -63,10 +65,15 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 
 - Windows hedef bilgisayarı: 8 GB bellek, dahili ekran kartı (K16); işlemci bilinmiyor; kalite kademesi tabanı MP8 ile sabitlenecek (Ö11).
 - Bölüm 03'ün dar kapsamlı (yalnız emniyet zinciri ve arayüzler) düzeltme turu için kullanıcı yanıtı bekleniyor.
-- Kartın kullanıcı USB bağlantısı (ikinci kablo) MP2 için bekleniyor.
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-16 · W0: MP7a birleşti, tek kablo kararı (K17), MP4a başladı
+- MP7a main'e birleşti (PR #4); sade kademe bütçeye sığıyor, tam kademe ölçütü sağlamadı; bölüm 05 §2.4.3 hücre kuralı düzeltildi (görev belgesinde).
+- Kullanıcı ikinci USB-C kablosu olmadığını bildirdi: K17 tek kablo kararı; MP2 plandan çıktı, A1 yalnız sanal seri port.
+- MP4a (kartta 400 Hz döngü yükü) başladı; görev belgesi `docs/gorevler/W0-MP4a.md`.
+- İskelet §3, §8 ve bölüm 01/06 güncellemesi W0 sonunda mimarca yapılacak.
+
 ### 2026-11-15 · W0: sol yazma denemesi geçti
 - W0-SOL1 (PR #3) birleşti: `tools/denetim/bellek-ayirma.sh` ve testleri; yazan sol, inceleyen `ida-inceleyici` (8 bulgu, bir düzeltme turu).
 - sol dosya sahipliğine uydu, çalıştıramadığını dürüstçe bildirdi; mimar bağımsız koşuyla 58 denetimi doğruladı.

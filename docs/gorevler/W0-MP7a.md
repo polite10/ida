@@ -76,6 +76,28 @@ S3 geçmezse zorlamadan raporla: hangi `N`, yansıma derecesi ve iş parçacığ
 - `docs/olcumler/inceleme/MP7-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
 - Mimarın tanımında ölçümü engelleyen bir tutarsızlık görürsen uygulamadan önce dur ve bildir; küçük belirsizliklerde en yalın yorumu seçip raporla.
 
+### Düzeltme turundan sonra (mimar, 2026-11-15; 2. ve son tur)
+
+Birinci düzeltme turu modeli mimarın tanımıyla yeniden ölçtü: S1 ve S4 geçti; tam kademede S2, taranan en büyük ışın sayısına (`N` ≈ 2,56 milyon) kadar sağlanmadı (ortalama enerji ve ilinti sağlanıyor, ham varyansın güven aralığı sağlamıyor); S3 geçmedi. Mimarın değerlendirmesi ve bu turun kapsamı:
+
+- **Mimarın tanımındaki hata (sade kademe):** "faz ve benek çarpanı yok" ifadesi yanlıştı; gerçekleşimler arası varyansı yapısal olarak yok ediyor. Düzeltme: sade kademede kutu enerjisi `Σ_j w_j`'dir ve bölüm 05'in **kutu başına benek çarpanı korunur** (gerçekleşim tohumundan, `N`'den bağımsız). Sade kademenin S2 hükmü bu haliyle verilir (ilk ölçüm: `N` = 5 000).
+- **Dondurulmuş ölçüt değiştirilmez.** Tam kademe için S2 "geçmedi", S3 "geçmedi" olarak kalır; ölçüt sonuç görüldükten sonra gevşetilmez. Bunun yerine karar için gereken betimleyici tablo eklenir: tam kademede `N` = 20 000, 40 000, 80 000, 160 000 için **bağımsız referansa göre** `δ_E`, `δ_V`, `δ_C` (aynı tanımlar; `2N` yerine referans) ve benek kontrastı; 7 m ve 50 m. Mevcut veriden hesaplanabiliyorsa yeni koşu yapılmaz; değilse yalnız bu dört `N` için `M = 32` gerçekleşim koşulur. Bu tablo ölçüt değildir; "azaltılmış ışın sayısının bilinen hatası"dır.
+- **Sade kademe süresi:** S2'nin bulduğu `N` ile sade kademenin tek iş parçacığı p99'u (orta sahne, 7 m ve 50 m) tablodan açıkça verilir ve bütçeyle karşılaştırılır.
+- **Sonuç bölümü:** rapor, iskelet §8'deki sonar kararı için girdiyi tek paragrafta toplar: (i) tam kademe dondurulmuş yakınsama ölçütünü gerçek zamanlı bütçede sağlamıyor; (ii) bütçeye giren `N` değerleri ve o `N`'lerdeki bilinen hata; (iii) sade kademenin `N`'si ve süresi. Karar cümlesi yazılmaz (karar mimarındır); Windows için tahmin yazılmaz.
+- `MP7-yanit.md`'ye "İkinci tur" başlığı eklenir. Kod değişikliği yalnız sade kademe beneği ve gerekiyorsa tablo için çözümleme betiğiyle sınırlıdır.
+
+### Kapanış (mimar, 2026-11-16; iki düzeltme turundan sonra)
+
+İkinci sol incelemesi (`docs/olcumler/inceleme/MP7-sol-2.md`): ilk altı bulgu giderildi; tam kademe S2 ve S3 "geçmedi", sade kademe S2 (`N` = 5 000) ve süreleri CSV'lerden doğrulandı; 1 kritik, 2 önemli yeni bulgu. Düzeltme turu sınırı dolduğu için (09 §2.4) iş mimara döndü; kapsam ve tanım şöyle kapatılır, yeni ölçüm yapılmaz:
+
+- **Model tanımının düzeltilmesi (sol-2 md.1):** uygulanan değişke mimarın ilk yazımından iki noktada ayrılıyor ve **mimar uygulanan değişkeyi tanım olarak kabul eder**; ilk yazım kusurluydu:
+  1. Hücreler dünya uzayına değil **yüzeyin ait olduğu gövdeye sabittir** (gövde yerel koordinatları). Durağan deniz tabanı için ikisi aynıdır; hareketli bir cisimde saçıcılar cisimle birlikte hareket eder, doğru olan budur.
+  2. Faz ve benek anahtarı **(gövde, hücre, yol türü, gerçekleşim)** dörtlüsüdür. Aynı hücrenin doğrudan yoldan ve yansımalı yoldan gelen katkıları farklı geliş geometrisine ve dalga boyuna göre çok büyük yol farkına sahiptir (750 kHz'te dalga boyu ≈ 2 mm); aralarındaki faz ilişkisi rastgele kabul edilir. Sonuç olarak aynı kutuya düşen farklı yol türleri enerji olarak toplanır; aynı yol türü içinde hücreler eşevreli toplanır.
+  Ölçülen bütün istatistikler bu değişkeye aittir; rapor bunu açıkça yazar. Bölüm 05 §2.4.3'e taşınacak kural bu değişkedir.
+- **Hata tablosu (sol-2 md.2):** eşli tablo "ortak benek alanında, sonlu referansa göre sayısal fark" olarak adlandırılır; "gürültü tabanı" satırı "gözlenen iki bağımsız kümenin farkı (kutu kümesi karşılaştırılan kümelerden biriyle seçildi; genel bir belirsizlik tabanı değildir)" diye yeniden yazılır.
+- **Genellemeler (sol-2 md.3):** "`N` > 1 280 000 gerekir" ve "daha büyük `N`'de p99 ≥ 504 ms" türü evrensel ifadeler çıkarılır; kanıt taranan yapılandırmalarla ve `N` = 1 280 000 destek koşusuyla sınırlanır. "Doğrulanmayanlar"a eklenir: sonlu referansın kendisi yakınsamamıştır; sade kademede S2 yalnız 7 m'de ölçüldü.
+- Bu üç düzenleme yalnız rapor metnidir (kod ve veri değişmez); `MP7-yanit.md`'ye "Kapanış" başlığıyla işlenir.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp7/**`, `docs/olcumler/MP7-sonar-suresi.md`, gerekirse `.gitignore` (derleme çıktısı ve ham veri için ek satır; `tools/olcum/*/derleme/` satırı başka bir dalda eklenmiş olabilir, çakışmayı önemseme).

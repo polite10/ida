@@ -42,6 +42,7 @@ Derleme tarihi: 2026-11-11. Kaynak: `01-*.md … 13-*.md` raporları ve `dogrula
 | K14 | **Effort seviyeleri:** Fable `high`, Opus `high`, Sonnet (hafif uygulayıcı) `medium`, Sonnet (kayıt) `low`, sol `high`; `xhigh` ve `max` kullanılmaz. Karar tarihi: 2026-11-12. |
 | K15 | **Mimari taslak bilinen açık bulgularla onaylandı; sıra: ölçüm prototipleri (W0) → arayüz sözleşmeleri (W1) → uygulama dalgaları.** Karar tarihi: 2026-11-14. Onay "bilinen açıklarla ilerlemek" anlamındadır; açık bulgular `docs/mimari/acik-bulgular.md` kaydına göre sözleşme ve uygulama işlerinde kapatılır. Ölçümler için gereken araçların kurulmasına izin verildi. |
 | K16 | **Windows hedef bilgisayarı: 8 GB bellek, dahili ekran kartı.** Bildirim tarihi: 2026-11-14. İşlemci modeli bilinmiyor; kalite kademesi tabanı MP8 ölçümüyle sabitlenir (Ö11). |
+| K17 | **Sistem tek kabloyla, yalnız kartın ST-LINK portu üzerinden çalışır.** Karar tarihi: 2026-11-16. Kullanıcının ikinci USB-C kablosu yok. Yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) ST-LINK'in sanal seri portundan (USART1) geçer; kartın kullanıcı USB girişi (USB HS) kullanılmaz. USB HS ölçümü (MP2) ve kart tarafı USB yığını plandan çıkar; kontrol hızı ve bariyer bütçesi sanal seri port ölçümüne (MP3) göre belirlenir. İskelet §3 (A1), §8 ve bölüm 01/06'daki "birincil USB HS, yedek sanal seri port" ifadeleri W0 sonunda mimarca güncellenecek. |
 
 ### 2.2 Önerilen yığın (mimarın önerisi; kullanıcı tarafından henüz açıkça onaylanmadı)
 
