@@ -38,10 +38,12 @@ vcpkg_installed/
 # Simülasyon kayıtları (büyük dosyalar depoya girmez)
 *.mcap
 
+# W0 ölçüm prototipleri: derleme çıktısı ve ham ölçüm verisi
+tools/olcum/*/derleme/
+tools/olcum/mp7/veri/
 # Godot proje önbelleği ve ölçüm ham kare dökümleri (MP6)
 .godot/
 kare_*.rgb
 kare_*.rgba
 # Ölçüm prototiplerinin derleme dizinleri ve ham verisi (ham veri $IDA_CACHE altında tutulur)
-tools/olcum/*/derleme/
 tools/denetim/test/derleme/

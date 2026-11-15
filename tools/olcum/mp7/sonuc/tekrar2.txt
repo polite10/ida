@@ -1,0 +1,11 @@
+kosu=1 sahne=1e5 menzil=7 N=160008 D=2 is=1 ping=200 ozet_I=b0130abd498d972e ozet_u8=1363c0664220aa49
+kosu=2 sahne=1e5 menzil=7 N=160008 D=2 is=1 ping=200 ozet_I=b0130abd498d972e ozet_u8=1363c0664220aa49
+kosu=1 sahne=1e5 menzil=7 N=160008 D=2 is=11 ping=200 ozet_I=b0130abd498d972e ozet_u8=1363c0664220aa49
+kosu=2 sahne=1e5 menzil=7 N=160008 D=2 is=11 ping=200 ozet_I=b0130abd498d972e ozet_u8=1363c0664220aa49
+kosu=1 sahne=1e5 menzil=50 N=160008 D=2 is=1 ping=200 ozet_I=d4b8c7acd407d03b ozet_u8=0ed75e0368dd123a
+kosu=2 sahne=1e5 menzil=50 N=160008 D=2 is=1 ping=200 ozet_I=d4b8c7acd407d03b ozet_u8=0ed75e0368dd123a
+kosu=1 sahne=1e5 menzil=50 N=160008 D=2 is=11 ping=200 ozet_I=d4b8c7acd407d03b ozet_u8=0ed75e0368dd123a
+kosu=2 sahne=1e5 menzil=50 N=160008 D=2 is=11 ping=200 ozet_I=d4b8c7acd407d03b ozet_u8=0ed75e0368dd123a
+--- ayrı özet sayısı (menzil başına 1 beklenir: 1 ve tüm iş parçacığı aynı) ---
+menzil=7 ayri_ozet=1
+menzil=50 ayri_ozet=1
