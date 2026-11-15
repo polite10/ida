@@ -37,3 +37,7 @@ vcpkg_installed/
 
 # Simülasyon kayıtları (büyük dosyalar depoya girmez)
 *.mcap
+
+# W0 ölçüm prototipleri: derleme çıktısı ve ham ölçüm verisi
+tools/olcum/*/derleme/
+tools/olcum/mp7/veri/

@@ -1,0 +1,6 @@
+# hata tablosu: sahne=1e5 menzil=7 D=2 M=32 acilar=8 |S|=4157 referans N=2559903 (esli)
+N=20000 esli_referans dE=0.1455 (ust 0.3080) dV=0.7322 (ust 1.6614) dC=0.0058 (ust 0.0080) V/E2=1.212
+N=40014 esli_referans dE=0.1217 (ust 0.2351) dV=0.3048 (ust 0.6697) dC=0.0035 (ust 0.0057) V/E2=1.089
+N=80000 esli_referans dE=0.1102 (ust 0.1848) dV=0.2628 (ust 0.5118) dC=0.0033 (ust 0.0052) V/E2=1.021
+N=160008 esli_referans dE=0.0569 (ust 0.1006) dV=0.1586 (ust 0.3034) dC=0.0035 (ust 0.0051) V/E2=0.980
+N=2559903 gurultu_tabani dE=0.1540 (ust 0.3216) dV=0.4906 (ust 1.0294) dC=0.0001 (ust 0.0038) V/E2=0.969
