@@ -19,8 +19,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
 - **W0 durumu (2026-11-15):**
   - **W0-MP1a tamamlandı ve main'e birleşti** (PR #1). Rapor `docs/olcumler/MP1-arac-zinciri.md`, kod `tools/olcum/mp1/` (atılabilir prototip). K0, yedek, K1, K2 düzeltilmiş ölçütlere göre geçti; sol iki tur inceledi, kritik bulgu kalmadı. Mimari için bulgular (açık bulgular kaydına işlenecek): STM32U59x/5Ax'te 160 MHz'e geçişte geçici AHB ÷2 ve en az 5 µs bekleme gerekli; Picolibc CubeIDE 14.3.rel1 macOS paketinde yok; ST kart örneklerinin çoğu PLL'i MSIS'ten besliyor; kart revizyonu `REV_ID` 0x3000 ES0553 Rev 6 listesinde yok.
-  - **W0-MP6a (Godot kamera):** tam kampanya 2026-11-15 gecesi kesintisiz koştu. Sonuç (sol incelemesi öncesi, düzeltme turu sürüyor): `force_draw(false, dt)` + `SubViewport` `UPDATE_ONCE` + eşzamanlı geri okuma yolu pencere örtülü, gizli ve simge durumundayken 5 dakika boyunca 9000/9000 kare üretti, içerik görünür referansla bit düzeyinde aynı; olağan çizim döngüsü bu durumlarda kare üretmedi; 640 × 480 geri okuma p99 ≈ 5,7 ms. sol incelemesi: 2 kritik, 4 önemli bulgu (çoğu raporlama; biri 5 dakikalık görünür koşunun yinelenmesi). Düzeltme turu kapsamı `docs/gorevler/W0-MP6a.md` içinde; dal `olcum/mp6-godot-kamera`.
-  - **W0-MP7a (sonar süresi):** ölçüm tamamlandı, rapor dalda (`olcum/mp7-sonar-suresi`, henüz commit'lenmedi), sol incelemesi sürüyor. Ön sonuç: S1, S4 geçti; S3 geçmedi (orta sahne, 7 m, N = 80 000, D = 2, tek iş parçacığı: p99 36,6 ms; bütçe 9,33 ms alt sınır / 25,17 ms model tahmini); S2 biçimsel geçti ama kararlı değil: bölüm 05'in saçıcı hücresi kuralı enerjiyi ışın sayısına bağlı kılıyor (mimar kararı gerekiyor). Sahne boyutunun süreye etkisi küçük (10⁴ → 10⁶ üçgende en çok %10); yansıma derecesi 0 → 2 süreyi 2,6–3,3 katına çıkarıyor.
+  - **W0-MP6a tamamlandı ve main'e birleşti** (PR #2). Rapor `docs/olcumler/MP6-godot-kamera.md`, kod `tools/olcum/mp6/`. G1–G4 geçti: `force_draw(false, dt)` + `SubViewport` `UPDATE_ONCE` + eşzamanlı geri okuma yolu görünür, örtülü, gizli ve simge durumlarında 300 s boyunca 9000/9000 kare üretti, görünür referansla bit düzeyinde aynı; 640 × 480 geri okuma p99 5,69 ms; olağan çizim döngüsü görünmeyen pencerede kare üretmedi (elendi). Doğrulanmadı: tam ekran durumu, Windows, 5 dakikadan uzun koşular, GDExtension. sol iki tur inceledi, kritik bulgu kalmadı. Mimari için bulgular (açık bulgular kaydına işlenecek): kamera `force_draw` ile ana iş parçacığından çizdirilmeli; `get_image()` RGB8 döndürüyor; asenkron geri okuma gizli pencerede ≈ 70 ms.
+  - **W0-MP7a (sonar süresi):** ilk tur ve sol incelemesi (4 kritik, 2 önemli) tamam; süre tablosu geçerli bulundu; bölüm 05 §2.4.3'ün saçıcı hücresi kuralının hatalı olduğu (enerji ışın sayısıyla sınırsız büyüyor) sol tarafından bağımsız doğrulandı. Mimar hücre kuralını ve yakınsama büyüklüklerini `docs/gorevler/W0-MP7a.md` içinde yeniden tanımladı; düzeltme turu (model düzeltmesi, yeniden yakınsama ve daraltılmış süre taraması) sürüyor; dal `olcum/mp7-sonar-suresi` henüz commit'lenmedi.
   - Yerel çalışma kopyaları (`.claude/worktrees/`) ve ham veri önbelleği depoya girmez.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
@@ -40,8 +40,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. Devam edildiğinde, sırayla: MP6a düzeltme turu ve birleştirme; MP7a sol incelemesi, düzeltme turu, birleştirme; sol yazma denemesi; MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
-1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a bitti; sürüyor: MP6a, MP7a. Sırada: sol yazma denemesi, MP2–MP5, MP8 betiği.
+0. Devam edildiğinde, sırayla: MP7a düzeltme turu, ikinci sol incelemesi, birleştirme; sonra sol yazma denemesi; MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a ve MP6a bitti; sürüyor: MP7a. Sırada: sol yazma denemesi, MP2–MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
 
@@ -67,6 +67,10 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-15 · W0: MP6a birleşti, MP7a düzeltme turunda
+- MP6a main'e birleşti (PR #2): G1–G4 geçti, sol iki tur, kritik bulgu kalmadı; mimari bulguları açık bulgular kaydına işlenecek.
+- MP7a: sol incelemesi sonrası mimar saçıcı hücresi kuralını ve yakınsama büyüklüklerini görev belgesinde yeniden tanımladı; düzeltme turu sürüyor.
+- Sıradaki: MP7a düzeltme, ikinci inceleme, birleştirme; sol yazma denemesi, MP2–MP5, MP8.
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
 

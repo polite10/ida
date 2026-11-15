@@ -73,6 +73,11 @@ Tam kampanya 2026-11-14 23:12 – 2026-11-15 00:21 arasında kesintisiz koştu. 
 - "Durum tutuldu 299/299" ifadesi kayıt aralığı sayısı olarak yazılır; süre zaman damgalarından hesaplanır. Doğrulanmayanlara eklenir: operatör zamanı ile kamera zamanı arasında gidip gelen çizim düzeni (07 §2.4) bu prototipte sınanmadı.
 - `docs/olcumler/inceleme/MP6-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
 
+**İkinci sol incelemesinden sonra (mimar, 2026-11-15; 2. ve son tur):** kritik bulgu yok, iki önemli bulgu (`docs/olcumler/inceleme/MP6-sol-2.md`).
+
+- **Güç koşulu (sol-2 md.2):** yeni görünür referans (`b_gorunur_2`) ve yinelenen koşular pilde alındı. "Prize takılı" şartının amacı uykuyu önlemekti; koşular `caffeinate -dims` altında kesintisiz tamamlandığı ve kare sayımı, kimlik sürekliliği ile bit düzeyinde eşitlik güç kaynağına bağlı bir büyüklük olmadığı için **mimar pildeki kanıtı G1 ve G3 için kabul eder**. Süre ölçümleri (G4) prizdeki gece kampanyasına dayanır. Rapor bu sapmayı ve kabulü G1/G3 hükmünde belirtir.
+- **Tam ekran doğrulaması (sol-2 md.1):** çözümleme ekran sınırlarını ölçmediği için "başka uygulama tam ekranda" durumunun sürdüğü kanıtlanmış sayılmaz; yol (b)'nin tam ekran sonucu da "doğrulanmadı"ya indirilir (üretilen kare sayısı ve içerik eşitliği gözlem olarak kalır). G2'nin üç zorunlu durumu (örtülü, gizli, simge) etkilenmez. Tam ekran durumu Windows turuyla birlikte yeniden ölçülür.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp6/**`, `docs/olcumler/MP6-godot-kamera.md`, gerekirse `.gitignore` (Godot'nun `.godot/` önbelleği ve ham veri için ek satır).

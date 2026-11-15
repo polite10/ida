@@ -53,6 +53,29 @@ MP7'nin tamamı değil, **Mac ön turudur**: platformlar arası eşdeğerlik, Wi
 
 S3 geçmezse zorlamadan raporla: hangi `N`, yansıma derecesi ve iş parçacığı sayısında bütçeye giriliyor. "Geçmedi" geçerli bir sonuçtur ve sonar kademesi kararını tetikler. M3 Pro'da ölçülen süre Windows hedefini temsil etmez; rapor bunu açıkça söyler ve Windows için tahmin **yazmaz**.
 
+### İlk turdan sonra: düzeltme turu (mimar, 2026-11-15; 1. tur)
+
+İlk tur ve sol incelemesi (`docs/olcumler/inceleme/MP7-sol.md`, dal `olcum/mp7-sonar-suresi`; 4 kritik, 2 önemli bulgu) şunu gösterdi: süre tablosu geçerli, ama bölüm 05 §2.4.3'ün saçıcı hücresi kuralı hatalı (hücreye düşen `m` ışının `√(σ·dA_j)` genlikleri eşevreli toplanınca enerji `σ·A·m` olur, ışın sayısıyla sınırsız büyür; sol bağımsız türeterek doğruladı) ve §6'nın yakınsama büyüklükleri tanımsız. Bu yüzden "yeterli ışın sayısı" sorusu yanıtlanamadı. Bu tur modeli mimarın aşağıdaki tanımıyla düzeltir ve yakınsamayı yeniden ölçer. (Düzeltme: bu belgede "Ö7: sonar CPU'da" atfı yanlıştı; doğrusu Ö4.)
+
+**Mimarın tanımı (05 §2.4.3 ve §6 için düzeltme önerisi; bu ölçümde uygulanır):**
+
+1. **Hücre içinde enerji toplanır, hücreler arasında alan toplanır.** Yüzey, dünya uzayında sabit, kenarı `Δ_h` olan saçıcı hücrelerine bölünür (ortonormal yüzey koordinatlarında; hücre kimliği ışın sayısından bağımsız). Hücre `c`'ye düşen her ışın `j` bir enerji ağırlığı taşır: `w_j = σ_j · dA_j · G_j` (`dA_j` ışının temsil ettiği yüzey alanı, `G_j` iki yönlü hüzme ve yayılım kazancının karesi alınmış hali). Hücrenin alanı (basınç) katkısı `p_c = s_c · √(Σ_{j∈c} w_j) · g_c · e^{iφ_c}` olur: `g_c` ve `φ_c` hücre kimliği ile gerçekleşim tohumundan türeyen benek çarpanı ve fazıdır (ışın sayısından bağımsız), `s_c` hücredeki işaretli genlik toplamının işaretidir (negatif yan lob korunur). Kutu (menzil örneği) alanı, o kutuya düşen hücrelerin `p_c` değerlerinin eşevreli toplamıdır. Böylece beklenen enerji her `N`'de `σ × aydınlatılan alan` ile orantılıdır; ışın izi hücreden büyükken (seyrek rejim) yalnız benek istatistiği kabalaşır.
+2. **Sade kademe (eşevresiz):** kutu enerjisi `Σ_j w_j`'dir; faz ve benek çarpanı yok.
+3. **Koni ve yan loblar:** koni dışı elenir; koni içindeki negatif genlikli yan loblar elenmez (sol md.2), görünürlük sorguları da yapılır.
+4. **Yakınsama büyüklükleri (ölçümden önce dondurulmuştur):** `M = 32` gerçekleşim; gerçekleşimlerin faz ve benek alanı `N`'den bağımsızdır (aynı gerçekleşim tohumu farklı `N`'de aynı hücre fazlarını verir), gürültü kapalı. Kutu kümesi `S`, sınanan koşulardan **bağımsız** bir referansla (taranan en büyük `N`, ayrı gerçekleşim tohumları) önceden sabitlenir: referans ortalama enerjisi en yüksek kutunun 10⁻³ katından büyük olan kutular. `N → 2N` adımı için üç büyüklük:
+   - `δ_E = Σ_{b∈S} |Ē_2N(b) − Ē_N(b)| / Σ_{b∈S} Ē_2N(b)` (kutu ortalama enerjisi; mutlak farkların toplamı, götürme yok),
+   - `δ_V`: aynı ifade, kutu başına gerçekleşimler arası ham varyansla (`V/E²` değil),
+   - `δ_C = |C̄_2N − C̄_N|`: `S` üzerindeki komşu kutu ilinti katsayısının ortalaması.
+   Ölçüt: üçünün nokta değeri ve gerçekleşimler üzerinde bootstrap ile bulunan %95 güven aralığının üst ucu ≤ 0,05; **ve** bir sonraki ikiye katlamada da sağlanmaya devam eder (kararlılık). Benek kontrastı (`V/E²`) ayrı tanılayıcı olarak raporlanır.
+
+**Yapılacaklar:**
+
+- Kodu yukarıdaki tanıma göre düzelt (sol md.2, md.3, md.4 bu tanımla kapanır); S2'yi md.1 ve md.5'e göre yeni büyüklüklerle yeniden ölç: 7 m ve 50 m, tam kademe en yüksek yansıma derecesi; ayrıca 7 m sade kademe.
+- Süre taramasını **daraltılmış ızgarayla** yinele (model değiştiği için): orta sahne (≈ 10⁵ üçgen), 7 m ve 50 m, `N` aynı sekiz değer, yansıma derecesi 0/1/2, iş parçacığı 1/2/4/tümü; sahne boyutu etkisi için yalnız `N` = 20 000 ve 80 000'de 10⁴ ve 10⁶ üçgen, tek iş parçacığı. S3 hücresi yeni S2'nin bulduğu `N` ile uzun koşu (2000 ping). S4 yeniden doğrulanır.
+- Rapor: md.6'daki iki cümle veriyle sınırlandırılır (sahne etkisi menzile göre; 1,25 ms genellemesi kaldırılır); S2 hükmü yeni ölçümden; ilk turun sonuçları kısa "önceki tur" notuna iner; "doğrulanmayanlar"a p99'un bu tarama iş yüküne ait olduğu eklenir. Bölüm 05 için düzeltme önerisi ayrı bir başlıkta, mimarın tanımı ve ölçüm kanıtıyla özetlenir (05 dosyasına dokunulmaz).
+- `docs/olcumler/inceleme/MP7-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
+- Mimarın tanımında ölçümü engelleyen bir tutarsızlık görürsen uygulamadan önce dur ve bildir; küçük belirsizliklerde en yalın yorumu seçip raporla.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp7/**`, `docs/olcumler/MP7-sonar-suresi.md`, gerekirse `.gitignore` (derleme çıktısı ve ham veri için ek satır; `tools/olcum/*/derleme/` satırı başka bir dalda eklenmiş olabilir, çakışmayı önemseme).
