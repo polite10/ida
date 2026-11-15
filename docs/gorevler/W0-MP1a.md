@@ -48,6 +48,20 @@ Bölüm 01'de "doğrulanmadı" işaretli her kayıt değeri (PLL aralık kodlar�
 
 Bir ölçüt geçmezse zorlamadan raporla: ne denendi, ne görüldü, olası neden. "Geçmedi" geçerli bir sonuçtur.
 
+### Ölçüt düzeltmesi (mimar, 2026-11-14; ilk tur ve sol incelemesinden sonra)
+
+- **K0:** "hiçbir yazma içermeden" ifadesi "kalıcı belleğe ve seçenek baytlarına yazma olmadan" diye okunur; programlayıcının bağlanırken hata ayıklama yazmacına yaptığı geçici yazım ölçütü bozmaz.
+- **K2:** PC saati kalibre bir referans değildir; "kristal toleransı içinde" koşulu bu düzenekle sınanamaz ve ölçütten çıkarıldı. Yeni ölçüt: geri okunan `SYSCLK` kaynağı PLL1 ve frekans 160 MHz; DWT/PC oranı hangi PC saatine göre ölçüldüğü belirtilerek **raporlanır** (mutlak doğruluk iddiası yok, "doğrulanmayanlar"da kalır); SMPS ve LDO turları sıfırlama, saat hatası ve sıra boşluğu olmadan tamamlanır. Harici frekans referansı istenmez.
+
+### Düzeltme turu (bekliyor; 1. tur)
+
+sol incelemesi: `docs/olcumler/inceleme/MP1-sol.md` (dal `olcum/mp1-arac-zinciri`). Yedi bulgunun hepsi uygulanır:
+
+1. 160 MHz'e geçiş dizisi (sol md.1): STM32U59x/5Ax için PLL1'e geçişte geçici AHB ÷2, belgelenmiş bekleme, sonra ÷1. Dayanak birincil kaynaktan (RM0456 ilgili başlık, AN5766) revizyonuyla yazılır; iki kaynak farklı süre veriyorsa büyüğü kullanılır. Düzeltilmiş diziyle SMPS ve LDO turları yinelenir.
+2. Betiklerde yükleme ve yedek hatasının kaybolması (md.2, md.3): programlayıcının çıkış kodu korunur; yükleme, doğrulanmış (tam boyutlu, iki okuması eşit) yedek olmadan çalışmaz; kayıtta istenen regülatör ile okunan `REGS` karşılaştırılır.
+3. Çözümleyicinin geçersiz koşuyu reddetmesi (md.4): pencerede sıfırlama, hata ya da sıra boşluğu varsa eğim hesaplanmaz, çıkış kodu başarısızdır.
+4. Rapor düzeltmeleri (md.5, md.6, md.7): iki PC saati arasındaki fark "bağıl hız farkı" olarak yazılır; `PLL1M` alanı 3 (bölücü 4); açılışta kodun yaptığı ile kayıtta gözlenen ayrılır; UART hata sayacı kayda girer; `REV_ID` 0x3000'in hata listesindeki (ES0553) durumu birincil kaynaktan yazılır.
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp1/**`, `docs/olcumler/MP1-arac-zinciri.md`, gerekirse `.gitignore` (derleme çıktısı ve ham veri için ek satır).

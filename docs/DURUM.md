@@ -1,6 +1,6 @@
 # Durum
 
-Son güncelleme: 2026-11-14
+Son güncelleme: 2026-11-15
 
 Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bittiğinde güncellenir. Kararlar ve düzeltmeler için [research/00-duzeltmeler-ve-kararlar.md](research/00-duzeltmeler-ve-kararlar.md) belgesine bakılır.
 
@@ -17,6 +17,11 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
 - **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
 - **Ürün kodu yok;** W0 ölçüm prototipleri `olcum/` dallarında, `tools/olcum/` altında yazılıyor.
+- **W0 durumu (2026-11-15):**
+  - **W0-MP1a tamamlandı ve main'e birleşti** (PR #1). Rapor `docs/olcumler/MP1-arac-zinciri.md`, kod `tools/olcum/mp1/` (atılabilir prototip). K0, yedek, K1, K2 düzeltilmiş ölçütlere göre geçti; sol iki tur inceledi, kritik bulgu kalmadı. Mimari için bulgular (açık bulgular kaydına işlenecek): STM32U59x/5Ax'te 160 MHz'e geçişte geçici AHB ÷2 ve en az 5 µs bekleme gerekli; Picolibc CubeIDE 14.3.rel1 macOS paketinde yok; ST kart örneklerinin çoğu PLL'i MSIS'ten besliyor; kart revizyonu `REV_ID` 0x3000 ES0553 Rev 6 listesinde yok.
+  - **W0-MP6a (Godot kamera):** tam kampanya 2026-11-15 gecesi kesintisiz koştu. Sonuç (sol incelemesi öncesi, düzeltme turu sürüyor): `force_draw(false, dt)` + `SubViewport` `UPDATE_ONCE` + eşzamanlı geri okuma yolu pencere örtülü, gizli ve simge durumundayken 5 dakika boyunca 9000/9000 kare üretti, içerik görünür referansla bit düzeyinde aynı; olağan çizim döngüsü bu durumlarda kare üretmedi; 640 × 480 geri okuma p99 ≈ 5,7 ms. sol incelemesi: 2 kritik, 4 önemli bulgu (çoğu raporlama; biri 5 dakikalık görünür koşunun yinelenmesi). Düzeltme turu kapsamı `docs/gorevler/W0-MP6a.md` içinde; dal `olcum/mp6-godot-kamera`.
+  - **W0-MP7a (sonar süresi):** ölçüm tamamlandı, rapor dalda (`olcum/mp7-sonar-suresi`, henüz commit'lenmedi), sol incelemesi sürüyor. Ön sonuç: S1, S4 geçti; S3 geçmedi (orta sahne, 7 m, N = 80 000, D = 2, tek iş parçacığı: p99 36,6 ms; bütçe 9,33 ms alt sınır / 25,17 ms model tahmini); S2 biçimsel geçti ama kararlı değil: bölüm 05'in saçıcı hücresi kuralı enerjiyi ışın sayısına bağlı kılıyor (mimar kararı gerekiyor). Sahne boyutunun süreye etkisi küçük (10⁴ → 10⁶ üçgende en çok %10); yansıma derecesi 0 → 2 süreyi 2,6–3,3 katına çıkarıyor.
+  - Yerel çalışma kopyaları (`.claude/worktrees/`) ve ham veri önbelleği depoya girmez.
 - **Tek odak:** simülasyon ortamını kurup STM32U5A9J-DK kartında çalıştırmak (00 belgesi, K8).
 
 ### Bölüm durumu
@@ -35,7 +40,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). Sürüyor: MP1a, MP6a. Sırada: MP7 sonar süresi, sol yazma denemesi, MP2–MP5, MP8 betiği.
+0. Devam edildiğinde, sırayla: MP6a düzeltme turu ve birleştirme; MP7a sol incelemesi, düzeltme turu, birleştirme; sol yazma denemesi; MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a bitti; sürüyor: MP6a, MP7a. Sırada: sol yazma denemesi, MP2–MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
 
@@ -63,6 +69,26 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 ## Kayıt
 
 Yeni kayıt en üste eklenir; eski kayıtlar silinmez.
+
+### 2026-11-15 · W0: MP1a birleşti, MP6a ve MP7a ölçüldü
+
+- MP1a: düzeltme turlarıyla main'e birleşti (PR #1); kritik bulgu kalmadı.
+- MP6a: tam kampanya koştu; `force_draw` yolu gizli pencerede 9000/9000 kare, geri okuma p99 ≈ 5,7 ms; sol 2 kritik, 4 önemli bulgu verdi, düzeltme turu sürüyor.
+- MP7a: ölçüm bitti; S3 geçmedi (p99 36,6 ms), S2 saçıcı hücresi kuralı için mimar kararı gerekiyor; sol incelemesi sürüyor.
+- Sıradaki: MP6a ve MP7a düzeltme ve birleştirme, sol yazma denemesi, MP2–MP5, MP8.
+
+### 2026-11-14 · W0: MP1a incelendi, MP6a yarım, oturum durdu
+
+- MP1a: sol incelemesi 7 bulgu verdi (5 kritik, 2 önemli); en önemlisi 160 MHz geçişinde eksik geçici AHB ÷2 adımı. Düzeltme turu bekliyor.
+- MP6a: olağan çizim döngüsü görünmeyen pencerede kare üretmedi; `force_draw` kısa koşularda bit düzeyinde aynı kare üretti; G1–G3 tamamlanamadı, G4 geçti.
+- MP7a başlamadan durduruldu; görev belgesi hazır.
+- Sıra: MP1a düzeltme turu, MP6a kalan koşular, MP7a; ölçüm bulguları açık bulgular kaydına işlenecek.
+
+### 2026-11-14 · W0: MP1a tamam, oturum durduruldu
+
+- MP1a tamamlandı (dal `olcum/mp1-arac-zinciri` gönderildi, main'e birleştirilmedi); K0, flash yedeği, K1 geçti; K2 turları hatasız, tolerans ölçütü mimarca düzeltilecek; sol incelemesi sonucu işlenmedi.
+- MP6a koşuları sürerken durdu (`olcum/mp6-godot-kamera`, commit'siz, rapor yok); MP7a başlamadan durduruldu, görev belgesi hazır.
+- MP1a'nın mimari için bulguları (açık bulgulara işlenecek): Picolibc CubeIDE'nin 14.3.rel1 macOS paketinde yok (newlib-nano kullanıldı); ST'nin kart örneklerinin çoğu PLL'i MSIS'ten besliyor, HSE dizisi yalnız USBX örneklerinde; fabrika demosu silindi, yedeği yerel önbellekte.
 
 ### 2026-11-14 · mimari onaylandı, W0 başladı
 

@@ -52,6 +52,27 @@ Godot API davranışına ilişkin her iddia (ör. `RenderingServer.force_draw`, 
 
 G2 ya da G3 geçmezse zorlamadan raporla: hangi durumda hangi yol ne yaptı (kare durdu mu, yavaşladı mı, içerik bayatladı mı). "Geçmedi" geçerli bir sonuçtur ve yedek kamera yolu kararını tetikler.
 
+### İlk turdan sonra (mimar, 2026-11-14)
+
+İlk tur yarım kaldı: Mac pildeyken kapağı kapandı ve uykuya girdi; `force_draw` yolunun 5 dakikalık koşuları yapılamadı. Kalan iş ve netleştirmeler:
+
+- **Koşu koşulları (şart):** Mac prize takılı, kapak açık, ekran uyanık; koşular boyunca kullanıcı masaüstünü (Space) değiştirmez. Koşu süresince uykuyu engellemek için `caffeinate` kullanılır (ayar değiştirmez). Kalan koşular: `tools/olcum/mp6/kampanya.sh` (yaklaşık 70 dakika; tam ekran koşusu ekranı 5 dakika kaplar). Kullanıcıya önceden haber verilir.
+- **"Gizli" durumu:** uygulamanın gizlenmesi (Cmd+H eşdeğeri) olarak tanımlanır; Godot 4.7.2 ana pencereyi içeriden gizleyemiyor.
+- **G3 gölge ölçütü:** gölgeli bölgenin parlaklık oranı ≤ 0,75 (ilk turda ölçümden önce donduruldu; kabul edildi).
+- **İndirme özeti:** resmî dağıtım SHA-512 yayımlıyor; SHA-512 ile ya da sürüm varlığının yayımlanan özetiyle karşılaştırma yeterlidir.
+- Yinelenecekler: yol (a) görünür ve tam ekran; yol (b) beş durumun hepsi; 1280 × 720 ve asenkron geri okumanın tam süreli ölçümü.
+
+### Tam kampanyadan sonra: düzeltme turu (mimar, 2026-11-15; 1. tur)
+
+Tam kampanya 2026-11-14 23:12 – 2026-11-15 00:21 arasında kesintisiz koştu. sol incelemesi: `docs/olcumler/inceleme/MP6-sol.md` (dal `olcum/mp6-godot-kamera`); 2 kritik, 4 önemli bulgu. Mimarın kararları:
+
+- **Yol (a) (olağan çizim döngüsü) birincil yol olarak elendi:** örtülü, gizli ve simge durumlarında 5 dakika boyunca kare üretmedi. Geçersiz kalan `a_gorunur` ve `a_tamekran` koşuları **yinelenmez**; raporda "geçersiz, yinelenmedi; yol (a) tam ekran sonucu doğrulanmadı" diye yazılır ve §6'daki "dört durumda" genellemesi üç doğrulanmış duruma indirilir (sol md.5).
+- **sol md.1:** `b_gorunur` bir kez daha, kesintisiz 300 saniye, görünürlük doğrulamasıyla koşulur (kullanıcıya haber verilir; 5 dakika masaüstü değişmez). G1 ve G3'ün görünür referansı bu koşudan alınır; diğer durumların kareleri bu referansla yeniden karşılaştırılır. Önceki koşudaki 11 saniyelik çizimsiz aralık açıklanamazsa "doğrulanmadı"da kalır.
+- **sol md.2, md.4, md.6:** rapor ve çözümleme düzeltmeleri: asenkron 1280 × 720 p99 değeri ham özetten; koşu başına gerçek referans ve karşılaştırılan/karşılaştırılmayan kare sayısı; konumu bulunamayan kare sayısı tabloya girer ve G3, bütün karelerde konumun bulunmasını şart koşar.
+- **sol md.3:** ikinci okuma "yeni çizim olmadan yinelenen eşzamanlı geri okuma" olarak adlandırılır; "saf aktarım" ve "büyük kısmı çizim beklemesi" ifadeleri çıkarılır. Hazır olma zamanı ilk okumadan hemen sonra kaydedilecek biçimde düzeltilir ve 640 × 480 eşzamanlı okuma koşusu (2 dakika) yinelenir.
+- "Durum tutuldu 299/299" ifadesi kayıt aralığı sayısı olarak yazılır; süre zaman damgalarından hesaplanır. Doğrulanmayanlara eklenir: operatör zamanı ile kamera zamanı arasında gidip gelen çizim düzeni (07 §2.4) bu prototipte sınanmadı.
+- `docs/olcumler/inceleme/MP6-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/mp6/**`, `docs/olcumler/MP6-godot-kamera.md`, gerekirse `.gitignore` (Godot'nun `.godot/` önbelleği ve ham veri için ek satır).
