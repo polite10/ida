@@ -44,3 +44,4 @@ kare_*.rgb
 kare_*.rgba
 # Ölçüm prototiplerinin derleme dizinleri ve ham verisi (ham veri $IDA_CACHE altında tutulur)
 tools/olcum/*/derleme/
+tools/denetim/test/derleme/
