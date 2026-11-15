@@ -12,7 +12,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 - **sol ikinci incelemeleri:** 01 (`inceleme/01-sol-2.md`): koşulsuz kabul yok; açık bulgularla sözleşme aşamasına taşınabilir; 4 kritik, 12 önemli, 1 küçük yeni bulgu. 05 (`inceleme/05-sol-2.md`): koşulsuz kabul yok; 1 kritik, 15 önemli yeni bulgu; yeni belge düzeltme turu önerilmiyor.
 - **Süreç kararı (mimar, 2026-11-14):** inceleme-düzeltme döngüsü kesildi; kapanmamış bulgular sözleşme ya da uygulama aşamasında kapatılır.
 - **Dalga sırası (kullanıcı onayladı, K15):** ölçüm prototipleri W0, arayüz sözleşmeleri W1; A1 ölçüm sonuçlarıyla tek aşamada donar. `docs/mimari/09-test-ve-is-akisi.md` sürüm 0.2.
-- **`tools/sol-incele.sh`:** Claude'un yazdığı belge ya da kodun sol incelemesini başlatan betik (ilk ve ikinci inceleme kipi). sol'un yazma kipi bu depoda henüz denenmedi (ilk deneme W0'da).
+- **`tools/sol-incele.sh`:** Claude'un yazdığı belge ya da kodun sol incelemesini başlatan betik (ilk ve ikinci inceleme kipi). **sol yazma denemesi geçti (W0-SOL1, PR #3, 2026-11-15):** sol görev belgesine ve dosya sahipliğine uydu, commit atmadı, çalıştıramadığı ELF testlerini "atlandı" diye dürüstçe raporladı; `ida-inceleyici` 8 bulgu verdi (1 kritik: ELF arşivi denetlenemiyordu), sol bir düzeltme turunda hepsini giderdi; mimar bağımsız koşuyla doğruladı (58 denetim geçti). Sonuç: 09 §2.9'daki sol yazım işleri sol'da kalır; sol'a yazım görevi verilirken gereken araç zinciri ortamına (`PATH`) eklenir. Ürün: `tools/denetim/bellek-ayirma.sh`.
 - **Agent yapısı kuruldu:** tanımlar `.claude/agents/` altında.
 - **W0 başladı:** ilk iki iş W0-MP1a ve W0-MP6a (`docs/gorevler/`).
 - **Kart Mac'e bağlı** (ST-LINK portu, USB hub üzerinden); ikinci (kullanıcı) USB bağlantısı MP2'de gerekecek.
@@ -40,8 +40,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. Devam edildiğinde, sırayla: MP7a düzeltme turu, ikinci sol incelemesi, birleştirme; sonra sol yazma denemesi; MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
-1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a ve MP6a bitti; sürüyor: MP7a. Sırada: sol yazma denemesi, MP2–MP5, MP8 betiği.
+0. Devam edildiğinde, sırayla: MP7a düzeltme turu, ikinci sol incelemesi, birleştirme; sonra MP2 (USB HS; kartın ikinci USB kablosu gerekir), MP3, MP4, MP5; MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının iskelet §8'e ve açık bulgulara işlenmesi.
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a ve MP6a bitti; sürüyor: MP7a. Sırada: MP2–MP5, MP8 betiği.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
 
@@ -67,6 +67,11 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-15 · W0: sol yazma denemesi geçti
+- W0-SOL1 (PR #3) birleşti: `tools/denetim/bellek-ayirma.sh` ve testleri; yazan sol, inceleyen `ida-inceleyici` (8 bulgu, bir düzeltme turu).
+- sol dosya sahipliğine uydu, çalıştıramadığını dürüstçe bildirdi; mimar bağımsız koşuyla 58 denetimi doğruladı.
+- Sıradaki: MP7a düzeltme ve birleştirme, MP2–MP5, MP8.
+
 ### 2026-11-15 · W0: MP6a birleşti, MP7a düzeltme turunda
 - MP6a main'e birleşti (PR #2): G1–G4 geçti, sol iki tur, kritik bulgu kalmadı; mimari bulguları açık bulgular kaydına işlenecek.
 - MP7a: sol incelemesi sonrası mimar saçıcı hücresi kuralını ve yakınsama büyüklüklerini görev belgesinde yeniden tanımladı; düzeltme turu sürüyor.
