@@ -134,6 +134,12 @@ func _ortu_kur() -> void:
 	l.position = Vector2(20, 20)
 	cl.add_child(l)
 	get_tree().create_timer(sure_s).timeout.connect(func(): get_tree().quit())
+	# Örtünün kipi koşu boyunca 15 s'de bir yazılır (tam ekranın sürdüğünün iç kanıtı).
+	var zam := Timer.new()
+	zam.wait_time = 15.0
+	zam.autostart = true
+	zam.timeout.connect(func(): print("ortu t_us=%d pencere_kipi=%d odak=%s" % [Time.get_ticks_usec(), DisplayServer.window_get_mode(), str(DisplayServer.window_is_focused())]))
+	add_child(zam)
 	get_tree().create_timer(3.0).timeout.connect(func(): print("ortu pencere_kipi=%d" % DisplayServer.window_get_mode()))
 
 
@@ -412,12 +418,15 @@ func _geri_oku(istek: Dictionary) -> void:
 		var t1 := Time.get_ticks_usec()
 		var ham := rd.texture_get_data(rd_tex, 0)
 		var t2 := Time.get_ticks_usec()
+		# Hazır olma zamanı ilk okumadan hemen sonra (ikinci okumadan önce) kaydedilir.
+		istek["t_hazir"] = t2
 		if ham.is_empty():
 			if istek["kayit"]:
 				_dusur(istek["k"], istek["t_sched"], "geri_okuma_bos")
 			return
 		if cift:
-			# Aynı dokuyu hemen yeniden oku: GPU boştayken salt aktarım maliyeti.
+			# Yeni çizim olmadan yinelenen eşzamanlı geri okuma (aynı doku). Saf aktarım süresi değildir:
+			# her eşzamanlı okuma yeni ara tampon, GPU kopyası ve _flush_and_stall_for_all_frames içerir.
 			var t3 := Time.get_ticks_usec()
 			rd.texture_get_data(rd_tex, 0)
 			istek["ikinci_us"] = Time.get_ticks_usec() - t3
@@ -433,6 +442,7 @@ func _geri_oku(istek: Dictionary) -> void:
 		return
 	var veri := img.get_data()
 	var tc := Time.get_ticks_usec()
+	istek["t_hazir"] = tc
 	if cift:
 		var t4 := Time.get_ticks_usec()
 		vp.get_texture().get_image().get_data()
@@ -446,6 +456,7 @@ func _async_geldi(veri: PackedByteArray, istek: Dictionary, t_a: int) -> void:
 		return
 	async_bekleyen.erase(istek["k"])
 	var t := Time.get_ticks_usec()
+	istek["t_hazir"] = t
 	if veri.size() != cw * ch * 4:
 		_dusur(istek["k"], istek["t_sched"], "geri_okuma_bos")
 		return
@@ -469,7 +480,7 @@ func _lum(veri: PackedByteArray, w: int, bpp: int, p: Vector2) -> float:
 
 
 func _isle(istek: Dictionary, veri: PackedByteArray, geri_us: int, getimg_us: int, w: int, h: int, fmt: int) -> void:
-	var t_ready := Time.get_ticks_usec()
+	var t_ready: int = istek.get("t_hazir", Time.get_ticks_usec())
 	var k: int = istek["k"]
 	# get_image(), saydam olmayan SubViewport'ta RGBA8 dokuyu CPU'da RGB8'e çevirir (texture_2d_get).
 	var bpp := 4

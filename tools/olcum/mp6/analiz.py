@@ -1,8 +1,9 @@
 """MP6a çözümlemesi: koşu dizinlerinden durum x yol tablosu üretir.
 
-Kullanım: python3 -I analiz.py <kok_dizin> [koşu_adı ...]
-  <kok_dizin> altında her koşu bir dizindir (ör. a_gorunur, b_gizli, b_gorunur_1280_esz).
-  İçerik referansı aynı yolun "<yol>_gorunur" koşusudur (aynı kare kimliği k).
+Kullanım: python3 -I analiz.py [--ref <referans_koşu_dizini>] <kok_dizin> [koşu_adı ...]
+  <kok_dizin> altında her koşu bir dizindir (ör. a_gorunur, b_gizli, okuma_640x480_esz).
+  İçerik referansı varsayılan olarak aynı kökteki "<yol>_gorunur" koşusudur (aynı kare kimliği k);
+  --ref <dizin> bütün koşular için referansı açıkça seçer. Koşu başına gerçek referans tabloda yazılır.
   Sonuç: <kok_dizin>/ozet_tablo.json ve stdout'a Markdown tablolar.
 """
 import csv
@@ -48,12 +49,23 @@ def pencere_dogrula(yol, durum):
     ekranda = 0
     gizli = 0
     ortulu = 0
+    ortu_tek_pencere = 0  # boyutu doğrulanmadı
     for d in sonraki:
         olc = [w for w in d["onscreen_all"] if w["pid"] == pid]
         if olc:
             ekranda += 1
         if d.get("hidden"):
             gizli += 1
+        if ortu is not None and d["onscreen_all"]:
+            # Ekrandaki tek pencere örtüydü: ekrandaki bütün (katman 0/3) pencereler örtüye ait ve
+            # ölçüm penceresi ekranda değil. Boyut DOĞRULANMAZ: "sag" gerçek ekran sınırı değil,
+            # listedeki pencerelerin en sağ kenarıdır (CGDisplayBounds ölçülmüyor). Bu sayaç
+            # başka uygulamanın tam ekranda kaldığını kanıtlamaz (sol 2. inceleme md.1).
+            sag = max(w["b"]["X"] + w["b"]["Width"] for w in d["onscreen_all"])
+            o = [w for w in d["onscreen_all"] if w["pid"] == ortu]
+            if (not olc and o and all(w["pid"] == ortu for w in d["onscreen_all"])
+                    and any(w["b"]["X"] == 0 and w["b"]["Width"] >= sag for w in o)):
+                ortu_tek_pencere += 1
         if ortu is not None and olc:
             o = [w for w in d["onscreen_all"] if w["pid"] == ortu]
             for w in olc:
@@ -66,7 +78,7 @@ def pencere_dogrula(yol, durum):
                         ortulu += 1
                         break
     return {"ornek": len(sonraki), "olcum_penceresi_ekranda": ekranda, "uygulama_gizli": gizli,
-            "tamamen_ortulu": ortulu}
+            "tamamen_ortulu": ortulu, "ortu_tek_pencere_boyut_dogrulanmadi": ortu_tek_pencere}
 
 
 def ps_ozet(yol):
@@ -160,8 +172,13 @@ def kos_coz(yol, ref_yol):
         tutuldu = cizdi if bilgi["durum"] == "gorunur" else not cizdi
         sinirlar.append((onceki, t, tutuldu))
         onceki = t
-    tutulan_sn = sum(1 for s in sinirlar if s[2])
-    sonuc["durum_tutuldu"] = {"saniye": tutulan_sn, "toplam_saniye": len(sinirlar)}
+    # Kayıt aralığı sayısı (≈1 s'lik satırlar) ve zaman damgalarından süre ayrı ayrı.
+    sonuc["durum_tutuldu"] = {
+        "aralik": sum(1 for s in sinirlar if s[2]), "toplam_aralik": len(sinirlar),
+        "sure_s": sum(s[1] - s[0] for s in sinirlar if s[2]) / 1e6,
+        "toplam_sure_s": sum(s[1] - s[0] for s in sinirlar) / 1e6,
+        "en_uzun_tutulmayan_s": max([0.0] + _tutulmayan_bloklar(sinirlar)),
+    }
     if sinirlar and bilgi["durum"] != "basliksiz":
         bas = np.array([s[0] for s in sinirlar])
         bit = np.array([s[1] for s in sinirlar])
@@ -203,12 +220,29 @@ def kos_coz(yol, ref_yol):
             a3 = a.reshape(h, w, bpa)[:, :, :3].astype(np.int16)
             b3 = b.reshape(h, w, bpb)[:, :, :3].astype(np.int16)
             mad.append(float(np.mean(np.abs(a3 - b3))))
-        sonuc["referans"] = os.path.basename(ref_yol)
-        sonuc["md5_esit"] = {"esit": esit, "karsilastirilan": karsilastirilan}
+        sonuc["referans"] = os.path.relpath(ref_yol, os.path.dirname(os.path.dirname(yol)))
+        sonuc["md5_esit"] = {"esit": esit, "karsilastirilan": karsilastirilan,
+                             "karsilastirilmayan": len(uretilen) - karsilastirilan}
         sonuc["mad_255"] = {"ornek": len(mad), "ort": float(np.mean(mad)) if mad else None,
                             "maks": float(max(mad)) if mad else None}
         sonuc["poz_fark_ref_px_maks"] = float(max(poz_ref)) if poz_ref else None
     return sonuc
+
+
+def _tutulmayan_bloklar(sinirlar):
+    """Durumun tutulmadığı ardışık aralıkların süreleri (s)."""
+    bloklar = []
+    cari = 0.0
+    for b, e, t in sinirlar:
+        if t:
+            if cari:
+                bloklar.append(cari)
+            cari = 0.0
+        else:
+            cari += (e - b) / 1e6
+    if cari:
+        bloklar.append(cari)
+    return bloklar
 
 
 def f(x, n=2):
@@ -218,8 +252,14 @@ def f(x, n=2):
 
 
 def main():
-    kok = sys.argv[1]
-    adlar = sys.argv[2:] or sorted(d for d in os.listdir(kok) if os.path.isfile(os.path.join(kok, d, "ozet.json")))
+    arg = sys.argv[1:]
+    ortak_ref = None
+    if "--ref" in arg:
+        i = arg.index("--ref")
+        ortak_ref = arg[i + 1]
+        del arg[i:i + 2]
+    kok = arg[0]
+    adlar = arg[1:] or sorted(d for d in os.listdir(kok) if os.path.isfile(os.path.join(kok, d, "ozet.json")))
     tum = []
     for ad in adlar:
         yol = os.path.join(kok, ad)
@@ -228,20 +268,28 @@ def main():
         if os.path.abspath(ref) == os.path.abspath(yol):
             diger = "b" if bilgi["yol"] == "a" else "a"
             ref = os.path.join(kok, "%s_gorunur" % diger)
+        if ortak_ref:
+            ref = ortak_ref
         tum.append(kos_coz(yol, ref))
-    with open(os.path.join(kok, "ozet_tablo.json"), "w") as fo:
+    cikti = "ozet_tablo.json"
+    if ortak_ref:
+        cikti = "ozet_tablo_ref_%s.json" % os.path.basename(os.path.dirname(os.path.abspath(ortak_ref)))
+    with open(os.path.join(kok, cikti), "w") as fo:
         json.dump(tum, fo, indent=2, ensure_ascii=False)
-    print("| koşu | istek | üretilen | düşen % | nedenler | kimlik boşluğu | gecikme p50/p99/maks ms | geri okuma p50/p99/maks ms | md5 eşit | MAD ort/maks (/255) | poz hata ort/maks px | gölge var % | frames_drawn | process Hz min/medyan |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("| koşu | istek | üretilen | düşen % | nedenler | kimlik boşluğu | gecikme p50/p99/maks ms | geri okuma p50/p99/maks ms | referans | md5 eşit / karşılaştırılan (karşılaştırılmayan) | MAD ort/maks (/255) | poz hata ort/maks px | küre bulunamadı | gölge var % | durum tutuldu aralık (s) | frames_drawn | process Hz min/medyan |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for s in tum:
-        md5 = "%d/%d" % (s["md5_esit"]["esit"], s["md5_esit"]["karsilastirilan"]) if "md5_esit" in s else "-"
+        md5 = "%d/%d (%d)" % (s["md5_esit"]["esit"], s["md5_esit"]["karsilastirilan"], s["md5_esit"]["karsilastirilmayan"]) if "md5_esit" in s else "-"
+        dt = s["durum_tutuldu"]
+        tut = "%d/%d (%.1f/%.1f s)" % (dt["aralik"], dt["toplam_aralik"], dt["sure_s"], dt["toplam_sure_s"])
         mad = "%s/%s (n=%d)" % (f(s["mad_255"]["ort"], 3), f(s["mad_255"]["maks"], 3), s["mad_255"]["ornek"]) if "mad_255" in s else "-"
-        print("| %s | %d | %d | %s | %s | %d | %s/%s/%s | %s/%s/%s | %s | %s | %s/%s | %s | %d | %s/%s |" % (
+        print("| %s | %d | %d | %s | %s | %d | %s/%s/%s | %s/%s/%s | %s | %s | %s | %s/%s | %d | %s | %s | %d | %s/%s |" % (
             s["kos"], s["istek"], s["uretilen"], f(s["dusen_yuzde"]), json.dumps(s["dusme_nedenleri"], ensure_ascii=False),
             s["en_buyuk_kimlik_boslugu"],
             f(s["gecikme_ms"]["p50"]), f(s["gecikme_ms"]["p99"]), f(s["gecikme_ms"]["maks"]),
             f(s["geri_okuma_ms"]["p50"]), f(s["geri_okuma_ms"]["p99"]), f(s["geri_okuma_ms"]["maks"]),
-            md5, mad, f(s["poz_hata_px"]["ort"], 3), f(s["poz_hata_px"]["maks"], 3), f(s["golge_orani"]["golge_var_yuzde"], 1),
+            s.get("referans", "-"), md5, mad, f(s["poz_hata_px"]["ort"], 3), f(s["poz_hata_px"]["maks"], 3),
+            s["poz_hata_px"]["kure_bulunamadi"], f(s["golge_orani"]["golge_var_yuzde"], 1), tut,
             s["frames_drawn_olcumde"], s["process_hz"]["min"], s["process_hz"]["medyan"]))
 
 

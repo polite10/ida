@@ -20,6 +20,7 @@ function windowsOf(pid, onScreenOnly) {
     out.push({
       order: i,
       pid: w.kCGWindowOwnerPID,
+      sahip: w.kCGWindowOwnerName,
       layer: w.kCGWindowLayer,
       onscreen: w.kCGWindowIsOnscreen ? true : false,
       alpha: w.kCGWindowAlpha,
@@ -47,7 +48,9 @@ function run(argv) {
       pid: pid,
       hidden: app ? app.hidden : null,
       active: app ? app.active : null,
-      onscreen_all: windowsOf(null, true).filter(function (w) { return w.layer === 0 || w.layer === 3; })
+      onscreen_all: windowsOf(null, true).filter(function (w) { return w.layer === 0 || w.layer === 3; }),
+      // Ekran koruyucu ve kilit gibi üst katman pencereleri (katman >= 1000); yalnız tanı için.
+      ust_katman: windowsOf(null, true).filter(function (w) { return w.layer >= 1000; })
     };
     return JSON.stringify(res);
   }
