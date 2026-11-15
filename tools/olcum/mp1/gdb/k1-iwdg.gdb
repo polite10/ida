@@ -19,7 +19,13 @@ shell date +%T
 continue
 bt
 printf "devam sonrası mp1_sayac=%u (beklenen %u: sıfırlama yok)\n", mp1_sayac, $s1 + 1
-printf "IWDG_SONUC %s\n", (mp1_sayac == $s1 + 1) ? "SIFIRLAMA_YOK" : "SIFIRLAMA_VAR"
+if mp1_sayac == $s1 + 1
+  echo IWDG_SONUC SIFIRLAMA_YOK\n
+else
+  echo IWDG_SONUC SIFIRLAMA_VAR\n
+  detach
+  quit 2
+end
 
 echo \n=== 3) karşı deneme: dondurma biti temizlenir, işlemci 10 s durdurulur (sıfırlama beklenir)\n
 set *(unsigned int *)0xE0044008 = *(unsigned int *)0xE0044008 & ~0x1000

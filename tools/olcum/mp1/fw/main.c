@@ -32,7 +32,12 @@ volatile uint32_t mp1_acilis_csr;   /* açılıştaki ham RCC_CSR */
 volatile uint32_t mp1_saat_adim;    /* 0: tamam; değilse başarısız adım (1..6) */
 volatile uint32_t mp1_saat_hal_rc;  /* başarısız adımın HAL dönüş kodu */
 volatile uint32_t mp1_dbg_apb1fzr1; /* DBGMCU_APB1FZR1 geri okuması */
-volatile uint32_t mp1_uart_hata;    /* HAL_UART_Transmit hata sayısı */
+volatile uint32_t mp1_uart_hata;    /* HAL_UART_Transmit hata sayısı (P satırlarında raporlanır) */
+volatile uint32_t mp1_gecis_hpre;        /* PLL1'e geçişten hemen sonra RCC_CFGR2.HPRE (÷2 beklenir: 0x8) */
+volatile uint32_t mp1_gecis_bekleme_cyc; /* ÷2'de beklenen çevrim (DWT ölçümü) */
+volatile uint32_t mp1_gecis_hclk_hz;     /* bekleme sırasında HAL'in HCLK değeri */
+
+#define MP1_GECIS_BEKLEME_US 5u
 
 static UART_HandleTypeDef mp1_uart;
 static IWDG_HandleTypeDef mp1_iwdg;
@@ -97,7 +102,8 @@ static uint32_t saat_hata(uint32_t adim, HAL_StatusTypeDef rc)
     return adim;
 }
 
-/* Adımlar: 1 regülatör, 2 Range 1, 3 HSE, 4 PLL1, 5 SYSCLK geçişi, 6 geri okuma tutmadı. */
+/* Adımlar: 1 regülatör, 2 Range 1, 3 HSE, 4 PLL1, 5 SYSCLK geçişi (AHB ÷2), 6 geri okuma tutmadı,
+   7 AHB ÷1'e dönüş. */
 static uint32_t saat_kur(void)
 {
     HAL_StatusTypeDef rc;
@@ -133,22 +139,42 @@ static uint32_t saat_kur(void)
     rc = HAL_RCC_OscConfig(&osc);
     if (rc != HAL_OK) { return saat_hata(4u, rc); }
 
+    /* STM32U59x/5Ax: Range 1'de 80 MHz altından üstüne geçişte AHB önce ÷2, SYSCLK PLL1'e geçirilir,
+       en az 5 µs beklenir, sonra AHB ÷1 (RM0456 §10.5.4 kısıtı; ST moderatör yanıtı 2024-03-08: 5 µs;
+       AN5766: 3 µs, bu ortamdan okunamadı; büyüğü kullanılır). HAL bu adımı kendisi yapmaz; ancak
+       bölücü büyürken HPRE'yi SYSCLK geçişinden önce yazar (stm32u5xx_hal_rcc.c, HAL_RCC_ClockConfig). */
     RCC_ClkInitTypeDef clk = {0};
     clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 |
                     RCC_CLOCKTYPE_PCLK2 | RCC_CLOCKTYPE_PCLK3;
     clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    clk.AHBCLKDivider = RCC_SYSCLK_DIV2;
     clk.APB1CLKDivider = RCC_HCLK_DIV1;
     clk.APB2CLKDivider = RCC_HCLK_DIV1;
     clk.APB3CLKDivider = RCC_HCLK_DIV1;
     rc = HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4);
     if (rc != HAL_OK) { return saat_hata(5u, rc); }
+    mp1_gecis_hpre = RCC->CFGR2 & RCC_CFGR2_HPRE_Msk;
+
+    /* En az 5 µs bekleme, DWT ile (HCLK = 80 MHz'te 400 çevrim). */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    const uint32_t gerek = (uint32_t)(((uint64_t)SystemCoreClock * MP1_GECIS_BEKLEME_US + 999999u) / 1000000u);
+    const uint32_t bas = DWT->CYCCNT;
+    while ((uint32_t)(DWT->CYCCNT - bas) < gerek) { }
+    mp1_gecis_bekleme_cyc = DWT->CYCCNT - bas;
+    mp1_gecis_hclk_hz = SystemCoreClock;
+
+    memset(&clk, 0, sizeof clk);
+    clk.ClockType = RCC_CLOCKTYPE_HCLK;
+    clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    rc = HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4);
+    if (rc != HAL_OK) { return saat_hata(7u, rc); }
     return 0u;
 }
 
 typedef struct {
     uint32_t sws, pll1src, m, n, r, rge, mboost, fracen, fracn, ren, latency;
-    uint32_t cr, cfgr1, pll1cfgr, pll1divr, pll1fracr, vosr, svmsr, cr3, acr;
+    uint32_t cr, cfgr1, cfgr2, pll1cfgr, pll1divr, pll1fracr, vosr, svmsr, cr3, acr;
     uint64_t hesap_hz;
 } saat_okuma_t;
 
@@ -164,6 +190,7 @@ static void saat_oku(saat_okuma_t *o)
     o->svmsr = PWR->SVMSR;
     o->cr3 = PWR->CR3;
     o->acr = FLASH->ACR;
+    o->cfgr2 = RCC->CFGR2;
     o->sws = (o->cfgr1 & RCC_CFGR1_SWS_Msk) >> RCC_CFGR1_SWS_Pos;
     o->pll1src = (o->pll1cfgr & RCC_PLL1CFGR_PLL1SRC_Msk) >> RCC_PLL1CFGR_PLL1SRC_Pos;
     o->rge = (o->pll1cfgr & RCC_PLL1CFGR_PLL1RGE_Msk) >> RCC_PLL1CFGR_PLL1RGE_Pos;
@@ -223,6 +250,8 @@ static void saat_yaz(uint32_t sira)
     s_kx(&s, "pwr_vosr", o.vosr);
     s_kx(&s, "pwr_svmsr", o.svmsr);
     s_kx(&s, "flash_acr", o.acr);
+    s_kx(&s, "cfgr2", o.cfgr2);
+    s_kv(&s, "uart_hata", mp1_uart_hata);
     s_gonder(&s);
 }
 
@@ -231,6 +260,7 @@ static bool saat_dogru(void)
     saat_okuma_t o;
     saat_oku(&o);
     return o.sws == 3u && o.pll1src == 3u && o.hesap_hz == MP1_HEDEF_HZ &&
+           (o.cfgr2 & RCC_CFGR2_HPRE_Msk) == 0u &&
            (o.cr & RCC_CR_HSERDY) != 0u && (o.cr & RCC_CR_PLL1RDY) != 0u;
 }
 
@@ -324,6 +354,9 @@ static void acilis_yaz(void)
     s_kx(&s, "dbg_apb1fzr1", mp1_dbg_apb1fzr1);
     s_kv(&s, "saat_adim", mp1_saat_adim);
     s_kv(&s, "saat_hal_rc", mp1_saat_hal_rc);
+    s_kx(&s, "gecis_hpre", mp1_gecis_hpre);
+    s_kv(&s, "gecis_bekleme_cyc", mp1_gecis_bekleme_cyc);
+    s_kv(&s, "gecis_hclk_hz", mp1_gecis_hclk_hz);
     s_gonder(&s);
 }
 
