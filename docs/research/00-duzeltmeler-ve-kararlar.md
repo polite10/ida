@@ -67,6 +67,8 @@ Aşağıdaki hiçbir satır karar değildir. "Doğrulamanın kayda geçirdiği" 
 
 Ö6 notu: panellerin web olması artık öneri değil karardır (K9).
 
+**Ölçüm / mimar kaydı M-MP4a (2026-11-18; kullanıcı kararı değildir):** MP4a daraltılmış kapsamla tamamlandı (`docs/olcumler/MP4-dongu-yuku.md`). Yer tutucu adımla D1/D2 geçmedi, D3/D4 geçti; O2 ağır yükte 400 Hz maksimum 3,32238125 ms, aşım 241000/241000; O2 200 Hz 121000 adımda aşım 0. Ölçülen yer tutucudur, taşıma dahil değildir; gerçek çekirdek ve taşıma hızı kesinleşmedi, mevcut kararlar (kontrol hızı dahil) korunur. Mimar kararı: taşmalı histogramlar kapsam dışıdır ve reddedilir. Çözümleyici 103 denetim geçti; sol kapanış incelemesi kritik/önemli bulgu görmedi. Eski kayıtlar değiştirilmedi.
+
 Ardıl kart (13): hiçbir aday (STM32U5G9J-DK1, NUCLEO-H753ZI, NUCLEO-H723ZG, Pixhawk 6X / 6C, özel taşıyıcı) bu tabloya **alınmadı**; ardıl kart kullanıcı kararı değildir ve K2 mevcut kartı geçici olarak tutar. Rapor 13'ün H753 ve Pixhawk önerileri bu kararı kendiliğinden değiştirmez (D13 Ç). Bkz. Ç16, A3, A30, A31.
 
 ---

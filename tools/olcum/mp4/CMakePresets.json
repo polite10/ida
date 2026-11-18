@@ -1,0 +1,123 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "mp4-o2",
+      "displayName": "MP4 aygıt yazılımı, -O2 (birincil)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/o2",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP4_HEDEF": "fw",
+        "MP4_DERLEME": "O2",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g"
+      }
+    },
+    {
+      "name": "mp4-og",
+      "displayName": "MP4 aygıt yazılımı, -Og",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/og",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP4_HEDEF": "fw",
+        "MP4_DERLEME": "Og",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-Og -g",
+        "CMAKE_ASM_FLAGS_DEBUG": "-g"
+      }
+    },
+    {
+      "name": "mp4-o2-200",
+      "displayName": "MP4 aygıt yazılımı, -O2, 200 Hz, yalnız B fazı (ek ölçüm)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/o2-200",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP4_HEDEF": "fw",
+        "MP4_DERLEME": "O2-200",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g",
+        "MP4_HZ": "200",
+        "MP4_FAZLAR": "2",
+        "MP4_FAZ_ADIM": "121000"
+      }
+    },
+    {
+      "name": "mp4-og-200",
+      "displayName": "MP4 aygıt yazılımı, -Og, 200 Hz, yalnız B fazı (ek ölçüm)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/og-200",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP4_HEDEF": "fw",
+        "MP4_DERLEME": "Og-200",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-Og -g",
+        "CMAKE_ASM_FLAGS_DEBUG": "-g",
+        "MP4_HZ": "200",
+        "MP4_FAZLAR": "2",
+        "MP4_FAZ_ADIM": "121000"
+      }
+    },
+    {
+      "name": "mp4-kisa",
+      "displayName": "MP4 kısa düzenek denemesi, -O2, faz başına 4000 adım",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/kisa",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP4_HEDEF": "fw",
+        "MP4_DERLEME": "O2kisa",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g",
+        "MP4_FAZ_ADIM": "4000"
+      }
+    },
+    {
+      "name": "mp4-pc",
+      "displayName": "MP4 PC araçları",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc",
+      "cacheVariables": {
+        "MP4_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mp4-o2",
+      "configurePreset": "mp4-o2"
+    },
+    {
+      "name": "mp4-og",
+      "configurePreset": "mp4-og"
+    },
+    {
+      "name": "mp4-o2-200",
+      "configurePreset": "mp4-o2-200"
+    },
+    {
+      "name": "mp4-og-200",
+      "configurePreset": "mp4-og-200"
+    },
+    {
+      "name": "mp4-kisa",
+      "configurePreset": "mp4-kisa"
+    },
+    {
+      "name": "mp4-pc",
+      "configurePreset": "mp4-pc"
+    }
+  ]
+}

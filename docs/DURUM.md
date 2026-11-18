@@ -6,7 +6,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Şu an
 
-- **MP4a devam durumu (2026-11-18, tamamlanmadı, main'e birleşmedi):** ölçüm prototipi (ürün kodu değil); çalışma dalı `olcum/mp4-dongu-yuku`, çalışma kopyası `agent-a72b11b74b709a860`. 2026-11-17 O2 A/B/C her biri 241000 örnekle tamamlandı; ham CSV sha256 `09809edaf837670d4e6f300b8f5fce66df171b7a7070890025fb4ff7ecb06d85`; sol bağımsız CRC, sıra, histogram, özet ve süre denetimini geçti. A: maksimum 1338,91875 µs, asim 0; B: maksimum 3322,38125 µs, asim 241000, atlanan 87573; C: maksimum 1301,73125 µs, asim 0. D1/D2 O2 ağır yükte geçmedi (geçerli ön ölçüm sonucu); kontrol hızı kesinleşmedi. İlk sol incelemesi 2 kritik çözümleyici açığı ve 3 önemli raporlama/sunum sorunu buldu; PC düzeltmesi ve yeniden analiz gerekiyor, mevcut O2 tekrar koşulmayacak. Og 20261117-193512 seri bağlantı `Device not configured` ile kesildi (Opus oturumu uyku nedeniyle kesildi). 18 Kasım'da kullanıcı devam dedi, kart portu yeniden mevcut; Opus (high) aynı oturumda sol düzeltmesi ve eksik Og koşusu için devam ediyor. CLI sol kotaya takıldı; aynı `gpt-6.1-sol` (high) bir Codex alt agent aracılığıyla ilk incelemeyi tamamladı. Raporlar henüz main içinde değil.
+- **MP4a tamamlandı (2026-11-18, daraltılmış kapsamla; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp4-dongu-yuku`. D1/D2 geçmedi, D3/D4 geçti. O2 ağır yük 400 Hz: maksimum 3,32238125 ms, aşım 241000/241000; O2 200 Hz: 121000 adımda aşım 0. Ölçülen yer tutucu çekirdek adımıdır ve taşımayı içermez; gerçek çekirdek ve taşıma hızı kesinleşmedi, mevcut kararlar korunur. Mimar, taşmalı histogramların kapsam dışı bırakılıp reddedilmesine karar verdi (Y5). Çözümleyici 103 denetimi geçti; sol kapanış incelemesi kritik/önemli bulgu görmedi (`docs/olcumler/inceleme/MP4-sol-kapanis.md`; küçük bulgu Y8 giderildi). Rapor: `docs/olcumler/MP4-dongu-yuku.md`. Birleştirme durumu bu kaydın altındaki Kayıt bölümünde.
 - **Tek kablo kararı (K17, 2026-11-16):** sistem yalnız kartın ST-LINK portuyla çalışır; yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) sanal seri porttan (USART1) geçer; kullanıcı USB girişi (USB HS) kullanılmaz; MP2 ve kart tarafı USB yığını plandan çıktı; kontrol hızı ve bariyer bütçesi MP3'e göre belirlenir.
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
 - **Mimari çalışması tamamlandı; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15).** Belgeler taslak sürüm numaralarını korur; açık bulgular sözleşme ve uygulama işlerinde kapatılır: iskelet 0.7 (`docs/mimari/00-iskelet.md`), dokuz bölüm taslağı, incelemeler ve açık bulgular kaydı (`docs/mimari/acik-bulgular.md`). İskelet 0.7'de mimar itkili torpido kararını geri aldı: torpido itkisiz, kısa menzilli basit simülasyon nesnesidir; 03 kapsamı emniyet zinciri ve arayüzlerle sınırlıdır.
@@ -43,8 +43,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. MP2 (USB HS) K17 ile plandan çıktı. Sıra: MP4a bitişi, sol incelemesi, birleştirme; MP3 (sanal seri port hızı ve kaybı; artık A1'in tek taşıması); MP5 (mesaj biçimi maliyeti; seri port üzerinden); MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının ve K17'nin iskelete (§3, §8) ve açık bulgulara işlenmesi; sonra W1 sözleşmeler.
-1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a, MP6a, MP7a bitti; sürüyor: MP4a. Sırada: MP3, MP5, MP8 betiği.
+0. MP2 (USB HS) K17 ile plandan çıktı. MP4a bitti. Sıra: MP3 (sanal seri port hızı ve kaybı; artık A1'in tek taşıması); MP5 (mesaj biçimi maliyeti; seri port üzerinden); MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının ve K17'nin iskelete (§3, §8) ve açık bulgulara işlenmesi; sonra W1 sözleşmeler.
+1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a, MP6a, MP7a, MP4a bitti. Sırada: MP3, sonra MP5, MP8 betiği, W0 sonu, W1.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
 
@@ -69,6 +69,11 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-18 · W0: MP4a ölçüm ve inceleme tamamlandı
+- MP4a daraltılmış kapsamla bitti; D1/D2 geçmedi, D3/D4 geçti; O2 ağır 400 Hz maks 3,32238125 ms, aşım 241000/241000; O2 200 Hz 121000 adımda aşım 0. Gerçek çekirdek/taşıma hızı kesinleşmedi.
+- Mimar kapsamı daralttı: taşmalı histogramlar reddedilir. 103 test geçti; sol kapanışı kritik/önemli bulgu görmedi.
+- Sıra: MP3, sonra MP5, MP8, W0 sonu, W1.
+
 ### 2026-11-18 · W0: MP4a devam kaydı
 - MP4a (ölçüm prototipi, dal `olcum/mp4-dongu-yuku`) tamamlanmadı ve main'e birleşmedi; O2 A/B/C ölçümü bitti, D1/D2 O2 ağır yükte geçmedi, kontrol hızı kesinleşmedi. Ayrıntı "Şu an" bölümünde.
 - sol ilk incelemesi 2 kritik, 3 önemli bulgu verdi; PC düzeltmesi, yeniden analiz ve eksik Og koşusu sürüyor.
