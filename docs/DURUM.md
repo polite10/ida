@@ -6,6 +6,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Şu an
 
+- **MP3 sürüyor (2026-11-18, ara durum; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp3-vcp` (henüz main'e birleşmedi; çalışma kopyası `.claude/worktrees/mp3-vcp`). İlk teslim genel seri bağlantı prototipi (ST-LINK VCP / USART1, K17): çerçeve, kart ve PC aracı, masaüstü testleri; görev `docs/gorevler/W0-MP3a.md`, rapor `docs/olcumler/MP3-vcp.md`. sol ön incelemesi mevcut kodu kabul etmedi: 8 kritik, 3 önemli bulgu (`docs/olcumler/inceleme/MP3-sol-on.md`; ör. OVER8 baud hesabı, DMA alım ilerlemesi okuması, test hedefinin derlenmemesi, kayıt çözümleyicisindeki tutarlılık açıkları). Opus birinci düzeltme turu sürüyor. Kart kullanıcı tarafından yeniden bağlandı; kısa kart ölçümü ve uzun kampanya henüz yapılmadı, kartta ölçülmüş hız, kayıp ya da gecikme değeri yok. MP4a tamamlanmış kalır.
 - **MP4a tamamlandı (2026-11-18, daraltılmış kapsamla; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp4-dongu-yuku`. D1/D2 geçmedi, D3/D4 geçti. O2 ağır yük 400 Hz: maksimum 3,32238125 ms, aşım 241000/241000; O2 200 Hz: 121000 adımda aşım 0. Ölçülen yer tutucu çekirdek adımıdır ve taşımayı içermez; gerçek çekirdek ve taşıma hızı kesinleşmedi, mevcut kararlar korunur. Mimar, taşmalı histogramların kapsam dışı bırakılıp reddedilmesine karar verdi (Y5). Çözümleyici 103 denetimi geçti; sol kapanış incelemesi kritik/önemli bulgu görmedi (`docs/olcumler/inceleme/MP4-sol-kapanis.md`; küçük bulgu Y8 giderildi). Rapor: `docs/olcumler/MP4-dongu-yuku.md`. Main'e PR #5 ile squash birleşti (b2b9346).
 - **Tek kablo kararı (K17, 2026-11-16):** sistem yalnız kartın ST-LINK portuyla çalışır; yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) sanal seri porttan (USART1) geçer; kullanıcı USB girişi (USB HS) kullanılmaz; MP2 ve kart tarafı USB yığını plandan çıktı; kontrol hızı ve bariyer bütçesi MP3'e göre belirlenir.
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
@@ -69,6 +70,10 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-18 · W0: MP3 ara durumu
+- MP3 (dal `olcum/mp3-vcp`) ilk teslimi yapıldı; sol ön incelemesi 8 kritik, 3 önemli bulgu verdi, Opus birinci düzeltme turu sürüyor. Kart yeniden bağlandı; kısa kart ölçümü ve uzun kampanya yapılmadı.
+- Sıra: düzeltme turu, kısa kart ölçümü, sol incelemesi, uzun kampanya; sonra MP5, MP8, W0 sonu, W1. MP4a tamamlanmış kalır.
+
 ### 2026-11-18 · W0: MP4a ölçüm ve inceleme tamamlandı
 - MP4a daraltılmış kapsamla bitti; D1/D2 geçmedi, D3/D4 geçti; O2 ağır 400 Hz maks 3,32238125 ms, aşım 241000/241000; O2 200 Hz 121000 adımda aşım 0. Gerçek çekirdek/taşıma hızı kesinleşmedi.
 - Mimar kapsamı daralttı: taşmalı histogramlar reddedilir. 103 test geçti; sol kapanışı kritik/önemli bulgu görmedi.
