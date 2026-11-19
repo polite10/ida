@@ -1,11 +1,13 @@
 # Durum
 
-Son güncelleme: 2026-11-19
+Son güncelleme: 2026-11-20
 
 Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bittiğinde güncellenir. Kararlar ve düzeltmeler için [research/00-duzeltmeler-ve-kararlar.md](research/00-duzeltmeler-ve-kararlar.md) belgesine bakılır.
 
 ## Şu an
 
+- **W1 durumu (2026-11-20):** sekiz arayüzün hepsinin sözleşme adayı yazıldı ve sol tarafından incelendi. A4 (117 kural), A8 (69), A5 (106), A2 (88) ve A7 (39), A3 (124) ve A6 (60) kendi iki düzeltme turunu tamamladı; A1 (115 kural; `protocol/ida.xml`, 37 özel mesaj) ikinci ve son düzeltme turunda. Her ikinci incelemede sol "dondurulamaz" dedi; bulgular mimar kararlarıyla giderildi ve son turlar sol tarafından yeniden incelenmedi: kalanlar çapraz uyum incelemesinde sınanacak (`docs/gorevler/W1-capraz.md`). Adaylar `sozlesme/a1-v1`, `a2a7-v1`, `a3a6-v1`, `a4-v1`, `a5-v1`, `a8-v1` dallarında; hiçbiri main'e birleşmedi, PR yok. Bu turda verilen mimar kararları (kullanıcı kararı değildir): emniyette kısıtlama hâkimdir ve tek emniyet revizyonu; girdi tekrarının sınırı A4 portudur ve bit eşitliği güvencesi yalnız SIL'dedir; kayıtlı akış karta yeniden verilmez; A7 örtü denetimi katı cisme göre iki tek yönlü ölçüttür; A1 ve A4'ten hedef seçimi işlemi ile opak atış kontrol alanları çıkarılır (A1'de çıkarıldı, A4 çapraz uyum turunda).
+- **İskelet 0.9 (2026-11-20; mimar kararları):** bant ölçütü ikiye ayrıldı (olağan profilde ≤ %60, bağlayıcı üst sınırda ≤ %90; karttan PC'ye en kötü durum hesabı ≈ %84); girdi tekrarının sınırı ve güvencesi; "kısıtlama hâkimdir" ilkesi ve emniyet revizyonu; sürekli çıktıların üretim sırası, eşzamansız güvenli çıktı, olayların zamanlaması, oturum sonunun önceliği, çağrı çakışması; `L_act` payının sözleşme hesabı (uçtan uca en kötü ≈ 9,73 ms, pay ≈ 0,27 ms; tahmin, ölçülmedi; ölçüm 10 ms'yi aşarsa `L_act` üç periyoda çıkar); kamera açıkken 3B görünüm kapalı seçilemez; kamera kademe değerleri A2'de. 0.9 henüz sol tarafından incelenmedi; çapraz uyum incelemesinde başvuru sürümü olarak sınanacak.
 - **İskelet 0.8 (2026-11-19):** W0 ölçüm sonuçları ve K17 işlendi. Mimar kararları (kullanıcı kararı değildir): A1 taşıması yalnız ST-LINK sanal seri portu, 3 000 000 baud; kontrol hızının tasarım tabanı 200 Hz (400 Hz hedef olmaktan çıktı); aktüatör yanıtının uygulama gecikmesi sabit iki kontrol periyodu (10 ms) ve geç kalan yanıtın kabul/ret kuralı; kamera çizim yolu seçildi (ana iş parçacığından açık çizim, eşzamanlı geri okuma; Mac'te ön kanıt); kartlı çalışmada sonarın varsayılanı sade kademe; harici yer istasyonu yazılımı ilk sürümde yok; depo düzeni güncellendi; bölümlerin iskelete yönelik 26 önerisi karara bağlandı (§10). sol iskeleti iki kez inceledi; ilk incelemenin 7 bulgusu ve ikincinin 1 yeni kritik bulgusu giderildi (`docs/mimari/inceleme/00-iskelet-08-yanit.md`); geç yanıt kuralı A1 incelemesinde yeniden sınanacak.
 - **W1 başladı (2026-11-19):** beş sözleşme işinin hepsi 1.0-aday taslağını verdi (A4 112 kural; A8 69; A5 91; A2 72 ve A7 38; A3 116 ve A6 50). sol ilk incelemelerinde A8 (9 kritik), A4 (12 kritik), A5 (12 kritik), A2/A7 (8 kritik) "dondurulamaz" bulundu; bulgular mimar kararlarıyla düzeltme turlarında gideriliyor: A8 iki turu tamamladı; A4 ilk turu tamamladı; A5 ve A2/A7 ilk turda; A3/A6 ilk incelemesi sol'un kullanım sınırı nedeniyle yarıda kaldı (sınır 2026-11-20 00:08'de açılıyor). A1 sözleşmesi A4 ve A8 adayları üzerine başlatıldı (görev belgesi `docs/gorevler/W1-A1.md`). Adaylar `sozlesme/…-v1` dallarında; hiçbiri main'e birleşmedi. Bütün sözleşmeler ikinci turlarını bitirince sol'a çapraz uyum incelemesi yaptırılacak, sonra mimar dondurur.
 - **W0'dan kalanlar:** MP8a düzeltme turu (Windows paketi; kullanıcı Windows'ta çalıştıracak), MP3 temiz koşul yinelemesi (kullanıcının uygun zamanını bekliyor), MP5 (mesaj biçimi maliyeti; A1 sözleşmesinden sonra ya da protokol kütüphanesinin ilk sürümüyle ölçülecek).
@@ -51,6 +53,7 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
+0. (2026-11-20) Sıra: A1 son düzeltme turu → bütünleştirme dalı (`sozlesme/w1-butunlesme`; altı sözleşme dalı birleştirilir) → sol çapraz uyum incelemesi → uyum turu → doğrulama incelemesi → dondurma (sürüm 1.0, etiketler `sozlesme-A<n>-v1`, PR). Sonra W2.
 1. W1 sözleşmeleri (sürüyor): yazım, sol incelemesi, en çok iki düzeltme turu, mimar denetimi, dondurma; A1 (A4'ten sonra).
 2. W0'dan kalanlar: MP8a düzeltme turu, MP3 temiz koşul yinelemesi, MP5.
 3. W2: depo iskeleti, otomatik derleme, protokol kütüphanesi, çekirdek iskeleti; sonra W3–W6.
@@ -84,6 +87,11 @@ Kart Mac'e tek kabloyla, ST-LINK portundan bağlanır (K17); araç kurulumu içi
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-20 · W1: düzeltme turları; iskelet 0.9; çapraz uyum görev belgesi
+- sol'un sınırı açıldı; beş bekleyen inceleme koştu (A4, A5, A2/A7 ikinci; A3/A6 ve A1 ilk), ardından A3/A6 ve A1 ikinci incelemeleri.
+- A4, A5, A2/A7, A3/A6 iki düzeltme turunu tamamladı ve dallarına gönderildi (A4 `36e0eba`, A5 `69d92ab`, A2/A7 `05784a2`, A3/A6 `931117a`); A1 birinci turu `1cf683c`, ikinci turu sürüyor.
+- İskelet 0.9 yazıldı (mimar); çapraz uyum incelemesinin görev belgesi `docs/gorevler/W1-capraz.md`.
+- sol'un A1 ve A4'te bulduğu kapsam dışı içerik (hedef seçimi işlemi, hedefe hizalanma görev türü, opak alanlar) A1'den çıkarıldı; A4'ten çapraz uyum turunda çıkarılacak.
 ### 2026-11-19 · W1: beş sözleşme adayı yazıldı, düzeltme turları sürüyor
 - Beş sözleşme işi 1.0-aday taslağını verdi; adaylar `sozlesme/…-v1` dallarında, main'e birleşmedi.
 - sol ilk incelemeleri A8, A4, A5 ve A2/A7 için "dondurulamaz" dedi; düzeltme turları sürüyor (A8 iki tur, A4 bir tur tamamlandı). A3/A6 incelemesi sol kullanım sınırı nedeniyle yarım kaldı.

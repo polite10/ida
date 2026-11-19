@@ -1,6 +1,8 @@
 # Mimari iskelet
 
-Sürüm: 0.8 (2026-11-19). Durum: kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15); 0.8, W0 ölçümlerinin sonuçlarını ve K17'yi işler.
+Sürüm: 0.9 (2026-11-20). Durum: kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15); 0.8, W0 ölçümlerinin sonuçlarını ve K17'yi işledi; 0.9, sözleşme incelemelerinden (W1) çıkan iskelet düzeyindeki kararları işler.
+
+Sürüm 0.9 değişiklikleri (W1 sözleşmelerinin sol incelemeleri ve yazar önerileri üzerine; mimar kararları): A1 bant ölçütü olağan profil ve bağlayıcı üst sınır olarak ikiye ayrıldı (3); girdi tekrarının sınırı ve güvencesi tanımlandı (3, A6 satırı; 4); emniyette "kısıtlama hâkimdir" ilkesi ve emniyet revizyonu eklendi (3.2); sürekli çıktıların üretim sırası, eşzamansız güvenli çıktı, olayların zamanlaması, kullanım süresinin başlangıcı ve oturum sonunun önceliği tanımlandı (4); `L_act` payının sözleşme hesabı ve çağrı çakışması eklendi (4); kamera ile 3B görünümün bağı ve kamera kademe değerlerinin yeri düzeltildi (6, 10).
 
 Sürüm 0.8 değişiklikleri (W0 ölçümleri ve kullanıcı kararı K17 üzerine; ayrıntı 8. ve 10. bölümlerde): A1 taşıması yalnız ST-LINK sanal seri portudur, USB yüksek hız yolu kaldırıldı (K17; 3, 8); kontrol hızının tasarım tabanı 200 Hz oldu (4, 8); sabit uygulama gecikmesi ve geç kalan yanıtın kuralı tanımlandı (4); kamera çizim yolu seçildi, sonar kademesi kararı ölçümle kesinleşti (8); bölümlerin iskelete önerileri karara bağlandı (10); depo düzeni güncellendi (7).
 
@@ -75,7 +77,7 @@ Her arayüz bir sözleşmedir. Sözleşmeler ölçüm prototiplerinden (W0) sonr
 | A3 | Sim sunucusu ↔ web panelleri | WebSocket (ikili telemetri akışı), HTTP (kontrol) | Telemetri, sonar görüntüsü, olaylar; senaryo yükleme, çalıştırma kontrolü, hata enjeksiyonu, kayıt yönetimi | K9, Ö10; M20 |
 | A4 | Ortak çekirdek ↔ çevresi | C işlev arayüzü (`port`) | Zaman, birimli ve zaman damgalı sensör örnekleri, aktüatör çıkışı, bağlantı, kalıcı parametreler. Kartta BSP ve HIL bağlantısı, PC'de SIL koşucusu uygular | Kesin tasarım ilkesi |
 | A5 | Senaryo ve araç tanımı | Dosya (TOML) | Araç parametreleri, ortam, hedefler, görev, arıza zaman çizelgesi, rastgelelik tohumu, kalite kademesi | — |
-| A6 | Kayıt | Dosya (MCAP) | A1 trafiği, A3 komutları ve olayları, fizik durumu; tekrar oynatma bu dosyadan yapılır ve üç düzeyi ayrıdır: izleme (kayıttaki durumu gösterme), fizik yeniden koşturma (kayıtlı komutlarla), girdi tekrarı (kayıtlı sensör akışını çekirdeğe verme). Tekrar oynatılabilir bir kayıt, mesaj içeriğine ek olarak her komutun uygulandığı fizik adımını, bariyer zaman aşımı kararlarını ve düşürülen verileri içerir; "yalnızca olaylar" kademesinde tekrar oynatma güvencesi yoktur | Ö7 |
+| A6 | Kayıt | Dosya (MCAP) | A1 trafiği, A3 komutları ve olayları, fizik durumu; tekrar oynatma bu dosyadan yapılır ve üç düzeyi ayrıdır: izleme (kayıttaki durumu gösterme), fizik yeniden koşturma (kayıtlı komutlarla), girdi tekrarı (kayıtlı çekirdek çağrı girdilerini PC'deki çekirdeğe verme). Girdi tekrarının sınırı A4 port sınırıdır: bit düzeyinde aynı sonuç güvencesi yalnız SIL kaydından ve aynı yapı, platform ve özet koşulunda verilir; kartlı bir koşunun kaydından yapılan tekrar, çağrı girdilerinin A1 bayt akışından PC'de yeniden kurulmasıdır ve güvence taşımaz; kayıtlı akışın karta yeniden verilmesi ilk sürümde yoktur. Tekrar oynatılabilir bir kayıt, mesaj içeriğine ek olarak her komutun uygulandığı fizik adımını, bariyer zaman aşımı kararlarını ve düşürülen verileri içerir; "yalnızca olaylar" kademesinde tekrar oynatma güvencesi yoktur | Ö7 |
 | A7 | Sahne ve varlıklar | glTF + manifest | Tek kaynaktan görsel model, sonar geometrisi, yüzerlik ve çarpışma ağları, malzemelerin akustik ve optik özellikleri. Malzemelerin varsayılan değerleri A7'de durur; senaryoya özgü kalibrasyon değerleri A5'te bunları geçersiz kılar. Kaynaktan türetilen ağlar (ör. dışbükey ayrıştırma çıktıları) depoya girmez; derlemede sabitlenmiş araç sürümüyle üretilir ve manifestteki özetle doğrulanır | 12 numaralı rapor; D12 |
 | A8 | Sim sunucusu ↔ kamera algılama bileşeni | Paylaşımlı bellek (kareler), yerel soket (kayıtlar) | Sim → bileşen: zaman damgalı kamera kareleri. Bileşen → sim: 03 numaralı bölümdeki biçimde algılama kayıtları; sim bunları A1 üzerinden karta iletir. Bileşen poz ya da yer gerçeği almaz | 07 numaralı bölüm; M8 |
 
@@ -83,7 +85,7 @@ A1 ile A4 arasındaki dönüştürücü: A1 mesajlarını port örneklerine, por
 
 A1 üzerindeki sonar verisi: tek bir tarama satırı MAVLink'in 255 baytlık yük sınırını aşar; profil parçalanarak taşınır (06 numaralı bölüm tasarlar, M9 ölçer).
 
-A1'in kapasitesi (hesap; ölçülen hız üzerinden): 3 000 000 baud 8N1 yön başına 300 000 bayt/s taşır; 200 Hz'lik kontrol periyodu başına 1 500 bayt. Sözleşme, her yönde periyot başına ortalama yükü bu kapasitenin %60'ının (900 bayt) altında tutar; ölçümdeki %80 yük kayıpsız geçti (MP3), aradaki pay parçalanmış sonar profili ve yeniden eşleme içindir.
+A1'in kapasitesi (hesap; ölçülen hız üzerinden): 3 000 000 baud 8N1 yön başına 300 000 bayt/s taşır; 200 Hz'lik kontrol periyodu başına 1 500 bayt. Sözleşme iki ölçüt uygular: **olağan çalışma profilinde** her yönde periyot başına ortalama yük kapasitenin %60'ının (900 bayt) altındadır; **bağlayıcı üst sınırda** (izin verilen her yapılandırmada, bütün sınıfların aynı anda en yüksek hızda aktığı durum) yük kapasitenin %90'ını (1 350 bayt) aşmaz ve kritik çıktının gecikme bütçesi sağlanır. Ölçümdeki %80 yük kayıpsız geçti (MP3); %90 sınırı ölçülmedi, W4'te A1 üzerinde sınanır. (0.8'de tek ölçüt olarak yazılan %60, zorunlu sınıfın atılamadığı en kötü durumda karttan PC'ye sağlanamıyor: A1 sözleşmesinin hesabı ≈ %84.)
 
 Yer istasyonu: ilk sürümde yer istasyonu işlevini web panelleri (A3) görür; panelden verilen komutlar sim sunucusunda bağlantı emülatöründen (gecikme, kayıp) geçirilip A1 üzerinden karta iletilir. Harici bir yer istasyonu yazılımına (ör. QGroundControl) açılan ayrı bir MAVLink/UDP uç noktası ilk sürümün kapsamında değildir; A1'in MAVLink 2 olması bunu sonradan eklemeyi açık tutar.
 
@@ -110,6 +112,10 @@ A1 ve A4 üzerinde iki tür çıkış ayrı taşınır:
 - **Tek seferlik olay** (atış tetiği, silahlandırma değişikliği): benzersiz bir olay kimliği taşır; alıcı aynı kimliği yalnızca bir kez uygular. Yeniden gönderilen ya da önbellekten tekrarlanan bir çıkış olay üretmez. Olay kimliği, kartın açılış sayacı ile olay sayacından oluşur; böylece kart yeniden başladığında ya da bağlantı yeniden kurulduğunda eski bir olay yeni sayılmaz. Her olayın bir son geçerlilik süresi vardır; süresi geçmiş olay uygulanmaz. İzin veren durumlar (silahlandırma, atış izni) sürelidir: belirli aralıkla yenilenmezse kendiliğinden düşer; izni kaldıran komut ise süresizdir. Olayın oturum kapsamı, alıcının yanıtı ve taşma davranışı A1 sözleşmesinde tanımlanır.
 
 Silahlandırmayı kaldıran ve izni daraltan komutlar, aynı adımda atış kontrol modülünden önce uygulanır; modül her adımda güncel izni görür.
+
+**Kısıtlama hâkimdir.** Emniyeti kısıtlayan ile gevşeten girdiler aynı adıma, aynı çekirdek çağrısına ya da aynı fizik sınırına düşerse geliş sıralarından bağımsız olarak kısıtlayan uygulanır ve gevşeten reddedilir. Bayat, yinelenen ya da başka nedenle reddedilen bir girdinin kısıtlayıcı içeriği kaybolmaz; gevşetici içeriği yalnız kabul edilen girdiden uygulanır. Bu ilke A1, A3, A4 ve A5'te aynı sonucu verir.
+
+**Emniyet revizyonu.** Dünya tarafı tekdüze artan tek bir emniyet revizyonu tutar; kabul edilen her kısıtlama (durumu değiştirmese de) ve emniyet yetkisini değiştiren her olay onu artırır. Emniyeti gevşeten her istek ve izin açan her olay, karar verildiği andaki revizyonu taşır ve yalnız revizyon hâlâ güncelse uygulanır; araya giren her kısıtlama bekleyen yetkileri kalıcı olarak düşürür, eski yetki kendiliğinden geri gelmez. Sayaç A1 ve A3'te aynıdır; genişliği ve artıran olayların listesi sözleşmelerde tektir.
 
 ## 4. Zaman
 
@@ -139,7 +145,15 @@ Silahlandırmayı kaldıran ve izni daraltan komutlar, aynı adımda atış kont
 - **Yanıtın kabul kuralı (bütün kipler).** Her yanıt, yanıtladığı partinin sıra numarasını taşır ve yalnız o partinin **uygulama anında** (partinin kapanışı + `L_act`) uygulanabilir. Sim her sıra numarası için tek bir yuva tutar. Uygulama anından önce gelen yanıt kendi yuvasına konur ve o ana kadar bekletilir; birden çok parti aynı anda yolda olabilir, sonraki partilere ait yanıtlar kendi yuvalarında bekler. Aynı sıra numarasıyla ikinci kez gelen yanıt ve uygulama anı geçmiş bir sıra numarasına ait yanıt reddedilir ve sayılır; hiçbir yanıt geriye dönük ya da başka bir partinin yerine uygulanmaz.
 - **Uygulama anında yuva boşsa.** Bariyer kipinde sim, yalnız o sıra numarasının yanıtını bekleme sınırına kadar bekler; bu sırada gelen eski numaralı yanıtlar reddedilir, sonraki numaralı yanıtlar kendi yuvalarına konur, ikisi de beklemeyi bitirmez. Yanıt gelirse öngörülen fizik adımında uygulanır. Bekleme sınırı aşılırsa ya da kip bariyersizse (HIL 1x'te bekleme yoktur) parti "kaçırıldı" olarak kapanır: o adımda komut değişmez, sim zamanı ilerler, o numaranın sonradan gelen yanıtı reddedilir.
 - **Komutun ömrü ve nötr durum.** Yürürlükteki sürekli komut, kendi kullanım süresi dolana kadar uygulanmaya devam eder; süresi dolduğunda **uygulanmaz** ve aktüatör modeli nötr duruma (iticilerde sıfır itki isteği) geçer. Nötr durumdan çıkış için ayrı bir kural yoktur: kendi uygulama anında yuvasında bulunan ilk yanıt yukarıdaki kabul kuralıyla uygulanır. Art arda kaçırılan partiler ayrı ayrı sayılır.
-- Sürekli komutların kullanım süresi ve kartın bağlantı zaman aşımı A1 sözleşmesinde, bekleme sınırıyla birlikte ve birbirine göre tanımlanır.
+- Sürekli komutların kullanım süresi ve kartın bağlantı zaman aşımı A1 sözleşmesinde, bekleme sınırıyla birlikte ve birbirine göre tanımlanır. Kullanım süresi yanıtın sabit uygulama anından sayılır.
+- **Geçerli komut taşımayan yanıt.** Kartın "sürekli komut geçersiz" diye işaretlediği yanıt yuvayı doldurur (parti kaçırılmış sayılmaz) ama yürürlükteki komutu değiştirmez.
+- **Üretim sırası.** Kartın ürettiği her sürekli çıktı tek bir üretim sayacı taşır; sim yalnız son uygulanandan büyük sayaçlı çıktıyı uygular, aynı fizik sınırına düşen çıktılar üretim sırasıyla uygulanır.
+- **Eşzamansız güvenli çıktı** sabit uygulama anı kuralının tek istisnasıdır: alımdan sonraki ilk fizik adımında uygulanır ve kendinden önce üretilmiş, henüz uygulanmamış bütün sürekli çıktıları iptal eder.
+- **Tek seferlik olayların zamanlaması.** Zamanında gelen olay, ait olduğu yanıtın yuvasıyla aynı adımda uygulanır; geç gelen olay son geçerliliği içindeyse alımdan sonraki ilk adımda uygulanır ve çalıştırmayı zamanlama bakımından geçersiz kılar.
+- **Oturum sonunun önceliği.** Bağlantı oturumunun sonu, yeni oturumun başlangıcından ve girdilerinden önce, ayrı bir çekirdek çağrısında işlenir.
+- **Çağrı çakışması.** Bir parti geldiğinde kartta başka bir çekirdek çağrısı sürüyorsa o parti ayrıca sayılır ve zamanlama bakımından geçersizdir.
+
+**`L_act` payı (sözleşme hesabı; ölçüm değil).** A1 sözleşmesinin kalem kalem hesabıyla, çakışmasız bir partinin uçtan uca en kötü süresi ≈ 9,73 ms, `L_act`'e pay ≈ 0,27 ms'dir; kalemlerin çoğu tahmindir (gerçek çekirdeğin 3,5 ms'lik bütçesi dahil). Bu pay, `L_act`'in iki periyotta kalabileceğini göstermez, yalnız çelişmediğini gösterir. Karar W3/W4'teki birlikte ölçümle verilir: ölçülen en kötü süre 10 ms'yi aşarsa `L_act` üç periyoda (15 ms) çıkar; bu bir yedektir, kalite kademesi değildir.
 
 ## 5. Araç ve donanım seti
 
@@ -179,6 +193,8 @@ Windows hedef bilgisayarı düşük donanımlıdır (Ö11). Ağır özelliklerin
 Fizik, kamera dışı sensörler, otopilot ve HIL her kademede tam çalışır. Sim sunucusu gerçek zamanı kaçırdığı adımları her kipte sayar ve A3 üzerinden bildirir.
 
 Emniyet kabulü kalite kademesinden bağımsızdır: emniyet zincirinin testleri her kademede aynı sonucu vermelidir. Kameraya bağlı davranış yalnız kamera açıkken sınanır.
+
+Kamera karelerini görselleştirici üretir; bu yüzden kamera sensörü açıkken 3B görünüm "kapalı" seçilemez (böyle bir senaryo doğrulamada reddedilir). Kamera kademelerinin çözünürlük ve hız değerleri A2 sözleşmesinde tanımlıdır; öteki sözleşmeler oraya atıf verir.
 
 Sonarın kartlı çalışmadaki varsayılanı sade kademedir (8). Tam kademe kartlı çalışmada ancak azaltılmış ışın sayısıyla ve raporlanmış hatasıyla seçilebilir; tam ayrıntı gerçek zamanlı olmayan SIL koşuları içindir.
 
@@ -292,7 +308,7 @@ Açık bulgular kaydının 6. başlığındaki yirmi altı öneri burada karara 
 | 22 | A6 içeriğinin ifadesi | Kabul (A6 satırı) |
 | 23 | Tekrar oynatmanın üç düzeyi | Kabul (A6 satırı) |
 | 24 | Ek Linux derleme işi; karta bağlı koşucu | Eklenmez (7) |
-| 25 | İskeleti etkileyen açık sorular | Mimar varsayılanları: harici yer istasyonu hedef değil (17); derleme zamanında Python ve Node kullanımı 7. bölümdeki gibi; kamera görünürlükten bağımsız, tek kamera, üst sınır 640 × 480 ve 30 Hz (kademe değerleri A8 sözleşmesinde, Windows ölçümüne göre); en düşük macOS hedefi geliştirme makinesinin ana sürümüdür (26); görselleştirici ayrı süreçtir, gömülü Godot kitaplığı kullanılmaz |
+| 25 | İskeleti etkileyen açık sorular | Mimar varsayılanları: harici yer istasyonu hedef değil (17); derleme zamanında Python ve Node kullanımı 7. bölümdeki gibi; kamera görünürlükten bağımsız, tek kamera, üst sınır 640 × 480 ve 30 Hz (kademe değerleri A2 sözleşmesinde, Windows ölçümüne göre; 0.9'da düzeltildi); en düşük macOS hedefi geliştirme makinesinin ana sürümüdür (26); görselleştirici ayrı süreçtir, gömülü Godot kitaplığı kullanılmaz |
 | 26 | Web paneli tercihi ile yerleşim önerisinin ayrımı | Not: paneller web teknolojisiyledir (K9, kesin); panelin ayrı pencerede mi gömülü mü duracağı 08'in önerisidir, sözleşmeyi etkilemez |
 
 Açık bulgular kaydında K17 nedeniyle anlamı değişen ve hem USB'ye hem sanal seri porta değinen bulgular (AB-003, AB-211, AB-215, AB-224) A1 sözleşmesi işinde, bu sürümdeki taşıma kararına göre ele alınır: USB'ye özgü kısımları düşer, sanal seri port için geçerli kısımları kalır.
