@@ -6,7 +6,10 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Şu an
 
-- **MP3 sürüyor (2026-11-19; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp3-vcp` (main'e birleşmedi, henüz commit'lenmedi; çalışma kopyası `.claude/worktrees/mp3-vcp`). Kod, masaüstü testleri (219/219) ve iki düzeltme turu tamam; sol kapanış incelemesi (`MP3-sol-3.md`): bir önemli bulgu (A1: kampanya profilinde 64 bekleyen sınırı kayıttan değiştirilebiliyor) açık; mimar (o tarihte Codex) kabul kapsamını dondurulmuş kampanya ayarlarına daralttı (`docs/gorevler/W0-MP3a-kapsam-karari.md`, dalda). Uzun kampanya 2026-11-19 sabahı başladı; 600 s çift yönlü 256 B akış koşuları: 921600 baud GEÇTİ (159 920 çerçeve), 2 000 000 baud GEÇTİ (347 827 çerçeve, iki yönde eşit); 3 000 000 baud koşusu 09:40'ta kart bağlantısı koptuğu için GEÇERSİZ (ölçüt ihlali değil, kopma; yinelenecek). Kalan: 3 ve 6 Mbaud akış koşuları, geçen en yüksek hızda dört echo (gecikme) koşusu, rapor, sol'un son veri incelemesi, PR. Kampanya 2026-11-19 akşamı kaldığı yerden sürdürülüyor.
+- **MP3 tamamlandı ve main'e birleşti (2026-11-19; PR #6; ölçüm prototipi, ürün kodu değil):** rapor `docs/olcumler/MP3-vcp.md`, kod `tools/olcum/mp3/`. Akış (256 B, %80 yük, 600 s): 921 600, 2 000 000 ve 3 000 000 baud geçti (3 Mbaud yinelemede; sabah koşusu kopma nedeniyle geçersiz); 6 000 000 baud geçmedi (veri temiz, PC takvim gecikmesi 18,1 ms > 10 ms). Echo (3 Mbaud): dört profilde kayıp ve hata 0; gidiş-dönüş p50 / p99,9: 64 B'de ≈ 0,8 / 1,1 ms, 256 B'de ≈ 2,2 / 2,5 ms; en uzun 12,5–14,5 ms; üç profil yalnız PC takvim ölçütünden (10 ms) geçmedi, 256 B 400/s geçti. Ölçüm sırasında Mac'te ilgisiz yük vardı; nedensellik kurulamadı; temiz host koşulunda bir yineleme planlandı (kullanıcının uygun zamanını bekliyor). sol son veri incelemesi hükümleri ham kayıtlardan doğruladı (`docs/olcumler/inceleme/MP3-sol-veri.md`). Bilinen araç sınırlaması A1 ve kapsam kararı raporda.
+- **Açık bulgular kaydı güncellendi (2026-11-19):** W0 ölçüm bulguları AB-234…AB-247 eklendi; K17 ile üç bulgu kapsam dışı işaretlendi; toplam 247, açık 238 (kritik 38).
+- **W0-MP8a (Windows ölçüm paketi) hazırlandı, inceleniyor:** dal `olcum/mp8-windows` (commit'lenmedi); paket Windows'ta henüz çalıştırılmadı; sol incelemesi sürüyor; görev belgesi `docs/gorevler/W0-MP8a.md`.
+- **Eşzamanlı agent sınırı kalktı (2026-11-19):** kullanıcı üyeliğini yükseltti; "aynı anda en fazla iki agent" çalışma kuralı (Ö12) artık uygulanmıyor. Kısıtlar: kart tek (kart işleri sırayla), aynı dosyaya dokunan işler aynı anda koşmaz, zamanlamaya duyarlı ölçüm sürerken Mac'e ağır yük bindirilmez.
 - **Mimarlık (K19, 2026-11-19):** mimar oturumunu yeniden Fable yürütüyor; K18'in görev dağılımı sürüyor.
 - **MP4a tamamlandı (2026-11-18, daraltılmış kapsamla; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp4-dongu-yuku`. D1/D2 geçmedi, D3/D4 geçti. O2 ağır yük 400 Hz: maksimum 3,32238125 ms, aşım 241000/241000; O2 200 Hz: 121000 adımda aşım 0. Ölçülen yer tutucu çekirdek adımıdır ve taşımayı içermez; gerçek çekirdek ve taşıma hızı kesinleşmedi, mevcut kararlar korunur. Mimar, taşmalı histogramların kapsam dışı bırakılıp reddedilmesine karar verdi (Y5). Çözümleyici 103 denetimi geçti; sol kapanış incelemesi kritik/önemli bulgu görmedi (`docs/olcumler/inceleme/MP4-sol-kapanis.md`; küçük bulgu Y8 giderildi). Rapor: `docs/olcumler/MP4-dongu-yuku.md`. Main'e PR #5 ile squash birleşti (b2b9346).
 - **Tek kablo kararı (K17, 2026-11-16):** sistem yalnız kartın ST-LINK portuyla çalışır; yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) sanal seri porttan (USART1) geçer; kullanıcı USB girişi (USB HS) kullanılmaz; MP2 ve kart tarafı USB yığını plandan çıktı; kontrol hızı ve bariyer bütçesi MP3'e göre belirlenir.
@@ -45,7 +48,8 @@ Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bi
 
 ## Sıradaki adım
 
-0. MP2 (USB HS) K17 ile plandan çıktı. MP4a bitti. Sıra: MP3 (sanal seri port hızı ve kaybı; artık A1'in tek taşıması); MP5 (mesaj biçimi maliyeti; seri port üzerinden); MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının ve K17'nin iskelete (§3, §8) ve açık bulgulara işlenmesi; sonra W1 sözleşmeler.
+0. MP3 bitti. Sıra: iskelet 0.8 (mimar; W0 sonuçları ve K17), MP8a incelemesi ve birleştirmesi, MP3 temiz host yinelemesi, MP5 (mesaj biçimi maliyeti), sonra W1 sözleşmeler.
+0a. (Eski, 2026-11-18) MP2 (USB HS) K17 ile plandan çıktı. MP4a bitti. Sıra: MP3 (sanal seri port hızı ve kaybı; artık A1'in tek taşıması); MP5 (mesaj biçimi maliyeti; seri port üzerinden); MP8 Windows betiği; W0 sonu: ölçüm sonuçlarının ve K17'nin iskelete (§3, §8) ve açık bulgulara işlenmesi; sonra W1 sözleşmeler.
 1. W0 ölçüm prototipleri (`docs/mimari/09-test-ve-is-akisi.md` 2.1 ve 6.1). MP1a, MP6a, MP7a, MP4a bitti. Sırada: MP3, sonra MP5, MP8 betiği, W0 sonu, W1.
 2. W1 arayüz sözleşmeleri (A1–A8); açık bulgular bu aşamada kapatılır; iskelet önerileri W1 başında karara bağlanır.
 3. Uygulama dalgaları (W2–W6).
@@ -71,6 +75,12 @@ Kart Mac'e tek kabloyla, ST-LINK portundan bağlanır (K17); araç kurulumu içi
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-19 · W0: MP3 birleşti; açık bulgular güncellendi; MP8a hazırlandı
+- MP3 (sanal seri port) PR #6 ile main'e birleşti; 3 Mbaud akış ve echo geçti, 6 Mbaud geçmedi.
+- Açık bulgular kaydına AB-234…AB-247 eklendi (toplam 247, açık 238).
+- W0-MP8a görev belgesi ve paket hazırlandı, sol incelemesi sürüyor.
+- Agent sınırı kalktı (AGENTS.md md.7, Ö12 notu).
+
 ### 2026-11-19 · mimarlık Fable'a döndü (K19); MP3 kampanyası sürüyor
 - K19: mimar oturumunu yeniden Fable (Claude) yürütür; K18'deki Codex devri sona erdi, görev dağılımı sürer.
 - MP3 akış koşuları (600 s, çift yönlü, 256 B): 921600 baud GEÇTİ (159 920 çerçeve), 2 000 000 baud GEÇTİ (347 827 çerçeve); 3 ve 6 Mbaud ile echo koşuları kaldı.

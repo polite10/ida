@@ -68,7 +68,7 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 4. Bir aşama tamamlanıp ilerleme olduğunda commit'i kayıt agent'ı (`ida-kayit`) atar.
 5. Web araştırmasıyla kapanmayan sorular kart üzerinde ya da prototiple ölçülür; ölçüm sonucu çıkmadan ilgili tasarım kararı kesinleşmiş sayılmaz.
 6. Agent yalnızca onaylamaz; bir öneride ya da görev tanımında hata görürse gerekçesiyle söyler.
-7. Çalışma kuralı (öneri): gerçek kotayla aynı anda en fazla iki agent çalışır.
+7. Eşzamanlı agent sayısı sınırlı değildir (kullanıcı, 2026-11-19); kart tek olduğu için kart işleri sırayla yürür, aynı dosyaya dokunan işler aynı anda koşmaz ve zamanlamaya duyarlı bir ölçüm sürerken aynı makineye ağır yük bindirilmez.
 
 Agent tanımları `.claude/agents/` altındadır. `xhigh` ve `max` effort kullanılmaz.
 

@@ -4,6 +4,8 @@ Durum: 2026-11-14 tarihli inceleme durumu. Kaynak: `docs/mimari/inceleme/` altı
 
 Dalga etiketleri 09 sürüm 0.2'ye göre güncellendi (ölçümler W0, sözleşmeler W1).
 
+2026-11-19: W0 ölçüm bulguları (AB-234…) eklendi; K17 ile kapsam dışına çıkan bulgular işaretlendi.
+
 ## 1. Nasıl kullanılır
 
 - Kayıt, mimari bölümlerin (01–09) incelemelerinde kapanmamış bulguları ve bölümlerin kendi açık noktalarını tek yerde toplar. İnceleme ve düzeltme döngüsü yakınsamadığı için mimar döngüyü kesti: bulgular belgelerde değil, A1–A8 sözleşmeleri yazılırken ve uygulama işleri yapılırken kapatılır.
@@ -21,43 +23,45 @@ Dalga etiketleri 09 sürüm 0.2'ye göre güncellendi (ölçümler W0, sözleşm
 
 | Bölüm | Kritik | Önemli | Küçük | Belirtilmemiş | Toplam |
 |---|---:|---:|---:|---:|---:|
-| 01 Kart yazılımı | 6 | 14 | 1 | 13 | 34 |
+| 01 Kart yazılımı | 8 | 16 | 2 | 13 | 39 |
 | 02 Ortak çekirdek | 2 | 11 | 0 | 24 | 37 |
 | 03 Atış kontrol | 10 | 18 | 2 | 3 | 33 |
 | 04 Simülatör çekirdeği | 0 | 5 | 3 | 10 | 18 |
-| 05 Sensörler ve sonar | 1 | 15 | 0 | 6 | 22 |
-| 06 Protokol ve HIL | 6 | 16 | 1 | 6 | 29 |
-| 07 Görselleştirme | 8 | 15 | 1 | 9 | 33 |
+| 05 Sensörler ve sonar | 3 | 16 | 0 | 6 | 25 |
+| 06 Protokol ve HIL | 6 | 17 | 1 | 6 | 30 |
+| 07 Görselleştirme | 9 | 17 | 2 | 9 | 37 |
 | 08 Laboratuvar uygulaması | 0 | 0 | 0 | 13 | 13 |
-| 09 Test ve iş akışı | 0 | 0 | 0 | 5 | 5 |
-| **Toplam (açık)** | **33** | **94** | **8** | **89** | **224** |
+| 09 Test ve iş akışı | 0 | 1 | 0 | 5 | 6 |
+| **Toplam (açık)** | **38** | **101** | **10** | **89** | **238** |
 | Kapsam dışı (ayrı, 5. bölüm) | 2 | 2 | 0 | 5 | 9 |
-| **Genel toplam** | **35** | **96** | **8** | **94** | **233** |
+| **Genel toplam** | **40** | **103** | **10** | **94** | **247** |
 
 **Kapatılacağı yere göre (açık bulgular)**
 
 | Kapatılacağı yer | Kritik | Önemli | Küçük | Belirtilmemiş | Toplam |
 |---|---:|---:|---:|---:|---:|
-| A1 — Sim sunucusu ↔ kart | 12 | 20 | 0 | 15 | 47 |
+| A1 — Sim sunucusu ↔ kart | 13 | 21 | 0 | 15 | 49 |
 | A2 — Sim sunucusu ↔ görselleştirici | 4 | 2 | 0 | 2 | 8 |
 | A3 — Sim sunucusu ↔ web panelleri | 0 | 0 | 0 | 3 | 3 |
 | A4 — Ortak çekirdek ↔ çevresi | 5 | 8 | 0 | 13 | 26 |
 | A5 — Senaryo ve araç tanımı | 0 | 2 | 0 | 9 | 11 |
 | A6 — Kayıt | 0 | 2 | 0 | 4 | 6 |
 | A7 — Sahne ve varlıklar | 0 | 1 | 0 | 1 | 2 |
-| A8 — Sim sunucusu ↔ kamera algılama bileşeni | 0 | 3 | 0 | 0 | 3 |
-| Uygulama: kart yazılımı | 0 | 8 | 1 | 4 | 13 |
+| A8 — Sim sunucusu ↔ kamera algılama bileşeni | 1 | 5 | 0 | 0 | 6 |
+| Uygulama: kart yazılımı | 1 | 10 | 2 | 4 | 17 |
 | Uygulama: ortak çekirdek — kestirim, güdüm, kontrol | 2 | 8 | 0 | 4 | 14 |
 | Uygulama: atış kontrol, emniyet zinciri ve arayüzler | 4 | 14 | 2 | 3 | 23 |
 | Uygulama: fizik çekirdeği | 1 | 5 | 3 | 7 | 16 |
-| Uygulama: sensör modelleri | 1 | 9 | 1 | 5 | 16 |
+| Uygulama: sensör modelleri | 3 | 10 | 1 | 5 | 19 |
 | Uygulama: HIL köprüsü, bariyer, bağlantı emülatörü | 0 | 1 | 0 | 0 | 1 |
-| Uygulama: görselleştirme — Godot sahnesi ve GDExtension | 4 | 10 | 1 | 1 | 16 |
+| Uygulama: görselleştirme — Godot sahnesi ve GDExtension | 4 | 10 | 2 | 1 | 17 |
 | Uygulama: laboratuvar uygulaması | 0 | 0 | 0 | 1 | 1 |
-| Uygulama: test ve derleme altyapısı | 0 | 0 | 0 | 4 | 4 |
+| Uygulama: test ve derleme altyapısı | 0 | 1 | 0 | 4 | 5 |
 | Ölçüm işleri | 0 | 1 | 0 | 13 | 14 |
 
 Yeri belirsiz olarak işaretlenen bulgu sayısı: 3 (AB-103, AB-206, AB-213); Not sütununda "yer belirsiz" yazar.
+
+W0 ölçüm bulguları AB-234…AB-247 (14 bulgu) bu sayılara dahildir. K17 ile kapsam dışına çıkan AB-109, AB-115 ve AB-116 satırları 3. bölümde yerinde durur, Not sütununda "KAPSAM DIŞI (K17)" yazar ve yukarıdaki açık sayılara hâlâ dahildir (önem dağılımı: AB-109 önemli, AB-115 önemli, AB-116 belirtilmemiş). Bu üçünü çıkarınca açık sayı kritik 38, önemli 99, küçük 10, belirtilmemiş 88, toplam 235 olur.
 
 ## 3. Bulgular (kapatılacağı yere göre)
 
@@ -65,7 +69,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### A1 — Sim sunucusu ↔ kart (MAVLink 2 + özel dialect; W1, ölçüm sonuçlarıyla tek aşamada)
 
-47 bulgu.
+49 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
@@ -116,6 +120,8 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-045 | 06 · 06-sol-2.md ilk-inceleme #24 ve DIAG/FC_STATUS satırları; 06-sol.md #24; 01 · 01-kart-yazilimi.md §8.3 md.1 | önemli | DIAG ve FC_STATUS mesajlarının kesin alan listesi, tipleri ve `IDA_DIAG` grup/bayt düzeni yok, yalnız üst sınır var; özel FC komut ve yanıtlarının tipleri de verilmemiş ve `BAD_INPUT` için ayrı bayrak gerekliliği belirsiz. | — |
 | AB-046 | 06 · 06-protokol-ve-hil.md §8 (açık noktalar) | belirtilmemiş | `sysid` değerleri, mesaj kimliği aralığı, şema özetinin kanonik metin kuralı, altı eksenli elle kumandada `MANUAL_CONTROL`'ün yeterliliği ve c_library_v2'nin örnek başına durumla kullanımı sözleşme işinde sabitlenip doğrulanacak. | — |
 | AB-047 | 07 · 07-sol.md notlar (06 ile komşu) | belirtilmemiş | 06 en çok 4 algılama/kare, 07 ve 03 en çok 8 kabul ediyor; 06'daki 120 kayıt/s ve 10.200 B/s hesabı sekiz kayıtla (85 B çerçevede 20.400 B/s) aynı kalamaz. | 06 değişmeli; `t_sigma_ns` ve `calib_ver` eklenince yeniden hesaplanmalı |
+| AB-234 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.6; §3.1 | önemli | ST-LINK sanal seri portu, PC portu kapalıyken gelen veriyi kısmen saklıyor, kısmen kaybediyor (ilk turda yeni imajın açılış satırları ve ilk 3–5 T satırı gelmedi); oturum açılışı buna göre tanımlanmalı. | A1 oturum açılışı; MP3 portu kart sıfırlanmadan önce açık tutmalı |
+| AB-235 | MP4 · docs/olcumler/MP4-dongu-yuku.md §4.2, §4.3, §5, §7 | kritik | Yer tutucu çekirdek adımı `-O2` ağır yükte (B) 400 Hz'e sığmıyor: en büyük 3322,38125 µs (2500 µs periyodun %132,9), 241.000 adımın tamamı periyodu aştı; olağan yükte (A) en büyük 1338,91875 µs, aşım 0. 200 Hz'te B `-O2`: en büyük 3321,96875 µs (5000 µs'nin %66,4), aşım 0/121.000. Sonuç yer tutucuya ve ön bilgiye aittir; gerçek çekirdekle W3 sonunda yinelenmeden kesin girdi değildir. | iskelet §8 kontrol hızı kararı (M5); A1 ve A4 (zaman ve bütçe ilişkileri) |
 
 ### A2 — Sim sunucusu ↔ görselleştirici (W1)
 
@@ -217,33 +223,40 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### A8 — Sim sunucusu ↔ kamera algılama bileşeni (W1)
 
-3 bulgu.
+6 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
 | AB-104 | 03 · 03-sol.md #15 | önemli | Algılama kaydında kare/parti kimliği yok; aynı karedeki birden çok algılama zaman ilerlemesi denetimine takılabiliyor. | A1 algılama mesajıyla birlikte |
 | AB-105 | 07 · 07-sol.md #13; 03 · 03-atis-kontrol.md §8.4; 05 · 05-sensorler-ve-sonar.md §8; 07 · 07-gorsellestirme.md §8 (yer gerçeği maskesi) | önemli | Yer gerçeği sınırı çelişiyor: bileşene poz verilmediği söylenirken yapılandırma ve halka fizik gerçeği montajını taşıyor, anlamsal algılama üreteci aynı bileşene takılabiliyor. | — |
 | AB-106 | 07 · 07-sol.md #20 | önemli | §3.5 ve süreç şeması kamera algılayıcı bağlantısını adsız/yeni arayüz sayıyor; iskelet 0.6'da bu A8'dir. | belge atfı; 07 §8 madde 3 de güncel bağlayıcı kurala çevrilmeli |
+| AB-236 | MP6 · docs/olcumler/MP6-godot-kamera.md §4.1, §6, §5 (G2) | kritik | Olağan çizim döngüsü pencere örtülü, gizli ve simge durumlarında kare üretmiyor (yol a: 0 kare). Ana iş parçacığından `force_draw(false, dt)` + kamera `SubViewport`'u `UPDATE_ONCE` ile üç durumda da 9000/9000 kare, %0 düşme, kimlik boşluğu 0 ve görünür referansla bit düzeyinde aynı çıktı (Mac, 5 dk ön tur); 07'nin kamera yolu buna göre yazılmalı. | A8, A2; Godot sahnesi (07) |
+| AB-237 | MP6 · docs/olcumler/MP6-godot-kamera.md §4.4, §7, §9 | önemli | Saydam olmayan `SubViewport`'ta `get_image()` RGB8 döndürüyor (640 × 480 için 921.600 B) ve RGBA8 → RGB8 dönüşümünü CPU'da yapıyor; `texture_get_data` RGBA8 verir (1.228.800 B). Biçim varsayımı buna göre belirtilmeli. | A8; rapor 07 §2.5'in RGBA8 varsayımını anmıyor (yalnız 07 §2.5'teki `get_image()` yedek yolunu ölçtü); varsayımın yeri doğrulanmadı |
+| AB-238 | MP6 · docs/olcumler/MP6-godot-kamera.md §4.3, §6 | önemli | Asenkron geri okuma gizli pencerede ilerliyor ama gecikmesi gerçek çizim hızına bağlı: 30 Hz `force_draw` ile istekten geri çağrıya p50/p99/maks 58,56 / 70,52 / 72,72 ms (görünür pencerede 7,29 / 9,15 / 10,43 ms). 07 §2.4'teki "döngü kamera hızından hızlı koşar" varsayımı kendiliğinden sağlanmıyor. | A8; Godot sahnesi (07) |
 
 ### Uygulama: kart yazılımı (W3 Kart yazılımı; 01)
 
-13 bulgu.
+17 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
 | AB-107 | 01 · 01-sol-2.md Y2; 01-sol.md #8, #9, #14 | önemli | A geçişi sürekli RX ya da birikmiş partilerle içeride kalabildiği için sağlık denetimi, B dilimi ve "sağlık aralığı ≤3 ms" / yaklaşık 128 ms güvenceleri mevcut düzenden çıkmıyor. | M5/M19 kapanış koşulu; ilk incelemede #8, #9, #14 önemli |
 | AB-108 | 01 · 01-sol-2.md Y3; 01-sol.md #5 | önemli | Kritik yol yanıt süresi (1,695 ms; 24,2 ms ve 30,4 ms eşikleri) bütün giriş durumlarını, kodlama ve kesme giderlerini ve 200 Hz'i kapsamıyor. | M5 ölçümü; ilk incelemede #5 önemli |
-| AB-109 | 01 · 01-sol-2.md Y4; 01-sol.md #10 | önemli | TinyUSB/DWC2 servis çağrısında işlenecek olay ve paket sayısı sınırlanmamış; "en çok 10 paket" çıkarımı yanlış. | USB sürücüsü uygulaması; M5; ilk incelemede #10 önemli |
+| AB-109 | 01 · 01-sol-2.md Y4; 01-sol.md #10 | önemli | TinyUSB/DWC2 servis çağrısında işlenecek olay ve paket sayısı sınırlanmamış; "en çok 10 paket" çıkarımı yanlış. | USB sürücüsü uygulaması; M5; ilk incelemede #10 önemli KAPSAM DIŞI (K17): USB HS ve TinyUSB/DWC2 yığını plandan çıktı. |
 | AB-110 | 01 · 01-sol-2.md Y5; 01-sol.md #11 | önemli | Olağan veri kabulü FIFO'daki eski baytları geçmeyi ve kritik çıktı son tarihini garantilemiyor; ACTUATOR gecikme ölçüm noktası (e₃) tutarsız. | gönderim yöneticisi; A1 ölçüm noktalarına uygunluk testi; ilk incelemede #11 kritik |
 | AB-111 | 01 · 01-sol-2.md Y6; 01-sol.md #11 | önemli | Host okumazken iki ACTUATOR yuvası dolunca yeni güvenli çıktının konacağı yer yok; "atılmaz" ve sonlu kuyruk kuralları birlikte uygulanamıyor. | gönderim yöneticisi; K16; ilk incelemede #11 kritik |
 | AB-112 | 01 · 01-sol-2.md Y11; 01-sol.md #7 | önemli | Erken başlatma hatasında güvenli bekleme, henüz kurulmamış zamanlayıcı ve bağlantıya dayanıyor; 2 s'lik başlangıç IWDG'siyle tekrar reset olabilir. | BSP başlatma işi; erken hata enjeksiyon testleri; ilk incelemede #7 önemli |
 | AB-113 | 01 · 01-sol-2.md Y13; 01-sol.md #20 | önemli | Hata işleyicisinde acil yığına geçmeden özgün MSP/PSP ve EXC_RETURN saklanmıyor; exception çerçevesinin okunabilirliği doğrulanmamış. | K9; ilk incelemede #20 önemli |
 | AB-114 | 01 · 01-sol-2.md Y14; 01-sol.md #16 | küçük | Kalıcı parametre başlığı 32 değil 30 B; iki ayrılmış baytın CRC kapsamı ve `gen` sarma açıklaması yanlış/eksik. | kalıcı parametre deposu; altın bayt testleri; ilk incelemede #16 önemli |
-| AB-115 | 01 · 01-sol-2.md Y17 | önemli | TinyUSB 0.21.0 terminal bağlı değilken TX FIFO üzerine yazmaya varsayılan olarak izin veriyor; çerçeve bütünlüğü iddiası bu ayar belirtilmeden zayıf. | USB sürücüsü yapılandırması; DTR geçişleri K16'ya eklenecek |
-| AB-116 | 01 · 01-kart-yazilimi.md §8.1 md.2 | belirtilmemiş | TinyUSB OSAL'ın statik oluşturulduğu (FreeRTOS yedeği) ve servis çağrısının en kötü süresi doğrulanmadı. | M5; 01 Y4 ile birlikte |
+| AB-115 | 01 · 01-sol-2.md Y17 | önemli | TinyUSB 0.21.0 terminal bağlı değilken TX FIFO üzerine yazmaya varsayılan olarak izin veriyor; çerçeve bütünlüğü iddiası bu ayar belirtilmeden zayıf. | USB sürücüsü yapılandırması; DTR geçişleri K16'ya eklenecek KAPSAM DIŞI (K17): TinyUSB CDC yapılandırması ve DTR geçişleri USB HS'e özgü; USB HS plandan çıktı. |
+| AB-116 | 01 · 01-kart-yazilimi.md §8.1 md.2 | belirtilmemiş | TinyUSB OSAL'ın statik oluşturulduğu (FreeRTOS yedeği) ve servis çağrısının en kötü süresi doğrulanmadı. | M5; 01 Y4 ile birlikte KAPSAM DIŞI (K17): TinyUSB OSAL ve USB servis çağrısı USB HS'e özgü; USB HS plandan çıktı. |
 | AB-117 | 02 · 02-sol-2.md notlar (01 ile uyum) | belirtilmemiş | 01 eski `ida_core_tick_wall` imzasını ve yalnız IMU kesilince çağırma düzenini kullanıyor; yeni girdili `ida_core_tick`, alım damgaları ve çağrı sıklığına uyarlanmalı. | A4 imzasıyla birlikte |
 | AB-118 | 02 · 02-ortak-cekirdek.md §8.3 (01) | belirtilmemiş | 01'den ≥100 Hz `tick`, `t_rx` damgası, `alive_ok` ile IWDG beslemesinin bağlanması ve FPSCR kaydı bekleniyor. | — |
 | AB-119 | 06 · 06-sol-2.md notlar (01 §2.4, §2.5, §3.3, bütçeler) | belirtilmemiş | 01'de IMU tamamlanınca çağrı ve 10 ms boşluktan sonra tick anlatımı 06'nın TF kapanışıyla uyuşmuyor; `ida_conv_*` ile `ida_link` sahipliği birleşmemiş ve eski 2,5 ms kabulü yeni son tarihle uyuşmuyor. | 01 ve 06 ortak uçtan uca kabul kullanmalı |
+| AB-239 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.2; §3.4 | kritik | STM32U59x/5Ax'te 160 MHz'e geçişte geçici AHB ÷2, 5 µs bekleme ve sonra ÷1 gerekiyor (RM0456 §10.5.4 açıklaması; RM bu ortamda doğrulanmadı); 01 §2.2'deki dizide yok. Prototipte açılış satırı `gecis_bekleme_cyc=420` (80 MHz'te 5,25 µs) gösterdi. | kart yazılımı uygulaması (01 §2.2 md.8) |
+| AB-240 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.1 | küçük | 01 §2.2'deki "ST'nin DK örneği" HSE dizisi yalnız USBX Host örneklerine (`Applications/USBX/Ux_Host_CDC_ACM`) uyuyor; DK'nın diğer örnekleri PLL1'i MSIS 4 MHz'ten besliyor. | 01 belge düzeltmesi |
+| AB-241 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.8; §3.1 | önemli | Kart revizyonu `REV_ID` 0x3000, ES0553 Rev 6 cihaz kimliği listesinde yok (liste 0x3001 ve 0x3003); errata kapsamının bu karta uygulanabilirliği belirsiz. | kart yazılımı uygulaması (01); M6 |
+| AB-242 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.4 | önemli | HAL, `FRACN` = 0 iken de `PLL1FRACEN`'i 1 yapıyor; `SYSCLK` geri okuması `RCC_PLL1FRACR`'ı hesaba katmalı (ilk sürümde yanlışlıkla `E SAAT_HATASI` bildirildi). | kart yazılımı uygulaması (01) |
 
 ### Uygulama: ortak çekirdek — kestirim, güdüm, kontrol (W3; 02)
 
@@ -321,7 +334,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### Uygulama: sensör modelleri (W3) ve sonar (W4) (05)
 
-16 bulgu.
+19 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
@@ -341,6 +354,9 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-186 | 06 · 06-sol-2.md notlar (05 zamanlama) | küçük | 05'in 04'e atfettiği eski 33/34 adım ifadesi güncelliğini yitirmiş (04 artık 26/27 kullanıyor). | 05'teki uyumsuzluk notu düzeltilecek |
 | AB-187 | 07 · 07-gorsellestirme.md §8.1 md.4 | belirtilmemiş | 05'in zamanlama tablosu kamera için 30 Hz'i sabit yazıyor; sade kademede 15 Hz için 53/54 adım dizisi tablo notu olarak gerekiyor. | — |
 | AB-188 | 08 · 08-laboratuvar-uygulamasi.md §8 (11.2, 05'ten beklenen) | belirtilmemiş | "Su girişi" yer gerçeği olayı 08'in sistem olayları sınıfından geliyor ama 04 su girişini modellemiyor; 05 ile ortak sahiplik gerekiyor. | 04 ve 05 ile |
+| AB-244 | MP7 · docs/olcumler/MP7-sonar-suresi.md §7 | kritik | Bölüm 05 §2.4.3'ün saçıcı hücresi kuralı hatalı: aynı hücredeki `m` ışının genlikleri eşevreli toplandığından enerji `σ A m` olup ışın sayısıyla sınırsız büyüyor (7 m'de her ikiye katlamada +%8'den +%64'e). Yerine geçecek kural: hücre içinde enerji ağırlıkları `w_j = σ_j dA_j G_j` toplanır; hücreler gövdeye sabittir; faz anahtarı (gövde, hücre, yol türü, gerçekleşim) dörtlüsüdür (`docs/gorevler/W0-MP7a.md`). Bu kuralla 7 m'de `δ_E` 0,204 → 0,015. | sonar uygulaması (05 §2.4.3) |
+| AB-245 | MP7 · docs/olcumler/MP7-sonar-suresi.md §7, §4.3 | önemli | 05 §6'nın yakınsama büyüklükleri tanımsızdı; tanım `docs/gorevler/W0-MP7a.md`'de: `δ_E`, ham varyansla `δ_V`, `δ_C`; bağımsız referanstan kutu kümesi `S`; ölçüt nokta değeri ve bootstrap %95 GA üst ucu ≤ 0,05 ve sonraki ikiye katlamada da sağlanma. Sade kademede 05'in kutu başına beneği korunmalı (beneksiz tanımda `δ_V` yapısal olarak sağlanamaz). | sonar uygulaması (05 §6) |
+| AB-246 | MP7 · docs/olcumler/MP7-sonar-suresi.md Özet (S2, S3), §4.3, §4.4, §9 | kritik | Tam kademe dondurulmuş yakınsama ölçütünü taranan aralıkta (`N` ≤ 2 559 903) sağlamıyor (7 m'de `δ_V` GA üst ucu 0,093, 50 m'de 0,175; eşik 0,05); `N` = 1 280 000 destek koşusunda tek iş parçacığı p99 504,4 ms (7 m eşikleri 9,33 ve 25,17 ms). Sade kademe (7 m) `N` = 5 000 ile ölçütü sağlıyor; tek iş parçacığında p99 7 m'de 0,93 ms, 50 m'de 0,79 ms. M3 Pro sonucu Windows'u temsil etmez. | iskelet §8 sonar kademesi kararı (M11) |
 
 ### Uygulama: HIL köprüsü, bariyer, bağlantı emülatörü (W4; 06)
 
@@ -352,7 +368,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### Uygulama: görselleştirme — Godot sahnesi ve GDExtension (W5; 07)
 
-16 bulgu.
+17 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
@@ -372,6 +388,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-203 | 07 · 07-sol.md #23 | önemli | Testler iki okuyuculu halka yarışı, okuyucu çökmesi, iptal sonrası callback, sim yeniden başlatma ve reset sırasında bekleyen işleri kapsamıyor; P4 kayıp ölçütü algılama ve karta teslim zincirini kapsamıyor. | — |
 | AB-204 | 07 · 07-sol.md notlar (04 ile komşu) | küçük | 07 §3.7 dalga fazı için hâlâ "beklenen iş" diyor; 04 bunu zaten tanımlıyor. | belge güncelliği |
 | AB-205 | 07 · 07-sol.md notlar (M29) | belirtilmemiş | Shader derlemesi ile uzun koşu hatası §4'te tek hata satırında ele alınıyor; ayrıştırılmalı. | M29 |
+| AB-243 | MP6 · docs/olcumler/MP6-godot-kamera.md §7, §4.1 | küçük | Godot 4.7.2 ana pencerenin görünürlüğünü içeriden değiştirmeye izin vermiyor (`scene/main/window.cpp:1017`); "gizli" durumu uygulamanın gizlenmesi (`NSRunningApplication.hide`, Cmd+H eşdeğeri) olarak tanımlanmalı. | 07 belge düzeltmesi; P5 atfı raporda doğrulanmadı |
 
 ### Uygulama: laboratuvar uygulaması (W5 web panelleri, A3 sunucusu, kayıt, hata enjeksiyonu; 08)
 
@@ -383,7 +400,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### Uygulama: test ve derleme altyapısı (W2 depo iskeleti, CI; 09)
 
-4 bulgu.
+5 bulgu.
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
@@ -391,6 +408,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-208 | 02 · 02-sol-2.md notlar (04 ile uyum) | belirtilmemiş | Yüzey kontrolü için hidrostatik denge, yatay itkinin doğurduğu roll/pitch ve dikeylerin açılıp kapanması birlikte sınanmalı. | kabul testi |
 | AB-209 | 09 · 09-test-ve-is-akisi.md §8.2 md.4 | belirtilmemiş | CI olanakları (özel depoda dal koruma, dakika kotası, macOS ve Windows iş süresi maliyeti, ST ve Arm araç zincirinin CI'da kurulabilirliği) doğrulanmadı. | W2'nin ilk işi kayda geçirecek |
 | AB-210 | 09 · 09-test-ve-is-akisi.md §8.1 md.5 | belirtilmemiş | 01–08'deki "09'da kesinleşir" eşikleri "sözleşme işinde dondurulur" olarak yansıtılmalı ve her sözleşme işine sınır dosyası sahibi (test yazarı) atanmalı. | — |
+| AB-247 | MP1 · docs/olcumler/MP1-arac-zinciri.md §4 md.3 | önemli | Picolibc, CubeIDE'nin GNU Tools for STM32 14.3.rel1 macOS arm64 paketinde yok (`picolibc.specs` ve kitaplığı bulunmadı; 01 §2.10, 00 08.7, 09 §2.6 "libc" satırı etkileniyor); prototip newlib-nano ile bağlandı. | W2 araç zinciri (09 §2.6) |
 
 ### Ölçüm işleri (W0: MP1–MP8; MP9 W3 sonu ve W6; ölçümle kapanacak olanlar)
 
