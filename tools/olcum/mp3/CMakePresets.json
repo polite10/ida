@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "mp3-fw",
+      "displayName": "MP3 aygıt yazılımı, -O2",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/fw",
+      "toolchainFile": "${sourceDir}/../mp1/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP3_HEDEF": "fw",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g"
+      }
+    },
+    {
+      "name": "mp3-pc",
+      "displayName": "MP3 PC aracı ve testleri",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc",
+      "cacheVariables": {
+        "MP3_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "mp3-pc-ubsan",
+      "displayName": "MP3 PC testleri, UBSan (bu macOS'ta ASan/TSan çalışma zamanı başlamıyor)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc-ubsan",
+      "cacheVariables": {
+        "MP3_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "MP3_SANITIZE": "ubsan"
+      }
+    },
+    {
+      "name": "mp3-pc-asan",
+      "displayName": "MP3 PC testleri, AddressSanitizer + UBSan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc-asan",
+      "cacheVariables": {
+        "MP3_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "MP3_SANITIZE": "asan"
+      }
+    },
+    {
+      "name": "mp3-pc-tsan",
+      "displayName": "MP3 PC testleri, ThreadSanitizer",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc-tsan",
+      "cacheVariables": {
+        "MP3_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "MP3_SANITIZE": "tsan"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mp3-fw",
+      "configurePreset": "mp3-fw"
+    },
+    {
+      "name": "mp3-pc",
+      "configurePreset": "mp3-pc"
+    },
+    {
+      "name": "mp3-pc-ubsan",
+      "configurePreset": "mp3-pc-ubsan"
+    },
+    {
+      "name": "mp3-pc-asan",
+      "configurePreset": "mp3-pc-asan"
+    },
+    {
+      "name": "mp3-pc-tsan",
+      "configurePreset": "mp3-pc-tsan"
+    }
+  ]
+}
