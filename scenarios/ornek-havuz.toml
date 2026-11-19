@@ -1,0 +1,89 @@
+# En küçük geçerli senaryo (A5 senaryo dosyası): kapalı havuz, bir sabit hedef, kısa görev, sade kademe.
+# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0-aday). Birimler SI; açılar radyan; süreler tamsayı ns.
+# Çözümlenmiş biçimi ve davranış özeti: scenarios/ornek-havuz.cozumlenmis.json (A5-K16, K17).
+# [MV] = mimari varsayım (bölümlerde değer yoktu; mimar belirledi, K10).
+
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad = "ornek-havuz"
+aciklama = "Kapali havuzda yuzeyde baslayip tek yol noktasina giden ve yuzeye donen kisa gorev."
+
+[arac]
+dosya = "ida0.toml"           # bu dosyanın dizinine göre göreli (A5-K12)
+
+# Kapalı havuzda uydu görülmez: GNSS kapalı. Manyetometre açık (ortam.manyetik_alan aşağıda).
+[arac.sensorler.gnss0]
+etkin = false
+
+[calistirma]
+kip = "sil"
+sure_ns = 60_000_000_000      # 60 s
+
+[ortam]
+tur = "havuz"
+sahne = "havuz_ornek"         # A7 sahne kimliği: 25 m × 12,5 m, düz taban [MV]; sahne A7 işinde tanımlanacak
+derinlik = 3.0                # m [MV]; A7 sahnesinin taban derinliğiyle eşit olmalı (A5-K36)
+manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]   # B_n (NED), T [MV]; WMM'den doğrulanmadı
+
+[ortam.orijin]                # [MV] 41,0° K, 29,0° D, 0 m (IMU dünya dönüşü için zorunlu, A5-K45)
+enlem = 0.7155849933176751    # rad
+boylam = 0.5061454830783556   # rad
+yukseklik = 0.0
+
+[ortam.su]
+sicaklik_c = 20.0             # °C [G] senaryo girdisi
+# yogunluk 1000 ve tuzluluk 0 havuz varsayılanıdır (04 §2.5; A5-K35).
+
+[hedefler.h1]
+kimlik = 1
+sinif = "sabit_ornek"
+varlik = "hedef_ornek"        # A7 varlık kimliği (şekil, isabet bölgesi, malzeme A7'de)
+konum = [4.0, 0.0, 1.5]       # NED, m
+yonelim = [1.0, 0.0, 0.0, 0.0]
+
+[gorev]
+yukleme_zamani_ns = 0
+
+[[gorev.ogeler]]
+tur = "WAYPOINT"
+konum_ne = [2.0, 0.0]
+derinlik = 0.0
+hiz = 0.3
+kabul_yaricapi = 0.3
+
+[[gorev.ogeler]]
+tur = "SURFACE"
+
+# Zaman çizelgesi: aracın kip komutları yer istasyonu yolundan gelir (02 §2.6). Atış komutu yoktur (A5-K73).
+[[olaylar]]
+kimlik = "arm"
+sinif = "gcs_komutu"
+zaman_ns = 3_000_000_000      # ESC başlatma süresinden (2 s) sonra
+komut = "ARM"
+
+[[olaylar]]
+kimlik = "auto"
+sinif = "gcs_komutu"
+zaman_ns = 3_500_000_000
+komut = "SET_MODE"
+kip = "AUTO"
+
+[emniyet_girdileri]           # açıkça yazıldı; değerler varsayılanla aynı (fiş çıkık, pim takılı)
+acil_durdurma = false
+fis = { f1 = false, f2 = false }
+pim = { f1 = true, f2 = true }
+
+[rastgelelik]
+ana_tohum = 1
+
+[kalite]
+gorunum = "sade"
+kamera = "sade"
+sonar = "sade"                # ping başına 5 000 ışın (iskelet §6)
+kayit = "sade"
+
+[baslangic]
+konum = [0.0, 0.0, 0.0]
+yonelim = [1.0, 0.0, 0.0, 0.0]
+yuklu_tupler = ["f1", "f2"]   # iki yüklü kütle durumu

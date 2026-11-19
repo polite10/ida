@@ -1,0 +1,257 @@
+# İDA-0 araç tanımı (A5 araç dosyası). Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0-aday).
+# Birimler SI; açı radyan; süreler tamsayı nanosaniye (`_ns`); sıcaklık °C (`_c`); PWM µs (`_us`).
+# Değerler 04 ve 05'ten, 00 belgesinin düzeltmeleriyle aktarıldı; yeniden türetilmedi.
+# Etiketler: [Y] yayımlanmış ölçüm, [CAD] yayımlanmış CAD hesabı, [AMP] yayımlanmış ampirik tahmin,
+#            [Ü] üretici belgesi, [T] tahmin / mimari varsayımı, [K] kalibrasyon parametresi,
+#            [H] bölümün hesabı, [MV] mimari varsayım (bölümlerde değer yoktu; mimar belirledi, K10;
+#            W1-A5 düzeltme turu kararı).
+
+[meta]
+sema_surumu = "1.0"
+tur = "arac"
+ad = "IDA-0"
+aciklama = "BlueROV2 Heavy sınıfı başlangıç aracı (iskelet §5; 04 §2.6)."
+
+[arac]
+ad = "IDA-0"
+varlik = "ida0"               # A7 varlık kimliği; biçim A7'den beklenen. Yer tutucu ağlar A7'de (04 §2.6).
+referans_noktasi = "Cercevenin geometrik merkezi; bos aracin agirlik merkezi bu noktada kabul edilir (r_g = 0); govdeye sabit, yuk ayrilinca degismez (iskelet §3.1; 04 §2.2)"   # [MV]
+
+# ---------------------------------------------------------------- boş araç (04 §2.6)
+[arac.kutle]
+kutle = 13.5                  # kg [Y] von Benzon 2022 Tablo A1; D04 #1
+hacim = 0.0137                # m³ [T] yayımlanan 0,0134 hafif pozitif yüzerlik için %2,24 artırıldı (04 §2.6)
+r_g = [0.0, 0.0, 0.0]         # m; O_b tanımı gereği
+r_b = [0.0, 0.0, -0.01]       # m [CAD] Tablo A1
+atalet = [                    # kg·m², O_b'ye göre; köşegen [CAD] Tablo A1; çarpımlar 0 [T]
+  [0.26, 0.0, 0.0],
+  [0.0, 0.23, 0.0],
+  [0.0, 0.0, 0.37],
+]
+trim_kutlesi = 0.0            # kg [T] (04 §2.6); 0 iken trim_konumu gerekmez
+
+# ---------------------------------------------------------------- hidrodinamik (04 §2.3, §2.6; 00: 04.1, 04.5, 04.9)
+[arac.hidrodinamik]
+isaret_kurali = "pozitif_buyukluk"
+eklenmis_kutle = [6.36, 7.12, 18.68, 0.189, 0.135, 0.222]  # [AMP] Eidsvik yöntemi; geçerlilik koşulu ihlal (04.1, 04.18); köşegen dışı 0 [T]
+dogrusal_sonum = [13.7, 0.0, 33.0, 0.0, 0.8, 0.0]          # [Y] deneysel (04.1)
+karesel_sonum = [141.0, 217.0, 190.0, 1.19, 0.47, 1.5]     # [Y] deneysel (04.1; D04 #1)
+yuzey_sonum_orani = [0.3, 0.2, 0.4]                        # [T] PVS Otter değerleri; İDA-0'a uygulanması mimari varsayımı
+ruzgar_direnc_katsayisi = 1.0                              # [T] (04 §2.5); yönlü tablo yok
+
+[arac.hidrodinamik.belirsizlik]
+oteleme = 0.30                # [T] 04 §2.5 önerisi
+donme = 1.00                  # [T]
+
+# ---------------------------------------------------------------- iticiler (04 §2.6): tablonun tamamı [T]
+# Yön: pozitif komutun itki yönü. Dikey iticilerde pozitif komut +z (aşağı); kaynağın −z yönünden dönüştürüldü.
+[arac.iticiler.t1]
+kanal = 0
+konum = [0.156, 0.111, 0.085]
+yon = [0.7071067811865475, -0.7071067811865475, 0.0]
+rol = "yatay, on sancak"
+
+[arac.iticiler.t2]
+kanal = 1
+konum = [0.156, -0.111, 0.085]
+yon = [0.7071067811865475, 0.7071067811865475, 0.0]
+rol = "yatay, on iskele"
+
+[arac.iticiler.t3]
+kanal = 2
+konum = [-0.156, 0.111, 0.085]
+yon = [0.7071067811865475, 0.7071067811865475, 0.0]
+rol = "yatay, arka sancak"
+
+[arac.iticiler.t4]
+kanal = 3
+konum = [-0.156, -0.111, 0.085]
+yon = [0.7071067811865475, -0.7071067811865475, 0.0]
+rol = "yatay, arka iskele"
+
+[arac.iticiler.t5]
+kanal = 4
+konum = [0.120, 0.218, 0.0]
+yon = [0.0, 0.0, 1.0]
+rol = "dikey, on sancak"
+
+[arac.iticiler.t6]
+kanal = 5
+konum = [0.120, -0.218, 0.0]
+yon = [0.0, 0.0, 1.0]
+rol = "dikey, on iskele"
+
+[arac.iticiler.t7]
+kanal = 6
+konum = [-0.120, 0.218, 0.0]
+yon = [0.0, 0.0, 1.0]
+rol = "dikey, arka sancak"
+
+[arac.iticiler.t8]
+kanal = 7
+konum = [-0.120, -0.218, 0.0]
+yon = [0.0, 0.0, 1.0]
+rol = "dikey, arka iskele"
+
+# ---------------------------------------------------------------- itici modeli (04 §2.7.2–2.7.4; 00: 04.2, 04.13, Ç12)
+[arac.itici_modeli]
+tur = "t200_gecici"           # ham T200 tablosu okunamadı (Ç12); M22'ye kadar geçici model
+sekil_polinomu = [8.9, 176.0, -404.1, 389.9, -140.3]   # [Y] von Benzon polinomu, u¹…u⁹ katsayıları; şekil olarak normalleştirilir
+gerilim_noktalari = [12.0, 16.0, 20.0]                 # V [Ü] doğrulanmış uç değer noktaları (D04 #3, D11 #1)
+azami_itki_ileri = [36.3827, 51.4849, 65.7046]         # N [Ü] 3,71 / 5,25 / 6,7 kgf × 9,80665
+azami_itki_geri = [28.6354, 40.2073, 49.5236]          # N [Ü] 2,92 / 4,1 / 5,05 kgf × 9,80665
+tam_gaz_akimi = [17.0, 24.0, 32.0]                     # A [Ü]
+akim_ussu = 1.5               # [T] ideal itki diski; tablo okununca kalkar
+transfer_pay = [6136.0, 108700.0]                      # K(s) [Y] D04 #1; işlem sırası F = K(s) F_ss (04 §2.7.3)
+transfer_payda = [1.0, 89.0, 9258.0, 108700.0]
+pervane_yaricapi = 0.038      # m (04 §2.4)
+havalanma_h_bolu_r = [0.0, 3.4]   # 3,4 literatür eşiği, katsayılar doğrulanmadı; doğrusal ara [T]
+havalanma_beta = [0.0, 1.0]
+
+[arac.esc]
+pwm_notr_us = 1500            # [Ü] D11 #6
+olu_bant_us = 25              # [Ü] dur ölü bandı 1500 ± 25 µs
+pwm_min_us = 1100             # [Ü]
+pwm_max_us = 1900             # [Ü]
+baslatma_suresi_ns = 2_000_000_000   # [T] üretici "birkaç saniye" diyor
+
+# ---------------------------------------------------------------- batarya (04 §2.7.6–2.7.8)
+[arac.batarya]
+kip = "ideal"                 # 30Q haritaları aktarılmadı (AB-088); yalnız ideal kaynak geçerli
+v_sabit = 15.6                # V [MV] ideal kaynak gerilimi
+seri = 4                      # [T] 4S6P 30Q; 18 Ah ile eşleşme
+paralel = 6                   # [T]
+kapasite = 64800.0            # C (18 Ah) [Ü] Blue Robotics paketi (D11 Y9)
+r_kablo = 0.01                # Ω [T] yer tutucu
+aviyonik_guc = 20.0           # W [T] yer tutucu
+surekli_akim_siniri = 60.0    # A [Ü]; aşılınca olay, kesme değil
+darbe_akim_siniri = 132.0     # A [Ü]
+darbe_suresi_ns = 10_000_000_000   # 132 A / 10 s [Ü]
+asgari_guvenli_gerilim = 12.0 # V [Ü]
+# sigorta_i2t: sigorta modeli bu sürümde yok; anahtar verilirse "desteklenmiyor" hatası (A5-K102).
+
+# ---------------------------------------------------------------- temas (04 §2.9): malzeme verisi yok, hepsi [T]
+[arac.temas]
+yay_sabiti = 3.0e4            # N/m
+sonum_orani = 1.0             # kritik sönüm
+surtunme_katsayisi = 0.5
+
+# ---------------------------------------------------------------- torpido ve fırlatıcılar (iskelet §5; 04 §2.8)
+# Hepsi mimari varsayımdır, ölçüm değildir. 1.0'da değiştirilemez (A5-K29); itki, güdüm ya da menzil alanı yoktur.
+[arac.torpido]
+geometri = "prolate_sferoid"
+boy = 0.20                    # m [T]
+cap = 0.04                    # m [T]; L/D = 5
+kutle = 0.175                 # kg [T] hafif negatif
+r_g = [0.0, 0.0, 0.002]       # m [T]
+kanat_alani_duzlem = 0.0018   # m² [T]
+kanat_en_boy_orani = 2.0      # [T]
+kanat_x = -0.09               # m [T]
+surukleme_katsayisi = 0.42    # [T] REMUS değeri yalnız yer tutucu (04.8)
+ayrilma_hizi = 2.0            # m/s [T] 04.7 örneği
+
+[arac.firlaticilar.f1]
+tup_konumu = [0.0, 0.10, 0.10]     # m [T]
+tup_ekseni = [1.0, 0.0, 0.0]
+tup_su_kutlesi = 0.0               # kg [T]
+
+[arac.firlaticilar.f2]
+tup_konumu = [0.0, -0.10, 0.10]
+tup_ekseni = [1.0, 0.0, 0.0]
+tup_su_kutlesi = 0.0
+
+# ---------------------------------------------------------------- sensörler (iskelet §5; 05 §2.3–2.5)
+# Montajlar [MV]: O_b'ye göre gövde çerçevesinde (x ileri, y sancak, z aşağı), m. Yönelim R_bs (sensörden gövdeye).
+# Sensör çerçevesi kabulleri A5-K89'dadır: DVL ve Ping1D ışın ekseni sensör +z; Ping360 dönme ekseni sensör +z
+# (tarama düzlemi sensör x–y); kamera optik ekseni sensör +x. Bu kabullerle bütün yönelimler birim dönüştür.
+# Ayar verilmeyen anahtarlar ürün profilinden gelir (A5-K40).
+
+[arac.sensorler.imu0]
+tur = "imu"
+kimlik = 1
+inst = 0
+profil = "icm42688p"          # hız: kontrol periyodu (200 Hz); dünya dönüşü açık → ortam.orijin zorunlu (A5-K45)
+montaj = { konum = [0.0, 0.0, -0.03], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV]
+
+[arac.sensorler.mag0]
+tur = "manyetometre"
+kimlik = 2
+inst = 0
+profil = "rm3100"
+hiz_hz = 100.0                # [C/T] 05 §2.2
+montaj = { konum = [0.0, 0.0, -0.03], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV]
+
+[arac.sensorler.baro0]
+tur = "basinc"
+kimlik = 3
+inst = 0
+profil = "ms5837_30ba"
+hiz_hz = 25.0                 # [C/T]; üst sınır ≈ 25,97 Hz (A5-K42)
+montaj = { konum = [-0.19, 0.0, -0.03], yonelim = [1.0, 0.0, 0.0, 0.0] }       # [MV]
+
+[arac.sensorler.gnss0]
+tur = "gnss"
+kimlik = 4
+inst = 0
+profil = "neo_m9n"
+hiz_hz = 5.0                  # [C/T]
+montaj = { konum = [-0.05, 0.0, -0.22], yonelim = [1.0, 0.0, 0.0, 0.0] }       # [MV] anten
+
+[arac.sensorler.dvl0]
+tur = "dvl"
+kimlik = 5
+inst = 0
+profil = "a50"                # hız mod tablosundan (05 §2.3.5)
+montaj = { konum = [0.05, 0.0, 0.14], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV] aşağı bakar
+
+[arac.sensorler.ping1d0]
+tur = "ping1d"
+kimlik = 6
+inst = 0
+profil = "ping1d"             # ping aralığı max(ping_araligi_ns, T_dinleme + T_işlem) (05 §2.4.6)
+montaj = { konum = [-0.08, 0.08, 0.14], yonelim = [1.0, 0.0, 0.0, 0.0] }       # [MV] aşağı bakar
+
+[arac.sensorler.ping360_0]
+tur = "ping360"
+kimlik = 7
+inst = 0
+profil = "ping360"            # ping zamanlaması kartın yapılandırmasından (05 §2.4.5)
+montaj = { konum = [0.12, 0.0, -0.20], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV] tarama düzlemi yatay
+
+[arac.sensorler.kamera0]
+tur = "kamera"
+kimlik = 8
+inst = 0
+profil = "kamera_on"          # çözünürlük ve hız A8 kademesinden
+montaj = { konum = [0.21, 0.0, -0.02], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV] optik eksen +x
+
+[arac.sensorler.batarya0]
+tur = "batarya_olcer"
+kimlik = 9
+inst = 0
+profil = "psm"
+hiz_hz = 10.0                 # [C/T]
+montaj = { konum = [0.0, 0.0, 0.0], yonelim = [1.0, 0.0, 0.0, 0.0] }          # ölçüme etkisiz; O_b
+
+[arac.sensorler.sizinti0]
+tur = "sizinti"
+kimlik = 10
+inst = 0
+profil = "sos_leak"           # 2 prob [MV]
+hiz_hz = 10.0                 # [C/T]
+montaj = { konum = [0.0, 0.0, 0.0], yonelim = [1.0, 0.0, 0.0, 0.0] }          # ölçüme etkisiz; O_b
+
+[arac.sensorler.firlatici_io0]
+tur = "firlatici_geri_okuma"
+kimlik = 11
+inst = 0
+profil = "firlatici_io"
+hiz_hz = 10.0                 # [T] + her değişimde ek örnek (05 §2.3.8)
+montaj = { konum = [0.0, 0.0, 0.0], yonelim = [1.0, 0.0, 0.0, 0.0] }          # ölçüme etkisiz; O_b
+
+# anten_konumu: telsiz anteni modeli bu sürümde yok; anahtar verilirse "desteklenmiyor" hatası (A5-K102).
+
+
+# ---------------------------------------------------------------- otopilot (02 §3.6; 08 §3.3)
+[otopilot]
+nominal = "fizik"             # kartın nominal modeli fizikten türetilir ve çözümlenmiş senaryoya açıkça yazılır (A5-K51)
