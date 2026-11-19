@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, 1. düzeltme turu (2026-11-19) |
+| Sürüm | 1.0-aday, 2. düzeltme turu (2026-11-20) |
 | İş | `W1-A5` (`docs/gorevler/W1-A5.md`; ortak kurallar `docs/gorevler/W1-ortak.md`) |
-| İnceleme | `docs/sozlesmeler/inceleme/A5-sol.md`; yanıt `docs/sozlesmeler/inceleme/A5-yanit.md` |
+| İnceleme | `docs/sozlesmeler/inceleme/A5-sol.md`, `A5-sol-2.md`; yanıtlar `A5-yanit.md`, `A5-yanit-2.md` |
 | Dayanak | iskelet 0.8 (`docs/mimari/00-iskelet.md`) §3, §3.1, §4, §5, §6, §8, §10; bölümler 02, 04, 05, 06, 08 (taslak); `docs/gorevler/W0-MP7a.md`; `docs/olcumler/MP7-sonar-suresi.md`; `docs/research/00-duzeltmeler-ve-kararlar.md`; mimarın W1-A5 düzeltme turu kararları |
 | Makinece okunur tanım | `scenarios/sema/a5.schema.json` (JSON Schema 2020-12), `scenarios/ida0.toml` (araç), `scenarios/ornek-havuz.toml` (en küçük geçerli senaryo), `scenarios/ornek-havuz.cozumlenmis.json` (altın çözümlenmiş senaryo, kanonik baytlar) |
 
@@ -57,7 +57,7 @@ Bu belge kural yazar. Şema dosyası ve örnek dosyalar sözleşmenin parçasıd
 
 ## 3. Veri tanımları
 
-**Tablo sütunları.** *Tip:* `tamsayı` (TOML tamsayısı zorunlu), `sayı` (TOML tamsayısı ya da kayan noktalı; binary64'e A5-K96 ile çevrilir), `mantıksal`, `dizgi`, `dizi[n]`, `tablo`, `matris 3×3` (üç satırlık dizi dizisi), `kuaterniyon` (`dizi[4]` sayı, w, x, y, z). *Zorunlu:* E = evet, H = hayır, K = koşullu (koşul anlamda). *Varsayılan:* koşulsuz varsayılan şemada `default` ile durur; koşullu varsayılanlar A5-K98'dedir; "—" varsayılan yoktur. *Besler:* değeri okuyan bölüm. **Geçersiz değerde davranış** bütün tablolar için aynıdır: dosya, ilgili kural numarasıyla reddedilir ve A5-K92 biçiminde bulgu üretilir; uyarı olarak tanımlananlar (A5-K95) yüklemeyi durdurmaz. "Desteklenmiyor" işaretli anahtar ya da tür verilirse A5-K102 ile reddedilir.
+**Tablo sütunları.** *Tip:* `tamsayı` (TOML tamsayısı zorunlu), `sayı` (TOML tamsayısı ya da kayan noktalı; binary64'e A5-K96 ile çevrilir), `mantıksal`, `dizgi`, `dizi[n]`, `tablo`, `matris 3×3` (üç satırlık dizi dizisi), `kuaterniyon` (`dizi[4]` sayı, w, x, y, z). *Zorunlu:* E = evet, H = hayır, K = koşullu (koşul anlamda). *Varsayılan:* koşulsuz varsayılan şemada `default` ile durur; koşullu varsayılanlar A5-K98'dedir; "—" varsayılan yoktur. **Bütün varsayılanların normatif listesi Ek E'dedir** (makinece okunur TOML). Belgedeki her sayısal varsayılan, çözümlemede kullanılan binary64 değerin en kısa gidiş-dönüş ondalığıdır; varsayılan tablolarında yuvarlatılmış gösterim kullanılmaz (Türkçe metinde ondalık ayıracı virgül, `kod` içinde ve Ek E'de noktadır; basamaklar aynıdır). *Besler:* değeri okuyan bölüm. **Geçersiz değerde davranış** bütün tablolar için aynıdır: dosya, ilgili kural numarasıyla reddedilir ve A5-K92 biçiminde bulgu üretilir; uyarı olarak tanımlananlar (A5-K95) yüklemeyi durdurmaz. "Desteklenmiyor" işaretli anahtar ya da tür verilirse A5-K102 ile reddedilir.
 
 ### 3.1 Dosya türleri ve `meta`
 
@@ -187,21 +187,21 @@ Anahtar sensör adıdır (`^(?!x_)[a-z][a-z0-9_]{0,31}$`), en çok 64 sensör.
 | `montaj.yonelim` | kuaterniyon | — | birim (A5-K32) | — | E | `R_bs`: sensörden gövdeye dönüş; sensör çerçevesi kabulleri A5-K89 |
 | `ayar` | tablo | — | türe göre (aşağıda) | profil | H | Profil değerlerinin geçersiz kılınması |
 
-**Ürün profilleri.** Her anahtar verilmezse aşağıdaki değerle çözümlenir. **KE** = kalibre edilmedi: ideal değer, `meta.kalibre_edilmedi` listesine girer (A5-K101). **DY** = doğrulanmamış varsayılan: değer yazılmaz, model 05'in formülünü kullanır, uyarı zorunludur (A5-K108). **DS** = desteklenmiyor: verilirse reddedilir (A5-K102). Bütün `_ns` anahtarları ≥ 0; zaman sabitleri ve periyotlar > 0'dır (A5-K48).
+**Ürün profilleri.** Her anahtar verilmezse aşağıdaki değerle çözümlenir; değerler TOML değişmezi olarak yazılmıştır ve Ek E'nin `[profil.*]` tablolarıyla aynıdır (süreler tamsayı ns). **KE** = kalibre edilmedi: ideal değer, `meta.kalibre_edilmedi` listesine girer (A5-K101). **DY** = doğrulanmamış varsayılan: değer yazılmaz, model 05'in formülünü kullanır, uyarı zorunludur (A5-K108). **DS** = desteklenmiyor: verilirse reddedilir (A5-K102). Bütün `_ns` anahtarları ≥ 0; zaman sabitleri ve periyotlar > 0'dır (A5-K48).
 
 | Tür (profil; `hiz_hz`) | Anahtar (birim; profil değeri) |
 |---|---|
-| `imu` (`icm42688p`; hız yok, kontrol periyodu) | `jiroskop_yogunluk` (rad/s/√Hz; 4,887e-5), `ivme_yogunluk` (dizi[3], m/s²/√Hz; 6,374e-4, 6,374e-4, 6,865e-4), `jiroskop_acilis_bias_siniri` (rad/s; 8,727e-3), `ivme_acilis_bias_siniri` (m/s²; 0,1961), `jiroskop_sicaklik_kats_siniri` (rad/s/°C; 8,727e-5), `ivme_sicaklik_kats_siniri` (m/s²/°C; 1,471e-3), `jiroskop_olcek_siniri` (0,005), `jiroskop_eksenler_arasi_siniri` (0,0125), `ivme_olcek_siniri` (0,005), `ivme_eksenler_arasi_siniri` (0,01), `jiroskop_dogrusalsizlik` (0,001), `ivme_dogrusalsizlik` (0), `jiroskop_gm_tau_ns` (1 000 s), `ivme_gm_tau_ns` (300 s), `jiroskop_gm_sigma` (rad/s; 4,848e-5), `ivme_gm_sigma` (m/s²; 1e-3), `jiroskop_aralik` (rad/s; 8,7266), `ivme_aralik` (m/s²; 39,2266), `bit` (16), `suzgec_etkin` (false), `suzgec_tau_ns` (yazılmaz; süzgeç etkinse zorunlu, A5-K46), `dunya_donusu_etkin` (true) |
-| `manyetometre` (`rm3100`; 100 Hz) | `gurultu_sigma` (T; 2e-8), `yumusak_demir` (birim matris), `sert_demir` (T; 0, 0, 0), `sicaklik_kats` (T/°C; 0), `itici_girisim_orani` (0,2), `teslim_gecikmesi_ns` (1 ms) |
-| `basinc` (`ms5837_30ba`; 25 Hz) | `gurultu_sigma` (Pa; 20), `mutlak_dogruluk_siniri` (Pa; 5 000), `sicaklik_kats` (Pa/°C; 0), `kuantalama` (Pa; 10), `donusum_penceresi_ns` (18,75 ms), `okuma_suresi_ns` (1 ms), `dinamik_basinc_kats` (0), `sicaklik_ofset_siniri` (°C; 4) |
-| `gnss` (`neo_m9n`; 5 Hz) | `cep` (m; 2,0), `gm_tau_ns` (60 s), `gm_varyans_payi` (0,9), `dusey_carpan` (1,5), `hiz_sigma` (m/s; 0,05), `teslim_gecikmesi_ns` (120 ms), `uydu_sayisi` (20), `n_sv_ref` (12), `w50` (m; 0,030), `w_gecis` (m; 0,005), `t_kisa_ns` (10 s), `t_efemeris_ns` (2 saat; 05'in 2–4 saat aralığının alt ucu, mimar onayladı), `hizli_medyan_ns` (1 s), `sicak_medyan_ns` (2 s), `soguk_medyan_ns` (24 s), `t_edinim_ns` (0; KE), `yakinsama_baslangic_hatasi` (m; 0; KE), `yakinsama_tau_ns` (yazılmaz; `yakinsama_baslangic_hatasi > 0` ise zorunlu), `rapor_carpani` (1) |
-| `dvl` (`a50`; hız yok, mod tablosu) | `isin_acisi` (rad; 0,39270), `yari_guc_genisligi` (rad; 0,07679), `azimut_ofseti` (rad; 0,78540), `alt_isin_sayisi` (7), `gelis_acisi_siniri` (rad; 1,04720), `sigma0` (m/s; 1e-3), `k_r` (1/s; 2e-4), `k_u` (1e-3), `uzun_donem_olcek_siniri` (0,0101), `kappa` (1), `c_ayar` (m/s; yazılmaz, KE: ortamın ses hızına eşit), `islem_suresi_ns` (5 ms), `uc_isinla_cozum` (false), `su_takibi` (false), `baglanti` (`seri`), `seri_baud` (115 200), `mod_histerezis_ping` (3), `kilit_arama_ping` (3), `yakin_mod_deneme_ns` (10 s) |
-| `ping1d` (`ping1d`; hız yok) | `kutu_sayisi` (200), `ping_araligi_ns` (50 ms), `oto_menzil_carpani` (1,5), `islem_suresi_ns` (0; KE), `sogurma` (dB/m; DY), `algilama_esigi` (DS) |
-| `ping360` (`ping360`; hız yok, kartın yapılandırması) | `baglanti` (`usb`), `baud` (yazılmaz, KE: iletim süresi 0), `t_m0_ns`, `t_grad_ns`, `islem_suresi_ns` (0; KE), `gurultu_tabani` (0; KE), `yakin_alan_genligi` (0; KE), `tvg_a` (dB; 20), `sogurma` (dB/m; DY), `kazanc_ofsetleri`, `l_min`, `l_maks` (DS) |
-| `kamera` (`kamera_on`; hız yok, A8 kademesi) | `l_sonrasi_ns` (0; KE) |
-| `batarya_olcer` (`psm`; 10 Hz) | `gerilim_bolucu` (11,0), `akim_ofseti` (V; 0,330), `akim_olcegi` (A/V; 37,8788), `analog_gurultu_sigma` (V; 2e-3), `adc_bit` (12), `adc_referans` (V; 3,3), `sicaklik_kats` (A/°C; 0), `teslim_gecikmesi_ns` (1 ms) |
-| `sizinti` (`sos_leak`; 10 Hz) | `prob_sayisi` (2 [MV]), `algilama_gecikmesi_ns` (1 s), `sahte_pozitif_orani` (0) |
-| `firlatici_geri_okuma` (`firlatici_io`; 10 Hz) | `anahtar_gecikmesi_ns` (10 ms), `teslim_gecikmesi_ns` (1 ms). Okunan alanlar: tüp başına dolu, emniyet açık, fiş takılı, pim çıkık; araç başına acil durdurma. "Bakım" alanı yoktur |
+| `imu` (`icm42688p`; hız yok, kontrol periyodu) | `jiroskop_yogunluk` (rad/s/√Hz; `4.887e-5`), `ivme_yogunluk` (dizi[3], m/s²/√Hz; `[0.0006374, 0.0006374, 0.0006865]`), `jiroskop_acilis_bias_siniri` (rad/s; `0.008727`), `ivme_acilis_bias_siniri` (m/s²; `0.1961`), `jiroskop_sicaklik_kats_siniri` (rad/s/°C; `8.727e-5`), `ivme_sicaklik_kats_siniri` (m/s²/°C; `0.001471`), `jiroskop_olcek_siniri` (`0.005`), `jiroskop_eksenler_arasi_siniri` (`0.0125`), `ivme_olcek_siniri` (`0.005`), `ivme_eksenler_arasi_siniri` (`0.01`), `jiroskop_dogrusalsizlik` (`0.001`), `ivme_dogrusalsizlik` (`0.0`), `jiroskop_gm_tau_ns` (`1000000000000`), `ivme_gm_tau_ns` (`300000000000`), `jiroskop_gm_sigma` (rad/s; `4.848e-5`), `ivme_gm_sigma` (m/s²; `0.001`), `jiroskop_aralik` (rad/s; `8.7266`), `ivme_aralik` (m/s²; `39.2266`), `bit` (`16`), `suzgec_etkin` (`false`), `suzgec_tau_ns` (yazılmaz; süzgeç etkinse zorunlu, A5-K46), `dunya_donusu_etkin` (`true`) |
+| `manyetometre` (`rm3100`; `100.0` Hz) | `gurultu_sigma` (T; `2e-8`), `yumusak_demir` (matris 3×3; `[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]`), `sert_demir` (T; `[0.0, 0.0, 0.0]`), `sicaklik_kats` (T/°C; `0.0`), `itici_girisim_orani` (`0.2`), `teslim_gecikmesi_ns` (`1000000`) |
+| `basinc` (`ms5837_30ba`; `25.0` Hz) | `gurultu_sigma` (Pa; `20.0`), `mutlak_dogruluk_siniri` (Pa; `5000.0`), `sicaklik_kats` (Pa/°C; `0.0`), `kuantalama` (Pa; `10.0`), `donusum_penceresi_ns` (`18750000`), `okuma_suresi_ns` (`1000000`), `dinamik_basinc_kats` (`0.0`), `sicaklik_ofset_siniri` (°C; `4.0`) |
+| `gnss` (`neo_m9n`; `5.0` Hz) | `cep` (m; `2.0`), `gm_tau_ns` (`60000000000`), `gm_varyans_payi` (`0.9`), `dusey_carpan` (`1.5`), `hiz_sigma` (m/s; `0.05`), `teslim_gecikmesi_ns` (`120000000`), `uydu_sayisi` (`20`), `n_sv_ref` (`12`), `w50` (m; `0.03`), `w_gecis` (m; `0.005`), `t_kisa_ns` (`10000000000`), `t_efemeris_ns` (`7200000000000`; 2 saat, 05'in 2–4 saat aralığının alt ucu, mimar onayladı), `hizli_medyan_ns` (`1000000000`), `sicak_medyan_ns` (`2000000000`), `soguk_medyan_ns` (`24000000000`), `t_edinim_ns` (`0`; KE), `yakinsama_baslangic_hatasi` (m; `0.0`; KE), `yakinsama_tau_ns` (yazılmaz; `yakinsama_baslangic_hatasi > 0` ise zorunlu), `rapor_carpani` (`1.0`) |
+| `dvl` (`a50`; hız yok, mod tablosu) | `isin_acisi` (rad; `0.39269908169872414`), `yari_guc_genisligi` (rad; `0.07679448708775051`), `azimut_ofseti` (rad; `0.7853981633974483`), `alt_isin_sayisi` (`7`), `gelis_acisi_siniri` (rad; `1.0471975511965976`), `sigma0` (m/s; `0.001`), `k_r` (1/s; `0.0002`), `k_u` (`0.001`), `uzun_donem_olcek_siniri` (`0.0101`), `kappa` (`1.0`), `c_ayar` (m/s; yazılmaz, KE: ortamın ses hızına eşit), `islem_suresi_ns` (`5000000`), `uc_isinla_cozum` (`false`), `su_takibi` (`false`), `baglanti` (`"seri"`), `seri_baud` (`115200`), `mod_histerezis_ping` (`3`), `kilit_arama_ping` (`3`), `yakin_mod_deneme_ns` (`10000000000`) |
+| `ping1d` (`ping1d`; hız yok) | `kutu_sayisi` (`200`), `ping_araligi_ns` (`50000000`), `oto_menzil_carpani` (`1.5`), `islem_suresi_ns` (`0`; KE), `sogurma` (dB/m; DY), `algilama_esigi` (DS) |
+| `ping360` (`ping360`; hız yok, kartın yapılandırması) | `baglanti` (`"usb"`), `baud` (yazılmaz, KE: iletim süresi 0), `t_m0_ns` (`0`; KE), `t_grad_ns` (`0`; KE), `islem_suresi_ns` (`0`; KE), `gurultu_tabani` (`0.0`; KE), `yakin_alan_genligi` (`0.0`; KE), `tvg_a` (dB; `20.0`), `sogurma` (dB/m; DY), `kazanc_ofsetleri` (DS), `l_min` (DS), `l_maks` (DS) |
+| `kamera` (`kamera_on`; hız yok, A8 kademesi) | `l_sonrasi_ns` (`0`; KE). Çözünürlük ve hız kamera kademesinindir (A8) |
+| `batarya_olcer` (`psm`; `10.0` Hz) | `gerilim_bolucu` (`11.0`), `akim_ofseti` (V; `0.33`), `akim_olcegi` (A/V; `37.8788`), `analog_gurultu_sigma` (V; `0.002`), `adc_bit` (`12`), `adc_referans` (V; `3.3`), `sicaklik_kats` (A/°C; `0.0`), `teslim_gecikmesi_ns` (`1000000`) |
+| `sizinti` (`sos_leak`; `10.0` Hz) | `prob_sayisi` (`2`; [MV]), `algilama_gecikmesi_ns` (`1000000000`), `sahte_pozitif_orani` (`0.0`) |
+| `firlatici_geri_okuma` (`firlatici_io`; `10.0` Hz) | `anahtar_gecikmesi_ns` (`10000000`), `teslim_gecikmesi_ns` (`1000000`). Okunan alanlar: tüp başına dolu, emniyet açık, fiş takılı, pim çıkık; araç başına acil durdurma. "Bakım" alanı yoktur |
 
 Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo onları değiştirmez, yalnız sabitler.
 
@@ -317,8 +317,8 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 | | `suruklenme_ustel` | `son_deger`, `tau_ns` | `y ← y + son_deger · (1 − exp(−(t_meas − t_b)/tau_ns))` |
 | | `gurultu_artisi` | `k` | `y ← y + σ_nom √(k² − 1) z`, `z ~ N(0, 1)`; `σ_nom` kanalın profildeki örnek başına σ'sı, yoğunlukla tanımlı kanalda `ASD/√(2Δt)` (05 §2.3). Yalnız `imu`, `manyetometre`, `basinc`, `gnss`, `dvl`, `batarya_olcer` |
 | | `sicrama` | `genlik`, `p` | Her örnekte `p` olasılıkla `y ← y + genlik · s`, `s ∈ {−1, +1}` eşit olasılıklı |
-| | `donma` | — | Yük, arıza başlamadan önceki son arızalı çıktıyla tekrarlanır; `t_meas` ve `seq` ilerler |
-| | `donma_zaman_damgasi` | — | Yük, `t_meas` ve `window_ns` donar; `seq` ilerler |
+| | `donma` | — | Yük, arıza başlamadan önceki son arızalı çıktıyla tekrarlanır; `t_meas` ve `seq` ilerler. Dondurulacak önceki çıktı yoksa (arıza sensörün ilk kaydından önce ya da `zaman_ns = 0`'da başladıysa) sensör arıza bitene kadar hiç kayıt üretmez; bu durum `donma_onceki_cikti_yok` sayacını artırır ve olay olarak A6'ya yazılır; başlangıç reddedilmez |
+| | `donma_zaman_damgasi` | — | Yük, `t_meas` ve `window_ns` donar; `seq` ilerler. Önceki çıktı yoksa `donma` ile aynı kural |
 | | `yanlis_gecerlilik` | — | `geçerli` biti tersine çevrilir; yük değişmez |
 | | `kendini_bildiren` | — | `sensör_arızası` biti 1 olur; yük değişmez |
 | | `kayip` | — | Kayıt teslim edilmez; `seq` boşluğu kalır |
@@ -344,7 +344,7 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 
 **Desteklenmeyen türler (bu sürümde reddedilir):** `nan`, `aralik_disi`, `kismi` (sensör); `tutukluk`, `dolanma` (aktüatör); `ani_cokme`, `dusuk_batarya` (güç); `gecikme_sicramasi`, `cop_bayt` (protokol). Etkileri sözleşmede tam tanımlanamadı (8. başlık).
 
-**Bileşim.** Aynı kayda birden çok sensör arızası etkiliyorsa 05 §2.7'nin sırası uygulanır (ofset → ölçek → sürüklenme → gürültü → sıçrama → donma → yanlış geçerlilik → kendini bildiren → kayıp → geç teslim); aynı türden birden çok olay dosya sırasıyla. Zaman deseni: `surekli` her örnekte etkin; `bernoulli` her örnekte bağımsız `p` olasılıkla; `gilbert_elliott` sim zamanında iki durumlu süreç, kötü durumda etkin, geçiş her fizik adımında `1 − exp(−h/T)` olasılıkla (05 §2.7).
+**Bileşim.** Aynı kayda birden çok sensör arızası etkiliyorsa 05 §2.7'nin sırası uygulanır (ofset → ölçek → sürüklenme → gürültü → sıçrama → donma → yanlış geçerlilik → kendini bildiren → kayıp → geç teslim); aynı türden birden çok olay dosya sırasıyla. Zaman deseni: `surekli` her örnekte etkin; `bernoulli` her örnekte bağımsız `p` olasılıkla; `gilbert_elliott` olay zamanlı iki durumlu süreçtir: olayın başladığı sınırda "iyi" durumda başlar, kalış süreleri ortalaması `t_iyi_ns` ve `t_kotu_ns` olan üstel dağılımdan Ek D.5'in geçiş dizisiyle çekilir, kayıt `t_meas` anında "kötü" durumdaysa arıza etkindir. (05 §2.7'nin adım başına `1 − exp(−h/T)` biçimi yerine olay zamanlı biçim seçildi; ortalama kalış süreleri aynıdır.)
 
 ### 3.11 `emniyet_girdileri`, `baglanti`, `kalibrasyon`
 
@@ -443,7 +443,7 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 - **A5-K13** Öncelik sırası (düşükten yükseğe): bu sözleşmedeki varsayılan → araç dosyası → senaryonun `[arac]` alt ağacı. `otopilot` için: varsayılan → araç dosyası → senaryo. Malzeme için: A7 varsayılanı → `kalibrasyon.malzeme`.
 - **A5-K14** Birleştirme tablolarda anahtar anahtar özyinelemelidir; yaprak değerler (diziler dahil) bütün olarak değiştirilir; diziler eleman eleman birleştirilmez.
 - **A5-K15** Senaryodaki geçersiz kılma anahtarlı koleksiyonlara (`arac.iticiler`, `arac.firlaticilar`, `arac.sensorler`) araç dosyasında bulunmayan girdi ekleyemez ve girdi silemez (`x_` anahtarları girdi değildir, A5-K07). Bir sensörü kapatmanın tek yolu `etkin = false`'tur.
-- **A5-K16** Çözümleyici şu sırayla tek bir çözümlenmiş senaryo üretir: (1) A5-K13/K14 birleştirmesi; (2) kaynak alanlarının çıkarılması (A5-K100); (3) eksik tabloların üretimi (A5-K99); (4) koşullu varsayılanlar (A5-K98) ve profil değerleri (3.6, A5-K101); (5) şemadaki koşulsuz `default` değerlerinin yazılması; (6) `otopilot` türetimi (A5-K51); (7) çözümleyici üst verisi (`meta.tur = "cozumlenmis_senaryo"`, `meta.kalibre_edilmedi`, `meta.dogrulanmamis_varsayimlar`, `meta.olcum_kanitlari`; listeler sözlük sırasıyla). Sonuç şemadaki `$defs/cozumlenmis_senaryo` tanımına uyar. Altın örnek: `scenarios/ornek-havuz.cozumlenmis.json`.
+- **A5-K16** Çözümleyici şu sırayla tek bir çözümlenmiş senaryo üretir: (1) A5-K13/K14 birleştirmesi; (2) kaynak alanlarının çıkarılması (A5-K100); (3) eksik tabloların üretimi (A5-K99; Ek E `[eksik_tablolar]`); (4) koşulsuz varsayılanların yazılması (Ek E `[kosulsuz]`, şemadaki `default` değerleriyle aynı); (5) koşullu varsayılanlar (A5-K98; Ek E `[[kosullu]]`, koşul 4. adımdan sonraki değere bakar), ürün profilleri ve kalibre edilmeyen değerler (3.6, A5-K101; Ek E `[profil.*]`, `[kalibre_edilmedi]`); (6) `otopilot` türetimi (A5-K51); (7) çözümleyici üst verisi (`meta.tur = "cozumlenmis_senaryo"`, `meta.kalibre_edilmedi`, `meta.dogrulanmamis_varsayimlar`, `meta.olcum_kanitlari`; listeler sözlük sırasıyla). Sonuç şemadaki `$defs/cozumlenmis_senaryo` tanımına uyar. Altın örnek: `scenarios/ornek-havuz.cozumlenmis.json`; yalnız bu belgeden (Ek E ve kurallar) yazılmış bağımsız bir çözümleyici iki örnekte de aynı baytları üretir.
 - **A5-K17** Kanonik biçim çözümlenmiş senaryonun RFC 8785 (JSON Canonicalization Scheme) dizilimidir: nesne anahtarları UTF-16 kod birimlerine göre sıralanır, belirteçler arasında boşluk yazılmaz, sayılar ECMAScript Number dizilimiyle yazılır (RFC 8785 §3.2; A5-K96 tablosu). **Davranış özeti** kanonik baytların SHA-256'sıdır (64 küçük onaltılık karakter); kaynak dosya özetleri bu nesneye girmez, A6'ya ve doğrulama raporuna ayrı üst veri olarak yazılır. Bu yüzden anahtar sırası, yorum, boşluk, tablo ya da satır içi tablo yazımı, sayıların yazılış biçimi ve açıkça yazılmış varsayılanlar davranış özetini değiştirmez; olayların dosya sırası anlamlıdır (A5-K62) ve özeti değiştirir. Çalıştırma A6'da davranış özetiyle tanımlanır. (RFC 8785 Informational yayındır; seçim bu sözleşmenindir.) Altın örneğin davranış özeti: `209f758fad29d6fe15a9087cfc2357b50f1b468f8e8254b1df8238e28cebf1d2`.
 - **A5-K98** Koşullu varsayılanlar:
 
@@ -520,11 +520,11 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 - **A5-K55** Görev öğesinde zorunlu alanlar: `WAYPOINT` → `konum_ne`, `derinlik`, `hiz`, `kabul_yaricapi`; `DIVE_TO` → `derinlik`; `HOLD` → `sure_ns`; `SCAN_LINES` → `kose_a`, `kose_b`, `derinlik`, `hat_araligi`, `hiz`; `SCAN_POINT` → `konum_ne`, `derinlik`, `tur_sayisi`; `SURFACE`, `WAIT_GNSS`, `TARGET_ALIGN` → yok. `zaman_asimi_ns` her öğede isteğe bağlıdır. Öğe türüne ait olmayan alan reddedilir.
 - **A5-K56** Görev en çok 128 öğe taşır (02 §3.8).
 - **A5-K57** Görev `yukleme_zamani_ns` anında GCS ağ geçidi → bağlantı emülatörü → A1 yolundan kartın görev komutlarıyla gönderilir; SIL ve HIL'de yol aynıdır.
-- **A5-K109** Olay çeşitleri: **kalıcı atama** (`emniyet_girdisi`, `baglanti/profil_degisimi`, `sistem/su_girisi`), **anlık komut** (`gcs_komutu`, `sistem/kart_sifirlama`), **geçici arıza** (diğer bütün desteklenen türler). Kalıcı atama ve anlık komut `sure_ns` taşıyamaz; kalıcı atama değeri bir sonraki atamaya kadar kalır ("süreli" emniyet değişimi iki atamayla yazılır). `emniyet_girdisi` yalnız `zaman_ns` ile verilir (`kosul` yasak).
+- **A5-K109** Olay çeşitleri: **kalıcı atama** (`emniyet_girdisi`, `baglanti/profil_degisimi`, `sistem/su_girisi`), **anlık komut** (`gcs_komutu`, `sistem/kart_sifirlama`), **geçici arıza** (diğer bütün desteklenen türler). Kalıcı atama ve anlık komut `sure_ns` taşıyamaz; kalıcı atama değeri bir sonraki atamaya kadar kalır ("süreli" emniyet değişimi iki atamayla yazılır). Kalıcı atama `zaman_ns` ya da `kosul` ile verilebilir. Aynı alana aynı adım sınırında farklı değer atanması iki sınıftır: **doğrulamada saptanabilen** çelişki (iki zamanlı atama) doğrulama hatasıdır (A5-K62); **çalışma anında ortaya çıkan** çelişki (en az biri koşullu atama) A5-K63'teki kuralla çözülür.
 - **A5-K60** `olaylar[].kimlik` tekildir; `^E[0-9]+$` elle enjeksiyona ayrılmıştır ve reddedilir.
 - **A5-K61** Her olay tam olarak birini taşır: `zaman_ns` ya da `kosul`.
-- **A5-K62** `zaman_ns` taşıyan olay sim zamanı `t ≥ zaman_ns` olan ilk fizik adım sınırında başlar. Aynı adım sınırında önce bitişler, sonra başlangıçlar uygulanır; her grubun içinde dosyadaki sıra geçerlidir. Aynı kalıcı atama hedefine (aynı `girdi` ve `hedef`; aynı bağlantı profili ataması; aynı prob ataması) aynı adım sınırına düşen, farklı değerli iki atama doğrulama hatasıdır.
-- **A5-K63** `kosul` taşıyan olayın koşulu her fizik adımı sonunda değerlendirilir; ilk sağlandığı adımı izleyen adım sınırında olay bir kez başlar ve yeniden kurulmaz; uygulama adımı A6'ya yazılır, tekrar oynatmada koşul yeniden değerlendirilmez (08 §2.2). Koşullu iki kalıcı atama aynı sınırda çelişirse dosyada sonraki geçerli olur ve çelişki A6'ya olay olarak yazılır.
+- **A5-K62** `zaman_ns` taşıyan olay sim zamanı `t ≥ zaman_ns` olan ilk fizik adım sınırında başlar. Aynı adım sınırında önce bitişler, sonra başlangıçlar uygulanır; her grubun içinde dosyadaki sıra geçerlidir. Aynı kalıcı atama hedefine (aynı `girdi` ve `hedef`; aynı bağlantı profili ataması; aynı prob ataması) aynı adım sınırına düşen, farklı değerli iki **zamanlı** atama doğrulama hatasıdır.
+- **A5-K63** `kosul` taşıyan olayın koşulu her fizik adımı sonunda değerlendirilir; ilk sağlandığı adımı izleyen adım sınırında olay bir kez başlar ve yeniden kurulmaz; uygulama adımı A6'ya yazılır, tekrar oynatmada koşul yeniden değerlendirilmez (08 §2.2). Aynı adım sınırında aynı alana farklı değer atayan atamalardan en az biri koşulluysa (koşullu–koşullu ya da zamanlı–koşullu): emniyet alanlarında (`acil_durdurma`, `fis.<f>`, `pim.<f>`) **kısıtlayan** değer uygulanır (acil durdurma basılı, fiş çıkık, pim takılı; "daraltma hâkim" ilkesi); diğer alanlarda (bağlantı profili) dosya sırasında sonraki uygulanır; iki halde de `atama_celiskisi` olayı (alan, değerler, olay kimlikleri, uygulanan değer) A6'ya yazılır.
 - **A5-K64** Geçici arıza, başladığı sınır `t_b` ise `t_b + sure_ns`'e eşit ya da ondan sonraki ilk adım sınırında biter ve etkisi kalkar (durumlu arızaların bitiş davranışı Tablo 3.10-A); `sure_ns = 0` süresizdir ve yalnız elle kaldırılır. Aynı hedefe çakışan geçici arızaların hepsi uygulanır (3.10 bileşim kuralı).
 - **A5-K65** `hedef` sınıfa uyar: `sensor` → `arac.sensorler` anahtarı; `aktuator` → `t1`…`t8` ya da `tumu`; `emniyet_girdisi` ile `fis`/`pim` → `f1` ya da `f2`, `acil_durdurma` → `hedef` yok; `guc`, `baglanti`, `protokol`, `sistem`, `gcs_komutu` → `hedef` yok. `baglanti` ve `protokol`'de `yon`, `protokol`'de `duzlem` zorunludur; `profil_degisimi`'nde `profil` mevcut bir profildir; `su_girisi`'nde `problar` prob sayısından küçüktür; `motor_takilmasi` yalnız `ping360`, `dvl_isin_kaybi` yalnız `dvl` hedefinde, `gurultu_artisi` yalnız Tablo 3.10-A'daki türlerde geçerlidir.
 - **A5-K66** `gec_teslim`'de `titresim_ns ≤ gecikme_ns` sağlanmazsa olay reddedilir. Böylece arızalı teslim modellenmiş teslim anından önce olmaz ve `t_meas ≤ t_hazır ≤ t_teslim` korunur (05 §2.2).
@@ -554,7 +554,7 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 
 - **A5-K82** `rastgelelik.ana_tohum` 0 … 2⁵³−1 aralığında bir tamsayıdır.
 - **A5-K83** Üreteç Philox4x32-10'dur (Random123). Her alt akışın anahtarı `K = SHA-256("IDA-A5-RNG-1" ‖ 0x00 ‖ LE64(ana_tohum) ‖ UTF8(alt_sistem_adı) ‖ 0x00)`'dır; Philox anahtar sözcükleri `k0 = LE32(K[0..3])`, `k1 = LE32(K[4..7])`'dir; kalan baytlar kullanılmaz.
-- **A5-K84** Alt sistem adları: `fizik/dalga`, `fizik/akinti`, `fizik/ruzgar`, `hedef/<ad>`, `sensor/<ad>/<akış>` (akış: `acilis`, `olcum`, `zamanlama`, `ariza`, `sonar_isin`, `sonar_hucre`), `ariza/<olay kimliği>` (elle enjeksiyonda `ariza/E<n>`), `baglanti/<profil>/<yukari|asagi>`, `protokol/<olay kimliği>`. Bir alt sistemin çekiliş sayısının değişmesi başka alt sistemin çekilişlerini değiştirmez.
+- **A5-K84** Alt sistem adları: `fizik/dalga`, `fizik/akinti`, `fizik/ruzgar`, `hedef/<ad>`, `sensor/<ad>/<akış>` (akış: `acilis`, `olcum`, `zamanlama`, `ariza`, `sonar_isin`, `sonar_hucre`), `ariza/<olay kimliği>` (elle enjeksiyonda `ariza/E<n>`), `ariza/<olay kimliği>/gecis` (Gilbert–Elliott geçiş dizisi), `baglanti/<profil>/<yukari|asagi>/gecis` (geçiş dizisi), `baglanti/<profil>/<yukari|asagi>/cerceve` (çerçeve dizisi), `protokol/<olay kimliği>`. Bir alt sistemin çekiliş sayısının değişmesi başka alt sistemin çekilişlerini değiştirmez.
 - **A5-K110** Sayaç düzeni: `c0 = n mod 2³²`, `c1 = ⌊n / 2³²⌋` (`n` alt akış içindeki 64 bitlik sıra), `c2 = (kanal << 24) | (bilesen << 16) | cekilis` (8 + 8 + 16 bit), `c3 = 0` (sürüm 1'de ayrılmış). Bu sözleşmenin tanımladığı çekilişlerin `n` ve `c2` atamaları Ek D.4'tedir; model içi çekilişlerin atamaları 04 ve 05'in uygulama belgelerindedir ve aynı düzeni kullanır.
 - **A5-K111** Dönüşümler: düzgün `u(x) = (x + 0,5) · 2⁻³²` (binary64'te tam, (0, 1) açık aralık); Bernoulli `u < p`; [0, m) tamsayı `⌊u · m⌋`; normal (Box–Muller) `r = sqrt(−2,0 · log(u_a))`, `t = 6,283185307179586 · u_b`, `z₀ = r · cos(t)`, `z₁ = r · sin(t)`; üstel `−log(u)`; karmaşık normal CN(0, 1) `sqrt(−log(u_a)) · (cos(t), sin(t))`. İşlem sırası budur, FMA kullanılmaz; `u_a`, `u_b` aynı çıktının ardışık sözcükleridir (0–1 ya da 2–3).
 - **A5-K112** Philox sözcükleri ve düzgün dağılım her platformda bit düzeyinde aynıdır. `log`, `cos`, `sin` doğru yuvarlanmış olmadığından normal, üstel ve karmaşık normal dönüşümler için platformlar arası bit eşitliği garanti edilmez (sınır); aynı ikili ve platformda tekrar garanti edilir.
@@ -594,7 +594,8 @@ Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo
 | Ön denetim tutmadı | aşama 3 | A1'in bulgusu, aynı biçimle | Çalıştırma başlamaz (06 §4) |
 | Uyarı (dışdeğerleme, temas ölçütü, emniyeti azaltan atama, doğrulanmamış soğurma, tam sonar kartlı kipte, ölçülmemiş ışın sayısı, `x_` alanı, model farkı) | aşama 1–2 | `uyari` | Yüklenir; uyarılar A6'ya |
 | Yeniden yüklenen çözümlenmiş senaryonun özeti uyuşmuyor | aşama 1 | `K02` hata | Yükleme yok |
-| Koşullu iki atama çalışma anında çelişti | çalıştırma | — | Sonraki geçerli; A6'ya olay (A5-K63) |
+| Koşullu bir atama aynı sınırda başka bir atamayla çelişti | çalıştırma | — | Emniyet alanında kısıtlayan, diğerlerinde sonraki geçerli; `atama_celiskisi` olayı A6'ya (A5-K63) |
+| `donma` arızasında dondurulacak önceki çıktı yok | çalıştırma | — | Arıza boyunca kayıt yok; `donma_onceki_cikti_yok` sayacı ve olay A6'ya (Tablo 3.10-A) |
 | Koşullu olayın koşulu hiç sağlanmadı | çalıştırma sonu | — | Uygulanmamış olarak A6'ya; çalıştırma geçersiz sayılmaz |
 
 ---
@@ -617,7 +618,8 @@ Kademe seçimi 3.12'deki anahtarlarla yapılır; etkisi iskelet §6 ve 05 §5'te
 | K35–K49, K101, K108 | birim + SIL | Profil değerleri çözümlenmiş biçimde; basınç 25,9 Hz kabul, 26,0 Hz ret; orijinsiz senaryoda IMU dünya dönüşü açık/kapalı; `meta.kalibre_edilmedi` ve `meta.dogrulanmamis_varsayimlar` içerikleri; `etkin = false` sensörün A1'de kaydı yok |
 | K50–K53 | sözleşme (A4 ile) + SIL | Türetilen blok; otopilot bloğunu değiştirmek fizik izini değiştirmez (aynı tohum, bit eşit) |
 | K55–K57 | SIL | Görev öğeleri kartın görev yürütücüsüne aynı sırayla ulaşır |
-| K60–K73, K109 | birim + SIL | Başlangıç ve bitiş adım sınırları; aynı sınırda bitişlerin başlangıçlardan önce uygulanması; çelişen atamanın reddi; her desteklenen türün Tablo 3.10-A etkisi; titreşimli geç teslimde `t_teslim' ≥ t_teslim`; desteklenmeyen türün reddi |
+| K60–K73, K109 | birim + SIL | Başlangıç ve bitiş adım sınırları; aynı sınırda bitişlerin başlangıçlardan önce uygulanması; çelişen iki zamanlı atamanın reddi; koşullu çelişkide emniyet alanında kısıtlayan değerin, profil alanında sonrakinin uygulanması ve `atama_celiskisi` olayı; her desteklenen türün Tablo 3.10-A etkisi; `zaman_ns = 0`'da başlayan `donma` ve `donma_zaman_damgasi`'nda arıza boyunca kayıt olmaması, sayaç ve olay; titreşimli geç teslimde `t_teslim' ≥ t_teslim`; desteklenmeyen türün reddi |
+| K16, Ek E | belge tutarlılığı | Yalnız Ek E ve kurallardan yazılmış bağımsız çözümleyici iki örnek için altın dosyayla aynı davranış özetini üretir; Ek E `[kosulsuz]` şemadaki `default` değerleriyle, `[profil.*]` 3.6 tablosuyla bire bir eşit |
 | K74–K77 | birim + SIL | Profil zorunlulukları; HIL'de SIL alanlarının reddi |
 | K78–K81 | birim + SIL | Kartlı kipte 30 000 ışının reddi, 40 000'in kabulü ve kanıt kaydı; SIL'de ölçülmemiş değerin uyarısı; emniyet testleri her kademede aynı |
 | K82–K85, K110–K112 | birim | Ek D'deki bilinen yanıt vektörleri (Philox sözcükleri bit eşit; normal değerler aynı platformda bit eşit); bir sensörün çekiliş sayısını değiştirmek diğer akışları değiştirmez; aynı özetle iki SIL koşusu bit eşit |
@@ -645,6 +647,7 @@ Kademe seçimi 3.12'deki anahtarlarla yapılır; etkisi iskelet §6 ve 05 §5'te
 | 13 | MP7'nin gerçekleşen ışın sayıları (40 014, 160 008) izinli kümenin adlarından (40 000, 160 000) farklı; tam kademenin ışın örnekleme ızgarası ad ile gerçekleşen arasındaki eşlemeyi sabitlemeli | ölçülecek | Sonar modeli uygulaması (W4) |
 | 14 | Normal ve üstel dönüşümlerin platformlar arası bit eşitliği yok (A5-K112) | sınır | — |
 | 15 | `O_b` tanımı: mimar "çerçevenin geometrik merkezi" dedi, 04 "boş aracın ağırlık merkezi"; İDA-0'da ikisinin çakıştığı kabul edildi (`r_g = 0`) | mimari varsayım | Gerçek varlık (A7) gelince yeniden değerlendirme |
+| 16 | Sensör arızası Gilbert–Elliott deseni olay zamanlı tanımlandı (Ek D.5); 05 §2.7'nin adım başına geçiş biçiminden farklıdır, ortalama kalışlar aynıdır | sözleşme seçimi | 05 uygulaması bu tanıma uyar |
 
 ---
 
@@ -771,15 +774,273 @@ Doğrulama: bu belgenin başvuru uygulaması (Python) ve depodaki MP7 ölçüm p
 | 1, `sensor/imu0/olcum` | `0f8822c8ff5b86074ba3bd29d2829757a4a0a1eace1aefe3cc1f73e7fedb62e6` | `c822880f 07865bff` | 0, 0 | `9f4e8d20 8607e250 c2b93430 adc365d1` | 0.6222923473687842 | −0.9633570170026116; −0.14364479602771965 |
 | 0, `fizik/akinti` | `2231a977ad3d7fd128caa299fbc7812d722eeb8467def13dd850521339115494` | `77a93122 d17f3dad` | 0, 0 | `ac35a29e 36a3f2d5 349cfeef efb49abe` | 0.6726934086764231 | 0.20276240209932794; 0.8670747562427242 |
 
-**D.4 Bu sözleşmenin tanımladığı çekilişler.**
+**D.4 Bu sözleşmenin tanımladığı çekilişler.** `kanal` sensör kaydının kanal numarasıdır (0–254; 05 §2.7 numaralandırması); `c2`'nin üst baytındaki 255 (`0xFF`) zaman deseni çekilişlerine ayrılmıştır.
 
 | Çekiliş | Alt sistem | `n` | `c2` | Dönüşüm |
 |---|---|---|---|---|
-| Hedef başlangıç yaw'ı (`yonelim_rastgele`) | `hedef/<ad>` | 0 | 0 | `ψ = π · (2 u(w0) − 1)`; başlangıç yönelimi `q_z(ψ) ⊗ yonelim` |
+| Hedef başlangıç yaw'ı (`yonelim_rastgele`) | `hedef/<ad>` | 0 | 0 | `ψ = π · (2 u(w0) − 1)`; başlangıç yönelimi `q_z(ψ) ⊗ yonelim`, `q_z(ψ) = (cos(ψ/2), 0, 0, sin(ψ/2))` (NED z ekseni) |
 | `gurultu_artisi` | `ariza/<kimlik>` | sensör kaydının `seq`'i | `kanal << 24` | `z` = `z0` (`w0`, `w1`) |
 | `sicrama` | `ariza/<kimlik>` | `seq` | `(kanal << 24) | (1 << 16)` | olur: `u(w0) < p`; işaret: `w1 < 2³¹` ise +1, değilse −1 |
 | `bernoulli` zaman deseni | `ariza/<kimlik>` | `seq` | `0xFF << 24` | etkin: `u(w0) < p` |
-| `gilbert_elliott` zaman deseni | `ariza/<kimlik>` | fizik adım numarası | `0xFE << 24` | geçiş: `u(w0) < 1 − exp(−h/T)` |
-| `gec_teslim` titreşimi | `ariza/<kimlik>` | `seq` | `(kanal << 24) | (2 << 16)` | `j = ⌊u(w0) · (2 · titresim + 1)⌋ − titresim` |
-| Protokol işlemleri | `protokol/<kimlik>` | olayın yönündeki çerçeve sırası (0'dan) | 0 | olur: `u(w0) < p`; konum ya da uzunluk `⌊u(w1) · m⌋` (bayt bozmada `m = uzunluk`; kesmede uzunluk `1 + ⌊u(w1) · (uzunluk − 1)⌋`); XOR değeri `1 + ⌊u(w2) · 255⌋` |
-| Bağlantı emülatörü kaybı | `baglanti/<profil>/<yon>` | çerçeve sırası | 0 | Bernoulli `u(w0) < p`; GE süreleri ters dağılımla `−log(u)/λ` (06 §2.11) |
+| `gilbert_elliott` zaman deseni | `ariza/<kimlik>/gecis` | kalış sırası `i` | 0 | D.5 geçiş dizisi; ortalamalar `t_iyi_ns`, `t_kotu_ns`; süreç olayın başladığı sınırda "iyi" başlar |
+| `gec_teslim` titreşimi (kayıt başına) | `ariza/<kimlik>` | `seq` | `2 << 16` | `j = ⌊u(w0) · (2 · titresim + 1)⌋ − titresim` |
+| Protokol işlemleri | `protokol/<kimlik>` | olay başladıktan sonra o yönde `mesaj_turu`'na uyan çerçevelerin sırası (0'dan) | `yön << 24` (yukarı 0, aşağı 1) | olur: `u(w0) < p`; konum ya da uzunluk `⌊u(w1) · m⌋` (bayt bozmada `m = uzunluk`; kesmede uzunluk `1 + ⌊u(w1) · (uzunluk − 1)⌋`); XOR değeri `1 + ⌊u(w2) · 255⌋` |
+| Bağlantı emülatörü, GE kalış süreleri | `baglanti/<profil>/<yon>/gecis` | kalış sırası `i` | 0 | D.5 geçiş dizisi; ortalamalar `1/λ_GB` ("iyi"), `1/λ_BG` ("kötü") saniye |
+| Bağlantı emülatörü, çerçeve başına | `baglanti/<profil>/<yon>/cerceve` | o profil ve yöndeki çerçeve sırası (0'dan, gönderim sırası) | 0 | `w0`: L1'de kayıp `u(w0) < kayip_p`; L2'de başarı `u(w0) < k` ("iyi") ya da `u(w0) < h` ("kötü"), durum gönderim anındaki kalıştan. `w1`: titreşim `⌊u(w1) · (2J + 1)⌋ − J` ns (`J = titresim_ns`), gecikme `max(0, gecikme_taban_ns + titreşim)`. Bayt bozma (`bayt_bozma_orani`) aynı `n` ile `c2 = 1` (çekiliş 1) sayacından: `u(w0) < oran` ise tek bayt bozulur, konum `⌊u(w1) · uzunluk⌋`, XOR değeri `1 + ⌊u(w2) · 255⌋` |
+
+**D.5 Gilbert–Elliott süreçleri (sürüm 1).** Her GE süreci başlangıç anında "iyi" durumdadır: bağlantı emülatörünün her profil × yön süreci sim zamanı `t = 0`'da (profil o anda etkin olsun ya da olmasın, süreç `t = 0`'dan kesintisiz ilerler); sensör arızası zaman deseni süreci olayın başladığı adım sınırında. Her sürecin iki ayrı sayaç dizisi vardır ve diziler **anahtar türetiminde ayrı alt sistem adı** taşır (A5-K84: `…/gecis`, `…/cerceve`; adın UTF-8 baytları A5-K83 girdisine girer):
+
+1. **Geçiş dizisi.** Kalış `i` (`i = 0, 1, 2, …`; 0. kalış "iyi", tek sıralı kalışlar "kötü") için sayaç `n = i`, `c2 = 0`, `c3 = 0`; süre `d_i = max(1, ⌈−log(u(w0)) · m_i⌉)` ns, `m_i` o durumun ortalama kalışı ns cinsinden binary64 (`1e9 / λ` ya da `t_iyi_ns`, `t_kotu_ns`); çarpım tek binary64 işlemidir. Geçiş zamanları `T_0` = başlangıç, `T_{i+1} = T_i + d_i`. Her kalış kendi sayaç konumunu tüketir; iki çerçeve ya da iki kayıt arasında kaç geçiş olursa olsun her biri sıradaki konumu kullanır. Kalış `[T_i, T_{i+1})` yarı açık aralıktır.
+2. **Çerçeve dizisi** (yalnız emülatör). Sayaç `n` = çerçeve sırası; çerçeve başına çekilişler D.4'teki sözcüklerle. Sensör arızasında çerçeve dizisi yoktur: kayıt `t_meas` "kötü" kalıştaysa arıza etkindir.
+
+`log` kullanıldığından kalış süreleri A5-K112 sınırına tabidir (platformlar arası eşitlik garanti edilmez); Philox sözcükleri normatiftir.
+
+**D.6 Gilbert–Elliott bilinen sonuç vektörü.** `ana_tohum = 1`, profil `ornek`, yön `asagi`, `λ_GB = 0,5 s⁻¹`, `λ_BG = 5 s⁻¹`, `k = 0,99`, `h = 0,25`.
+
+| Dizi | Anahtar `k0 k1` | `n` | `w0` | `u(w0)` | Sonuç |
+|---|---|---|---|---|---|
+| geçiş (`baglanti/ornek/asagi/gecis`) | `e3e9c071 5496e939` | 0 | `6f12e7a8` | 0.43388221610803157 | "iyi" kalış `d_0 = 1669964347` ns |
+| geçiş | aynı | 1 | `d7a09977` | 0.8422943035839126 | "kötü" kalış `d_1 = 34325160` ns |
+| geçiş | aynı | 2 | `7e6c6057` | 0.49384119163732976 | "iyi" kalış `d_2 = 1411082576` ns |
+| geçiş | aynı | 3 | `0576bb6b` | 0.02134295820724219 | "kötü" kalış `d_3 = 769406685` ns |
+
+İlk üç geçiş zamanı: `T_1 = 1669964347`, `T_2 = 1704289507`, `T_3 = 3115372083` ns.
+
+| Çerçeve (`baglanti/ornek/asagi/cerceve`, anahtar `6e26fc32 e31136e7`) | Gönderim anı (ns) | Durum | `w0` | `u(w0)` | Sonuç |
+|---|---|---|---|---|---|
+| 0 | 0 | iyi | `c71e071a` | 0.7778019370744005 | geçti (< 0,99) |
+| 1 | 1000000000 | iyi | `bedd1223` | 0.7455607735319063 | geçti |
+| 2 | 1680000000 | kötü | `ca3644a1` | 0.7898905653273687 | kayıp (≥ 0,25) |
+| 3 | 1700000000 | kötü | `6ef0178d` | 0.4333510132273659 | kayıp |
+| 4 | 3200000000 | kötü | `f64ef78b` | 0.9621424403740093 | kayıp |
+
+Philox sözcükleri (`6f12e7a8` ve `ca3644a1` dahil) MP7 prototipinin derlenmiş üreteciyle de aynı çıktı.
+
+## Ek E — Normatif varsayılanlar (A5-K16; makinece okunur)
+
+Bu blok geçerli bir TOML belgesidir ve çözümleyicinin kullandığı bütün varsayılanları taşır. Belgenin tablolarındaki varsayılan sütunları bu bloğu gösterir; çelişirse bu blok geçerlidir ve tablo düzeltilir. Sayılar, çözümlemede kullanılan binary64 değerlerin en kısa gidiş-dönüş ondalığıdır (A5-K96'nın JCS dizilimiyle aynı basamaklar). Uygulama sırası A5-K16'dadır. `profil.imu.saat_kaymasi_ppm = "yok"` anahtarın yazılmadığını belirtir.
+
+```toml
+# Ek E — normatif varsayılanlar (A5-K16). Sayılar binary64 değerlerinin en kısa gidiş-dönüş ondalığıdır.
+surum = "1.0"
+
+# K99: senaryoda yoksa üretilen kök tablolar (adım 3)
+[eksik_tablolar]
+hedefler = {}
+olaylar = []
+emniyet_girdileri = {}
+baglanti = {etkin_profil = "ideal", profiller = {ideal = {kademe = "L0"}}}
+kalibrasyon = {}
+kalite = {}
+baslangic = {}
+otopilot = {nominal = "fizik"}
+
+# Koşulsuz varsayılanlar (adım 4): yol yoksa ve ebeveyni varsa yazılır; '*' anahtarlı koleksiyonun,
+# '[]' dizinin her elemanı; sıra ebeveyn önce.
+[kosulsuz]
+"otopilot.nominal" = "fizik"
+"otopilot.parametreler" = {}
+"ortam.yercekimi" = 9.82
+"ortam.atmosfer_basinci" = 101325.0
+"ortam.hava_yogunlugu" = 1.225
+"ortam.su.ph" = 8.0
+"ortam.dalga" = {}
+"ortam.dalga.spektrum" = "yok"
+"ortam.dalga.yayilim" = "cos2s"
+"ortam.dalga.yayilim_s" = 10.0
+"ortam.dalga.bilesen_sayisi" = 64
+"ortam.akinti" = {}
+"ortam.akinti.hiz_ned" = [0.0, 0.0, 0.0]
+"ortam.akinti.gauss_markov" = {}
+"ortam.akinti.gauss_markov.etkin" = false
+"ortam.ruzgar" = {}
+"ortam.ruzgar.hiz_ned" = [0.0, 0.0, 0.0]
+"ortam.ruzgar.gauss_markov" = {}
+"ortam.ruzgar.gauss_markov.etkin" = false
+"hedefler.*.yonelim_rastgele" = false
+"hedefler.*.hareket" = {}
+"hedefler.*.hareket.tur" = "sabit"
+"gorev.yukleme_zamani_ns" = 0
+"emniyet_girdileri.acil_durdurma" = false
+"emniyet_girdileri.fis" = {}
+"emniyet_girdileri.fis.f1" = false
+"emniyet_girdileri.fis.f2" = false
+"emniyet_girdileri.pim" = {}
+"emniyet_girdileri.pim.f1" = true
+"emniyet_girdileri.pim.f2" = true
+"baglanti.profiller.*.tasima" = "datagram"
+"baglanti.profiller.*.yukari" = {}
+"baglanti.profiller.*.yukari.gecikme_taban_ns" = 0
+"baglanti.profiller.*.yukari.titresim_ns" = 0
+"baglanti.profiller.*.yukari.kayip_modeli" = "yok"
+"baglanti.profiller.*.asagi" = {}
+"baglanti.profiller.*.asagi.gecikme_taban_ns" = 0
+"baglanti.profiller.*.asagi.titresim_ns" = 0
+"baglanti.profiller.*.asagi.kayip_modeli" = "yok"
+"kalibrasyon.malzeme" = {}
+"kalite.gorunum" = "sade"
+"kalite.kamera" = "sade"
+"kalite.sonar" = "sade"
+"kalite.kayit" = "sade"
+"kalite.kamera_kare_kaydi" = false
+"baslangic.konum" = [0.0, 0.0, 0.0]
+"baslangic.yonelim" = [1.0, 0.0, 0.0, 0.0]
+"baslangic.hiz" = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+"baslangic.yuklu_tupler" = ["f1", "f2"]
+"baslangic.batarya_soc" = 1.0
+"baslangic.batarya_v1" = 0.0
+"arac.kutle.trim_kutlesi" = 0.0
+"arac.hidrodinamik.sapma" = {}
+"arac.hidrodinamik.sapma.eklenmis_kutle" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.hidrodinamik.sapma.dogrusal_sonum" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.hidrodinamik.sapma.karesel_sonum" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.sensorler.*.etkin" = true
+
+# Koşullu varsayılanlar (adım 5). kosul.yol, yol '[]' içeriyorsa dizi elemanına göredir; deger ya da icinde;
+# sil = true ise yol çıkarılır. Koşul, adım 4'ten sonraki değere bakar.
+[[kosullu]]
+yol = "ortam.su.yogunluk"
+kosul = {yol = "ortam.tur", deger = "havuz"}
+deger = 1000.0
+[[kosullu]]
+yol = "ortam.su.yogunluk"
+kosul = {yol = "ortam.tur", deger = "acik_su"}
+deger = 1025.0
+[[kosullu]]
+yol = "ortam.su.tuzluluk"
+kosul = {yol = "ortam.tur", deger = "havuz"}
+deger = 0.0
+[[kosullu]]
+yol = "ortam.su.tuzluluk"
+kosul = {yol = "ortam.tur", deger = "acik_su"}
+deger = 0.035
+[[kosullu]]
+yol = "ortam.dalga.gamma"
+kosul = {yol = "ortam.dalga.spektrum", deger = "jonswap"}
+deger = 3.3
+[[kosullu]]
+yol = "calistirma.sil_hiz_carpani"
+kosul = {yol = "calistirma.kip", deger = "sil"}
+deger = 1.0
+[[kosullu]]
+yol = "calistirma.sil_azami_hiz"
+kosul = {yol = "calistirma.kip", deger = "sil"}
+deger = false
+[[kosullu]]
+yol = "kalite.sonar_tam"
+kosul = {yol = "kalite.sonar", deger = "sade"}
+sil = true
+[[kosullu]]
+yol = "kalite.sonar_tam"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = {}
+[[kosullu]]
+yol = "kalite.sonar_tam.azami_sekme"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 2
+[[kosullu]]
+yol = "kalite.sonar_tam.hucre_kenari"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 0.01
+[[kosullu]]
+yol = "kalite.sonar_tam.yuzey_yamasi_araligi"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 0.05
+[[kosullu]]
+yol = "olaylar[].sure_ns"
+kosul = {yol = "sinif", icinde = ["sensor", "aktuator", "guc", "protokol"]}
+deger = 0
+[[kosullu]]
+yol = "olaylar[].sure_ns"
+kosul = {yol = "tur", deger = "kesinti"}
+deger = 0
+[[kosullu]]
+yol = "olaylar[].zaman_deseni"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = {}
+[[kosullu]]
+yol = "olaylar[].zaman_deseni.tur"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = "surekli"
+[[kosullu]]
+yol = "olaylar[].sira_boz"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = false
+[[kosullu]]
+yol = "olaylar[].kanal_maskesi"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = 4294967295
+
+# Ürün profilleri (adım 5): arac.sensorler.<ad> için tur'a göre. hiz_hz yalnız verilmişse yazılır;
+# saat_kaymasi_ppm imu dışında 0; ayar anahtarları yoksa yazılır.
+[profil.imu]
+profil = "icm42688p"
+saat_kaymasi_ppm = "yok"
+ayar = {jiroskop_yogunluk = 4.887e-5, ivme_yogunluk = [0.0006374, 0.0006374, 0.0006865], jiroskop_acilis_bias_siniri = 0.008727, ivme_acilis_bias_siniri = 0.1961, jiroskop_sicaklik_kats_siniri = 8.727e-5, ivme_sicaklik_kats_siniri = 0.001471, jiroskop_olcek_siniri = 0.005, jiroskop_eksenler_arasi_siniri = 0.0125, ivme_olcek_siniri = 0.005, ivme_eksenler_arasi_siniri = 0.01, jiroskop_dogrusalsizlik = 0.001, ivme_dogrusalsizlik = 0.0, jiroskop_gm_tau_ns = 1000000000000, ivme_gm_tau_ns = 300000000000, jiroskop_gm_sigma = 4.848e-5, ivme_gm_sigma = 0.001, jiroskop_aralik = 8.7266, ivme_aralik = 39.2266, bit = 16, suzgec_etkin = false, dunya_donusu_etkin = true}
+[profil.manyetometre]
+profil = "rm3100"
+hiz_hz = 100.0
+saat_kaymasi_ppm = 0.0
+ayar = {gurultu_sigma = 2e-8, yumusak_demir = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], sert_demir = [0.0, 0.0, 0.0], sicaklik_kats = 0.0, itici_girisim_orani = 0.2, teslim_gecikmesi_ns = 1000000}
+[profil.basinc]
+profil = "ms5837_30ba"
+hiz_hz = 25.0
+saat_kaymasi_ppm = 0.0
+ayar = {gurultu_sigma = 20.0, mutlak_dogruluk_siniri = 5000.0, sicaklik_kats = 0.0, kuantalama = 10.0, donusum_penceresi_ns = 18750000, okuma_suresi_ns = 1000000, dinamik_basinc_kats = 0.0, sicaklik_ofset_siniri = 4.0}
+[profil.gnss]
+profil = "neo_m9n"
+hiz_hz = 5.0
+saat_kaymasi_ppm = 0.0
+ayar = {cep = 2.0, gm_tau_ns = 60000000000, gm_varyans_payi = 0.9, dusey_carpan = 1.5, hiz_sigma = 0.05, teslim_gecikmesi_ns = 120000000, uydu_sayisi = 20, n_sv_ref = 12, w50 = 0.03, w_gecis = 0.005, t_kisa_ns = 10000000000, t_efemeris_ns = 7200000000000, hizli_medyan_ns = 1000000000, sicak_medyan_ns = 2000000000, soguk_medyan_ns = 24000000000, t_edinim_ns = 0, yakinsama_baslangic_hatasi = 0.0, rapor_carpani = 1.0}
+[profil.dvl]
+profil = "a50"
+saat_kaymasi_ppm = 0.0
+ayar = {isin_acisi = 0.39269908169872414, yari_guc_genisligi = 0.07679448708775051, azimut_ofseti = 0.7853981633974483, alt_isin_sayisi = 7, gelis_acisi_siniri = 1.0471975511965976, sigma0 = 0.001, k_r = 0.0002, k_u = 0.001, uzun_donem_olcek_siniri = 0.0101, kappa = 1.0, islem_suresi_ns = 5000000, uc_isinla_cozum = false, su_takibi = false, baglanti = "seri", seri_baud = 115200, mod_histerezis_ping = 3, kilit_arama_ping = 3, yakin_mod_deneme_ns = 10000000000}
+[profil.ping1d]
+profil = "ping1d"
+saat_kaymasi_ppm = 0.0
+ayar = {kutu_sayisi = 200, ping_araligi_ns = 50000000, oto_menzil_carpani = 1.5, islem_suresi_ns = 0}
+[profil.ping360]
+profil = "ping360"
+saat_kaymasi_ppm = 0.0
+ayar = {baglanti = "usb", t_m0_ns = 0, t_grad_ns = 0, islem_suresi_ns = 0, gurultu_tabani = 0.0, yakin_alan_genligi = 0.0, tvg_a = 20.0}
+[profil.kamera]
+profil = "kamera_on"
+saat_kaymasi_ppm = 0.0
+ayar = {l_sonrasi_ns = 0}
+[profil.batarya_olcer]
+profil = "psm"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {gerilim_bolucu = 11.0, akim_ofseti = 0.33, akim_olcegi = 37.8788, analog_gurultu_sigma = 0.002, adc_bit = 12, adc_referans = 3.3, sicaklik_kats = 0.0, teslim_gecikmesi_ns = 1000000}
+[profil.sizinti]
+profil = "sos_leak"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {prob_sayisi = 2, algilama_gecikmesi_ns = 1000000000, sahte_pozitif_orani = 0.0}
+[profil.firlatici_geri_okuma]
+profil = "firlatici_io"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {anahtar_gecikmesi_ns = 10000000, teslim_gecikmesi_ns = 1000000}
+
+# Kalibre edilmedi (A5-K101): verilmemişse ideal değer yazılır ve etkin sensörde yolu listelenir;
+# yazilmaz listesindekiler yazılmaz, yalnız listelenir.
+[kalibre_edilmedi]
+gnss = {deger = {t_edinim_ns = 0, yakinsama_baslangic_hatasi = 0.0}, yazilmaz = []}
+dvl = {deger = {}, yazilmaz = ["c_ayar"]}
+ping1d = {deger = {islem_suresi_ns = 0}, yazilmaz = []}
+ping360 = {deger = {t_m0_ns = 0, t_grad_ns = 0, islem_suresi_ns = 0, gurultu_tabani = 0.0, yakin_alan_genligi = 0.0}, yazilmaz = ["baud"]}
+kamera = {deger = {l_sonrasi_ns = 0}, yazilmaz = []}
+
+# Doğrulanmamış varsayılanlar (A5-K108): etkin sensörde verilmemişse yolu listelenir, değer yazılmaz.
+[dogrulanmamis]
+ping1d = ["sogurma"]
+ping360 = ["sogurma"]
+
+# Ölçüm kanıtları (A5-K79)
+[olcum_kanitlari]
+sade = {yol = "kalite.sonar", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.3–4.4 (sade, N = 5 000)"}
+tam = {yol = "kalite.sonar_tam.isin_sayisi", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.6"}
+tam_olculmus = [20000, 40000, 80000, 160000]
+```

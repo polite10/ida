@@ -4028,8 +4028,7 @@
      "then": {
       "required": [
        "girdi",
-       "deger",
-       "zaman_ns"
+       "deger"
       ],
       "not": {
        "anyOf": [
@@ -4041,11 +4040,6 @@
         {
          "required": [
           "sure_ns"
-         ]
-        },
-        {
-         "required": [
-          "kosul"
          ]
         }
        ]
@@ -7186,8 +7180,7 @@
      "then": {
       "required": [
        "girdi",
-       "deger",
-       "zaman_ns"
+       "deger"
       ],
       "not": {
        "anyOf": [
@@ -7199,11 +7192,6 @@
         {
          "required": [
           "sure_ns"
-         ]
-        },
-        {
-         "required": [
-          "kosul"
          ]
         }
        ]
