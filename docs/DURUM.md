@@ -1,12 +1,13 @@
 # Durum
 
-Son güncelleme: 2026-11-18
+Son güncelleme: 2026-11-19
 
 Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bittiğinde güncellenir. Kararlar ve düzeltmeler için [research/00-duzeltmeler-ve-kararlar.md](research/00-duzeltmeler-ve-kararlar.md) belgesine bakılır.
 
 ## Şu an
 
-- **MP3 sürüyor (2026-11-18, ara durum; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp3-vcp` (henüz main'e birleşmedi; çalışma kopyası `.claude/worktrees/mp3-vcp`). İlk teslim genel seri bağlantı prototipi (ST-LINK VCP / USART1, K17): çerçeve, kart ve PC aracı, masaüstü testleri; görev `docs/gorevler/W0-MP3a.md`, rapor `docs/olcumler/MP3-vcp.md`. sol ön incelemesi mevcut kodu kabul etmedi: 8 kritik, 3 önemli bulgu (`docs/olcumler/inceleme/MP3-sol-on.md`; ör. OVER8 baud hesabı, DMA alım ilerlemesi okuması, test hedefinin derlenmemesi, kayıt çözümleyicisindeki tutarlılık açıkları). Opus birinci düzeltme turu sürüyor. Kart kullanıcı tarafından yeniden bağlandı; kısa kart ölçümü ve uzun kampanya henüz yapılmadı, kartta ölçülmüş hız, kayıp ya da gecikme değeri yok. MP4a tamamlanmış kalır.
+- **MP3 sürüyor (2026-11-19; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp3-vcp` (main'e birleşmedi, henüz commit'lenmedi; çalışma kopyası `.claude/worktrees/mp3-vcp`). Kod, masaüstü testleri (219/219) ve iki düzeltme turu tamam; sol kapanış incelemesi (`MP3-sol-3.md`): bir önemli bulgu (A1: kampanya profilinde 64 bekleyen sınırı kayıttan değiştirilebiliyor) açık; mimar (o tarihte Codex) kabul kapsamını dondurulmuş kampanya ayarlarına daralttı (`docs/gorevler/W0-MP3a-kapsam-karari.md`, dalda). Uzun kampanya 2026-11-19 sabahı başladı; 600 s çift yönlü 256 B akış koşuları: 921600 baud GEÇTİ (159 920 çerçeve), 2 000 000 baud GEÇTİ (347 827 çerçeve, iki yönde eşit); 3 000 000 baud koşusu 09:40'ta kart bağlantısı koptuğu için GEÇERSİZ (ölçüt ihlali değil, kopma; yinelenecek). Kalan: 3 ve 6 Mbaud akış koşuları, geçen en yüksek hızda dört echo (gecikme) koşusu, rapor, sol'un son veri incelemesi, PR. Kampanya 2026-11-19 akşamı kaldığı yerden sürdürülüyor.
+- **Mimarlık (K19, 2026-11-19):** mimar oturumunu yeniden Fable yürütüyor; K18'in görev dağılımı sürüyor.
 - **MP4a tamamlandı (2026-11-18, daraltılmış kapsamla; ölçüm prototipi, ürün kodu değil):** dal `olcum/mp4-dongu-yuku`. D1/D2 geçmedi, D3/D4 geçti. O2 ağır yük 400 Hz: maksimum 3,32238125 ms, aşım 241000/241000; O2 200 Hz: 121000 adımda aşım 0. Ölçülen yer tutucu çekirdek adımıdır ve taşımayı içermez; gerçek çekirdek ve taşıma hızı kesinleşmedi, mevcut kararlar korunur. Mimar, taşmalı histogramların kapsam dışı bırakılıp reddedilmesine karar verdi (Y5). Çözümleyici 103 denetimi geçti; sol kapanış incelemesi kritik/önemli bulgu görmedi (`docs/olcumler/inceleme/MP4-sol-kapanis.md`; küçük bulgu Y8 giderildi). Rapor: `docs/olcumler/MP4-dongu-yuku.md`. Main'e PR #5 ile squash birleşti (b2b9346).
 - **Tek kablo kararı (K17, 2026-11-16):** sistem yalnız kartın ST-LINK portuyla çalışır; yükleme, hata ayıklama ve kart–simülatör bağlantısı (A1) sanal seri porttan (USART1) geçer; kullanıcı USB girişi (USB HS) kullanılmaz; MP2 ve kart tarafı USB yığını plandan çıktı; kontrol hızı ve bariyer bütçesi MP3'e göre belirlenir.
 - **Araştırma aşaması kapandı.** 13 rapor yazıldı, 13'ü de bağımsız doğrulandı; düzeltmeler 00 numaralı belgede (01–13).
@@ -55,13 +56,13 @@ Web araştırmasıyla kapanmayan belirsizlikler. Sonuçları çıkmadan ilgili t
 
 | Ölçüm | 00 belgesindeki karşılığı |
 |---|---|
-| Kartta yüksek hızlı USB: çalışıyor mu, gecikme ve kayıp | M1, M2 |
+| Kartta yüksek hızlı USB: çalışıyor mu, gecikme ve kayıp (K17 ile plandan çıktı; yerine sanal seri port hızı ve kaybı: M3) | M1, M2 |
 | Godot'da pencere görünmezken kamera görüntüsü üretimi (Mac ve Windows) | M13, M28 |
 | Sonar hesap süresi | M11 |
 | Kartta 400 Hz döngünün yükü ve en kötü durum süresi | M5 |
 | Windows hedef bilgisayarının kaldırdığı kalite kademesi | M12, M20, M21, M30 |
 
-Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı portu ve kullanıcı USB portu) bağlanır; araç kurulumu için kullanıcı izni gerekir.
+Kart Mac'e tek kabloyla, ST-LINK portundan bağlanır (K17); araç kurulumu için kullanıcı izni gerekir.
 
 ## Açık konular
 
@@ -70,6 +71,11 @@ Kart gerektiren ölçümler için kart Mac'e iki kabloyla (hata ayıklayıcı po
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-19 · mimarlık Fable'a döndü (K19); MP3 kampanyası sürüyor
+- K19: mimar oturumunu yeniden Fable (Claude) yürütür; K18'deki Codex devri sona erdi, görev dağılımı sürer.
+- MP3 akış koşuları (600 s, çift yönlü, 256 B): 921600 baud GEÇTİ (159 920 çerçeve), 2 000 000 baud GEÇTİ (347 827 çerçeve); 3 ve 6 Mbaud ile echo koşuları kaldı.
+- 3 000 000 baud koşusu kart bağlantısı koptuğu için geçersiz (ölçüt ihlali değil); yinelenecek.
+
 ### 2026-11-18 · W0: MP3 ara durumu
 - MP3 (dal `olcum/mp3-vcp`) ilk teslimi yapıldı; sol ön incelemesi 8 kritik, 3 önemli bulgu verdi, Opus birinci düzeltme turu sürüyor. Kart yeniden bağlandı; kısa kart ölçümü ve uzun kampanya yapılmadı.
 - Sıra: düzeltme turu, kısa kart ölçümü, sol incelemesi, uzun kampanya; sonra MP5, MP8, W0 sonu, W1. MP4a tamamlanmış kalır.

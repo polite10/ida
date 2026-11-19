@@ -60,6 +60,8 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 
 **2026-11-17 kullanıcı kararı (K18):** Fable'ın yürüttüğü mimar oturumu Codex devralır. Kod yazımı Opus'a, bağımsız kod incelemesi `gpt-6.1-sol`'a verilir. Bu görev dağılımı, aşağıdaki eski tabloda ve kurallarda farklı yazım ataması bulunan yerlerin önüne geçer; mimar kod yazmaz ve commit atmaz.
 
+**2026-11-19 kullanıcı kararı (K19):** Mimar oturumunu yeniden Fable (Claude) yürütür; K18'deki mimar devri sona erdi. K18'in görev dağılımı sürer: kod yazımı Opus'ta, bağımsız kod incelemesi `gpt-6.1-sol`'da; mimar kod yazmaz ve commit atmaz.
+
 1. Mimar oturum kullanıcıyla kararları netleştirir, fikir yapısını kurar, görev belgelerini yazar, alt agent'ları gönderir ve çıktıları denetler. Kod yazmaz ve commit atmaz.
 2. Araştırma ve uygulama işleri alt agent'lara verilir. Codex `gpt-6.1-sol` yalnızca inceleme için değil kodlama için de kullanılabilir.
 3. Yazan ile inceleyen farklı model ailesinden olur: Claude'un yazdığını sol, sol'un yazdığını Claude inceler. Aynı iş iki modele yazdırılmaz.
