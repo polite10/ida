@@ -1,0 +1,39 @@
+# sol incelemesi: sozlesmeler
+
+## Hüküm
+
+**İlk inceleme: kabul edilmez.** A3 ve A6, aşağıdaki kritikler giderilmeden dondurulmamalı. Özellikle eşzamanlı emniyet değişiklikleri, girdi tekrarının başlangıç koşulları ve bozuk kayıt denetimi uyumlu uygulamaya yeterince bağlanmamış.
+
+İki sözleşme bütünüyle okundu; şemalar betikle tarandı. Çalışan ürün kodu bulunmadığından davranış denetimleri sözleşme ve karşı örnekler üzerinden yapıldı.
+
+## Düzeltilmesi gerekenler
+
+| # | Yer | Sorun | Doğrusu / önerilen düzeltme | Önem |
+|---|---|---|---|---|
+| 1 | **A3** — `docs/sozlesmeler/A3-web.md`, K54–K58, K95 | `beklenen_run_id` aynı çalıştırma içindeki değişiklikleri ayırt etmez; denetimden uygulamaya kadar önkoşulların yeniden denetlenmesi de zorunlu değil. Üstelik eski bir “pimi çıkar” isteğiyle sonraki “pimi tak” aynı sınıra gelirse K95 takmayı önce, çıkarmayı sonra uygular; yeni kısıtlama geri alınır. | Durum/emniyet revizyonunu komuta bağla; karşılaştırma ve değişikliği dünya tarafında atomik yap. Aynı sınırdaki çelişkili değişikliklerde eski gevşetmenin yeni kısıtlamayı geri alamayacağını tanımla. AB-057 kapanmış sayılmaz. | kritik |
+| 2 | **A3** — K94, K103; `sema/a3-kanallar.json`, onay isteği şemaları | Onay jetonu çalıştırmaya, oturuma veya emniyet revizyonuna bağlı değil. Bir çalıştırmada alınan jeton, 10 saniye içinde başlayan başka çalıştırmada güncel `beklenen_run_id` ile kullanılabilir. | Jetonu çalıştırma ve ilgili emniyet/yetki revizyonuna bağla; sıfırlama, yeni çalıştırma ve ilgili kısıtlama sonrasında geçersizleştir. | kritik |
+| 3 | **A6** — `docs/sozlesmeler/A6-kayit.md`, §5 CRC satırı | “Kitaplık sorun bildirir” varsayımı yanlış: denetlenen MCAP C++ okuyucusu `uncompressedCrc` alanını okuyor, fakat parça CRC’sini doğrulamıyor. Sıkıştırmasız, yapısal olarak geçerli bir yük bozulması sessizce okunabilir. [Birincil kaynak](https://github.com/foxglove/mcap/blob/main/cpp/mcap/include/mcap/reader.inl) | CRC doğrulamasını açık okuyucu yükümlülüğü yap; hatalı parçadan veri yayınlamayı ve tekrar güvencesi vermeyi engelle. | kritik |
+| 4 | **A6** — Tablo 4.6(c), K28, K40; `docs/mimari/06-protokol-ve-hil.md` §2.9 | “Bayt bloklarını parti sırasıyla ver” girdi tekrarı için yeterli değil. Yeni hedefin başlatılması, oturum el sıkışması, alım damgaları, bloklar arasındaki zaman ve sessizliklerin yürütülmesi tanımsız. Özellikle kayıtlı `HELLO_ACK`, yeni hedefin nonce değeriyle uyuşmaz. | Tekrarın hangi giriş sınırında çalıştığını; başlangıç durumunu, oturum eşlemesini ve zaman ilerletme kuralını A1/A4 ile birlikte dondur. Bunlar sağlanmadan bit eşitliği güvencesi verme. | kritik |
+| 5 | **A3/A6** — A3 K68; A6 K38 ve Tablo 4.6 | Sürüm/platform/özet koşulu sağlanmadığında A3 isteği reddediyor; A6 aynı koşuda çalıştırmayı kabul edip yalnız güvenceyi kaldırıyor. İki uygulayıcı farklı kabul davranışı yazar. | Tek bir politika seç: koşulu sağlamayan tekrar reddedilsin veya ayrıca tanımlanmış açık döngü deney isteğiyle başlatılsın. Yanıt ve kayıt sonucu aynı kurala bağlansın. | kritik |
+| 6 | **A3** — Tablo 4.7b; `sema/a3-kanallar.json`, `$defs/istek_calistirma` | HIL’de `surdur` için `gecersizligi_onayla: true` zorunlu; ancak bu ucun şeması alanı tanımıyor ve `additionalProperties: false`. Onaysız istek 409, onaylı istek 400 olur. | `surdur` isteğinin şemasını tabloyla eşitle veya sürdürmede yeniden onay gereğini kaldır. | kritik |
+| 7 | **A3/A6** — A3 K52; A6 `yuk_a3_komut.govde` | Şeması bozuk, geçersiz UTF-8 veya sınırı aşan her yetkili isteğin kaydı isteniyor; kayıt alanı ise yalnız UTF-8 JSON ve en çok 4 MiB taşıyor. Özellikle 4 MiB’ı aşan ret gövdesi sözleşmedeki biçime kaydedilemez. | Geçersiz istekler için sınırlı ham bayt alanı, alınan uzunluk ve kesilme bilgisi tanımla; kayıt zorunluluğunu bu biçime bağla. | kritik |
+| 8 | **A3** — K53; `sema/a3-kanallar.json`, `$defs/istek_kimligi`, `$defs/yanit_senaryo_dogrula` | Yineleme anahtarında yöntem, yol ve istemci/çalıştırma kapsamı yok. Aynı gövdeli farklı uç isteği öncekinin yanıtını alabilir. Ayrıca K53’ün zorunlu `yineleme: true` alanını senaryo kaydetme yanıt şeması reddediyor. | Yineleme kimliğinin kapsamını ve yöntem/yol eşleşmesini tanımla; farklı işlem çakışmasını reddet. Bütün ilgili yanıt şemalarını eşitle. | kritik |
+| 9 | **A3** — §3.4 `yuk_olay.ayrinti`, K62; `$defs/on_denetim_raporu` | Geçerli bir ön denetim raporu olay yüküne sığmayabilir. Tanımlı dokuz maddenin her birinde izin verilen 1024 karakterlik ASCII ileti kullanıldığında olay ayrıntısı **9760 bayt** oluyor; sınır 8192 bayt. Parçalama veya alternatif bildirim kuralı yok. | Olayda sınırlı özet ve rapor kimliği taşı veya raporun toplam boyutunu uyumlu biçimde sınırla. AB-056’nın kapanışını buna göre düzelt. | kritik |
+| 10 | **A6** — §5 kapanmamış dosya satırı | `AllowFallbackScan`, vaat edilen son tam parçaya kadar kurtarmayı tek başına sağlamıyor. Okuyucu açılışta tarama sonunu `dosya_boyutu − 37` alıyor; Footer bulunmayan dosyada bu sınır tamamlanmış son parçanın içine düşebilir. [Birincil kaynak](https://github.com/foxglove/mcap/blob/main/cpp/mcap/include/mcap/reader.inl) | Fiziksel dosya sonuna kadar tam kayıtları sınayan kurtarma yolunu tanımla; kesik indeks, kesik parça ve tam parça sonunda çökme durumlarını ayrı sınayacak kabul ölçütleri koy. | kritik |
+| 11 | **A3/A6** — A3 K82, K91, K100; A6 §4.6, K33–K38 | Tekrar kiplerinde canlı arıza/emniyet/yer istasyonu müdahalelerinin geçerliliği tanımlanmamış. Genel kurallar `kosuyor` durumunda müdahaleye izin verirken tekrar güvencesini kaldıran bir kural bulunmuyor; değiştirilmiş koşu hâlâ güvenceli tekrar olarak kaydedilebilir. | Her tekrar kipi için kabul edilen müdahaleleri listele; kayıtlı girdiyi değiştiren müdahaleyi reddet veya koşuyu açıkça yeni deney sayıp güvenceyi kaldır. | kritik |
+
+## Yeniden hesaplananlar
+
+- Başlık: `8 + 4 + 4 + 2 + 2 + 2 + 2 = 24` bayt; alan ofsetleri doğru.
+- Kontrol periyodu: `1 / 200 = 5 ms = 4` fizik adımı; `L_act = 10 ms = 8` adım.
+- 3 Mbaud, 8N1: yön başına `300 000 B/s`; periyot başına `1500 B`; `%60 = 900 B`, `180 000 B/s`.
+- Dört gövde ve sekiz iticili fizik yükü **647 B**; 200 Hz’te **129 400 B/s**, **465,84 MB/saat**.
+- RGB8 kamera: **27 648 000 B/s**, **99,5328 GB/saat**; iki saniyelik ham tampon **55,296 MB**. Bunlar kapasite ölçümü değildir.
+- Şemalar geçerli JSON; yerel `$ref` bağlantıları çözülüyor. Ortak **20 kanalın** ad/yük/sürüm/zaman anlamı ve ortak **19 yükün** tanımları eşleşiyor. Kurulu JSON Schema doğrulayıcısı bulunmadığından tam metaschema doğrulaması yapılmadı.
+
+## İskelete ya da diğer bölümlere notlar
+
+- HTTP’de zorunlu Bearer jetonu ve Origin denetimi; WebSocket’te jetonlu alt protokol ve Origin denetimi birlikte değerlendirildiğinde, başka kaynakta açık bir sayfanın komut gönderebildiği bir yol bulunmadı. HTTP ön uçuş reddi ve tarayıcının WebSocket Origin davranışı birincil kaynaklarla uyumlu. Bu sonuç çalışan sunucu testi değildir. [Fetch Standard](https://fetch.spec.whatwg.org/), [WebSockets Standard](https://websockets.spec.whatwg.org/)
+- Harici yer istasyonu ucunun kaldırılması, 200 Hz tabanı, üç sanal emniyet girdisi ve doğrudan atış ucunun bulunmaması iskelet 0.8 ile uyumlu. Eski bölümlerdeki farklılıklar bulgu sayılmadı; hedefleme yeteneğini artıran içerik saptanmadı.
+- A3 kapanış tablosunda **3/3**, A6’da **6/6** beklenen AB kimliği var; U-28 de işlenmiş. Kimliklerin bulunması yeterli değil: özellikle AB-057 ve AB-056 yukarıdaki nedenlerle kapanmış sayılamaz. AB-097 zaten açık bırakılmış.
+- MCAP büyük sürüm 0, 1 MiB varsayılan parça hedefi ve kaynak kodundaki `2.2.0` sürüm değeri doğrulandı; yayımlanmış paket bulunabilirliği doğrulanmadı. `application/toml` ise IANA’da kayıtlıdır; A6’daki bu açık soru kapatılabilir. [MCAP kaynakları](https://github.com/foxglove/mcap/blob/main/cpp/mcap/include/mcap/types.hpp), [IANA kaydı](https://www.iana.org/assignments/media-types/application/toml)
