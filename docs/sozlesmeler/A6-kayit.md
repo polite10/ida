@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Sözleşme | A6 |
-| Sürüm | 1.0-aday (dosya sürümü `a6_surumu = 1.0`) |
-| Tarih | 2026-11-19 |
+| Sürüm | 1.0-aday, düzeltme turu 1 (dosya sürümü `a6_surumu = 1.0`) |
+| Tarih | 2026-11-19; düzeltme turu 1: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit.md`) |
 | Görev | `docs/gorevler/W1-A3A6.md` |
 | Makinece okunur parça | `docs/sozlesmeler/sema/a6-kanallar.json` |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.8 (§3 A6 satırı, §4, §6, §10 md.22–23); `docs/mimari/08-laboratuvar-uygulamasi.md` §2.6, §3.5; 04 §2.13; 06 §2.13 |
@@ -19,7 +19,7 @@ Bu belge kural yazar; gerekçe 08 §2.6 ve §3.5'tedir. Makinece okunur dosya bu
 **Yazan:** sim sunucusunun kayıt yazıcısı (`sim/` altında, C++20; tek iş parçacığı).
 **Okuyanlar:** sim sunucusunun izleme ve tekrar koşusu sürücüleri; A3 kayıt listesi ve üst veri uçları; dışa aktarıcı (`tools/` altında, 08 §3.5; uygulama işi); test araçları.
 
-**Kapsam:** dosya biçimi (MCAP sürümü, sıkıştırma, parça boyutu); kanal ve şema kataloğu ve her kanalın hangi kayıt kademesinde yazıldığı; üst veri ve ekler; tekrar oynatılabilirlik gerekleri (her komutun uygulandığı fizik adımı, bariyer kararları, geç kalan ve reddedilen yanıtlar, düşürülen veriler); tekrar oynatmanın üç düzeyi, her birinin gerektirdiği kayıt ve verdiği güvence; eksik, bozuk ve yarım kayıtta davranış; sürüm uyumluluğu.
+**Kapsam:** dosya biçimi (MCAP sürümü, sıkıştırma, parça boyutu); kanal ve şema kataloğu ve her kanalın hangi kayıt kademesinde yazıldığı; üst veri ve ekler; tekrar oynatılabilirlik gerekleri (her komutun uygulandığı fizik adımı, bariyer kararları, geç kalan ve reddedilen yanıtlar, düşürülen veriler); tekrar oynatmanın üç düzeyi (girdi düzeyinin HIL kaydı için güvencesiz yeniden kurma biçimiyle birlikte), her birinin gerektirdiği kayıt ve verdiği güvence; bütünlük denetimi (CRC) ve kurtarma okuması; eksik, bozuk ve yarım kayıtta davranış; sürüm uyumluluğu.
 
 **Kapsam dışı:**
 - A1 mesajlarının içeriği (A1 sözleşmesi). A6 yalnız "A1 baytları ham ve zaman damgalı kaydedilir" kuralını ve gereken ek alanları yazar.
@@ -35,7 +35,10 @@ Bu belge kural yazar; gerekçe 08 §2.6 ve §3.5'tedir. Makinece okunur dosya bu
 |---|---|
 | Kayıt kademesi | İskelet §6 kayıt satırı: `olaylar` (kapalı = yalnızca olaylar), `telemetri` (sade), `tam` |
 | Kayıt duvar saati | Kayıt açılışında 0 olan monoton saat, ns; dosyadaki bütün duvar saati alanlarının kaynağı (A6-K13) |
-| Tekrar düzeyleri | `izleme` (a), `fizik` (b: kayıtlı komutlarla fizik yeniden koşturma), `girdi` (c: kayıtlı sensör akışının çekirdeğe verilmesi); iskelet A6 satırı |
+| Tekrar düzeyleri | `izleme` (a), `fizik` (b: kayıtlı komutlarla fizik yeniden koşturma), `girdi` (c: kayıtlı çekirdek çağrılarının PC'deki çekirdeğe verilmesi; yalnız SIL kaydından), `yeniden_kurma` (d: HIL kaydındaki A1 bayt akışından çağrı girdilerinin PC'de yeniden kurulması; güvencesiz); iskelet A6 satırı |
+| Çekirdek çağrı kaydı | SIL platform katmanının çekirdeğe yaptığı her çağrının işlev türü, sırası, girdisi, dönüş kodu ve çıktısı (`cekirdek/*` kanalları; A6-K54) |
+| Kurtarma okuması | Kapanmamış dosyanın A6'nın tanımladığı sıralı okuması (A6-K60) |
+| Bozuk dosya | CRC'si tutmayan ya da çözülemeyen en az bir parça ya da ek içeren dosya (A6-K59) |
 | Tekrar güvencesi | Bir kaydın hangi düzeye kadar, hangi koşulda ne güvence verdiği (§4.6) |
 | Kanonik işlevsel iz | Karşılaştırmaya giren, duvar saatinden bağımsız alanların sıralı listesi (§4.7; 06 §2.13) |
 | Önek güvencesi | Eksik kayıtta güvencenin yalnız ilk eksik adımdan önceki adımlar için geçerli olması (A6-K33) |
@@ -60,7 +63,7 @@ MCAP biçimi birincil kaynaktan doğrulandı (https://mcap.dev/spec ve https://m
 | Schema | Her (yük, `kanal_surumu`) için bir kayıt: `name = "ida.<yük adı>.v<kanal_surumu>"`, `encoding = "ida-yuk-v1"`, `data` = o yükün `a6-kanallar.json` içindeki alan listesinin kanonik JSON metni (A6-K07). `id` sıfır olamaz (spec) |
 | Channel | Her kanal için bir kayıt: `topic` = kanal adı (ör. `fizik/durum`), `message_encoding = "ida-ikili-v1"`, `metadata` = `{kanal_surumu, zaman_anlami, kademe}` |
 | Message | `channel_id`; `sequence` = dosya genelinde yazım sırası; `log_time` = sim zamanı; `publish_time` = kayıt duvar saati; `data` = yük (A6-K08, K09) |
-| Chunk | zstd sıkıştırmalı; hedef 1 MiB sıkıştırmasız (A6-K03, K04) |
+| Chunk | zstd sıkıştırmalı; hedef 1 MiB sıkıştırmasız (A6-K03, K04); `uncompressed_crc` her zaman hesaplanıp yazılır (A6-K51) ve A6 okuyucusu tarafından doğrulanır (A6-K59) |
 | Message Index, Chunk Index, Statistics, Summary, Summary Offset, Data End, Footer | Kitaplığın varsayılanlarıyla yazılır (A6-K03) |
 | Metadata | `ida_kayit` (açılış) ve `ida_kayit_kapanis` (kapanış) kayıtları (§3.5) |
 | Attachment | §3.6'daki ekler; ekler parça içine yazılmaz (spec) |
@@ -75,6 +78,7 @@ MCAP biçimi birincil kaynaktan doğrulandı (https://mcap.dev/spec ve https://m
 |---|---|---|---|---|---|---|---|
 | `olay` | `yuk_olay` | olaylar | her_uretimde | sim | izleme | evet | bütün parçalar |
 | `a3/komut` | `yuk_a3_komut` | olaylar | her_uretimde | sim | izleme, fizik | hayır | A3 sunucusu |
+| `a3/gecersiz_istek` | `yuk_a3_gecersiz_istek` | olaylar | her_uretimde | sim | izleme | hayır | A3 sunucusu |
 | `a3/komut_sonucu` | `yuk_a3_komut_sonucu` | olaylar | her_uretimde | sim | izleme, fizik | hayır | dünya iş parçacığı |
 | `senaryo/oge_uygulama` | `yuk_senaryo_oge_uygulama` | olaylar | her_uretimde | sim | izleme, fizik | hayır | senaryo motoru (08 §2.2) |
 | `hil/oturum` | `yuk_hil_oturum` | olaylar | her_uretimde | sim | izleme | hayır | 06 oturum |
@@ -120,10 +124,12 @@ MCAP biçimi birincil kaynaktan doğrulandı (https://mcap.dev/spec ve https://m
 | `sensor_temel/firlatici` | `yuk_firlatici` | telemetri | her_uretimde | olcum | izleme | hayır | 05 arızasız temel kayıt |
 | `sensor_gercek/firlatici` | `yuk_firlatici` | telemetri | her_uretimde | olcum | izleme | hayır | 05 yer gerçeği |
 | `a1/sim_kart` | `yuk_a1_blok` | tam | her_uretimde | sim | izleme, girdi | hayır | 06 G/Ç iş parçacığı |
+| `cekirdek/baslatma` | `yuk_cekirdek_baslatma` | tam (yalnız çekirdeği PC'de çağıran kiplerde: `sil`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`) | her `ida_core_init` çağrısında | sim | girdi | hayır | SIL platform katmanı (A4) |
+| `cekirdek/cagri` | `yuk_cekirdek_cagri` | tam (`cekirdek/baslatma` ile aynı kiplerde) | her çekirdek çağrısı | sim | girdi | hayır | SIL platform katmanı (A4) |
 | `sonar/ping360` | `yuk_ping360` | tam | her_uretimde | gonderim | izleme | evet | 05 |
 | `sonar/ping1d` | `yuk_ping1d` | tam | her_uretimde | gonderim | izleme | evet | 05 |
 | `sonar_gercek/ping360` | `yuk_sonar_gercek_ping360` | tam | her_uretimde | gonderim | izleme | hayır | 05 yer gerçeği |
-| `kamera/kare` | `yuk_kamera_kare` | tam (kamera_kareleri != kapali) | her_uretimde | olcum | izleme | hayır | A2 |
+| `kamera/kare` | `yuk_kamera_kare` | tam (`kamera_kareleri != kapali`) | her_uretimde | olcum | izleme | hayır | A2 |
 
 `sensor_temel/<tür>` arızasız temel kaydı, `sensor_gercek/<tür>` aynı ölçümün yer gerçeğini taşır (05 §3 `base` ve `truth`); yükleri `sensor/<tür>` ile aynıdır.
 
@@ -232,11 +238,49 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `istek_kimligi` | metin(u16, en çok 64) | bayt | tipin aralığı | istemcinin verdiği istek kimliği |
 | `yontem` | metin(u16, en çok 8) | bayt | tipin aralığı | HTTP yöntemi |
 | `yol` | metin(u16, en çok 256) | bayt | tipin aralığı | istek yolu |
-| `govde` | metin(u32, en çok 4194304) | bayt | tipin aralığı | istek gövdesi (UTF-8 JSON) olduğu gibi |
+| `govde` | metin(u32, en çok 4194304) | bayt | tipin aralığı | istek gövdesi; yalnız geçerli UTF-8 JSON gövde bu kanala yazılır, diğerleri `a3/gecersiz_istek`e (A3-K52) |
 | `alim_duvar_ns` | i64 | ns | tipin aralığı | isteğin alındığı kayıt duvar saati |
 | `senkron_sonuc` | u8 | - | 0=kuyruga_alindi, 1=tamamlandi, 2=reddedildi | HTTP yanıtındaki sonuç |
 | `http_durum` | u16 | - | tipin aralığı | döndürülen HTTP durum kodu |
 | `hata_kodu` | metin(u16, en çok 64) | bayt | tipin aralığı | reddedildiyse A3 hata kodu; değilse boş |
+
+#### `yuk_a3_gecersiz_istek`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `komut_no` | u32 | - | tipin aralığı | A3 komut numarası (A3-K52) |
+| `istemci_id` | u32 | - | tipin aralığı | istemci kimliği; başlık yoksa ya da kayıtlı değilse 0 |
+| `yontem` | metin(u16, en çok 8) | bayt | tipin aralığı | HTTP yöntemi |
+| `yol` | metin(u16, en çok 256) | bayt | tipin aralığı | istek yolu (256 bayttan uzunsa kesilmiş) |
+| `alim_duvar_ns` | i64 | ns | tipin aralığı | isteğin alındığı kayıt duvar saati (A6-K13) |
+| `bildirilen_uzunluk` | u64 | bayt | yok: 2^64-1 | `Content-Length` değeri; başlık yoksa 2^64-1 |
+| `okunan_uzunluk` | u64 | bayt | tipin aralığı | sunucunun fiilen okuduğu gövde baytı; gövde sınırı aşıldıysa sınıra kadar |
+| `sinir_asildi` | u8 | - | 0=hayir, 1=evet | gövde sınırı aşıldı ve sunucu sınırın ötesini okumadı (A3-K51) |
+| `kesildi` | u8 | - | 0=hayir, 1=evet | okunan gövde 4096 bayttan uzun olduğu için `on_ek` kesildi |
+| `http_durum` | u16 | - | tipin aralığı | döndürülen HTTP durum kodu |
+| `hata_kodu` | metin(u16, en çok 64) | bayt | tipin aralığı | ret nedeni: A3 hata kodu |
+| `on_ek` | bayt_dizisi(u16, en çok 4096) | bayt | tipin aralığı | okunan gövdenin ilk en çok 4096 baytı, olduğu gibi (geçerli UTF-8 olmayabilir) |
+
+#### `yuk_cekirdek_baslatma`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `port_major` | u16 | - | tipin aralığı | platformun derlendiği A4 port sürümü (A4 `IDA_PORT_VERSION_MAJOR`) |
+| `port_minor` | u16 | - | tipin aralığı | A4 `IDA_PORT_VERSION_MINOR` |
+| `cekirdek_bilgisi` | bayt_dizisi(u16, en çok 256) | bayt | tipin aralığı | `ida_core_info_t` (çekirdek yapı kimliği: port sürümü, `core_size`, `core_align`, `param_schema_hash`, `core_version`), A4 alan sırasıyla alan alan kodlanmış (A6-K52) |
+| `baslatma_girdisi` | bayt_dizisi(u16, en çok 1024) | bayt | tipin aralığı | `ida_init_in_t`'nin `param_blob` dışındaki alanları, A4 alan sırasıyla alan alan kodlanmış (A6-K52) |
+| `param_blob` | bayt_dizisi(u16, en çok 8000) | bayt | tipin aralığı | kodlanmış parametre bloğu, A4 §3.10 bayt düzeninde olduğu gibi |
+| `donus_kodu` | u8 | - | tipin aralığı | `ida_core_init` dönüş kodu (A4 `ida_rc_t`) |
+
+#### `yuk_cekirdek_cagri`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `cagri_sirasi` | u64 | - | tipin aralığı | son `ida_core_init`'ten beri 1'den artan çekirdek çağrısı sırası; step, tick ve background ortak sıradadır |
+| `islev` | u8 | - | 1=step, 2=tick, 3=background | çağrılan işlev |
+| `girdi` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step ve tick: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A4 alan sırasıyla alan alan kodlanmış (A6-K52) |
+| `donus_kodu` | u8 | - | tipin aralığı | çağrının dönüş kodu (`ida_rc_t` ya da `ida_bg_rc_t`) |
+| `cikti` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step ve tick: `ida_out_t`, alan alan kodlanmış; background: boş |
 
 #### `yuk_a3_komut_sonucu`
 
@@ -276,8 +320,8 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
 | `kare_id` | u64 | - | tipin aralığı | kare kimliği (A2) |
-| `genislik` | u16 | piksel | [1, 640] | genişlik |
-| `yukseklik` | u16 | piksel | [1, 480] | yükseklik |
+| `genislik` | u16 | piksel | [1, 640] | genişlik; kademe değerleri A2'de (tam 640, sade 320; tahmin) |
+| `yukseklik` | u16 | piksel | [1, 480] | yükseklik; kademe değerleri A2'de (tam 480, sade 240; tahmin) |
 | `piksel_bicimi` | u8 | - | tipin aralığı | A2'nin piksel biçimi kodu (A2'den beklenen) |
 | `a2_surumu` | u16 | - | tipin aralığı | karenin A2 sürümü |
 | `piksel` | bayt_dizisi(u32, en çok 921600) | bayt | tipin aralığı | piksel verisi, A2 düzeninde |
@@ -311,8 +355,9 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `a7_manifest_ozeti` | evet | A7 manifest özeti (A7'den beklenen biçimde) |
 | `a8_surumu` | koşullu | algılama bileşeni bağlandıysa |
 | `run_id` | evet | çalıştırma kimliği; dosya adıyla aynı |
-| `kip` | evet | `sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_girdi_kart` |
+| `kip` | evet | `sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma` |
 | `kaynak_run_id` | koşullu | tekrar koşusunda kaynak kaydın run_id'si |
+| `guvencesiz_nedenler` | koşullu | `guvencesiz: true` ile başlatılan tekrar koşusunda sağlanmayan koşulların virgülle ayrılmış listesi (A3-K68, A6-K38) |
 | `kayit_kademesi` | evet | `olaylar`, `telemetri`, `tam` |
 | `kamera_kareleri` | evet | `kapali`, `pencereli`, `surekli` |
 | `kademeler` | evet | `gorunum=..,kamera=..,sonar=..,kayit=..` (iskelet §6) |
@@ -350,13 +395,15 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `ilk_eksik_adim` | koşullu | `kayit_eksik` `true` ise tekrar düzeyi kanallarındaki ilk eksik adım |
 | `tekrar_guvencesi` | evet | `yok`, `izleme`, `fizik`, `girdi` (A6 §4.6) |
 | `guvence_on_eki_son_adim` | koşullu | güvencenin geçerli olduğu son fizik adımı (A6-K33) |
+| `guvence_nedenleri` | koşullu | `tekrar_guvencesi` beklenen duzeyden düşükse nedenler, virgülle ayrılmış (örnek: `canli_mudahale`, `guvencesiz_baslatma`, `kayit_eksik`) |
+| `canli_mudahale_adimi` | koşullu | tekrar koşusunda ilk canlı müdahalenin uygulandığı fizik adımı (A3-K120) |
 | `ileti_sayisi` | evet | dosyaya yazılan ileti sayısı |
 
 ### 3.6 Ekler
 
 | Ad | Ortam türü | Zorunlu | Anlam |
 |---|---|---|---|
-| `cozumlenmis_senaryo.toml` | `application/toml` | evet | A5 çözümlenmiş senaryo, kanonik biçim (media type IANA kaydı doğrulanmadı) |
+| `cozumlenmis_senaryo.toml` | `application/toml` | evet | A5 çözümlenmiş senaryo, kanonik biçim (`application/toml` IANA'da kayıtlı, 2024-10-21) |
 | `arac.toml` | `application/toml` | evet | A5 araç tanım dosyası olduğu gibi |
 | `a6_kanallar.json` | `application/json` | evet | yazan sürümün a6-kanallar.json dosyası, değiştirilmeden |
 | `a1_dialect.xml` | `application/xml` | koşullu | A1 dialect XML'i (A1 MAVLink kullanıyorsa; A1'den beklenen) |
@@ -371,7 +418,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 - **A6-K01** Her canlı ve tekrar çalıştırması için bir dosya açılır (A3-K108); dosya adı `<run_id>.mcap`'tir ve aynı adlı dosya varsa yazıcı onu ezmez, çalıştırma başlamaz (ön denetim `kayit_disk_alani` maddesi `kaldi`, ileti "dosya var").
 - **A6-K02** Dosya MCAP büyük sürüm 0 biçimindedir; Header `profile` alanı `ida`'dır.
-- **A6-K03** Yazıcı `foxglove/mcap` C++ kitaplığıdır (Ö7, Ç11); sürümü W2'de paket yöneticisiyle sabitlenir ve `bagimliliklar` üst verisine yazılır. Yazım parçalıdır; sıkıştırma zstd'dir; parça hedef boyutu 1 MiB sıkıştırmasız veridir (kitaplığın `DefaultChunkSize` değeri; hedeftir, bir kayıt kadar aşılabilir); parça CRC'si, ileti indeksleri ve özet bölümü kitaplık varsayılanlarıyla açıktır. Sıkıştırmadan kazanç olmayan parçayı kitaplık sıkıştırmasız yazabilir (`forceCompression = false`, kitaplık varsayılanı).
+- **A6-K03** Yazıcı `foxglove/mcap` C++ kitaplığıdır (Ö7, Ç11); sürümü W2'de paket yöneticisiyle sabitlenir ve `bagimliliklar` üst verisine yazılır. Yazım parçalıdır; sıkıştırma zstd'dir; parça hedef boyutu 1 MiB sıkıştırmasız veridir (kitaplığın `DefaultChunkSize` değeri; hedeftir, bir kayıt kadar aşılabilir); parça CRC'si (A6-K51), ileti indeksleri ve özet bölümü kitaplık varsayılanlarıyla açıktır. Sıkıştırmadan kazanç olmayan parçayı kitaplık sıkıştırmasız yazabilir (`forceCompression = false`, kitaplık varsayılanı).
 - **A6-K04** Yazıcı açık parçayı en geç 1 s duvar saatinde bir kapatır (`McapWriter::closeLastChunk`; mimari seçimi, tahmin). Böylece çökmede kaybolan veri en çok son parçanın verisidir.
 - **A6-K05** Dosyaya tek bir iş parçacığı (kayıt yazıcısı) yazar. Kitaplığın yazıcısının iş parçacığı güvenliği belgelenmemiştir (`writer.hpp`'de buna dair açıklama yok; 08 §3.5).
 - **A6-K06** Üreticiler (dünya, HIL G/Ç, A3 sunucusu, A2 kare alıcısı, A8 kayıt alıcısı) veriyi yazıcıya üretici başına ayrı tek üretici–tek tüketici halka tamponlarıyla verir. Tampon doluysa üretici iletiyi atar, düşen iletinin kanalını, sim zamanını ve adımını kendi düşme sayaçlarında biriktirir ve beklemez; hiçbir üretici kayıt nedeniyle beklemez (04 §2.12; 08 §2.1).
@@ -416,7 +463,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 - **A6-K31** Disk yazma hatasında ya da disk dolduğunda yazıcı dosyayı özetiyle kapatmayı dener, `kayit_durumu` olayını (`disk_dolu` ya da `yazma_hatasi`) üretir ve `bitis_durumu`'nu buna göre yazar; çalıştırma kayıtsız sürer.
 - **A6-K32** Kayıt eksikliği çalıştırmanın `gecerli` değerini değiştirmez (kayıt koşunun fiziği değil izidir; 08 §3.5); yalnız tekrar güvencesini daraltır (A6-K33).
 
-### 4.6 Tekrar oynatmanın üç düzeyi
+### 4.6 Tekrar oynatmanın üç düzeyi ve yeniden kurma
 
 **Tablo 4.6 — Düzeyler, gerekenler ve güvenceler.**
 
@@ -424,19 +471,20 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 |---|---|---|---|---|---|
 | (a) `izleme` | `olaylar` | Okunabilen herhangi bir dosya | Kayıttaki ortak kanallar A3 üzerinden `kaynak_kayit` bayrağıyla yayınlanır (A3-K112); fizik koşmaz | Gösterilen her değer kayıttaki değerin aynısıdır | Yok. `olaylar` kademesinde yalnız olay zaman çizelgesi izlenir; tekrar oynatma güvencesi yoktur (iskelet A6) |
 | (b) `fizik` | `telemetri` | `fizik/adim_sonucu`, `a3/komut`, `a3/komut_sonucu`, `senaryo/oge_uygulama`, `emniyet/girdiler`, `fizik/durum`; ekler `cozumlenmis_senaryo.toml`, `arac.toml`; üst veri `tohum`, sürümler | Senaryo ve tohumla dünya yeniden kurulur; kart, A1, görselleştirici ve algılama bileşeni yerine kayıtlı komut ve olay kararları, elle arızalar, emniyet değişiklikleri ve senaryo öğeleri kayıtlı adımlarda uygulanır | Kanonik fizik izi (§4.7) kayıttakiyle bit düzeyinde aynıdır | Aynı `sim_surumu`, `platform`, `derleyici`, `derleme_bayraklari`, `bagimliliklar`, `rng_surumu`; `senaryo_ozeti` ve `arac_ozeti` eşit; gereken kanallarda eksik yok (ya da önek). Farklı platformda yalnız toleranslı eşdeğerlik (Ç7; tolerans 04 §6 ve 09'da). Senaryo, tohum ya da ikili farklıysa koşu yapılır ama "tekrar" sayılmaz (08 §2.6.2) |
-| (c) `girdi` | `tam` | `a1/sim_kart` (bütün bloklar), `hil/zaman_esleme`, `hil/oturum`, `a1/kart_sim` (karşılaştırma için) | Kayıtlı sim → kart bayt blokları, parti sırasıyla SIL çekirdeğine (`tekrar_girdi_sil`) ya da karta (`tekrar_girdi_kart`) verilir; fizik koşmaz | SIL'de, kaynak çalıştırma da SIL ise: kart çıktısının kanonik izi bit düzeyinde aynıdır (A4'ten beklenen koşulla). Kaynak HIL ise ya da hedef kartsa: yalnız toleranslı karşılaştırma | Aynı çekirdek ikilisi ve platform; gereken kanallarda eksik yok (ya da önek). Kartın duvar saatine bağlı davranışı (gözetim, emniyet süreleri, bağlantı zaman aşımı) için güvence yoktur (Ç1; iskelet §4) |
+| (c) `girdi` | `tam`, yalnız `sil` kipindeki kayıt | `cekirdek/baslatma`, `cekirdek/cagri` (bütün çağrılar) | Tekrar hedefi PC'deki çekirdektir: kayıttaki başlatma girdisi ve parametre bloğuyla `ida_core_init` çağrılır, sonra kayıtlı çağrılar `cagri_sirasi` sırasıyla, duvar saatinden bağımsız koşturulur (A6-K55); fizik koşmaz | Her çağrının dönüş kodu ve çıktısı kayıttakiyle bit düzeyinde aynıdır (A4-K24) | Kaynak kayıt `sil` kipinde; `cekirdek_bilgisi` (çekirdek yapı kimliği), `platform`, `derleyici`, `derleme_bayraklari` ve `senaryo_ozeti` eşit; gereken kanallarda eksik yok (ya da önek) |
+| (d) `yeniden_kurma` | `tam`, `hil_1x` ya da `hil_bariyer` kaydı | `a1/sim_kart`, `a1/kart_sim` (alım damgalarıyla), `hil/oturum` ve `hil/zaman_esleme` (yalnız üst veri) | Kayıtlı sim → kart bayt blokları PC'deki ortak platform katmanı koduna verilir, bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır; oturum el sıkışması tekrar edilmez (A6-K56, K57) | **Güvence yoktur.** Kartın o koşudaki çıktılarıyla karşılaştırma yalnız raporlanır | — (güvence olmadığı için sürüm koşulu yoktur) |
 
-- **A6-K33** Kapanışta yazıcı `tekrar_guvencesi`'ni şöyle belirler: düzeyin kademe ve kanal gereği sağlanan en yüksek düzey (`fizik` için `telemetri`, `girdi` için `tam`); `olaylar` kademesinde `izleme`. O düzeyin gerektirdiği bir kanalda `kayit/eksik` kaydı varsa güvence o düzeyde **önek güvencesidir**: `guvence_on_eki_son_adim` = gereken kanallardaki ilk eksik adım − 1 yazılır ve güvence yalnız 0 … bu adım için geçerlidir; ilk eksik adım 0 ise o düzey verilmez ve bir alt düzeye inilir.
-- **A6-K34** Bariyer beklemesi olan ya da gerçek zamanı kaçıran bir çalıştırmanın kaydı `fizik` düzeyini korur (komutlar kayıtlı adımlarda uygulanır); `girdi` düzeyinde kartın duvar saatine bağlı davranışı için güvence verilmez (iskelet §4).
+- **A6-K33** Kapanışta yazıcı `tekrar_guvencesi`'ni şöyle belirler: düzeyin kademe, kip ve kanal gereği sağlanan en yüksek düzey (`fizik` için `telemetri`; `girdi` için `tam` ve `sil` kipi; HIL kaydı en çok `fizik` verir, `yeniden_kurma` bir güvence düzeyi değildir); `olaylar` kademesinde `izleme`; A6-K38 ve A6-K53'teki durumlarda `yok`. O düzeyin gerektirdiği bir kanalda `kayit/eksik` kaydı varsa güvence o düzeyde **önek güvencesidir**: `guvence_on_eki_son_adim` = gereken kanallardaki ilk eksik adım − 1 yazılır ve güvence yalnız 0 … bu adım için geçerlidir; ilk eksik adım 0 ise o düzey verilmez ve bir alt düzeye inilir.
+- **A6-K34** Bariyer beklemesi olan ya da gerçek zamanı kaçıran bir çalıştırmanın kaydı `fizik` düzeyini korur (komutlar kayıtlı adımlarda uygulanır). HIL kaydından `girdi` güvencesi hiçbir koşulda verilmez; kartın duvar saatine bağlı davranışı (gözetim, emniyet süreleri, bağlantı zaman aşımı) için güvence yoktur (iskelet §4; Ç1).
 - **A6-K35** Fizik yeniden koşturmada sim kayıtlı sürekli komutları ve tek seferlik olay kararlarını kaydedildikleri adımlarda uygular ve kararı yeniden hesaplar; yeniden hesaplanan karar kayıttakinden farklıysa kayıttaki uygulanır ve `uyari` olayı (`kod = tekrar_karar_farki`) üretilir.
 - **A6-K36** Fizik yeniden koşturmada sensör modelleri ve sonar tohumdan yeniden üretilir ve hiçbir yere iletilmez; sonar çıktısının kayıttakiyle eşitliği güvence değildir (Embree'nin bit eşitliği garantisi bulunamadı, aynı ikili ve platformda eşitlik M11/M15 ile doğrulanmadı; 08 §2.6.2). Fizik sonar çıktısını tüketmediği için kanonik fizik izi bundan etkilenmez.
-- **A6-K37** Tekrar koşusunun kendisi yeni bir dosyaya kaydedilir; üst veride `kip` `tekrar_fizik`, `tekrar_girdi_sil` ya da `tekrar_girdi_kart`, `kaynak_run_id` kaynak kaydın `run_id`'sidir. Kayıttan uygulanan A3 komutları yeni dosyada aynı `komut_no` ile ve `ayrinti.kaynak = "kayit"` ile `a3/komut_sonucu`'na yazılır.
-- **A6-K38** Tekrar koşusu başlarken A6 §4.6 koşullarından biri sağlanmıyorsa (sürüm, platform ya da özet farkı) koşu yapılır, `uyari` olayı (`kod = tekrar_guvencesi_yok`) üretilir ve yeni dosyanın `tekrar_guvencesi` yok yazılır; A3 bunu `yeniden_kostur` öncesinde `ayrinti.gereken` ile bildirir (A3-K68).
+- **A6-K37** Tekrar koşusunun kendisi yeni bir dosyaya kaydedilir; üst veride `kip` `tekrar_fizik`, `tekrar_girdi_sil` ya da `tekrar_yeniden_kurma`, `kaynak_run_id` kaynak kaydın `run_id`'sidir. Kayıttan uygulanan A3 komutları yeni dosyada aynı `komut_no` ile ve `ayrinti.kaynak = "kayit"` ile `a3/komut_sonucu`'na yazılır.
+- **A6-K38** **Sürüm, platform ya da özet koşulu sağlanmayan tekrar isteği reddedilir** (A3-K68: 409 `tekrar_kosulu_saglanmiyor`, `ayrinti.nedenler`). Yalnız istekte açık `guvencesiz: true` varsa koşu başlar; o zaman yeni dosyanın açılış üst verisine `guvencesiz_nedenler`, kapanışına `tekrar_guvencesi = yok` ve `guvence_nedenleri = guvencesiz_baslatma` yazılır ve `uyari` olayı (`kod = tekrar_guvencesi_yok`) üretilir. `yeniden_kurma` düzeyi güvence vermediği için bu koşula bağlı değildir.
 
 ### 4.7 Kanonik işlevsel iz ve normalleştirme
 
 - **A6-K39** Kanonik fizik izi `fizik/durum` iletilerinin bütün alanları ile `fizik/adim_sonucu` iletilerinin `olay_kimligi` dışındaki bütün alanlarından oluşur ve `adim_no` sırasıyla dizilir.
-- **A6-K40** Kanonik kart çıktısı izi `a1/kart_sim` bloklarından A1 ayrıştırıcısıyla çözülen işlevsel alanlardan oluşur ve yanıtın parti sıra numarasıyla (`step_seq`) dizilir; hangi alanların işlevsel, hangilerinin tanısal olduğu A1'den beklenir (06 §2.13'teki liste başlangıç önerisidir).
+- **A6-K40** `girdi` tekrarında karşılaştırma, her çekirdek çağrısının `donus_kodu` ve `cikti` alanlarının `cagri_sirasi` sırasıyla bayt eşitliğidir. `yeniden_kurma` tekrarında kart çıktısı izi `a1/kart_sim` bloklarından A1 ayrıştırıcısıyla çözülen işlevsel alanlardan oluşur, yanıtın parti sıra numarasıyla (`step_seq`) eşlenir ve yalnız raporlanır; hangi alanların işlevsel, hangilerinin tanısal olduğu A1'den beklenir (06 §2.13'teki liste başlangıç önerisidir).
 - **A6-K41** Olay kimliği normalleştirilir: her ham `olay_kimligi`, çalıştırma içinde ilk görüldüğü sırayla 1'den numaralanır (`normallestirilmis_sira`); yinelenen kimlik aynı sırayı alır. Karşılaştırma ham kimliği değil bu sırayı kullanır; böylece kartın açılış sayacı farklı iki HIL çalıştırması karşılaştırılabilir (AB-100).
 - **A6-K42** `normallestirilmis_sira`'yı dünya atar ve hem `fizik/adim_sonucu`'na hem A3 `atis_olayi_sonucu` olayına aynı değerle yazar.
 - **A6-K43** Kayıt duvar saati alanları, `publish_time`, `sequence`, oturum numarası (`sess`), açılış sayacı ve kartın tanısal alanları (ör. `adim_suresi_us`) kanonik ize girmez.
@@ -454,6 +502,19 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 - **A6-K49** Okuyucu, dosyadaki şema `data`'sının kendi bildiği aynı `kanal_surumu`'lu yük tanımıyla aynı olmadığını görürse o kanalı okumaz ve uyarı verir (sürüm kuralı ihlali).
 - **A6-K50** Her dosya, kendisini yazan sürümün `a6-kanallar.json` dosyasını ek olarak taşır; dışa aktarıcı yeni bir okuyucu olmadan eski dosyayı bu ekle çözebilir.
 
+### 4.10 Bütünlük, kurtarma ve girdi tekrarının sınırı (düzeltme turu 1)
+
+- **A6-K51** Yazıcı her parçanın `uncompressed_crc` alanını (MCAP spesifikasyonundaki CRC-32, parçanın sıkıştırmasız kayıt verisi üzerinden) ve her ekin `crc` alanını hesaplar ve yazar; CRC hesaplamasını kapatan kitaplık seçenekleri (`noChunkCRC`, `noAttachmentCRC`) kullanılmaz.
+- **A6-K52** `cekirdek/baslatma` ve `cekirdek/cagri` yüklerindeki A4 yapıları bellekteki bayt düzeniyle yazılmaz (A4-K03); A4 §3'teki alan sırasıyla alan alan kodlanır: A3 §3.1 tel tipleri, `bool` için `u8` (0/1), sabit boyutlu diziler kapasiteleri kadar tam (kullanılmayan öğeler sıfır), işaretçi alanı (`ping360`) önce `u8` varlık bayrağı ve varsa ardından gösterdiği yapı, iç içe yapılar sırayla, doldurma yok. Yerleşimin sürümü `cekirdek/baslatma`'daki `port_major`/`port_minor`'dur; kodlayıcı ve çözücü `core/include/ida/port.h`'den üretilir (uygulama işi).
+- **A6-K53** Tekrar koşusunda A3-K120'ye göre kabul edilen ilk canlı müdahalenin uygulandığı adım kapanış üst verisine `canli_mudahale_adimi` olarak yazılır; dosyanın `tekrar_guvencesi` `yok`, `guvence_nedenleri` `canli_mudahale` olur. Kayıtlı girdiyle beslenen kiplerde müdahale reddedildiği için bu kural yalnız `tekrar_fizik` koşularına uygulanır.
+- **A6-K54** Çekirdeği PC'de çağıran kiplerde (`sil`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`) ve `tam` kademede, çekirdeği çağıran platform katmanı her `ida_core_init` çağrısını `cekirdek/baslatma`'ya (çekirdek yapı kimliği olarak `ida_core_info_t`, başlatma girdisi, parametre bloğu, dönüş kodu) ve her `ida_core_step`, `ida_core_tick` ve `ida_core_background` çağrısını tek ortak çağrı sırasıyla `cekirdek/cagri`'ya (işlev türü, çekirdeğe verdiği girdinin tamamı, dönüş kodu, çıktı) yazar. Çekirdeğin gördüğü bütün zaman değerleri (`now_w`, zaman çerçevesi, alım zamanları) ve `bg_slices` girdinin parçasıdır. Kaydı platform katmanı çağrının kendisinden üretir; A1 baytlarından türetmez.
+- **A6-K55** `girdi` tekrarında tekrar sürücüsü önce `cekirdek_bilgisi`'ni kendi çekirdeğinin `ida_core_info` çıktısıyla karşılaştırır; farklıysa A6-K38 uygulanır. Sonra kayıttaki başlatma girdisi ve parametre bloğuyla `ida_core_init`'i çağırır ve `cekirdek/cagri` kayıtlarını `cagri_sirasi` sırasıyla, girdileri kayıttan çözerek, duvar saatinden ve gerçek zamandan bağımsız olarak çağırır; her çağrının dönüş kodunu ve çıktısını kayıttakiyle karşılaştırır ve ilk farkın çağrı sırasını raporlar. Bit eşitliği güvencesi yalnız kaynak kayıt `sil` kipindeyse ve Tablo 4.6'daki koşul sağlanıyorsa verilir.
+- **A6-K56** HIL kaydından (`hil_1x`, `hil_bariyer`) yapılan tekrar **yeniden kurma tekrarıdır** (`tekrar_yeniden_kurma`). Kartın içindeki çağrı girdileri PC'de görünmediği için tekrar sürücüsü kayıttaki `a1/sim_kart` bloklarını kayıt duvar saati damgalarıyla PC'deki ortak platform katmanı koduna (A1 ↔ A4 dönüştürücüsü, `protocol/ida_link`) verir; bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır (kurulan çağrılar `cekirdek/*` kanallarına yeni dosyada yazılır). Kartın gerçek alım zamanları ve arka plan dilimleri bilinmediğinden kurulan girdiler kartınkilerden farklı olabilir; kartın o koşudaki çıktılarıyla bit eşitliği güvencesi verilmez, karşılaştırma (A6-K40) yalnız raporlanır. HIL'de `bg_slices`'ın PC'ye taşınması gerekmez.
+- **A6-K57** Yeniden kurma tekrarında A1 oturum el sıkışması tekrar edilmez: hedef yeni bir kart oturumu değil PC'deki çekirdektir. Kayıtlı `HELLO`, `HELLO_ACK` ve `hil/oturum` kayıtları yalnız üst veri olarak okunur; platform katmanı kayıttaki ilk `KOŞUYOR` geçişinden itibaren oturumu kurulmuş sayar (A1'den beklenen: el sıkışmasız başlatma kipi).
+- **A6-K58** Kayıtlı bayt akışının gerçek karta yeniden verilmesi (06 §2.9 ve 08 §2.6.2'deki "karta besleme" tanımı) 1.0'da desteklenmez; A3'te bunun için bir tekrar düzeyi yoktur (8. başlık, açık).
+- **A6-K59** A6 okuyucusu (izleme, tekrar sürücüsü, kayıt listesi ve dışa aktarıcı) her parçayı açarken sıkıştırmasız verinin CRC-32'sini kendisi hesaplar ve `uncompressed_crc` ile karşılaştırır; MCAP kitaplığının bunu yaptığını varsaymaz (`foxglove/mcap` C++ okuyucusu `uncompressedCrc`'yi ayrıştırır ama doğrulamaz: `cpp/mcap/include/mcap/reader.inl`, `main` dalı, 2026-11-20). A6-K51 gereği `uncompressed_crc = 0` değeri de "doğrulama yok" sayılmaz, hesaplanan değerle karşılaştırılır. CRC'si tutmayan, açılamayan ya da çözülemeyen parçadan hiçbir ileti yayınlanmaz ve tekrar sürücüsüne verilmez; dosya `bozuk` işaretlenir; o dosyadan hiçbir tekrar güvencesi (`fizik`, `girdi`) verilmez ve tekrar isteği 422 `kayit_okunamadi` ile reddedilir; izleme yalnız ilk bozuk parçadan önceki parçalarla yapılır. Eklerin `crc`'si de aynı biçimde doğrulanır; tutmayan ek kullanılmaz ve dosya `bozuk` işaretlenir.
+- **A6-K60** Footer'ı, özeti ya da Data End kaydı okunamayan (kapanmamış) dosya A6'nın **kurtarma okumasıyla** okunur; kitaplığın özetsiz tarama yoluna (`AllowFallbackScan`) bırakılmaz (o yol Footer bulunmayan dosyada veri sonunu dosya boyu eksi Footer boyu varsayar ve son tam parçanın bir kısmını dışarıda bırakabilir; `reader.inl`, aynı kaynak). Kurtarma okuması: baştaki sihirli baytları ve Header'ı doğrular; dosyanın başından fiziksel dosya sonuna kadar kayıtları sırayla (`opcode` `u8` + uzunluk `u64` + gövde) okur; gövdesi dosya sonunu aşan kayıtta durur; yalnız tam kayıtları kabul eder; her Chunk'ı A6-K59'a göre doğrular ve ilk CRC hatasında durur. **Kurtarma sonu** son tam ve CRC'si tutan parçanın sonudur: o noktaya kadarki parçaların iletileri ile o noktaya kadarki tam Schema, Channel, Metadata ve (CRC'si tutan) Attachment kayıtları kullanılır; sonrasındaki hiçbir ileti kullanılmaz. Kurtarılan dosya `kapanmis: false` olarak listelenir ve yalnız `izleme` verir (kapanış üst verisi ve eksiklik bildirimi olmadan önek belirlenemez).
+
 ---
 
 ## 5. Hata durumları
@@ -463,15 +524,17 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | Halka tamponu taştı | Üretici düşme sayacı | `kayit/eksik`, `kayit_eksik` olayı, `kayit_dusen` (A6-K30) | Önek güvencesi (A6-K33) |
 | Disk dolu ya da yazma hatası | Yazma çağrısı başarısız | Kapatmayı dener, `bitis_durumu` (A6-K31) | Kapanmışsa önek güvencesi; kapanmamışsa aşağıdaki satır |
 | Başta sihirli baytlar yok ya da Header okunamıyor | Açılış | — | Okunmaz; `kayit_okunamadi`; listede `kapanmis: false`, güvence yok (A3-K110) |
-| Dosya kapanmamış (sim çöktü, Footer ya da özet yok) | Footer/özet okunamıyor | — | Kitaplığın `AllowFallbackScan` yoluyla baştan sıralı okunur (reader.hpp: özet yoksa ya da eksikse sıralı okumaya düşer). Okunabilen son tam parçaya kadar `izleme`; `fizik` ve `girdi` güvencesi verilmez (kapanış üst verisi ve eksik bildirimi olmadan önek belirlenemez) |
-| Parçada CRC hatası ya da okunamayan kayıt | Kitaplık sorun bildirir | — | Kitaplık okunamayan kayıtta yinelemeyi durdurur (reader.hpp); okuyucu o noktaya kadar `izleme` verir ve dosyayı "bozuk" işaretler; `fizik` ve `girdi` güvencesi verilmez |
+| Dosya kapanmamış (sim çöktü, Footer, özet ya da Data End yok) | Footer/özet okunamıyor | — | Kurtarma okuması (A6-K60): son tam ve CRC'si tutan parçaya kadar `izleme`; `fizik` ve `girdi` güvencesi verilmez |
+| Parçada ya da ekte CRC hatası; açılamayan ya da çözülemeyen parça | A6 okuyucusunun kendi CRC hesabı (A6-K59); kitaplığa bırakılmaz | — | O parçadan veri yayınlanmaz; dosya `bozuk`; tekrar güvencesi yok, tekrar isteği 422 `kayit_okunamadi`; izleme yalnız ilk bozuk parçadan öncesiyle |
 | `ida_kayit` gerekli anahtarı eksik | Üst veri denetimi | — | Yalnız `izleme` |
 | Farklı büyük `a6_surumu` | Üst veri | — | Okunmaz (A6-K48) |
 | Şema `data`'sı bilinen tanımla aynı değil | A6-K49 | — | Kanal okunmaz, uyarı |
 | `log_time` negatif olacak ileti | Yazma öncesi | Yazmaz, `kayit/eksik` (A6-K10) | Önek güvencesi |
 | İleti sayısı sınırı | `sequence` taşacak | `sinira_ulasti` ile kapatır (A6-K12) | Önek güvencesi |
 | Aynı adlı dosya var | Açılış | Ezmez; çalıştırma başlamaz (A6-K01) | — |
-| Tekrar koşusunda sürüm, platform ya da özet farkı | Üst veri karşılaştırması | Yeni dosyada güvence yok (A6-K38) | Koşu "tekrar" sayılmaz |
+| Tekrar isteğinde sürüm, platform ya da özet farkı | Üst veri ve `cekirdek_bilgisi` karşılaştırması | `guvencesiz: true` yoksa istek reddedilir; varsa yeni dosyada güvence yok ve nedenler (A6-K38) | Koşu "tekrar" sayılmaz |
+| Tekrar koşusunda canlı müdahale | A3-K120 | `canli_mudahale_adimi`, güvence yok (A6-K53) | Koşu yeni deney sayılır |
+| HIL kaydından girdi tekrarı istendi | Kip `hil_*` | — | `girdi` güvencesi verilmez; yalnız `yeniden_kurma` (A6-K34, K56) |
 
 ## 6. Kalite kademelerinin etkisi
 
@@ -483,7 +546,8 @@ Veri hızları (hesap, sıkıştırmasız, MCAP kayıt ek yükü hariç; **ölç
 |---|---|---|
 | `a1/kart_sim` ya da `a1/sim_kart` | `telemetri` / `tam` | Yön başına en çok 300 000 B/s (3 000 000 baud 8N1'in üst sınırı; iskelet §3); sözleşme yükü periyot başına 900 B'nin altında tuttuğu için olağan yük ≤ 180 000 B/s (900 B × 200 Hz) |
 | `fizik/durum` | `telemetri` | 4 gövde ve 8 iticiyle ileti 647 B; 200 Hz'te ≈ 129 kB/s (≈ 466 MB/saat) |
-| `kamera/kare` | `tam` + `surekli` | 640 × 480 × 3 B (RGB8; piksel biçimi A2'nin) × 30 Hz ≈ 27,6 MB/s (≈ 99 GB/saat) |
+| `kamera/kare` | `tam` + `surekli` | Tam kamera kademesinde 640 × 480 × 3 B (RGB8; piksel biçimi ve kademe değerleri A2'de: tam 640 × 480 / 30 Hz, sade 320 × 240 / 15 Hz, tahmin) × 30 Hz ≈ 27,6 MB/s (≈ 99,5 GB/saat); sade kademede ≈ 3,46 MB/s |
+| `cekirdek/cagri` | `tam` (SIL) | Ölçülmedi; çağrı başına kodlanmış girdi ve çıktı boyu A4 yapıları kodlanınca belli olur (8. başlık md.9) |
 
 Bu yüzden `kamera_kareleri` varsayılanı `kapali`'dır (A5'ten beklenen) ve `surekli` yalnız kısa deneyler içindir. Düşük donanımlı Windows bilgisayarında hangi kademenin taşınabildiği ölçülmedi (MP8; 8. başlık md.1).
 
@@ -493,30 +557,35 @@ Emniyet kabulü kademeden bağımsızdır (iskelet §6): emniyet girdisi değiş
 
 | Kurallar | Test türü | Sınama yöntemi ve gözlenecek büyüklük |
 |---|---|---|
-| K01–K05 | birim | Üretilen dosyayı kitaplıktan bağımsız bir MCAP okuyucusuyla açma (sihirli baytlar, Header `profile`, parça sıkıştırması, özet); 1 s'den kısa aralıkla parça kapanması; aynı adlı dosyanın ezilmemesi |
+| K01–K05, K51 | birim | Üretilen dosyayı kitaplıktan bağımsız bir MCAP okuyucusuyla açma (sihirli baytlar, Header `profile`, parça sıkıştırması, özet); 1 s'den kısa aralıkla parça kapanması; aynı adlı dosyanın ezilmemesi; her parçada ve ekte CRC'nin yazılmış ve doğru olması |
 | K06, K30–K32 | SIL | Yapay yavaş disk ya da küçültülmüş halka tamponuyla: dünyanın adım süresinin kayıtsız koşudan ayırt edilemezliği (eşik ölçümle), `kayit/eksik` kayıtlarının düşen iletilerle sayıca ve aralıkça eşleşmesi, `gecerli`'nin değişmemesi |
 | K07–K12 | birim | Şema `data`'sının katalogdan üretilenle bayt eşitliği; C++ kodlayıcı ile dışa aktarıcının çözücüsünün altın iletilerde gidiş-dönüşü; `log_time`/`publish_time`/`sequence` kuralları; karışık dosya sırasında okuyucunun sıralaması |
 | K13–K15 | SIL | Duvar saati alanlarının tek monoton kaynaktan geldiği (kayıt açılışında ≈ 0); sensör kaydında `t_teslim_ns` ile `parti_step_seq`'in ayrı ve tutarlı olması; Ping360 satırında `log_time` = `t_tx_ns` |
 | K16–K20 | SIL | Üç kademede ve üç `kamera_kareleri` değerinde dosyadaki kanal kümesinin Tablo 3.3 ile birebir eşleşmesi; `olaylar` kademesinde `hil/bariyer`'de yalnız anomalilerin bulunması |
 | K21–K29 | SIL + kartlı | Hata enjektörüyle geciktirilen ve yinelenen yanıtlar, kaçırılan partiler, düşürülen profiller, kart sıfırlaması: her olayın ilgili kanalda doğru adım ve nedenle bulunması; A1 bloklarının taşımaya verilen ve alınan baytlarla eşitliği |
 | K33–K38 | SIL | Aynı ikili ve platformda iki SIL koşusu ile kayıttan `fizik` tekrarı: kanonik fizik izinin bit düzeyinde eşitliği; `telemetri` kaydından `girdi` tekrarı isteğinin reddi; önek güvencesi olan kayıtta tekrarın önek adımında durması; farklı `sim_surumu` ile güvencenin "yok" yazılması |
-| K33–K38 | kartlı | Bariyerli HIL kaydından `fizik` tekrarı: kanonik fizik izinin eşitliği; `tam` kaydından `tekrar_girdi_sil`: kart çıktısının toleranslı karşılaştırması |
+| K33–K38, K56, K57 | kartlı | Bariyerli HIL kaydından `fizik` tekrarı: kanonik fizik izinin eşitliği; `tam` HIL kaydından `yeniden_kurma`: koşunun el sıkışmasız başlaması, kart çıktısıyla karşılaştırma raporunun üretilmesi ve kayda güvence yazılmaması; aynı kayıttan `girdi` isteğinin reddi |
 | K39–K43 | birim + kartlı | Açılış sayacı farklı iki HIL koşusunda normalleştirilmiş olay sırasının eşleşmesi; duvar saati alanlarının ize girmemesi |
-| K44–K46 | birim | Olağan kapanışta kapanış üst verisinin ve özetin bulunması; süreç öldürülünce dosyanın sıralı okunabilmesi ve güvencenin `izleme` olması |
+| K44–K46 | birim | Olağan kapanışta kapanış üst verisinin ve özetin bulunması |
+| K54, K55 | SIL | Aynı yapı ve platformda SIL koşusunun `tam` kaydından `girdi` tekrarı: her çağrının dönüş kodu ve çıktısının bayt eşitliği; `bg_slices` ve background çağrılarının kayıtlı sayı ve `now_w` ile yinelenmesi; farklı `cekirdek_bilgisi` ile isteğin reddi |
+| K59 | birim | Sıkıştırmasız yazılmış bir dosyada bir parçanın içindeki tek bir ileti baytı değiştirilir (yapı geçerli kalır): okuyucunun dosyayı `bozuk` işaretlemesi, o parçadan hiçbir iletinin yayınlanmaması, tekrar isteğinin reddi; ek CRC'si bozulmuş dosyada aynısı; zstd parçası bozulduğunda aynısı |
+| K60 | birim | Üç ayrı durum: (1) **kesik indeks** — dosya Data End'den sonra, özet bölümünün ortasında kesilir: kurtarma bütün parçaları verir; (2) **kesik parça** — dosya bir parçanın ortasında kesilir: kurtarma o parçadan önceki son tam parçada biter, kesik parçadan ileti gelmez; (3) **tam parça sonunda çökme** — dosya bir parçanın son baytında biter (Data End ve Footer yok): kurtarma o parça dahil bütün parçaları verir. Her durumda kurtarılan ileti sayısının beklenenle eşitliği, `kapanmis: false` ve güvencenin `izleme` olması |
 | K47–K50 | birim | Sonuna alan eklenmiş (`kanal_surumu` + 1) iletinin eski okuyucuda okunması; farklı büyük sürümün reddi; şema `data` uyuşmazlığında kanalın okunmaması; ekteki katalogla dışa aktarım |
 
 **A3 ile ortak kanalların eşitliği** (görev belgesinin istediği karşılaştırma): `docs/sozlesmeler/sema/a6-kanallar.json` içinde `a3_ortak: true` olan her kanal için `a3-kanallar.json`'da aynı adlı kanal bulunur; ikisinde `yuk`, `kanal_surumu` ve `zaman_anlami` aynıdır ve yük tanımları (alan adı, tip, adet, birim, aralık, değer listesi, yok değeri, sıra) iki dosyada derin eşittir. Bu işte yapılan denetimin sonucu 7.1'dedir.
 
 ### 7.1 Bu işte yapılan şema denetimi
 
-Yöntem: kurulu bir JSON Schema doğrulayıcısı yoktu; Python 3.12 standart kitaplığıyla yazılmış bir yapısal denetim betiği kullanıldı (betik depoya girmez). Betik, bilerek bozulmuş kopyalarda (yük alanının tipi değiştirildi, bir `$ref` kırıldı, bir `kanal_id` yinelendi) dört hatanın dördünü yakaladı. Sonuç (2026-11-19):
+Yöntem: kurulu bir JSON Schema doğrulayıcısı yoktu; Python 3.12 standart kitaplığıyla yazılmış bir yapısal denetim betiği kullanıldı (betik depoya girmez). Betik, bilerek bozulmuş kopyalarda yapılan bozulmaların hepsini yakaladı: A6 tarafında bir ortak yük alanının tipi değiştirildi, bir `$ref` kırıldı, bir `kanal_id` yinelendi (2026-11-19); bir olay ayrıntısı şemasında ek nesnenin değer sınırı büyütüldü ve olay en kötü durumda 8192 baytı aştı (2026-11-20). Şemaların JSON Schema 2020-12 meta-şemasına karşı resmî bir doğrulayıcıyla denetimi yapılmadı (doğrulanmadı). Sonuç (2026-11-20):
 
 - İki dosya geçerli UTF-8 ve geçerli JSON (Python 3.12 `json`).
-- `$defs` altındaki şemalar: a3'te 82, a6'da 2 tanım; kullanılan anahtar sözcükler JSON Schema 2020-12 sözlüğünde, bütün `$ref`'ler dosya içinde çözüldü, `pattern`'ler derlendi.
-- A3: 24 kanal (kimlik ve ad tekil; yükler, anahtar alanları, sınıf, hız ve kuyruk kuralları tutarlı), 23 yük, 22 olay türü (her birinin ayrıntı şeması var), 45 uç (yinelenen yok; durum değiştiren her uçta `istek_kimligi` zorunlu; yolunda `ates`/`fire`/`tetik` geçen uç yok), 24 hata kodu; çerçeve başlığı 24 bayt.
-- A6: 51 kanal (ad tekil; yük, kademe ve tekrar düzeyi değerleri geçerli; `fizik` düzeyinin gerektirdiği hiçbir kanal `tam` kademesinde değil), 33 yük.
+- `$defs` altındaki şemalar: a3'te 86, a6'da 2 tanım; kullanılan anahtar sözcükler JSON Schema 2020-12 sözlüğünde, bütün `$ref`'ler dosya içinde çözüldü, `pattern`'ler derlendi.
+- A3: 24 kanal (kimlik ve ad tekil; yükler, anahtar alanları, sınıf, hız ve kuyruk kuralları tutarlı), 23 yük, 23 olay türü (her birinin ayrıntı şeması var), 46 uç (yinelenen yok; durum değiştiren her uçta `istek_kimligi` zorunlu; yolunda `ates`/`fire`/`tetik` geçen uç yok), 28 hata kodu; çerçeve başlığı 24 bayt.
+- A6: 54 kanal (ad tekil; yük, kademe ve tekrar düzeyi değerleri geçerli; `fizik` düzeyinin gerektirdiği hiçbir kanal `tam` kademesinde değil), 36 yük.
 - Ortak kanal karşılaştırması: A6'da `a3_ortak: true` olan 20 kanalın 20'i A3'te aynı adla, aynı `yuk`, `kanal_surumu` ve `zaman_anlami` ile ve derin eşit yük tanımıyla bulundu. İki dosyada aynı adı taşıyan 19 yükün hepsi derin eşit. A3'e özgü (kaydedilmeyen) kanallar: `baglanti/durum`, `kayit/durum`, `surec/durum`, `yer_istasyonu/mavlink`.
 - Hesap denetimi: `yuk_fizik_durum` 4 gövde ve 8 iticiyle 647 bayt (A6 §6'daki hesap).
+- Olay ayrıntısı en kötü durum boyutu (boşluksuz JSON; serbest metin karakteri başına 6 bayt, desenli ASCII alanlar desen uzunluğuyla): 23 olay türünün hepsi 8192 baytlık sınırın içinde; en büyüğü `komut_sonucu` 6948 bayt, `on_denetim_sonucu` 2104 bayt.
+- Belge ↔ şema eşleşmesi: iki belgede ters tırnakla geçen her kanal adı, yük adı, `$defs` adı ve HTTP koduyla verilen hata kodu şemalarda var; şemalardaki 58 kanalın ve 40 yükün her biri belgelerde geçiyor.
 
 ## 8. Açık kalanlar
 
@@ -524,10 +593,12 @@ Yöntem: kurulu bir JSON Schema doğrulayıcısı yoktu; Python 3.12 standart ki
 2. **Kamera kare kaydı:** sıkıştırma yöntemi ve maliyeti ölçülmedi (M30 ile); `pencereli` kipin ±2 s penceresi tahmin.
 3. **Parça kapatma aralığı 1 s** (A6-K04): tahmin; küçük parçaların sıkıştırma oranına etkisi ölçülmedi.
 4. **mcap kitaplığının sürümü:** `main` dalındaki `types.hpp` `MCAP_LIBRARY_VERSION` değeri `2.2.0`; yayımlanmış sürüm etiketiyle eşleştiği ve paket yöneticisinde bulunduğu doğrulanmadı; W2'de sabitlenir.
-5. **`application/toml` ortam türü:** IANA kaydı doğrulanmadı; doğrulanamazsa ek `text/plain; charset=utf-8` ile yazılır (küçük sürüm).
+5. ~~`application/toml` ortam türü~~ — **kapandı:** IANA'da kayıtlı (https://www.iana.org/assignments/media-types/application/toml, kayıt 2024-10-21).
 6. **`sonar_gercek/ping360` katkı sayısı (64):** tahmin; 05'in sonar uygulaması (W4) katkıları bu biçimde verebiliyor mu doğrulanmadı.
 7. **`fizik/durum` kayıt hızı 200 Hz** (kontrol periyodu sınırı): mimari seçimi; fizik adımı hızında (800 Hz) kayıt gerekip gerekmediği tolerans karşılaştırmasıyla (Ç7) değerlendirilir.
-8. **Kapanmamış dosyada önek güvencesi:** 1.0'da verilmez (§5); periyodik "güvence işareti" kaydıyla önek tanımlanabilir (küçük sürüm adayı).
+8. **Kapanmamış dosyada önek güvencesi:** 1.0'da verilmez (§5, A6-K60); periyodik "güvence işareti" kaydıyla önek tanımlanabilir (küçük sürüm adayı).
+9. **`cekirdek/cagri` boyutları ve veri hızı:** `girdi` ve `cikti` için 256 KiB üst sınırı ve `baslatma_girdisi` için 1 KiB tahmindir; A4 yapılarının alan alan kodlanmış boyu kodlayıcı üretilince (W2/W3) kesinleşir; `tam` kademede SIL kaydının veri hızı ölçülmedi.
+10. **Kayıtlı bayt akışının gerçek karta yeniden verilmesi** (A6-K58): **açık**; 1.0'da desteklenmez. Gerekirse kartın oturum ve zaman davranışını (el sıkışma, `HELLO_ACK` nonce'u, alım zamanları, sessiz aralıklar) A1 ve A4 ile birlikte tanımlayan ayrı bir iş olarak ele alınır; o zamana kadar karttan bit eşitliği güvencesi yoktur.
 
 ## 9. Açık bulgu kapanış tablosu
 
@@ -536,14 +607,14 @@ Yöntem: kurulu bir JSON Schema doğrulayıcısı yoktu; Python 3.12 standart ki
 | Bulgu | Durum | Sözleşmede nerede | Gerekçe |
 |---|---|---|---|
 | AB-096 | kapandı | A6-K21, K23, K27; `hil/oturum`, `fizik/adim_sonucu` | Oturum geçişleri, kart sıfırlamaları ve komut ömrü kararları (`omur_doldu_notr`, `omur_bitis_t_ns`) kayda bağlandı; değerlerin kendisi (kullanım süresi, zaman aşımı) A1'den gelir ve üst veriye yazılır. |
-| AB-097 | açık | A6-K40; 10. başlık (A1, A4) | Arka plan işinin tüketildi/düştü kararını A6 ancak A1 telemetrisinde taşınırsa kaydedebilir (`a1/kart_sim` ham baytları); kararın A4/A1'de görünür kılınması ve SIL çekirdeğinin bu kararla deterministik olması bekleniyor. |
+| AB-097 | kapandı | A6-K54, K55, K56; Tablo 4.6 (c), (d) | SIL'de platform katmanı her çekirdek çağrısını (`bg_slices`, background çağrıları ve `now_w` dahil) girdisi, dönüş kodu ve çıktısıyla kaydeder; arka plan işinin tüketildi/düştü kararı çıktının parçası olarak karşılaştırılır ve tekrarda aynı çağrı dizisiyle yeniden üretilir. HIL'de bu girdiler PC'de görünmez; HIL kaydı yalnız güvencesiz yeniden kurma verir ve bu açıkça yazılıdır (mimar kararı, 2026-11-20). |
 | AB-098 | kapandı | A6-K30, K33; `kayit/eksik` | Taşmada hangi kanalın hangi adım aralığında eksik olduğu kaydediliyor ve güvence önek olarak daraltılıyor. |
 | AB-099 | kapandı | A6-K15; `yuk_*` ölçüm başlığı; `sonar_gercek/ping360` | Nominal kutu zamanı (`log_time` + kutu genişliği) ile gerçek yansıma anları, modellenmiş teslim (`t_teslim_ns`) ile fiilî parti (`parti_step_seq`) ayrı alanlarda. |
 | AB-100 | kapandı | A6-K39…K43 | Olay kimliği normalleştirmesi (ilk görülme sırası) ve `step_seq` ile girdi bağlama tanımlandı; işlevsel/tanısal A1 alan listesi A1'den beklenir. |
 | AB-101 | kapandı | A6-K21, K22; `yuk_fizik_adim_sonucu` | `StepResult`'ın kayıt karşılığı sürümlü (`kanal_surumu`) ve dondurulabilir yük olarak tanımlandı. |
 | U-28 | kapandı | 1. başlık; Tablo 3.3; Tablo 4.6 | A6 kapsamı "A1 trafiği, A3 komutları ve olayları, fizik durumu" oldu (iskelet 0.8); A3 telemetrisi kaydedilmez; `a1/sim_kart` yalnız `tam`'da, böylece "bütün A1 çerçeveleri" gereği yalnız `girdi` düzeyine bağlandı. |
 
-Kritik önemde açık bırakılan A6 bulgusu yoktur (AB-097 "önemli"dir).
+Açık bırakılan A6 bulgusu yoktur.
 
 Bilgi için: AB-022 (A1 başlığında, "A6 yan verisi" notlu) A6 tarafında A6-K15 ve `sonar_gercek/ping360` ile karşılanır; bulgunun kendisi A1'dedir.
 
@@ -555,9 +626,14 @@ Bilgi için: AB-022 (A1 başlığında, "A6 yan verisi" notlu) A6 tarafında A6-
 3. Kanonik iz için A1 alanlarının işlevsel/tanısal sınıflaması (A6-K40).
 4. Bekleme sınırı ve sürekli komut kullanım süresi değerleri (üst veri anahtarları).
 5. Kart yazılımı özetinin (`BOOT_RECORD`) biçimi.
-6. Arka plan işinin karar adımının telemetride taşınması (AB-097; A4 ile birlikte).
+6. HIL'de `bg_slices`'ın ve kart içi çağrı girdilerinin PC'ye taşınması **gerekmez** (HIL kaydından girdi güvencesi verilmez; A6-K56).
+7. Yeniden kurma tekrarı için `ida_link`'in el sıkışmasız başlatma kipi: kayıtlı ilk `KOŞUYOR` geçişinden itibaren oturumu kurulmuş sayan, nonce denetimi yapmayan PC'ye özgü bir giriş (A6-K57).
 
-**A4'ten beklenen:** SIL çekirdeğinin aynı girdi bayt akışı ve sim zamanından türeyen duvar saatiyle bit düzeyinde aynı çıktıyı üretmesinin koşulları (arka plan işi dahil) (Tablo 4.6, `girdi`).
+**A4'ten beklenen:**
+1. SIL platform katmanının (SIL koşucusu) her çekirdek çağrısının girdisini, dönüş kodunu ve çıktısını, `ida_core_init` girdisini ve `ida_core_info` çıktısını A6 kayıt yazıcısına vermesi (A6-K54).
+2. `ida_init_in_t`, `ida_in_t`, `ida_out_t` ve `ida_core_info_t` için alan sırasının A4 §3 tablolarındaki gibi sabit olması; A6 bu sırayla alan alan kodlar (A6-K52; A4-K03).
+3. A4-K24'ün (aynı ikili, aynı init girdisi ve `bg_slices` dahil aynı çağrı dizisi → bit düzeyinde aynı çıktı) background çağrılarının `now_w` değerlerini de kapsaması.
+4. HIL'de `bg_slices`'ın PC'ye taşınması gerekmez (A6-K56).
 
 **A5'ten beklenen:** kayıt kademesi anahtarı (`olaylar`/`telemetri`/`tam`); `kamera_kareleri` anahtarı ve varsayılanı `kapali`; çözümlenmiş senaryonun kanonik biçimi ve `sha256:<hex>` özeti; araç dosyasının özeti; `schema_version`.
 
@@ -570,3 +646,8 @@ Bilgi için: AB-022 (A1 başlığında, "A6 yan verisi" notlu) A6 tarafında A6-
 **A3 (bu işte):** ortak kanallar ve yükler A3 ile aynı tanımdan üretildi; A3-K52, K57, K63, K67, K108–K115 A6'yla birlikte okunur.
 
 **Uygulama işlerinden beklenen:** 04: sim zamanının çalıştırma başında 0 olması; `model_olaylari` bit tablosu; `StepResult` alanlarının `yuk_fizik_adim_sonucu`'na eşlenmesi. 05: sonar katkılarının (`sonar_gercek/ping360`) üretilmesi; `fault_mask` bit numaralarının 05 §2.7 bileşim sırasıyla eşlenmesi. 06: `a1/*` bloklarının hata enjektörüne göre yeri (A6-K28).
+
+## 11. İskelete ya da diğer bölümlere notlar
+
+- **06 §2.9 ve §2.13, 08 §2.6.2 (c) ile fark:** bölümler girdi tekrarını "kayıtlı sim → kart çerçevelerini SIL çekirdeğine ya da karta beslemek" olarak anlatır ve 06 §2.9, çalıştırma başında kartı `REBOOT` ile yeni oturuma alan akışı tanımlar. Bu sözleşmede (mimar kararı, 2026-11-20) güvenceli girdi tekrarının sınırı A1 bayt akışı değil A4 port sınırıdır: SIL'de çekirdek çağrıları doğrudan kaydedilir ve PC'deki çekirdeğe verilir (A6-K54, K55); HIL kaydından yalnız güvencesiz yeniden kurma yapılır ve oturum el sıkışması tekrar edilmez (A6-K56, K57); kayıtlı akışın gerçek karta verilmesi 1.0'da yoktur (A6-K58). Bölümler yeniden yazılmaz; bu not mimarın kaydı içindir.
+- **İskelet A6 satırı** "girdi tekrarı (kayıtlı sensör akışını çekirdeğe verme)" ifadesiyle uyumludur; "çekirdeğe" burada PC'deki çekirdek olarak okunmuştur.

@@ -61,7 +61,7 @@
           "3": "hil_bariyer",
           "4": "tekrar_fizik",
           "5": "tekrar_girdi_sil",
-          "6": "tekrar_girdi_kart"
+          "6": "tekrar_yeniden_kurma"
         },
         "anlam": "zaman kipi"
       },
@@ -785,6 +785,12 @@
         "tip": "u8",
         "birim": "-",
         "anlam": "anlık fark bitleri: bit0 acil, bit1 fiş, bit2 pim; kartın okuması bilinmiyorsa bit 0"
+      },
+      {
+        "ad": "emniyet_rev",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "emniyet revizyonu: sim sureci boyunca 1'den başlayan, her emniyet ya da yetki durumu degisiminde bir artan sayaç (A3-K117)"
       }
     ],
     "yuk_ariza_etkin": [
@@ -2542,7 +2548,7 @@
         "sayac": "u32",
         "azami": 4194304,
         "birim": "bayt",
-        "anlam": "istek gövdesi (UTF-8 JSON) olduğu gibi"
+        "anlam": "istek gövdesi; yalnız geçerli UTF-8 JSON gövde bu kanala yazılır, diğerleri `a3/gecersiz_istek`e (A3-K52)"
       },
       {
         "ad": "alim_duvar_ns",
@@ -2574,6 +2580,182 @@
         "azami": 64,
         "birim": "bayt",
         "anlam": "reddedildiyse A3 hata kodu; değilse boş"
+      }
+    ],
+    "yuk_a3_gecersiz_istek": [
+      {
+        "ad": "komut_no",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A3 komut numarası (A3-K52)"
+      },
+      {
+        "ad": "istemci_id",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "istemci kimliği; başlık yoksa ya da kayıtlı değilse 0"
+      },
+      {
+        "ad": "yontem",
+        "tip": "metin",
+        "sayac": "u16",
+        "azami": 8,
+        "birim": "bayt",
+        "anlam": "HTTP yöntemi"
+      },
+      {
+        "ad": "yol",
+        "tip": "metin",
+        "sayac": "u16",
+        "azami": 256,
+        "birim": "bayt",
+        "anlam": "istek yolu (256 bayttan uzunsa kesilmiş)"
+      },
+      {
+        "ad": "alim_duvar_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "isteğin alındığı kayıt duvar saati (A6-K13)"
+      },
+      {
+        "ad": "bildirilen_uzunluk",
+        "tip": "u64",
+        "birim": "bayt",
+        "yok_degeri": "2^64-1",
+        "anlam": "`Content-Length` değeri; başlık yoksa 2^64-1"
+      },
+      {
+        "ad": "okunan_uzunluk",
+        "tip": "u64",
+        "birim": "bayt",
+        "anlam": "sunucunun fiilen okuduğu gövde baytı; gövde sınırı aşıldıysa sınıra kadar"
+      },
+      {
+        "ad": "sinir_asildi",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "gövde sınırı aşıldı ve sunucu sınırın ötesini okumadı (A3-K51)"
+      },
+      {
+        "ad": "kesildi",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "okunan gövde 4096 bayttan uzun olduğu için `on_ek` kesildi"
+      },
+      {
+        "ad": "http_durum",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "döndürülen HTTP durum kodu"
+      },
+      {
+        "ad": "hata_kodu",
+        "tip": "metin",
+        "sayac": "u16",
+        "azami": 64,
+        "birim": "bayt",
+        "anlam": "ret nedeni: A3 hata kodu"
+      },
+      {
+        "ad": "on_ek",
+        "tip": "bayt_dizisi",
+        "sayac": "u16",
+        "azami": 4096,
+        "birim": "bayt",
+        "anlam": "okunan gövdenin ilk en çok 4096 baytı, olduğu gibi (geçerli UTF-8 olmayabilir)"
+      }
+    ],
+    "yuk_cekirdek_baslatma": [
+      {
+        "ad": "port_major",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "platformun derlendiği A4 port sürümü (A4 `IDA_PORT_VERSION_MAJOR`)"
+      },
+      {
+        "ad": "port_minor",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "A4 `IDA_PORT_VERSION_MINOR`"
+      },
+      {
+        "ad": "cekirdek_bilgisi",
+        "tip": "bayt_dizisi",
+        "sayac": "u16",
+        "azami": 256,
+        "birim": "bayt",
+        "anlam": "`ida_core_info_t` (çekirdek yapı kimliği: port sürümü, `core_size`, `core_align`, `param_schema_hash`, `core_version`), A4 alan sırasıyla alan alan kodlanmış (A6-K52)"
+      },
+      {
+        "ad": "baslatma_girdisi",
+        "tip": "bayt_dizisi",
+        "sayac": "u16",
+        "azami": 1024,
+        "birim": "bayt",
+        "anlam": "`ida_init_in_t`'nin `param_blob` dışındaki alanları, A4 alan sırasıyla alan alan kodlanmış (A6-K52)"
+      },
+      {
+        "ad": "param_blob",
+        "tip": "bayt_dizisi",
+        "sayac": "u16",
+        "azami": 8000,
+        "birim": "bayt",
+        "anlam": "kodlanmış parametre bloğu, A4 §3.10 bayt düzeninde olduğu gibi"
+      },
+      {
+        "ad": "donus_kodu",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`ida_core_init` dönüş kodu (A4 `ida_rc_t`)"
+      }
+    ],
+    "yuk_cekirdek_cagri": [
+      {
+        "ad": "cagri_sirasi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "son `ida_core_init`'ten beri 1'den artan çekirdek çağrısı sırası; step, tick ve background ortak sıradadır"
+      },
+      {
+        "ad": "islev",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "1": "step",
+          "2": "tick",
+          "3": "background"
+        },
+        "anlam": "çağrılan işlev"
+      },
+      {
+        "ad": "girdi",
+        "tip": "bayt_dizisi",
+        "sayac": "u32",
+        "azami": 262144,
+        "birim": "bayt",
+        "anlam": "step ve tick: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A4 alan sırasıyla alan alan kodlanmış (A6-K52)"
+      },
+      {
+        "ad": "donus_kodu",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "çağrının dönüş kodu (`ida_rc_t` ya da `ida_bg_rc_t`)"
+      },
+      {
+        "ad": "cikti",
+        "tip": "bayt_dizisi",
+        "sayac": "u32",
+        "azami": 262144,
+        "birim": "bayt",
+        "anlam": "step ve tick: `ida_out_t`, alan alan kodlanmış; background: boş"
       }
     ],
     "yuk_a3_komut_sonucu": [
@@ -2749,7 +2931,7 @@
           1,
           640
         ],
-        "anlam": "genişlik"
+        "anlam": "genişlik; kademe değerleri A2'de (tam 640, sade 320; tahmin)"
       },
       {
         "ad": "yukseklik",
@@ -2759,7 +2941,7 @@
           1,
           480
         ],
-        "anlam": "yükseklik"
+        "anlam": "yükseklik; kademe değerleri A2'de (tam 480, sade 240; tahmin)"
       },
       {
         "ad": "piksel_bicimi",
@@ -2861,6 +3043,20 @@
       "tekrar_duzeyi": [
         "izleme",
         "fizik"
+      ],
+      "kaynak": "A3 sunucusu"
+    },
+    {
+      "ad": "a3/gecersiz_istek",
+      "kanal_surumu": 1,
+      "yuk": "yuk_a3_gecersiz_istek",
+      "kademe": "olaylar",
+      "kayit_hizi": "her_uretimde",
+      "zaman_anlami": "sim",
+      "a3_ortak": false,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
       ],
       "kaynak": "A3 sunucusu"
     },
@@ -3505,6 +3701,34 @@
       "kaynak": "06 G/Ç iş parçacığı"
     },
     {
+      "ad": "cekirdek/baslatma",
+      "kanal_surumu": 1,
+      "yuk": "yuk_cekirdek_baslatma",
+      "kademe": "tam",
+      "kayit_hizi": "her `ida_core_init` çağrısında",
+      "zaman_anlami": "sim",
+      "a3_ortak": false,
+      "kosul": "yalnız çekirdeği PC'de çağıran kiplerde: `sil`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`",
+      "tekrar_duzeyi": [
+        "girdi"
+      ],
+      "kaynak": "SIL platform katmanı (A4)"
+    },
+    {
+      "ad": "cekirdek/cagri",
+      "kanal_surumu": 1,
+      "yuk": "yuk_cekirdek_cagri",
+      "kademe": "tam",
+      "kayit_hizi": "her çekirdek çağrısı",
+      "zaman_anlami": "sim",
+      "a3_ortak": false,
+      "kosul": "`cekirdek/baslatma` ile aynı kiplerde",
+      "tekrar_duzeyi": [
+        "girdi"
+      ],
+      "kaynak": "SIL platform katmanı (A4)"
+    },
+    {
       "ad": "sonar/ping360",
       "kanal_surumu": 1,
       "yuk": "yuk_ping360",
@@ -3554,7 +3778,7 @@
       "kayit_hizi": "her_uretimde",
       "zaman_anlami": "olcum",
       "a3_ortak": false,
-      "kosul": "kamera_kareleri != kapali",
+      "kosul": "`kamera_kareleri != kapali`",
       "tekrar_duzeyi": [
         "izleme"
       ],
@@ -3614,12 +3838,17 @@
         {
           "ad": "kip",
           "zorunlu": "evet",
-          "anlam": "`sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_girdi_kart`"
+          "anlam": "`sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`"
         },
         {
           "ad": "kaynak_run_id",
           "zorunlu": "kosullu",
           "anlam": "tekrar koşusunda kaynak kaydın run_id'si"
+        },
+        {
+          "ad": "guvencesiz_nedenler",
+          "zorunlu": "kosullu",
+          "anlam": "`guvencesiz: true` ile başlatılan tekrar koşusunda sağlanmayan koşulların virgülle ayrılmış listesi (A3-K68, A6-K38)"
         },
         {
           "ad": "kayit_kademesi",
@@ -3788,6 +4017,16 @@
           "anlam": "güvencenin geçerli olduğu son fizik adımı (A6-K33)"
         },
         {
+          "ad": "guvence_nedenleri",
+          "zorunlu": "kosullu",
+          "anlam": "`tekrar_guvencesi` beklenen duzeyden düşükse nedenler, virgülle ayrılmış (örnek: `canli_mudahale`, `guvencesiz_baslatma`, `kayit_eksik`)"
+        },
+        {
+          "ad": "canli_mudahale_adimi",
+          "zorunlu": "kosullu",
+          "anlam": "tekrar koşusunda ilk canlı müdahalenin uygulandığı fizik adımı (A3-K120)"
+        },
+        {
           "ad": "ileti_sayisi",
           "zorunlu": "evet",
           "anlam": "dosyaya yazılan ileti sayısı"
@@ -3800,7 +4039,7 @@
       "ad": "cozumlenmis_senaryo.toml",
       "media_type": "application/toml",
       "zorunlu": "evet",
-      "anlam": "A5 çözümlenmiş senaryo, kanonik biçim (media type IANA kaydı doğrulanmadı)"
+      "anlam": "A5 çözümlenmiş senaryo, kanonik biçim (`application/toml` IANA'da kayıtlı, 2024-10-21)"
     },
     {
       "ad": "arac.toml",
@@ -3868,6 +4107,9 @@
           "type": "string"
         },
         "kaynak_run_id": {
+          "type": "string"
+        },
+        "guvencesiz_nedenler": {
           "type": "string"
         },
         "kayit_kademesi": {
@@ -3998,6 +4240,12 @@
           "type": "string"
         },
         "guvence_on_eki_son_adim": {
+          "type": "string"
+        },
+        "guvence_nedenleri": {
+          "type": "string"
+        },
+        "canli_mudahale_adimi": {
           "type": "string"
         },
         "ileti_sayisi": {

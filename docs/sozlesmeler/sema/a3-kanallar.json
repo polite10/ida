@@ -107,7 +107,7 @@
           "3": "hil_bariyer",
           "4": "tekrar_fizik",
           "5": "tekrar_girdi_sil",
-          "6": "tekrar_girdi_kart"
+          "6": "tekrar_yeniden_kurma"
         },
         "anlam": "zaman kipi"
       },
@@ -831,6 +831,12 @@
         "tip": "u8",
         "birim": "-",
         "anlam": "anlık fark bitleri: bit0 acil, bit1 fiş, bit2 pim; kartın okuması bilinmiyorsa bit 0"
+      },
+      {
+        "ad": "emniyet_rev",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "emniyet revizyonu: sim sureci boyunca 1'den başlayan, her emniyet ya da yetki durumu degisiminde bir artan sayaç (A3-K117)"
       }
     ],
     "yuk_ariza_etkin": [
@@ -2873,6 +2879,12 @@
       "ad": "uyari",
       "varsayilan_onem": "uyari",
       "ayrinti": "#/$defs/olay_uyari"
+    },
+    {
+      "kod": 23,
+      "ad": "tekrar_mudahalesi",
+      "varsayilan_onem": "uyari",
+      "ayrinti": "#/$defs/olay_tekrar_mudahalesi"
     }
   ],
   "x_ida_hata_kodlari": [
@@ -2942,9 +2954,29 @@
       "anlam": "jeton yok, süresi geçmiş, kullanılmış ya da başka istemci/girdi/komut için"
     },
     {
-      "kod": "istek_kimligi_cakismasi",
+      "kod": "kimlik_cakismasi",
       "http": 409,
-      "anlam": "aynı istek_kimligi farklı gövdeyle"
+      "anlam": "aynı istemci oturumunda aynı istek_kimligi farklı yontem, yol ya da gövdeyle (A3-K53)"
+    },
+    {
+      "kod": "emniyet_rev_uyusmuyor",
+      "http": 409,
+      "anlam": "`beklenen_emniyet_rev` güncel emniyet revizyonu değil; `ayrinti.guncel_emniyet_rev` (A3-K118)"
+    },
+    {
+      "kod": "kisitlama_hakim",
+      "http": 409,
+      "anlam": "aynı adım sinirinda aynı girdi için kisitlayan bir degisiklik var; yalnız `komut_sonucu` olayında kullanılır (A3-K95)"
+    },
+    {
+      "kod": "tekrar_kosulu_saglanmiyor",
+      "http": 409,
+      "anlam": "sürüm, platform ya da özet kosulu saglanmiyor; `ayrinti.nedenler` (A3-K68)"
+    },
+    {
+      "kod": "tekrar_kipinde_yasak",
+      "http": 409,
+      "anlam": "kayıtlı girdiyle beslenen tekrar kipinde girdiyi degistiren müdahale (A3-K120)"
     },
     {
       "kod": "izleme_etkin",
@@ -3041,6 +3073,14 @@
     {
       "yontem": "GET",
       "yol": "/api/v1/on_denetim",
+      "istek": null,
+      "yanit": "#/$defs/on_denetim_raporu",
+      "tur": "senkron",
+      "durum_degistirir": false
+    },
+    {
+      "yontem": "GET",
+      "yol": "/api/v1/on_denetim/{rapor_kimligi}",
       "istek": null,
       "yanit": "#/$defs/on_denetim_raporu",
       "tur": "senkron",
@@ -3386,7 +3426,32 @@
     "istek_kimligi": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]{8,64}$",
-      "description": "istemcinin ürettiği, çalıştırma boyunca tekil istek kimliği (A3-K53)"
+      "description": "istemcinin ürettiği istek kimliği; yineleme anahtari (istemci oturumu, yontem, yol, istek_kimligi) (A3-K53)"
+    },
+    "rapor_kimligi": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "ön denetim raporunun kimliği (A3-K62)"
+    },
+    "on_denetim_kodu": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,32}$"
+    },
+    "sinirli_nesne": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {
+        "pattern": "^[a-z0-9_]{1,32}$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "integer",
+          "boolean",
+          "null"
+        ],
+        "maxLength": 64
+      }
     },
     "run_id": {
       "type": "string",
@@ -3436,6 +3501,9 @@
           "type": "string",
           "const": "ret"
         },
+        "yineleme": {
+          "type": "boolean"
+        },
         "komut_no": {
           "type": [
             "integer",
@@ -3462,7 +3530,11 @@
                 "beklenen_durum_uyusmuyor",
                 "onay_gerekli",
                 "onay_jetonu_gecersiz",
-                "istek_kimligi_cakismasi",
+                "kimlik_cakismasi",
+                "emniyet_rev_uyusmuyor",
+                "kisitlama_hakim",
+                "tekrar_kosulu_saglanmiyor",
+                "tekrar_kipinde_yasak",
                 "izleme_etkin",
                 "canli_calistirma_yok",
                 "komut_listede_yok",
@@ -3500,8 +3572,7 @@
       "type": "object",
       "properties": {
         "kod": {
-          "type": "string",
-          "pattern": "^[a-z0-9_]{1,64}$"
+          "$ref": "#/$defs/on_denetim_kodu"
         },
         "durum": {
           "type": "string",
@@ -3553,6 +3624,9 @@
           "type": "string",
           "const": "1.0"
         },
+        "rapor_kimligi": {
+          "$ref": "#/$defs/rapor_kimligi"
+        },
         "sonuc": {
           "type": "string",
           "enum": [
@@ -3569,7 +3643,7 @@
             "hil_bariyer",
             "tekrar_fizik",
             "tekrar_girdi_sil",
-            "tekrar_girdi_kart"
+            "tekrar_yeniden_kurma"
           ]
         },
         "olusturma_utc": {
@@ -3578,6 +3652,7 @@
         },
         "maddeler": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "$ref": "#/$defs/on_denetim_maddesi"
           }
@@ -3586,6 +3661,7 @@
       "additionalProperties": false,
       "required": [
         "rapor_surumu",
+        "rapor_kimligi",
         "sonuc",
         "kip",
         "maddeler"
@@ -3698,7 +3774,7 @@
             "hil_bariyer",
             "tekrar_fizik",
             "tekrar_girdi_sil",
-            "tekrar_girdi_kart"
+            "tekrar_yeniden_kurma"
           ]
         },
         "run_id": {
@@ -3808,6 +3884,10 @@
             "null"
           ]
         },
+        "emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
+        },
         "son_komut_no": {
           "type": "integer",
           "minimum": 0
@@ -3827,6 +3907,7 @@
         "sayaclar",
         "kademeler",
         "yayin_tavani_hz",
+        "emniyet_rev",
         "son_komut_no"
       ]
     },
@@ -4026,6 +4107,9 @@
         "sonuc": {
           "type": "string",
           "const": "kabul"
+        },
+        "yineleme": {
+          "type": "boolean"
         },
         "gecerli": {
           "type": "boolean"
@@ -4301,15 +4385,12 @@
           "type": "string",
           "enum": [
             "fizik",
-            "girdi"
+            "girdi",
+            "yeniden_kurma"
           ]
         },
-        "hedef": {
-          "type": "string",
-          "enum": [
-            "sil",
-            "kart"
-          ]
+        "guvencesiz": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -4317,8 +4398,7 @@
         "istek_kimligi",
         "beklenen_durum",
         "run_id",
-        "duzey",
-        "hedef"
+        "duzey"
       ]
     },
     "istek_ariza": {
@@ -4590,17 +4670,25 @@
             "integer",
             "null"
           ]
+        },
+        "emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false,
       "required": [
         "sonuc",
-        "yetkili"
+        "yetkili",
+        "emniyet_rev"
       ]
     },
     "istek_onay_jetonu_emniyet": {
       "type": "object",
       "properties": {
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id"
+        },
         "girdi": {
           "$ref": "#/$defs/girdi_adi"
         },
@@ -4610,6 +4698,7 @@
       },
       "additionalProperties": false,
       "required": [
+        "beklenen_run_id",
         "girdi",
         "hedef_durum"
       ]
@@ -4628,13 +4717,22 @@
         "gecerlilik_ms": {
           "type": "integer",
           "const": 10000
+        },
+        "run_id": {
+          "$ref": "#/$defs/run_id"
+        },
+        "emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false,
       "required": [
         "sonuc",
         "onay_jetonu",
-        "gecerlilik_ms"
+        "gecerlilik_ms",
+        "run_id",
+        "emniyet_rev"
       ]
     },
     "istek_emniyet_degistir": {
@@ -4651,6 +4749,10 @@
         },
         "hedef_durum": {
           "$ref": "#/$defs/girdi_durumu"
+        },
+        "beklenen_emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         },
         "onay": {
           "type": "boolean"
@@ -4671,6 +4773,9 @@
     "istek_onay_jetonu_yer_istasyonu": {
       "type": "object",
       "properties": {
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id"
+        },
         "komut": {
           "type": "string",
           "pattern": "^[a-z0-9_]{1,64}$"
@@ -4681,6 +4786,7 @@
       },
       "additionalProperties": false,
       "required": [
+        "beklenen_run_id",
         "komut",
         "parametreler"
       ]
@@ -4700,6 +4806,10 @@
         },
         "parametreler": {
           "type": "object"
+        },
+        "beklenen_emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         },
         "onay": {
           "type": "boolean"
@@ -4757,7 +4867,7 @@
             "hil_bariyer",
             "tekrar_fizik",
             "tekrar_girdi_sil",
-            "tekrar_girdi_kart"
+            "tekrar_yeniden_kurma"
           ]
         },
         "gecerli": {
@@ -5350,7 +5460,8 @@
       "properties": {
         "komut_no": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 4294967295
         },
         "sonuc": {
           "type": "string",
@@ -5365,7 +5476,7 @@
         },
         "hata_kodu": {
           "type": "string",
-          "maxLength": 64
+          "pattern": "^[a-z0-9_]{1,64}$"
         },
         "kaynak": {
           "type": "string",
@@ -5375,7 +5486,7 @@
           ]
         },
         "sonuc_ayrinti": {
-          "type": "object"
+          "$ref": "#/$defs/sinirli_nesne"
         }
       },
       "additionalProperties": false,
@@ -5435,10 +5546,22 @@
           ]
         },
         "onceki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "serbest",
+            "basili",
+            "takili",
+            "cikarilmis"
+          ]
         },
         "sonraki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "serbest",
+            "basili",
+            "takili",
+            "cikarilmis"
+          ]
         },
         "kaynak": {
           "type": "string",
@@ -5457,6 +5580,10 @@
         "uygulama_adimi": {
           "type": "integer",
           "minimum": 0
+        },
+        "emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false,
@@ -5466,7 +5593,8 @@
         "sonraki",
         "kaynak",
         "yon",
-        "uygulama_adimi"
+        "uygulama_adimi",
+        "emniyet_rev"
       ]
     },
     "olay_atis_olayi_sonucu": {
@@ -5511,21 +5639,47 @@
       "type": "object",
       "properties": {
         "onceki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "kapali",
+            "el_sikisma",
+            "hazir",
+            "kosuyor",
+            "kopuk"
+          ]
         },
         "sonraki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "kapali",
+            "el_sikisma",
+            "hazir",
+            "kosuyor",
+            "kopuk"
+          ]
         },
         "sess": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 65535
         },
         "acilis_sayaci": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 4294967295
         },
         "neden": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "el_sikisma_tamam",
+            "uyumsuzluk",
+            "reboot_istendi",
+            "canlilik_kaybi",
+            "aygit_kalkti",
+            "beklenmedik_sifirlama",
+            "planli_sifirlama",
+            "sim_kapanisi"
+          ]
         },
         "planli": {
           "type": "boolean"
@@ -5563,11 +5717,16 @@
       "properties": {
         "komut_no": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 4294967295
         },
         "komut": {
           "type": "string",
-          "maxLength": 64
+          "pattern": "^[a-z0-9_]{1,64}$"
+        },
+        "emniyet_rev": {
+          "type": "integer",
+          "minimum": 1
         },
         "durum": {
           "type": "string",
@@ -5592,15 +5751,16 @@
       "properties": {
         "komut_no": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 4294967295
         },
         "komut": {
           "type": "string",
-          "maxLength": 64
+          "pattern": "^[a-z0-9_]{1,64}$"
         },
         "sonuc": {
           "type": "string",
-          "maxLength": 64
+          "pattern": "^[a-z0-9_]{1,64}$"
         }
       },
       "additionalProperties": false,
@@ -5629,13 +5789,94 @@
     "olay_on_denetim_sonucu": {
       "type": "object",
       "properties": {
-        "rapor": {
-          "$ref": "#/$defs/on_denetim_raporu"
+        "rapor_kimligi": {
+          "$ref": "#/$defs/rapor_kimligi"
+        },
+        "sonuc": {
+          "type": "string",
+          "enum": [
+            "gecti",
+            "kaldi"
+          ]
+        },
+        "kip": {
+          "type": "string",
+          "enum": [
+            "yok",
+            "sil",
+            "hil_1x",
+            "hil_bariyer",
+            "tekrar_fizik",
+            "tekrar_girdi_sil",
+            "tekrar_yeniden_kurma"
+          ]
+        },
+        "sayilar": {
+          "type": "object",
+          "properties": {
+            "gecti": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 32
+            },
+            "kaldi": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 32
+            },
+            "uyari": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 32
+            },
+            "atlandi": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 32
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "gecti",
+            "kaldi",
+            "uyari",
+            "atlandi"
+          ]
+        },
+        "maddeler": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kod": {
+                "$ref": "#/$defs/on_denetim_kodu"
+              },
+              "durum": {
+                "type": "string",
+                "enum": [
+                  "gecti",
+                  "kaldi",
+                  "uyari",
+                  "atlandi"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kod",
+              "durum"
+            ]
+          }
         }
       },
       "additionalProperties": false,
       "required": [
-        "rapor"
+        "rapor_kimligi",
+        "sonuc",
+        "kip",
+        "sayilar",
+        "maddeler"
       ]
     },
     "olay_kayit_durumu": {
@@ -5706,10 +5947,24 @@
           ]
         },
         "onceki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "kapali_kademe",
+            "baslatiliyor",
+            "calisiyor",
+            "dustu",
+            "durduruldu"
+          ]
         },
         "sonraki": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "kapali_kademe",
+            "baslatiliyor",
+            "calisiyor",
+            "dustu",
+            "durduruldu"
+          ]
         },
         "neden": {
           "type": "string",
@@ -5777,8 +6032,7 @@
           ]
         },
         "run_id": {
-          "type": "string",
-          "maxLength": 32
+          "$ref": "#/$defs/run_id"
         },
         "konum_ns": {
           "type": "integer",
@@ -5798,7 +6052,14 @@
           "maxLength": 64
         },
         "tur": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "ariza",
+            "emniyet_girdisi",
+            "ortam",
+            "gorev",
+            "diger"
+          ]
         },
         "uygulama_adimi": {
           "type": "integer",
@@ -5823,7 +6084,7 @@
       "properties": {
         "kod": {
           "type": "string",
-          "maxLength": 64
+          "pattern": "^[a-z0-9_]{1,64}$"
         },
         "ileti": {
           "type": "string",
@@ -5834,6 +6095,32 @@
       "required": [
         "kod",
         "ileti"
+      ]
+    },
+    "olay_tekrar_mudahalesi": {
+      "type": "object",
+      "properties": {
+        "komut_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "uygulama_adimi": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tur": {
+          "type": "string",
+          "enum": [
+            "ariza",
+            "emniyet_girdisi"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "komut_no",
+        "tur"
       ]
     }
   }

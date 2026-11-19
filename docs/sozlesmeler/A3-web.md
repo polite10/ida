@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Sözleşme | A3 |
-| Sürüm | 1.0-aday (tel sürümü `1.0`) |
-| Tarih | 2026-11-19 |
+| Sürüm | 1.0-aday, düzeltme turu 1 (tel sürümü `1.0`) |
+| Tarih | 2026-11-19; düzeltme turu 1: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit.md`) |
 | Görev | `docs/gorevler/W1-A3A6.md` |
 | Makinece okunur parça | `docs/sozlesmeler/sema/a3-kanallar.json` |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.8 (§2, §3, §3.1, §3.2, §4, §5, §6, §10); `docs/mimari/08-laboratuvar-uygulamasi.md` (taslak) |
@@ -48,6 +48,9 @@ Sayıların dayanağı her yerde yazılıdır. "Mimari seçimi (tahmin)" etiketl
 | Komut | Durum değiştiren HTTP isteği (katalogda `durum_degistirir: true`) |
 | Komut numarası (`komut_no`) | Sim süreci boyunca 1'den boşluksuz artan, komuta sunucunun verdiği numara |
 | Adım sınırı | Dünya iş parçacığının iki fizik adımı arasındaki noktası; komutlar burada uygulanır |
+| İstemci oturumu | Bir `istemci_id`'nin `POST /api/v1/istemciler` ile alınmasından `DELETE /api/v1/istemciler/{istemci_id}` ya da sim sürecinin bitişine kadarki ömrü |
+| Emniyet revizyonu (`emniyet_rev`) | Dünya tarafında tutulan, her emniyet ya da yetki durumu değişiminde bir artan sayaç (A3-K117) |
+| Kısıtlayan / gevşeten komut | Kısıtlayan: emniyeti artıran sanal girdi değişikliği ve izni daraltan yer istasyonu komutu. Gevşeten: emniyeti azaltan sanal girdi değişikliği ve izni genişleten yer istasyonu komutu (A3-K118, K119) |
 | Canlı çalıştırma | `hazirlaniyor`, `kosuyor` ya da `duraklatildi` durumundaki çalıştırma |
 | Yayın tiki | API bileşeninin duvar saatiyle 50 Hz'te bir çalışan gönderim anı (A3-K33) |
 | Yer gerçeği | Fizik ve sensör modellerinin "gerçek" değerleri; karta ve kamera algılama bileşenine hiçbir yolla gitmez (08 §2.1) |
@@ -153,7 +156,7 @@ Aşağıdaki sensör ve sonar yükleri bu 12 alanla, bu sırayla başlar; tablol
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
 | `durum` | u8 | - | 0=bos, 1=yuklendi, 2=hazirlaniyor, 3=kosuyor, 4=duraklatildi, 5=bitti, 6=durduruldu, 7=hata, 8=izleme | çalıştırma durumu (A3 Tablo 4.7a) |
-| `kip` | u8 | - | 0=yok, 1=sil, 2=hil_1x, 3=hil_bariyer, 4=tekrar_fizik, 5=tekrar_girdi_sil, 6=tekrar_girdi_kart | zaman kipi |
+| `kip` | u8 | - | 0=yok, 1=sil, 2=hil_1x, 3=hil_bariyer, 4=tekrar_fizik, 5=tekrar_girdi_sil, 6=tekrar_yeniden_kurma | zaman kipi |
 | `run_id` | metin(u16, en çok 32) | bayt | tipin aralığı | çalıştırma kimliği (A6 §3.1); çalıştırma yoksa boş |
 | `adim_no` | u64 | - | tipin aralığı | tamamlanan fizik adımı sayısı; çalıştırma başında 0 |
 | `hedef_carpan` | f32 | - | [0, 100] | istenen sim zamanı / duvar saati oranı; 0 = olabildiğince hızlı; HIL kiplerinde 1 |
@@ -273,6 +276,7 @@ Aşağıdaki sensör ve sonar yükleri bu 12 alanla, bu sırayla başlar; tablol
 | `kart_silahlandirma_fisi` | u8 | - | yok: 255 | kartın son bildirdiği geri okuma (A1); bilinmiyorsa 255 |
 | `kart_emniyet_pimi` | u8 | - | yok: 255 | kartın son bildirdiği geri okuma (A1); bilinmiyorsa 255 |
 | `geri_okuma_farki` | u8 | - | tipin aralığı | anlık fark bitleri: bit0 acil, bit1 fiş, bit2 pim; kartın okuması bilinmiyorsa bit 0 |
+| `emniyet_rev` | u64 | - | tipin aralığı | emniyet revizyonu: sim sureci boyunca 1'den başlayan, her emniyet ya da yetki durumu degisiminde bir artan sayaç (A3-K117) |
 
 #### `yuk_ariza_etkin`
 
@@ -481,6 +485,35 @@ Aşağıdaki sensör ve sonar yükleri bu 12 alanla, bu sırayla başlar; tablol
 | 20 | `izleme_durumu` | bilgi | İzleme kipinde konum ya da oynatma durumu değişti |
 | 21 | `senaryo_ogesi_uygulandi` | bilgi | Senaryo zaman çizelgesindeki bir öğe uygulandı ya da reddedildi |
 | 22 | `uyari` | uyarı | Başka türe girmeyen uyarı (kod + ileti) |
+| 23 | `tekrar_mudahalesi` | uyarı | Senaryoyu yeniden simüle eden tekrar kipinde ilk müdahale kabul edildi; koşu yeni deney sayılır (A3-K120) |
+
+**Tablo 3.5b — Olay ayrıntısının en kötü durum boyutu.** `ayrinti` alanı en çok 8192 bayttır (`yuk_olay`). Her olay türünün şeması bütün dizeleri, dizileri ve ek nesneleri sınırlar; aşağıdaki değerler şemadan hesaplanmıştır (boşluksuz JSON; serbest metin alanında karakter başına en kötü 6 bayt, yani `\u00XX` kaçışı; desenle sınırlı ASCII alanlarda desen uzunluğu; tamsayıda en uzun ondalık gösterim). Hesap bu işte denetim betiğiyle yapıldı (A6 §7.1); ölçüm değildir.
+
+| Olay türü | En kötü durum (bayt) |
+|---|---:|
+| `calistirma_durumu_degisti` | 1597 |
+| `gecerlilik_dustu` | 73 |
+| `gercek_zaman_kacirildi` | 91 |
+| `parti_kacirildi_ozeti` | 137 |
+| `komut_sonucu` | 6948 |
+| `ariza_degisti` | 1831 |
+| `emniyet_girdisi_degisti` | 182 |
+| `atis_olayi_sonucu` | 326 |
+| `a1_oturum_degisti` | 133 |
+| `kart_sifirlandi` | 100 |
+| `yer_istasyonu_komutu` | 160 |
+| `yer_istasyonu_yaniti` | 173 |
+| `senaryo_yuklendi` | 867 |
+| `on_denetim_sonucu` | 2104 |
+| `kayit_durumu` | 441 |
+| `kayit_eksik` | 493 |
+| `surec_durumu` | 1625 |
+| `olay_kaybi` | 36 |
+| `erisim_reddedildi` | 1596 |
+| `izleme_durumu` | 89 |
+| `senaryo_ogesi_uygulandi` | 484 |
+| `uyari` | 6229 |
+| `tekrar_mudahalesi` | 84 |
 
 ### 3.6 HTTP uçları
 
@@ -494,6 +527,7 @@ Bütün uçlar `/api/v1` altındadır. "Tür": `senkron` uç işlemi bitirip 200
 | DELETE | `/api/v1/istemciler/{istemci_id}` | — | `yanit_kabul` | senkron | hayır |
 | GET | `/api/v1/durum` | — | `yanit_durum` | senkron | hayır |
 | GET | `/api/v1/on_denetim` | — | `on_denetim_raporu` | senkron | hayır |
+| GET | `/api/v1/on_denetim/{rapor_kimligi}` | — | `on_denetim_raporu` | senkron | hayır |
 | GET | `/api/v1/komutlar/{komut_no}` | — | `yanit_komut` | senkron | hayır |
 | GET | `/api/v1/olaylar?sonra={sira}&en_cok={n}` | — | `yanit_olaylar` | senkron | hayır |
 | GET | `/api/v1/senaryolar` | — | `senaryo_listesi` | senkron | hayır |
@@ -550,15 +584,16 @@ WebSocket kapanış kodları: 1000, 1001, 1002, 1003, 1007, 1009, 1011 RFC 6455 
 
 ### 3.8 Ön denetim raporu
 
-Çalıştırma başlamadan önce sim sunucusunun yaptığı denetimlerin sonucu (AB-056). Şema `$defs/on_denetim_raporu`; her madde `$defs/on_denetim_maddesi`.
+Çalıştırma başlamadan önce sim sunucusunun yaptığı denetimlerin sonucu (AB-056). Şema `$defs/on_denetim_raporu`; her madde `$defs/on_denetim_maddesi`. Tam rapor yalnız HTTP ile alınır; `on_denetim_sonucu` olayı yalnız rapor kimliğini ve sınırlı bir özeti taşır (A3-K62; en kötü durum 2104 bayt, Tablo 3.5b).
 
 | Alan | Tip | Anlam |
 |---|---|---|
 | `rapor_surumu` | metin, `"1.0"` | rapor biçiminin sürümü |
+| `rapor_kimligi` | 16 onaltılık karakter | raporun kimliği; `GET /api/v1/on_denetim/{rapor_kimligi}` |
 | `sonuc` | `gecti` \| `kaldi` | en az bir madde `kaldi` ise `kaldi` |
 | `kip` | kip adı | denetlenen zaman kipi |
 | `olusturma_utc` | ISO 8601 | raporun oluşturulduğu an |
-| `maddeler[]` | dizi | `kod`, `durum` (`gecti`/`kaldi`/`uyari`/`atlandi`), `olculen`, `sinir`, `birim`, `ileti`, `dayanak` |
+| `maddeler[]` | dizi, en çok 32 öğe | `kod` (en çok 32 karakter, `^[a-z0-9_]{1,32}$`), `durum` (`gecti`/`kaldi`/`uyari`/`atlandi`), `olculen`, `sinir`, `birim`, `ileti`, `dayanak` |
 
 1.0'da tanımlı madde kodları (liste küçük sürümle genişler; istemci bilinmeyen kodu olduğu gibi gösterir):
 
@@ -593,7 +628,11 @@ Her ret yanıtı `{"sonuc": "ret", "komut_no": <sayı ya da null>, "hata": {"kod
 | `beklenen_durum_uyusmuyor` | 409 | beklenen_run_id ya da beklenen_durum güncel değil |
 | `onay_gerekli` | 409 | onay ya da onay jetonu eksik |
 | `onay_jetonu_gecersiz` | 409 | jeton yok, süresi geçmiş, kullanılmış ya da başka istemci/girdi/komut için |
-| `istek_kimligi_cakismasi` | 409 | aynı istek_kimligi farklı gövdeyle |
+| `kimlik_cakismasi` | 409 | aynı istemci oturumunda aynı istek_kimligi farklı yontem, yol ya da gövdeyle (A3-K53) |
+| `emniyet_rev_uyusmuyor` | 409 | `beklenen_emniyet_rev` güncel emniyet revizyonu değil; `ayrinti.guncel_emniyet_rev` (A3-K118) |
+| `kisitlama_hakim` | 409 | aynı adım sinirinda aynı girdi için kisitlayan bir degisiklik var; yalnız `komut_sonucu` olayında kullanılır (A3-K95) |
+| `tekrar_kosulu_saglanmiyor` | 409 | sürüm, platform ya da özet kosulu saglanmiyor; `ayrinti.nedenler` (A3-K68) |
+| `tekrar_kipinde_yasak` | 409 | kayıtlı girdiyle beslenen tekrar kipinde girdiyi degistiren müdahale (A3-K120) |
 | `izleme_etkin` | 409 | izleme sürerken canlı çalıştırma komutu |
 | `canli_calistirma_yok` | 409 | komut canlı çalıştırma gerektiriyor |
 | `komut_listede_yok` | 422 | yer istasyonu komutu A1 listesinde yok |
@@ -680,10 +719,10 @@ Her kural numaralı ve sınanabilirdir. "Sunucu" sim sunucusunun API bileşenidi
 ### 4.6 Komut işleme
 
 - **A3-K50** Durum değiştiren her istek `Ida-Istemci: <istemci_id>` başlığını ve gövdesinde `istek_kimligi` alanını taşır. Başlık yoksa ya da `istemci_id` kayıtlı değilse sunucu 400 `gecersiz_istek` döner.
-- **A3-K51** İstek gövdesi `Content-Type: application/json` olmalıdır, değilse 415 `icerik_turu`. Gövde 1 MiB'ı (senaryo uçlarında 4 MiB) aşarsa 413 `govde_cok_buyuk` (sınırlar mimari seçimi). JSON çözülemezse ya da uç şemasına uymazsa 400 `gecersiz_istek`; şemaya uyup anlamca geçersizse 422 `gecersiz_deger`.
-- **A3-K52** Erişim denetiminden (A3-K06…K09) geçen ve durum değiştiren her istek, sonucu ne olursa olsun, bir `komut_no` alır ve alındığı anda A6 `a3/komut` kanalına yazılır (kayıt açıksa; A6 §4.4). Ret yanıtı da `komut_no` taşır. Tek istisna A3-K53'teki yinelemedir.
-- **A3-K53** Sunucu, aynı `istek_kimligi` ve bayt bayt aynı gövdeyle gelen ikinci isteği yeniden uygulamaz: ilk isteğin yanıtını `yineleme: true` ile döndürür, yeni `komut_no` atamaz ve isteği A6'ya yeniden yazmaz. Aynı `istek_kimligi` farklı gövdeyle gelirse 409 `istek_kimligi_cakismasi` döner. Sunucu son 10 000 istek kimliğini tutar (mimari seçimi).
-- **A3-K54** Canlı çalıştırmayı etkileyen istekler (çalıştırma, arıza, emniyet ve yer istasyonu uçları) `beklenen_run_id` taşır; değer güncel `run_id` değilse sunucu 409 `beklenen_durum_uyusmuyor` döner ve `ayrinti`'de güncel `run_id` ile durumu verir. `senaryo/yukle`, `calistirma/baslat`, `calistirma/yeniden_kostur` ve `izleme/baslat` `beklenen_durum`, `baslat` ayrıca `beklenen_senaryo_ozeti` taşır; uyuşmazlıkta aynı yanıt verilir. Böylece iki pencereden yarışan iki komuttan yalnız ilki uygulanır (AB-057).
+- **A3-K51** İstek gövdesi `Content-Type: application/json` olmalıdır, değilse 415 `icerik_turu`. Gövde 1 MiB'ı (senaryo uçlarında 4 MiB) aşarsa 413 `govde_cok_buyuk` (sınırlar mimari seçimi): `Content-Length` sınırı aşıyorsa sunucu gövdeden yalnız ilk 4096 baytı okur; `Content-Length` yoksa sınıra kadar okur; her iki durumda sınırın ötesini okumaz ve yanıttan sonra bağlantıyı kapatır. JSON çözülemezse ya da uç şemasına uymazsa 400 `gecersiz_istek`; şemaya uyup anlamca geçersizse 422 `gecersiz_deger`.
+- **A3-K52** Erişim denetiminden (A3-K06…K09) geçen ve durum değiştiren her istek, sonucu ne olursa olsun, bir `komut_no` alır ve alındığı anda kayda yazılır (kayıt açıksa; A6 §4.4): gövdesi sınır içinde, geçerli UTF-8 ve geçerli JSON olan istek gövdesiyle birlikte A6 `a3/komut` kanalına; diğer her istek (gövdesiz, geçersiz UTF-8, JSON olmayan ya da sınırı aşan gövde) A6 `a3/gecersiz_istek` kanalına, okunan gövdenin ilk en çok 4096 baytı, bildirilen ve okunan uzunluk, kesilme ve sınır aşımı bayrakları ve ret nedeniyle. Ret yanıtı da `komut_no` taşır. Tek istisna A3-K53'teki yinelemedir.
+- **A3-K53** Yineleme anahtarı (`istemci_id`, HTTP yöntemi, yol, `istek_kimligi`) dörtlüsüdür. Sunucu her anahtarı, ilk isteğin ham gövdesinin SHA-256 özeti ve verdiği yanıtla (ret dahil) saklar. Aynı anahtar ve aynı gövde özetiyle gelen istek yeniden uygulanmaz: saklanan yanıt `yineleme: true` ile döner, yeni `komut_no` atanmaz ve istek A6'ya yeniden yazılmaz. Aynı `istemci_id` ile aynı `istek_kimligi` farklı yöntem, farklı yol ya da farklı gövde özetiyle gelirse sunucu 409 `kimlik_cakismasi` döner ve isteği uygulamaz. Saklanan kayıt, kaydedildiği andaki çalıştırma bittiğinde (`bitti`, `durduruldu`, `hata`, `sifirla` ya da yeni `baslat`) ya da kaydından 10 dakika (duvar saati) sonra, hangisi önce gelirse, silinir; çalıştırma yokken kaydedilen için yalnız süre geçerlidir; istemci oturumu kapanınca o istemcinin kayıtları silinir (süre mimari seçimi). Sunucu en çok 10 000 kayıt tutar; dolu iken gelen yineleme olmayan durum değiştiren istek 503 `mesgul` ile reddedilir; emniyeti kısıtlayan istekler (A3-K119) bu nedenle reddedilmez, yalnız yineleme kaydı tutulmaz (bir kısıtlamanın ikinci kez uygulanması durumu değiştirmez; A3-K92).
+- **A3-K54** Canlı çalıştırmayı etkileyen istekler (çalıştırma, arıza, emniyet ve yer istasyonu uçları) `beklenen_run_id` taşır; değer güncel `run_id` değilse sunucu 409 `beklenen_durum_uyusmuyor` döner ve `ayrinti`'de güncel `run_id` ile durumu verir. `senaryo/yukle`, `calistirma/baslat`, `calistirma/yeniden_kostur` ve `izleme/baslat` `beklenen_durum`, `baslat` ayrıca `beklenen_senaryo_ozeti` taşır; uyuşmazlıkta aynı yanıt verilir. Böylece iki pencereden yarışan iki komuttan yalnız ilki uygulanır. Emniyeti gevşeten komutlar ayrıca `beklenen_emniyet_rev` taşır ve aynı çalıştırma içindeki emniyet değişiklikleri revizyonla ayrılır (A3-K117…K119; AB-057).
 - **A3-K55** 1.0'da bütün jetonlu istemciler eşit yetkilidir; "operatör" ve "izleyici" rolü ve kontrol sahipliği yoktur. Her komut `istemci_id` ile kaydedilir.
 - **A3-K56** Senkron uçlar işlemi bitirir ve 200 döner. Asenkron uçlar (§3.6 "Tür" sütunu) erişim, şema, durum, kip ve onay denetimlerini eşzamanlı yapar; ret varsa 4xx döner; yoksa komutu dünyanın komut kuyruğuna koyar ve 202 ile `{"sonuc": "kuyrukta", "komut_no"}` döner.
 - **A3-K57** Dünya kuyruktaki komutları bir sonraki adım sınırında, `komut_no` sırasıyla uygular (A3-K95'teki emniyet sırası saklıdır). Her asenkron komutun nihai sonucu (`uygulandi` ve `uygulama_adimi`, ya da `reddedildi` ve `hata_kodu`) `komut_sonucu` olayıyla yayınlanır ve A6 `a3/komut_sonucu` kanalına yazılır.
@@ -709,26 +748,27 @@ Her kural numaralı ve sınanabilirdir. "Sunucu" sim sunucusunun API bileşenidi
 
 **Tablo 4.7b — Kipe göre çalıştırma komutları.** İskelet §4 kipleri; tekrar kipleri A6 §4.6'dadır.
 
-| Komut | `sil`, `tekrar_fizik`, `tekrar_girdi_sil` | `hil_1x`, `hil_bariyer`, `tekrar_girdi_kart` |
+| Komut | `sil`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma` | `hil_1x`, `hil_bariyer` |
 |---|---|---|
-| `duraklat` / `surdur` | Geçerli; sim zamanı durur; SIL'de duvar saati sim zamanından türediği için emniyet süreleri de durur (iskelet §4) | Yalnız `gecersizligi_onayla: true` ile; aksi 409 `onay_gerekli`. Kabul edilirse çalıştırma `duraklatma_hil` nedeniyle geçersiz olur (06 §2.9) |
+| `duraklat` | Geçerli; sim zamanı durur; SIL'de duvar saati sim zamanından türediği için emniyet süreleri de durur (iskelet §4) | Yalnız `gecersizligi_onayla: true` ile; aksi 409 `onay_gerekli`. Kabul edilirse çalıştırma `duraklatma_hil` nedeniyle geçersiz olur (06 §2.9) |
+| `surdur` | Geçerli | Geçerli; onay istemez (geçersizliğe yol açan istek `duraklat`'tır ve onay orada alınmıştır; `$defs/istek_calistirma`) |
 | `adimla` | Geçerli; yalnız `duraklatildi`'dan | 409 `kipte_gecersiz` |
 | `hiz` | Geçerli | 409 `kipte_gecersiz` (yalnız 1x) |
 | `durdur`, `sifirla` | Geçerli | Geçerli |
 
 - **A3-K61** Durumlar ve geçişler Tablo 4.7a'daki gibidir. Tabloda "—" olan (durum, komut) çifti eşzamanlı denetimde 409 `gecersiz_durum` ile reddedilir ve durum değişmez. Her geçiş `calistirma_durumu_degisti` olayı üretir.
-- **A3-K62** `baslat` kabul edildiğinde durum `hazirlaniyor` olur ve sim ön denetimi yapar (HIL'de A1 el sıkışması dahil; 06 §2.9). Ön denetim geçerse durum `kosuyor` olur; kalırsa `yuklendi`'ye döner ve `baslat` komutu `on_denetim_kaldi` koduyla `reddedildi` sonuçlanır. Her iki durumda rapor `on_denetim_sonucu` olayında ve `GET /api/v1/on_denetim` yanıtında verilir.
+- **A3-K62** `baslat` kabul edildiğinde durum `hazirlaniyor` olur ve sim ön denetimi yapar (HIL'de A1 el sıkışması dahil; 06 §2.9). Ön denetim geçerse durum `kosuyor` olur; kalırsa `yuklendi`'ye döner ve `baslat` komutu `on_denetim_kaldi` koduyla `reddedildi` sonuçlanır. Her rapor bir `rapor_kimligi` (16 küçük harfli onaltılık karakter) alır. `on_denetim_sonucu` olayı yalnız rapor kimliğini, sonucu, kipi, durum sayılarını ve madde başına `kod` ve `durum`'u taşır; tam rapor `GET /api/v1/on_denetim/{rapor_kimligi}` (ve en sonuncusu `GET /api/v1/on_denetim`) ile alınır. Sunucu son 64 raporu saklar (mimari seçimi); daha eskisi için 404 `bulunamadi`. Rapor en çok 32 madde taşır.
 - **A3-K63** `run_id`, `baslat` (ya da `yeniden_kostur`) kabul edildiğinde atanır: `YYYYMMDD-hhmmss-xxxxxx` biçiminde, UTC başlangıç anı ve 6 onaltılık rastgele karakter (`$defs/run_id`). Aynı `run_id` kayıt dosyasının adıdır (A6 §3.1).
 - **A3-K64** Kip komutları Tablo 4.7b'ye uyar; tabloda reddedilen çift eşzamanlı denetimde belirtilen kodla reddedilir.
 - **A3-K65** `adimla`'nın birimi bir kontrol periyodudur (5 ms, dört fizik adımı; iskelet §4). `periyot_sayisi` = n ise sim n periyot ilerler ve `duraklatildi`'ya döner; n, 1–10 000 aralığındadır.
 - **A3-K66** `hiz` çarpanı 0 (olabildiğince hızlı) ya da [0,01; 100] aralığındadır; 0 ile 0,01 arası değer 422 `gecersiz_deger` ile reddedilir. Gerçekleşen çarpan `calistirma/durum.gerceklesen_carpan` ile bildirilir; sim, istenen çarpana ulaşamazsa bunu hata saymaz (08 §2.3).
 - **A3-K67** `sifirla` aynı çözümlenmiş senaryo ve tohumla `yuklendi`'ye döner, canlı çalıştırmanın kayıt dosyasını kapatır (A6 §4.8) ve sayaçları sıfırlar; yeni `run_id` bir sonraki `baslat`'ta atanır.
-- **A3-K68** `yeniden_kostur` yalnız kayıttaki tekrar düzeyi koşullarını (A6 §4.6) sağlayan bir kayıtla kabul edilir; kayıt yoksa 404 `kayit_yok`, okunamıyorsa 422 `kayit_okunamadi`, koşul sağlanmıyorsa 422 `gecersiz_deger` ve `ayrinti.gereken` döner. Kabul edilince kaydın çözümlenmiş senaryosu yüklenir ve kip `tekrar_fizik`, `tekrar_girdi_sil` ya da `tekrar_girdi_kart` olur.
+- **A3-K68** `yeniden_kostur` şu sırayla denetlenir: kayıt yoksa 404 `kayit_yok`; okunamıyor ya da `bozuk` ise (A6 §5) 422 `kayit_okunamadi`; istenen düzeyin kademe ve kanal gereği (A6 Tablo 4.6) sağlanmıyorsa 422 `gecersiz_deger` ve `ayrinti.gereken`. **Sürüm, platform ya da özet koşulu sağlanmayan tekrar isteği reddedilir** (409 `tekrar_kosulu_saglanmiyor`, `ayrinti.nedenler`); yalnız istekte açık `guvencesiz: true` varsa kabul edilir ve yeni kayda `tekrar_guvencesi = yok` ile nedenler yazılır (A6-K38 aynı kural). `yeniden_kurma` düzeyi güvence vermediği için bu koşula bağlı değildir. Kabul edilince kaydın çözümlenmiş senaryosu yüklenir ve kip `duzey`'e göre `tekrar_fizik`, `tekrar_girdi_sil` ya da `tekrar_yeniden_kurma` olur.
 - **A3-K69** İzleme `bos`, `yuklendi`, `bitti`, `durduruldu` ve `hata` durumlarından başlar; izleme sürerken canlı çalıştırma, arıza, emniyet ve yer istasyonu komutları 409 `izleme_etkin` ile reddedilir.
 
 ### 4.8 Geçerlilik ve gerçek zaman bildirimi
 
-**Tablo 4.8 — Geçerlilik nedenleri.** "G": bu kipte çalıştırmayı geçersiz kılar. "T": tanısaldır (bit yazılır, `gecerli` değişmez). "—": bu kipte oluşmaz. Tekrar kiplerinde `tekrar_fizik` ve `tekrar_girdi_sil` için SIL sütunu, `tekrar_girdi_kart` için HIL 1x sütunu uygulanır.
+**Tablo 4.8 — Geçerlilik nedenleri.** "G": bu kipte çalıştırmayı geçersiz kılar. "T": tanısaldır (bit yazılır, `gecerli` değişmez). "—": bu kipte oluşmaz. Bütün tekrar kiplerinde (`tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`) SIL sütunu uygulanır; tekrar kipleri PC'de, gerçek zamandan bağımsız koşar.
 
 | Bit | Neden | SIL | HIL 1x | HIL bariyer | Dayanak |
 |---:|---|:-:|:-:|:-:|---|
@@ -765,7 +805,7 @@ Her kural numaralı ve sınanabilirdir. "Sunucu" sim sunucusunun API bileşenidi
 ### 4.10 Hata enjeksiyonu
 
 - **A3-K81** `POST /api/v1/arizalar` gövdesindeki `tanim` A5'in arıza tanımı biçimindedir ve A5 doğrulayıcısıyla denetlenir; geçmezse 422 `senaryo_gecersiz` ve `ayrinti.rapor` döner.
-- **A3-K82** Arıza uçları yalnız `kosuyor` ve `duraklatildi` durumlarında kabul edilir; diğer durumlarda 409 `canli_calistirma_yok`.
+- **A3-K82** Arıza uçları yalnız `kosuyor` ve `duraklatildi` durumlarında kabul edilir; diğer durumlarda 409 `canli_calistirma_yok`. Tekrar kiplerinde ayrıca A3-K120 uygulanır.
 - **A3-K83** Elle verilen arızanın başlangıcı yalnız `hemen` (bir sonraki adım sınırı) ya da güncel sim zamanından sonraki bir `sim_zamani` olabilir; koşula bağlı başlangıç 422 `gecersiz_deger` ile reddedilir (koşullu arızalar senaryodadır; 08 §2.5).
 - **A3-K84** Elle verilen arızanın kimliği `E<n>`'dir; n çalıştırma içinde 1'den artar ve 202 yanıtında `fault_id` olarak döner.
 - **A3-K85** Arıza dağıtıcısı tanımı sınıfına göre ilgili arayüze iletir: sensör arızaları 05 (`IFaultControl`), aktüatör ve güç arızaları 04 (`apply_fault`), bağlantı arızaları bağlantı emülatörü profili, protokol arızaları hata enjektörü (06 §2.11, §2.12), sistem olayları 08 §2.5'teki karşılıkları. Hedef arayüzün parametre reddi komutu `reddedildi` / `gecersiz_deger` sonuçlandırır.
@@ -779,11 +819,11 @@ Bu başlık atış kontrol sınırı içindedir: yalnız emniyet zincirinin gird
 
 - **A3-K89** Üç sanal emniyet girdisi vardır (iskelet §5): `acil_durdurma` {`serbest`, `basili`}, `silahlandirma_fisi` {`cikarilmis`, `takili`}, `emniyet_pimi` {`cikarilmis`, `takili`}. **Emniyeti artıran** yön: acil durdurmanın basılması, fişin çıkarılması, pimin takılması. **Emniyeti azaltan** yön bunların tersidir.
 - **A3-K90** Girdilerin yetkili durumu yalnız sim sunucusundadır. A1'den gelen hiçbir mesaj yetkili durumu değiştirmez; yetkili durumu yalnız `POST /api/v1/emniyet/degistir` ve senaryonun zaman çizelgesi değiştirir.
-- **A3-K91** Emniyet değişikliği yalnız canlı çalıştırmada (`hazirlaniyor`, `kosuyor`, `duraklatildi`) kabul edilir; diğer durumlarda 409 `canli_calistirma_yok`. Başlangıç durumu A5'ten gelir.
-- **A3-K92** Emniyeti artıran değişiklik tek adımlıdır: geçerli bir istek onay ya da onay jetonu olmadan kabul edilir ve komut kuyruğu doluluğu nedeniyle reddedilmez.
-- **A3-K93** Emniyeti azaltan değişiklik iki adımlıdır: istemci önce `POST /api/v1/emniyet/onay_jetonu` ile, `Ida-Istemci` başlığını taşıyan bir istekle, `girdi` ve `hedef_durum` için bir onay jetonu alır, sonra `POST /api/v1/emniyet/degistir` isteğini `onay: true` ve bu jetonla gönderir. `onay` ya da jeton yoksa 409 `onay_gerekli`, jeton geçersizse 409 `onay_jetonu_gecersiz` döner.
-- **A3-K94** Onay jetonu 128 bitlik rastgele değerdir (32 onaltılık karakter); onu alan `istemci_id`'ye, `girdi`'ye ve `hedef_durum`'a bağlıdır; duvar saatiyle 10 s geçerlidir (08 §3.4; mimari seçimi, tahmin) ve tek kullanımlıktır: ilk kullanımda (kabul ya da ret) ve süresi dolunca geçersizleşir. Başka istemci, girdi ya da hedef durum için kullanılan jeton reddedilir.
-- **A3-K95** Kabul edilen emniyet değişikliği bir sonraki adım sınırında uygulanır. Aynı sınırda sim, emniyeti **artıran** değişiklikleri o adımda karar vereceği tek seferlik olaylardan (karttan gelen silahlandırma ve atış olayları) **önce**, emniyeti **azaltan** değişiklikleri bu olaylardan **sonra** uygular. Böylece aynı adımdaki bir atış olayı yeni kısıtla değerlendirilir, yeni gevşeme ise o adımın olayına izin vermez (U-12'nin sim tarafı).
+- **A3-K91** Emniyet değişikliği yalnız canlı çalıştırmada (`hazirlaniyor`, `kosuyor`, `duraklatildi`) kabul edilir; diğer durumlarda 409 `canli_calistirma_yok`. Başlangıç durumu A5'ten gelir. Tekrar kiplerinde ayrıca A3-K120 uygulanır.
+- **A3-K92** Emniyeti artıran (kısıtlayan) değişiklik tek adımlıdır: geçerli bir istek onay, onay jetonu ve `beklenen_emniyet_rev` olmadan kabul edilir; komut kuyruğu doluluğu nedeniyle ve revizyon uyuşmazlığı nedeniyle hiçbir zaman reddedilmez (A3-K119). Girdi o sınırda zaten istenen durumdaysa komut `uygulandi` sonuçlanır; yetkili durum ve `emniyet_rev` değişmez.
+- **A3-K93** Emniyeti azaltan (gevşeten) değişiklik iki adımlıdır: istemci önce `Ida-Istemci` başlıklı `POST /api/v1/emniyet/onay_jetonu` isteğiyle (`beklenen_run_id`, `girdi`, `hedef_durum`) bir onay jetonu alır; yanıt jetonu ve bağlandığı `run_id` ile `emniyet_rev`'i verir. Sonra `POST /api/v1/emniyet/degistir` isteğini `onay: true`, bu jeton ve `beklenen_emniyet_rev` ile gönderir. `onay` ya da jeton yoksa 409 `onay_gerekli`; `beklenen_emniyet_rev` yoksa 400 `gecersiz_istek`; jeton geçersizse (A3-K94) 409 `onay_jetonu_gecersiz` döner.
+- **A3-K94** Onay jetonu 128 bitlik rastgele değerdir (32 onaltılık karakter) ve şunlara bağlıdır: verildiği andaki `run_id`; verildiği andaki `emniyet_rev`; onu alan istemci oturumu (`istemci_id`); işlemin kendisi (uç ile, sanal girdi için `girdi` ve `hedef_durum`, yer istasyonu için `komut` ve parametrelerin kanonik JSON özeti; A3-K103). Jeton tek kullanımlıktır ve şu durumların ilkinde geçersizleşir: ilk kullanımı (kabul ya da ret); verilişinden 10 s geçmesi (duvar saati; 08 §3.4; mimari seçimi, tahmin); `emniyet_rev`'in değişmesi; `sifirla`; yeni bir çalıştırmanın başlaması; istemci oturumunun kapanması. Bağlı olduğu değerlerden biri istekteki ya da güncel değerle uyuşmayan jeton reddedilir.
+- **A3-K95** Kabul edilen emniyet ve yetki değişiklikleri bir sonraki adım sınırında, dünya tarafında tek bir atomik işlemde şu sırayla işlenir: (1) o sınıra gelen bütün **kısıtlayan** değişiklikler (A3-K119) `komut_no` sırasıyla uygulanır; (2) sim o adımda karar vereceği tek seferlik olayları (karttan gelen silahlandırma ve atış olayları) bu kısıtlamalarla değerlendirir; (3) **gevşeten** değişiklikler `komut_no` sırasıyla değerlendirilir: aynı sınırda aynı sanal girdi için kısıtlayan bir değişiklik varsa — izni genişleten yer istasyonu komutu için aynı sınırda herhangi bir kısıtlayan değişiklik varsa — gevşetici, geliş sırasından bağımsız olarak `kisitlama_hakim` ile reddedilir; değilse `beklenen_emniyet_rev` o andaki `emniyet_rev`'e eşitse uygulanır, eşit değilse `emniyet_rev_uyusmuyor` ile reddedilir. Böylece bayat bir gevşetme yeni bir kısıtlamayı geri alamaz ve aynı adımdaki olay yeni gevşemeden yararlanmaz (A4-K45'teki "daraltma çağrıya hâkimdir" ilkesiyle aynı; U-12'nin sim tarafı).
 - **A3-K96** Her değişiklik (operatörden ya da senaryodan) `emniyet_girdisi_degisti` olayı (önem `emniyet`) üretir, `emniyet/girdiler` kanalını günceller ve kayıt kademesinden bağımsız olarak A6'ya girer. Reddedilen istekler de `a3/komut` ve `a3/komut_sonucu` ile kaydedilir.
 - **A3-K97** Kartın geri okuduğu durum A1 üzerinden `emniyet/girdiler` kanalının `kart_*` alanlarına yansır; `geri_okuma_farki` anlık farktır ve iletim gecikmesi süresince olağan olarak 1 olabilir. Geri okumanın bozulması bir arıza enjeksiyonudur (sınıf `sensor`, hedef fırlatıcı geri okuması; 05 §2.3.8) ve yetkili durumu değiştirmez.
 - **A3-K98** Sim, karttan gelen tek seferlik olay için verdiği her kararı (uygulandı, yineleme, emniyet nedeniyle ret, süresi geçtiği için ret, diğer ret) `atis_olayi_sonucu` olayıyla bildirir ve `atis/durum` kanalını günceller. A3 bu kararı yalnız raporlar; kararın kuralı A1 sözleşmesinde ve 04'ün fırlatıcı modelindedir.
@@ -793,11 +833,11 @@ Bu başlık atış kontrol sınırı içindedir: yalnız emniyet zincirinin gird
 
 İlk sürümde yer istasyonu işlevi web panellerindedir (iskelet §3).
 
-- **A3-K100** Panelden karta giden yer istasyonu komutları yalnız `POST /api/v1/yer_istasyonu/komut` ile verilir. `komut` adı ve `parametreler` A1'in makinece okunur yer istasyonu komut listesinde tanımlıdır; `GET /api/v1/yer_istasyonu/komutlar` bu listeyi değiştirmeden döndürür. Listede olmayan komut 422 `komut_listede_yok`, listedeki parametre şemasına uymayan istek 422 `gecersiz_deger` ile reddedilir.
+- **A3-K100** Panelden karta giden yer istasyonu komutları yalnız `POST /api/v1/yer_istasyonu/komut` ile verilir. `komut` adı ve `parametreler` A1'in makinece okunur yer istasyonu komut listesinde tanımlıdır; `GET /api/v1/yer_istasyonu/komutlar` bu listeyi değiştirmeden döndürür. Listede olmayan komut 422 `komut_listede_yok`, listedeki parametre şemasına uymayan istek 422 `gecersiz_deger` ile reddedilir. Tekrar kiplerinde ayrıca A3-K120 uygulanır.
 - **A3-K101** Kabul edilen komut yer istasyonu ağ geçidinde A1'in yer istasyonu biçimine kodlanır ve bağlantı emülatörüne verilir; komut emülatörün gecikme ve kayıp modelinden geçerek A1 üzerinden karta gider (iskelet §3). A3 hiçbir komutu emülatörü atlayarak karta göndermez.
 - **A3-K102** 202 yanıtı yalnız komutun kuyruğa alındığını söyler. Sonraki aşamalar `yer_istasyonu_komutu` olayıyla (`emulatore_verildi`, `karta_iletildi`, `emulator_dusurdu`, `kuyruk_tasti`, `oturum_yok`), kartın A1 yanıtı `yer_istasyonu_yaniti` olayıyla bildirilir. Sunucu emülatörde kaybolan komutu kendiliğinden yeniden göndermez; yeniden gönderme kullanıcının yeni komutudur.
-- **A3-K103** A1 listesinde **izni genişleten** sınıftaki komutlar (A1'den beklenen sınıflandırma; ör. silahlandırma ve atış izni veren komutlar, otonom kipte ön izin yükleme) A3-K93'teki gibi iki adımlıdır: onay jetonu `Ida-Istemci` başlıklı `POST /api/v1/yer_istasyonu/onay_jetonu` isteğiyle alınır ve `istemci_id`'ye, `komut`'a ve `parametreler`'in kanonik JSON özetine (anahtarları sıralanmış, boşluksuz UTF-8 metnin SHA-256'sı) bağlıdır; ömrü ve tek kullanımlık olması A3-K94'teki gibidir.
-- **A3-K104** **İzni daraltan** sınıftaki komutlar (A1'den beklenen sınıflandırma; ör. silahsızlandırma, atış iptali) tek adımlıdır, onay istemez ve komut kuyruğu doluluğu nedeniyle reddedilmez.
+- **A3-K103** A1 listesinde **izni genişleten** sınıftaki komutlar (A1'den beklenen sınıflandırma; ör. silahlandırma ve atış izni veren komutlar, otonom kipte ön izin yükleme) A3-K93'teki gibi iki adımlıdır: onay jetonu `Ida-Istemci` başlıklı `POST /api/v1/yer_istasyonu/onay_jetonu` isteğiyle alınır ve `istemci_id`'ye, `komut`'a ve `parametreler`'in kanonik JSON özetine (anahtarları sıralanmış, boşluksuz UTF-8 metnin SHA-256'sı) bağlıdır; jetonun bağları, ömrü ve geçersizleşmesi A3-K94'teki gibidir. İstek ayrıca `beklenen_emniyet_rev` taşır (A3-K118); adım sınırındaki sıra A3-K95'tir.
+- **A3-K104** **İzni daraltan** sınıftaki komutlar (A1'den beklenen sınıflandırma; ör. silahsızlandırma, atış iptali) tek adımlıdır; onay ve `beklenen_emniyet_rev` istemez; komut kuyruğu doluluğu ve revizyon uyuşmazlığı nedeniyle reddedilmez (A3-K119).
 - **A3-K105** Birden çok A1 iletisi gerektiren yer istasyonu işlemlerini (ör. görev yükleme, parametre listesi okuma) ağ geçidi yürütür; panel bunları tek komut olarak gönderir ve sonucu tek `yer_istasyonu_yaniti` olayında alır.
 - **A3-K106** Yer istasyonunun gördüğü telemetri `yer_istasyonu/durum` (çözülmüş) ve `yer_istasyonu/mavlink` (ham çerçeve) kanallarından gelir ve emülatörden geçmiştir. `kart/durum` emülatörsüz laboratuvar görüşüdür; ikisi ayrı kanaldır ve sunucu birinin verisini diğerine koymaz.
 - **A3-K107** Sim sunucusu A3 dışında hiçbir yerden yer istasyonu girişi kabul etmez; harici yer istasyonu yazılımına açılan MAVLink/UDP uç noktası yoktur (iskelet §3, §10 md.17).
@@ -816,6 +856,26 @@ Bu başlık atış kontrol sınırı içindedir: yalnız emniyet zincirinin gird
 ### 4.14 Yardımcı süreçler
 
 - **A3-K116** `POST /api/v1/surecler/{surec}/baslat|durdur` görselleştiriciyi ya da algılama bileşenini başlatır veya durdurur (`{surec}` = `gorsellestirici` | `algilama`). Kamera kademesi kapalı değilken canlı bir çalıştırmada durdurma isteği `onay: true` ister, aksi 409 `onay_gerekli`; durdurmanın kamera verisine etkisi A2 ve A8 kurallarıyla arıza olarak akar. Her değişiklik `surec_durumu` olayı üretir ve `surec/durum` kanalını günceller.
+
+### 4.15 Emniyet revizyonu, tekrar kiplerinde müdahale ve olay boyutu (düzeltme turu 1)
+
+- **A3-K117** `emniyet_rev` dünya tarafında tutulan, sim sunucusu süreci boyunca 1'den başlayıp yalnız artan bir `u64` sayaçtır. Şunların her birinde tam bir artar: bir sanal emniyet girdisinin yetkili durumunun değişmesi (operatör ya da senaryo, iki yönde de; durum değişmeyen komut artırmaz); izni genişleten ya da daraltan bir yer istasyonu komutunun emülatöre verilmesi (A3-K101); yeni çalıştırmanın başlaması; `sifirla`; kartın açılış sayacının değişmesi (`kart_sifirlandi`); A1 oturumunun `KOPUK`'a geçmesi. Güncel değer `emniyet/girdiler.emniyet_rev` alanında, `GET /api/v1/emniyet` ve `GET /api/v1/durum` yanıtlarında, onay jetonu yanıtında ve `emniyet_girdisi_degisti` olayında yayınlanır.
+- **A3-K118** Emniyeti **gevşeten** her komut — emniyeti azaltan sanal girdi değişikliği (A3-K93) ve izni genişleten yer istasyonu komutu (A3-K103) — `beklenen_run_id` yanında `beklenen_emniyet_rev` taşır. Sunucu eşzamanlı denetimde onu güncel değerle karşılaştırır; uyuşmazsa 409 `emniyet_rev_uyusmuyor` ve `ayrinti.guncel_emniyet_rev` döner. Uyuşursa komutu kuyruğa alır ve dünya karşılaştırmayı adım sınırında, uygulamayla aynı atomik işlemde yeniden yapar (A3-K95); orada tutmazsa komut `komut_sonucu` olayında `reddedildi` / `emniyet_rev_uyusmuyor` ve `sonuc_ayrinti.guncel_emniyet_rev` ile sonuçlanır.
+- **A3-K119** Emniyeti **kısıtlayan** komutlar — emniyeti artıran sanal girdi değişikliği (A3-K92) ve izni daraltan yer istasyonu komutu (A3-K104) — revizyon eşleşmesi istemez; istekte `beklenen_emniyet_rev` varsa yok sayılır. Bir kısıtlama bayat olduğu gerekçesiyle hiçbir zaman reddedilmez.
+- **A3-K120** Tekrar kiplerinde müdahaleler Tablo 4.15'e uyar. Kayıtlı girdiyle beslenen kiplerde (`tekrar_girdi_sil`, `tekrar_yeniden_kurma`) girdiyi değiştiren her müdahale (arıza enjeksiyonu ve kaldırılması, sanal emniyet girdisi değişimi, yer istasyonu komutu ve onunla yapılan parametre değişimi) eşzamanlı denetimde 409 `tekrar_kipinde_yasak` ile reddedilir. Senaryoyu yeniden simüle eden kipte (`tekrar_fizik`) arıza ve sanal emniyet girdisi müdahaleleri kabul edilir; ilk kabul edilen müdahaleyle birlikte koşu yeni bir deney sayılır: sunucu `tekrar_mudahalesi` olayını bir kez üretir, kayda ilk müdahalenin uygulandığı adım (`canli_mudahale_adimi`) ve `guvence_nedenleri = canli_mudahale` yazılır ve kaydın `tekrar_guvencesi` `yok` olur (A6-K53).
+- **A3-K121** Her olay türünün `ayrinti` şeması bütün dizeleri, dizileri ve ek nesneleri sınırlar ve şemadan hesaplanan en kötü durum boyutu 8192 baytı aşmaz (Tablo 3.5b); sunucu ayrıntıyı boşluksuz JSON olarak yazar. Yeni olay türü ancak bu sınırı sağlayan şemayla eklenir.
+
+**Tablo 4.15 — Tekrar kiplerinde müdahaleler.**
+
+| Müdahale | `tekrar_fizik` (senaryoyu yeniden simüle eder) | `tekrar_girdi_sil`, `tekrar_yeniden_kurma` (kayıtlı girdiyle beslenir) |
+|---|---|---|
+| `duraklat`, `surdur`, `durdur`, `sifirla`, `adimla`, `hiz` | Serbest (Tablo 4.7a, 4.7b) | Serbest (Tablo 4.7a, 4.7b) |
+| Kanal aboneliği, `GET` uçları, izleme okuması | Serbest | Serbest |
+| Arıza ekleme ve kaldırma | Kabul; koşu yeni deney (A3-K120) | 409 `tekrar_kipinde_yasak` |
+| Sanal emniyet girdisi değişimi | Kabul; koşu yeni deney (A3-K120) | 409 `tekrar_kipinde_yasak` |
+| Yer istasyonu komutu (parametre değişimi dahil) | 409 `kipte_gecersiz` (bu kipte kart ya da çekirdek yoktur) | 409 `tekrar_kipinde_yasak` |
+| Görselleştirici ve algılama süreci başlatma/durdurma | Serbest (kamera çıktısı bu kipte tüketilmez) | Serbest |
+| Senaryo yükleme | Tablo 4.7a (canlı çalıştırmada geçersiz) | Tablo 4.7a |
 
 ---
 
@@ -837,12 +897,18 @@ Bu başlık atış kontrol sınırı içindedir: yalnız emniyet zincirinin gird
 | Çözülemeyen istek gövdesi, şema dışı, büyük gövde, yanlış içerik türü | A3-K51 | 400 / 413 / 415; komut numarası ve A6 kaydı (A3-K52) | Hatayı gösterir |
 | Geçersiz durum ya da kip | Tablo 4.7a, 4.7b | 409; durum değişmez (A3-K61, K64) | Hatayı gösterir |
 | Yarışan komut | `beklenen_*` uyuşmuyor | 409 `beklenen_durum_uyusmuyor` (A3-K54) | Durumu yeniler |
-| Aynı istek yeniden gönderildi | `istek_kimligi` | İlk yanıt, `yineleme: true` (A3-K53) | — |
+| Aynı istek yeniden gönderildi | Yineleme anahtarı ve gövde özeti | Saklanan yanıt, `yineleme: true` (A3-K53) | — |
+| Aynı `istek_kimligi` başka yöntem, yol ya da gövdeyle | Yineleme anahtarı | 409 `kimlik_cakismasi`; uygulanmaz (A3-K53) | Yeni kimlik üretir |
+| Bozuk, JSON olmayan ya da sınırı aşan gövde | A3-K51 | 400 / 413 / 415; `a3/gecersiz_istek` kaydı (A3-K52) | Hatayı gösterir |
+| Gevşeten komutta bayat `emniyet_rev` | A3-K118 | 409 `emniyet_rev_uyusmuyor` + güncel revizyon; sınırda ise `komut_sonucu` reddedildi | Durumu yeniler, yeniden onay ister |
+| Aynı sınırda kısıtlama ve gevşetme | A3-K95 | Kısıtlama uygulanır, gevşetme `kisitlama_hakim` | Gösterir |
+| Sürüm/platform/özet koşulu sağlanmayan tekrar | A3-K68 | 409 `tekrar_kosulu_saglanmiyor`; `guvencesiz: true` ile güvencesiz başlar | Nedenleri gösterir |
+| Kayıtlı girdiyle beslenen tekrarda müdahale | A3-K120 | 409 `tekrar_kipinde_yasak` | Gösterir |
 | Komut kuyruğu dolu | 256 komut | 503 `mesgul`; emniyeti artıran ve izni daraltan istisna (A3-K59) | Kullanıcıya bildirir |
 | Ön denetim kaldı | Ön denetim raporu | `yuklendi`'ye dönüş, rapor (A3-K62) | Raporu gösterir |
 | Senaryo ya da arıza tanımı A5'ten geçmedi | A5 doğrulayıcısı | 422 `senaryo_gecersiz` + A5 raporu (A3-K77, K81) | Raporu yol ve satırla gösterir |
 | Hedef arayüz arızayı reddetti | 04/05/06 parametre denetimi | `komut_sonucu` reddedildi (A3-K85) | Gösterir |
-| Onay eksik ya da jeton geçersiz | A3-K93, K94, K103 | 409 | Kullanıcıdan yeniden onay ister |
+| Onay eksik ya da jeton geçersiz (süre, kullanım, `emniyet_rev` değişimi, yeni çalıştırma, `sifirla`, başka oturum ya da işlem) | A3-K93, K94, K103 | 409 | Kullanıcıdan yeniden onay ister |
 | Yer istasyonu komutu emülatörde kayboldu | Emülatör kararı | `yer_istasyonu_komutu` olayı; yeniden göndermez (A3-K102) | Gösterir |
 | Kayıt okunamıyor | A6 §5 | 422 `kayit_okunamadi` (A3-K68) | Gösterir |
 | Sim sunucusu çöktü | Bağlantı kapanır | Yeni süreç yeni jeton ve yeni `run_id` üretir; kapanmamış kayıt A6 §5'e göre okunur | Eski jetonla bağlanamaz; yeni açılış adresi gerekir |
@@ -856,7 +922,7 @@ Bu başlık atış kontrol sınırı içindedir: yalnız emniyet zincirinin gird
 - **Sonar kademesi:** `sonar/ping360` ve `sonar/ping1d` her kademede yayınlanır; satırı üreten kademe yükteki `kademe` alanındadır.
 - **Kayıt kademesi:** izleme kipinde yayınlanabilecek kanal kümesini belirler (A6 §4.3); canlı yayını değiştirmez.
 - **Panel yükü:** iskelet §6'da panel yayını ayrı bir kademe özelliği değildir. Düşük donanımda yük, yayın tavanı (A3-K37) ve istemcinin abonelik hızlarıyla kısılır. Düşük donanımlı Windows bilgisayarında hangi tavanın gerektiği ölçülmedi (M20, MP8; 8. başlık md.1).
-- Kamera kareleri 1.0'da panele akmaz (640 × 480 RGB8, 30 Hz'te ≈ 27,6 MB/s; hesap, ölçülmedi); kare görüntüleme gerekirse yeni kanal küçük sürümle eklenir.
+- Kamera kareleri 1.0'da panele akmaz. Kamera kademe değerleri A2'de tanımlıdır (tam 640 × 480 / 30 Hz, sade 320 × 240 / 15 Hz; tahmin); tam kademede RGB8 kareler ≈ 27,6 MB/s eder (hesap, ölçülmedi). Kare görüntüleme gerekirse yeni kanal küçük sürümle eklenir.
 
 ## 7. Uygunluk
 
@@ -870,27 +936,31 @@ Test kodu bu işte yazılmaz. Test türleri: **birim** (tek modül), **sözleşm
 | K20–K28 | birim | C++ kodlayıcı ile TypeScript çözücünün (ve tersinin) depodaki altın çerçevelerde bayt bayt aynı sonuç vermesi; bozuk `yuk_uzunlugu`, aralık dışı değer, geçersiz UTF-8; `sira` sürekliliği; bayrak bitleri |
 | K29–K37 | sözleşme | Zorunlu kanalların aboneliksiz gelmesi ve bırakılamaması; 50/25/10/5/2/1 Hz aboneliklerde gözlenen hızın `min(istenen, azami, tavan)` ile ±1 tik uyumu; yeni değer yoksa gönderim olmaması; abone olunmayan kanalın gelmemesi; özet bayrağı |
 | K38–K49 | SIL | Bir istemci okumayı keser, diğeri 50 Hz tüketir: dünyanın adım süresi dağılımı istemcisiz koşudan ayırt edilemez (eşik M20'de), HIL'de `kacirilan_adim = 0`; sayaçların artışı; okuma kesen istemcinin olay kuyruğu dolunca 4001; yeniden bağlanınca `olaylar?sonra=` ile boşluksuz olay dizisi; 410; Ping/Pong zaman aşımı; ikili ve büyük ileti kapanış kodları |
-| K50–K60 | sözleşme | Başlıksız, kayıtsız istemci, yanlış içerik türü, büyük gövde; her durum değiştiren isteğin `komut_no` ile A6'da bulunması (ret dahil); yinelemenin yeniden uygulanmaması; iki istemcinin aynı `beklenen_run_id` ile yarışan `sifirla`'sında yalnız birinin uygulanması; dolu kuyrukta 503 ve emniyet istisnası |
-| K61–K69 | sözleşme + SIL | Her (durum, komut) çifti için Tablo 4.7a/4.7b'deki geçiş ya da ret; `adimla n` sonrası `adim_no` artışının `4n` olması; `hiz` aralığı; ön denetim kaldığında `yuklendi`'ye dönüş ve rapor |
+| K50–K60 | sözleşme | Başlıksız, kayıtsız istemci, yanlış içerik türü, büyük gövde; `Content-Length` sınırı aşan istekte sunucunun 4096 bayttan fazla okumaması; her durum değiştiren isteğin `komut_no` ile A6'da `a3/komut` ya da `a3/gecersiz_istek`'te bulunması (geçersiz UTF-8, JSON olmayan ve sınırı aşan gövde dahil); aynı anahtar ve gövdede yinelemenin yeniden uygulanmaması ve `yineleme: true` (senaryo kaydetme dahil bütün uçlarda); aynı `istek_kimligi`'nin başka yol, yöntem ya da gövdeyle `kimlik_cakismasi`'na yol açması; farklı istemcilerin aynı `istek_kimligi`'nin çakışmaması; saklama ömrünün sonunda kaydın silinmesi; iki istemcinin aynı `beklenen_run_id` ile yarışan `sifirla`'sında yalnız birinin uygulanması; dolu kuyrukta 503 ve emniyet istisnası |
+| K61–K69 | sözleşme + SIL | Her (durum, komut) çifti için Tablo 4.7a/4.7b'deki geçiş ya da ret; HIL'de onaysız `duraklat`'ın reddi ve onaysız `surdur`'un kabulü; `adimla n` sonrası `adim_no` artışının `4n` olması; `hiz` aralığı; ön denetim kaldığında `yuklendi`'ye dönüş, olayda yalnız özet ve kimlik, tam raporun kimlikle alınması; koşulu sağlamayan tekrarın `guvencesiz`siz reddi ve `guvencesiz: true` ile güvencesiz kaydı |
 | K70–K75 | SIL + kartlı | Hata enjektörüyle geciktirilen yanıtlarla: her neden için bit, `gecerli` ve olayın Tablo 4.8'e uyması; `gercek_zamani_kacirdi`'nın tek olayla 1 olması; `kacirilan_parti` sayacının A6 `hil/bariyer` kayıtlarındaki `kacirildi` sayısına eşitliği; özet olayının saniyede en çok bir kez gelmesi |
 | K76–K80 | sözleşme | A5'in geçersiz dosya takımıyla doğrulama ve yükleme; ad kalıbı ve dizin dışına çıkma denemeleri; `uzerine_yaz`; çözümlenmiş senaryonun A6 ekiyle bayt eşitliği |
 | K81–K88 | SIL | Her sınıftan en az bir elle arıza; `E<n>` kimlikleri; koşullu başlangıcın reddi; reddedilen parametrenin `komut_sonucu`; aynı senaryo, tohum ve kayıtlı elle arıza adımlarıyla iki koşuda aynı arıza dizisi |
-| K89–K99 | sözleşme + SIL | Artıran yönün tek adımda, azaltan yönün yalnız geçerli jetonla uygulanması; süresi geçmiş, kullanılmış, başka istemciye ya da girdiye ait jetonun reddi; aynı adımda pim takma + atış olayında olayın `ret_emniyet` sonuçlanması, aynı adımda pim çıkarma + atış olayında olayın eski (kısıtlı) durumla değerlendirilmesi; A1'den yetkili durumu değiştirme denemesinin etkisizliği; uç listesi denetimi (listede olmayan yolların 404'ü) |
+| K89–K99, K117–K119 | sözleşme + SIL | Artıran yönün tek adımda, azaltan yönün yalnız geçerli jetonla uygulanması; süresi geçmiş, kullanılmış, başka istemciye ya da girdiye ait jetonun reddi; aynı adımda pim takma + atış olayında olayın `ret_emniyet` sonuçlanması, aynı adımda pim çıkarma + atış olayında olayın eski (kısıtlı) durumla değerlendirilmesi; A1'den yetkili durumu değiştirme denemesinin etkisizliği; uç listesi denetimi (listede olmayan yolların 404'ü); `emniyet_rev`'in A3-K117'deki her olayda tam bir artması; bayat `beklenen_emniyet_rev`'li gevşetmenin hem eşzamanlı denetimde hem adım sınırında reddi; aynı sınıra gelen eski bir "pimi çıkar" ile yeni bir "pimi tak"ta, geliş sırası iki yönde de denenerek, pimin takılı kalması ve çıkarmanın `kisitlama_hakim` ile reddi; kısıtlayan komutun bayat revizyonla ve dolu kuyrukta kabulü; jetonun yeni çalıştırmada, `sifirla`'dan sonra, `emniyet_rev` değişiminden sonra, başka oturumda ve başka işlemde reddi |
 | K100–K107 | SIL | Listede olmayan komutun reddi; emülatör L2 profilinde kaybolan komut için `emulator_dusurdu` olayı ve yeniden gönderim olmaması; genişleten komutun jetonsuz reddi, daraltan komutun dolu kuyrukta kabulü; `kart/durum` ile `yer_istasyonu/durum` gecikme farkının emülatör gecikmesiyle uyumu; UDP portu açılmadığının denetimi |
 | K108–K115 | SIL | Her çalıştırmada dosya açılıp kapanması; kademe geçersiz kılması; izlemede kanalların `kaynak_kayit` ile ve kayıttaki `log_time` aralıklarıyla yayınlanması; arama sonrası özet; izlemede canlı komutların reddi |
 | K116 | SIL | Kamera açıkken onaysız durdurmanın reddi; durdurmanın `surec_durumu` olayı |
+| K120 | SIL | Tablo 4.15'in her hücresi: kayıtlı girdili kiplerde yasak müdahalelerin 409'u; `tekrar_fizik`'te ilk müdahaleden sonra `tekrar_mudahalesi` olayı, kayıtta `canli_mudahale_adimi` ve `tekrar_guvencesi = yok` |
+| K121, §3.5 | birim | Denetim betiğinin her olay şeması için en kötü durum boyutunu hesaplaması ve 8192'yi aşan ya da sınırsız şemayı reddetmesi; sunucunun en uzun izinli değerlerle ürettiği her ayrıntının 8192 bayta sığması |
 
 ## 8. Açık kalanlar
 
 1. **Yayın ve kuyruk değerleri (tahmin):** yayın tiki 50 Hz, kanal azami hızları, dizi kuyruk sınırları (Ping360 256, algılama 64, MAVLink 256), olay kuyruğu 4096, olay geçmişi 65 536, istek kimliği ve komut geçmişi 10 000, komut kuyruğu 256, ikili ileti 1 MiB, yük 65 536 bayt. Ölçülmedi; panel yükünün dünya adım süresine etkisi ve düşük donanımdaki tavan M20 (MP8, Windows) ölçümüyle sabitlenir. Değişiklik bu değerlerin küçük sürümle güncellenmesidir.
 2. **08'den sapma — yayın tabanı 60 Hz yerine 50 Hz (mimari seçimi):** 50 Hz'in periyodu (20 ms) fizik adımının (16 adım) ve kontrol periyodunun (4 periyot) tam katıdır; 60 Hz 13/14 adım dönüşümü gerektirir (04 §2.11 tablosu). Mimar onayı bekler.
 3. **08'den sapma — kontrol sahipliği yok:** 08 §2.1'in "kontrol sahipliği (kiralama)" önerisi yerine eşit yetkili istemciler ve `beklenen_*` ile iyimser eşzamanlılık (A3-K54, K55). Gerekçe: paneller aynı kullanıcının ayrı pencereleridir; yarışan komutların tekrar üretilebilirliği her komutun uygulama adımının kaydıyla zaten sağlanır. Mimar onayı bekler; rol gerekirse büyük sürüm değişikliği değil, küçük sürümle isteğe bağlı başlık olarak eklenir.
-4. **Onay jetonu ömrü 10 s** (08 §3.4'te de tahmin) ve **varsayılan port 47100**: mimari seçimi.
+4. **Onay jetonu ömrü 10 s** (08 §3.4'te de tahmin), **yineleme kaydı ömrü 10 dakika**, **saklanan ön denetim raporu sayısı 64** ve **varsayılan port 47100**: mimari seçimi.
 5. **WebSocket/HTTP kitaplığı** (Boost.Beast ya da IXWebSocket; 08 §6): seçilen kitaplığın sunucu tarafında `Sec-WebSocket-Protocol` seçimini, Ping/Pong'u ve engellemesiz yazmayı desteklediği doğrulanmadı; W5 uygulama işinde doğrulanır.
 6. **Kayıt diski eşiği 1 GiB** (`kayit_disk_alani`): tahmin; kayıt yazıcı verimi ölçümüyle (A6 §8) birlikte değerlendirilir.
 7. **A1'e bağlı yük alanları:** `kart/durum`, `yer_istasyonu/durum`, `atis/durum` ve `emniyet/girdiler.kart_*` alanları A1'in taşıyacağı büyüklüklere bağlıdır (10. başlık). A1 bir büyüklüğü taşımazsa alan `yok_degeri` ile gider; A1 dondurulunca bu kanalların `kanal_surumu` 1 düzeni kesinleşir.
 8. **A8 algılama kaydının tel boyutu:** `algilama/kayit.kayit` için 512 bayt üst sınırı tahmindir; A8 sözleşmesi dondurulunca kesinleşir.
 9. **Tarayıcı dışı istemcilerin tarayıcı ile aynı alt protokol yolunu kullanması** (A3-K07) varsayılmıştır; komut satırı araçları için ayrı bir kimlik yolu tanımlanmamıştır.
+10. **`emniyet_rev`'i artıran olayların listesi** (A3-K117): kart sıfırlanması ve oturum kopması A1 dondurulunca yeniden gözden geçirilir; A1 başka bir yetki durumu değişimi (ör. otopilot arm durumunun karttan bildirilmesi) tanımlarsa liste küçük sürümle genişler.
+11. **3. başlık md.3'teki sapma (kontrol sahipliği yok)** düzeltme turu 1'de `emniyet_rev` ile tamamlandı; mimar kararı (2026-11-20) A3A6-yanit.md'dedir.
 
 ## 9. Açık bulgu kapanış tablosu
 
@@ -898,8 +968,8 @@ Test kodu bu işte yazılmaz. Test türleri: **birim** (tek modül), **sözleşm
 
 | Bulgu | Durum | Sözleşmede nerede | Gerekçe |
 |---|---|---|---|
-| AB-056 | kapandı | §3.8; A3-K62 | Ön denetim raporunun şeması (`$defs/on_denetim_raporu`), madde kodları ve A3'teki iki erişim yolu (olay ve uç) tanımlandı. |
-| AB-057 | kapandı | A3-K54, A3-K55; 8. başlık md.3 | Kontrol sahipliği yerine eşit yetkili istemciler ve `beklenen_*` alanlarıyla iyimser eşzamanlılık tanımlandı; yarışan komutlardan yalnız ilki uygulanır, hepsi istemci kimliğiyle kaydedilir (mimar onayı bekler). |
+| AB-056 | kapandı | §3.8; A3-K62, K121; Tablo 3.5b | Ön denetim raporunun şeması (`$defs/on_denetim_raporu`, en çok 32 madde) ve madde kodları tanımlandı; olay yalnız rapor kimliği ve sınırlı özet taşır (en kötü durum 2104 bayt ≤ 8192), tam rapor kimlikle HTTP'den alınır. |
+| AB-057 | kapandı | A3-K53…K55, K92…K95, K117…K119; 8. başlık md.3, md.11 | Kontrol sahipliği yerine eşit yetkili istemciler; çalıştırmalar arası yarış `beklenen_run_id` ve `beklenen_durum` ile, aynı çalıştırma içindeki emniyet ve yetki yarışları dünya tarafında tutulan `emniyet_rev` ile çözülür: gevşeten her komut `beklenen_emniyet_rev` taşır ve revizyon adım sınırında uygulamayla atomik olarak yeniden karşılaştırılır; aynı sınırda kısıtlama hâkimdir; kısıtlama hiçbir zaman bayat sayılmaz; onay jetonu çalıştırmaya, revizyona, oturuma ve işleme bağlıdır (mimar kararı, 2026-11-20). |
 | AB-058 | kapandı | 1. başlık (kapsam dışı); §3.2–3.4 | A3 canlı yayını kendi WebSocket protokolüdür; Foxglove SDK kullanılmaz, bu yüzden 00 A2 sorusunun (Rust bağımlılığı) yanıtı A3'ü etkilemez. |
 
 Uyumsuzluk tablosunda A3'e doğrudan değinen satır yoktur. A3'ü ilgilendiren ama başka başlıkta duran bulgular (bilgi için; tabloyu mimar işler):
@@ -922,6 +992,7 @@ Kritik önemde açık bırakılan A3 bulgusu yoktur.
 5. Bekleme sınırı, sürekli komut kullanım süresi ve kart bağlantı zaman aşımı değerleri (iskelet §4); A3 bunları göstermez, A6 üst verisine yazılır.
 6. Tek seferlik olay türlerinin adları ve sim'in olay kararlarının (uygulandı, yineleme, emniyet reddi, süre reddi, diğer ret) A1'deki karşılıkları.
 7. A1 oturum durumlarının (06 §2.9) ve geçiş nedenlerinin adları.
+8. Yer istasyonu komut sınıflamasının (`izni_genisletir` / `izni_daraltir`) `emniyet_rev` ve A3-K95 sırası için kullanılacağı; A1'in tanımlayacağı başka bir yetki durumu değişimi varsa adı (A3-K117, 8. başlık md.10).
 
 **A5'ten beklenen:**
 1. Doğrulama raporunun JSON biçimi (yol, satır, kural kimliği, ileti) ve şeması; A3 bunu `rapor` alanında değiştirmeden taşır.
@@ -930,7 +1001,9 @@ Kritik önemde açık bırakılan A3 bulgusu yoktur.
 4. Çalıştırma kipi değerleri (`sil`, `hil_1x`, `hil_bariyer`) ve sanal emniyet girdilerinin başlangıç durumu ile zaman çizelgesi biçimi.
 5. Çözümlenmiş senaryonun kanonik biçimi ve özet algoritması (`sha256:<hex>`).
 
-**A2'den beklenen:** görselleştiricinin süreç durumu ve kamera karesi kaçırma sayısının sim'e bildirilmesi (`surec/durum`, `kamera_kare_dusen`).
+**A2'den beklenen:** görselleştiricinin süreç durumu ve kamera karesi kaçırma sayısının sim'e bildirilmesi (`surec/durum`, `kamera_kare_dusen`); kamera kademe değerleri (tam 640 × 480 / 30 Hz, sade 320 × 240 / 15 Hz; tahmin) A2'de tanımlıdır.
+
+**A4'ten beklenen:** A3-K95'teki sim tarafı sıra, A4-K45'teki "daraltma çağrıya hâkimdir" ilkesiyle aynı yöndedir; A4'ün kartta daraltıcı mandalları genişleticilerden önce uygulaması (A4-K45, K46) bu sözleşmenin varsayımıdır.
 
 **A8'den beklenen:** algılama kaydının tel düzeni, sürüm numarası ve en büyük boyutu (`algilama/kayit.kayit`, 512 bayt varsayıldı).
 
