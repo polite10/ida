@@ -1,0 +1,53 @@
+{
+  "sema_surumu": "1.0",
+  "kume_kimligi": "ornek",
+  "kume_surumu": 1,
+  "aciklama": "Yalniz sema ornegi (A7 sozlesmesi). Atif verilen kutu_arac.glb depoda yoktur; ozetler yer tutucudur ve bu kume calisma zamaninda yuklenemez (A7-K51). Geometri 04 yer tutucu aglarindan: yuzerlik kutusu 0,40 x 0,48 x 0,07135 m, carpisma kutusu 0,46 x 0,58 x 0,38 m. Akustik degerler tahmindir.",
+  "birimler": { "uzunluk": "m", "aci": "rad", "kutle": "kg", "zaman": "s" },
+  "eksenler": {
+    "gltf": "sag_el_y_yukari_z_on",
+    "gltf_govde": [[0, 0, 1], [-1, 0, 0], [0, -1, 0]],
+    "gltf_godot_yerel": [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]
+  },
+  "uretim": {
+    "disa_aktarici": { "arac": "elle", "surum": "0" }
+  },
+  "malzemeler": [
+    {
+      "kimlik": "govde_plastik",
+      "optik": { "model": "gltf_metalik_puruzluluk" },
+      "akustik": {
+        "geri_sacilim_mu": 0.01,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.5,
+        "puruzluluk_gamma_p": 0.5,
+        "kaynak": "tahmin",
+        "dayanak": "750 kHz'te yansiticilik bilinmiyor (05 2.4.1, 10 2.10); kalibrasyon A5'te"
+      }
+    }
+  ],
+  "varliklar": [
+    {
+      "kimlik": "kutu_arac",
+      "tur": "arac",
+      "dosya": "kutu_arac.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bayt": 20,
+      "referans": { "dugum": 0, "ad": "REF" },
+      "sinir_kutusu_govde_m": { "en_kucuk": [-0.23, -0.29, -0.19], "en_buyuk": [0.23, 0.29, 0.19] },
+      "malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "govde_plastik" } ],
+      "gorsel": [ { "dugum": 1, "ad": "govde", "kosul": "her_zaman" } ],
+      "yuzerlik": [
+        {
+          "dugum": 2,
+          "ad": "BUOY_govde",
+          "kosul": "her_zaman",
+          "hacim_m3": 0.0136992,
+          "hacim_merkezi_govde_m": [0.0, 0.0, -0.01],
+          "en_uzun_kenar_m": 0.6248199740
+        }
+      ],
+      "carpisma": [ { "dugum": 3, "ad": "COL_govde", "ayristirma": "yok" } ]
+    }
+  ]
+}
