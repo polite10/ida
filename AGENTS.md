@@ -37,7 +37,7 @@ Windows hedef bilgisayarı düşük donanımlıdır (8 GB bellek, dahili ekran k
 ## Belgeleri okuma sırası
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
-2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15).
+2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15). Güncel sürüm 0.8 (2026-11-19): W0 ölçüm sonuçları ve K17 işlendi; bölümler (01–09) ile çelişirse iskelet geçerlidir.
 3. **`docs/mimari/acik-bulgular.md`** — mimari bölümlerinin incelemelerinde kapanmamış bulgular; her biri kapatılacağı sözleşme ya da uygulama işiyle etiketli.
 4. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
 5. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
@@ -68,7 +68,7 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 4. Bir aşama tamamlanıp ilerleme olduğunda commit'i kayıt agent'ı (`ida-kayit`) atar.
 5. Web araştırmasıyla kapanmayan sorular kart üzerinde ya da prototiple ölçülür; ölçüm sonucu çıkmadan ilgili tasarım kararı kesinleşmiş sayılmaz.
 6. Agent yalnızca onaylamaz; bir öneride ya da görev tanımında hata görürse gerekçesiyle söyler.
-7. Çalışma kuralı (öneri): gerçek kotayla aynı anda en fazla iki agent çalışır.
+7. Eşzamanlı agent sayısı sınırlı değildir (kullanıcı, 2026-11-19); kart tek olduğu için kart işleri sırayla yürür, aynı dosyaya dokunan işler aynı anda koşmaz ve zamanlamaya duyarlı bir ölçüm sürerken aynı makineye ağır yük bindirilmez.
 
 Agent tanımları `.claude/agents/` altındadır. `xhigh` ve `max` effort kullanılmaz.
 
@@ -104,6 +104,7 @@ docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
 docs/mimari/               mimari belgeler: iskelet, dokuz bölüm, incelemeler, açık bulgular (taslak)
 docs/gorevler/             mimarın yazdığı görev belgeleri
 docs/olcumler/             ölçüm raporları
+docs/sozlesmeler/          dondurulan arayüz sözleşmeleri (A1–A8; W1'de yazılıyor)
 docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
 docs/research/dogrulama/   bağımsız doğrulamalar
 tools/                     yardımcı betikler
