@@ -77,6 +77,7 @@ inline constexpr std::int64_t kNabizAraligiNs = 1'000'000'000;          // nabı
 inline constexpr std::int64_t kNabizZamanAsimiNs = 3'000'000'000;       // karşı taraf ölü sayılır
 inline constexpr std::int64_t kYenidenBaglanmaAraligiNs = 1'000'000'000;
 inline constexpr std::int64_t kBirakmaZamanAsimiNs = 1'000'000'000;     // aşılırsa halka emekliye ayrılır
+inline constexpr std::uint32_t kTuketiciBasinaAzamiEmekliHalka = 2;    // A2-K89; tahmin
 inline constexpr std::int64_t kOperatorGecikmesiNs = 33'333'333;        // D_op varsayılanı
 inline constexpr std::int64_t kOperatorGecmisNs = 500'000'000;          // görselleştiricinin tuttuğu geçmiş
 inline constexpr std::uint32_t kDurumHizPay = 60;                       // DURUM takvimi 60/1 Hz
@@ -110,6 +111,7 @@ enum class IletiTuru : std::uint16_t {
   kamera_iptal = 0x0207,
   sim_nabzi = 0x0208,
   halka_yenile = 0x0209,             // yük: HalkaBilgisi
+  govde_tablosu = 0x020A,            // yük: GovdeTablosu + govde_sayisi × GovdeBilgisi (A2-K90)
   // iki yön
   veda = 0x00FF,
 };
@@ -163,6 +165,20 @@ enum class KareDusmeNedeni : std::uint8_t {
   gecersiz_istek = 5,
   tutarsiz_surum = 6,
   halka_hatasi = 7,
+};
+
+// Sim'in A3 ve A6'ya bildirdiği kare düşme nedenleri (tel iletisi değil; sayaç ve kayıt kodu).
+// Görselleştiricinin bildirdiği KareDusmeNedeni değerleri 32 + kod olarak bu kod uzayına eşlenir.
+enum class SimKareDusmeNedeni : std::uint8_t {
+  halka_dolu = 1,
+  kamera_gec = 2,
+  gorsellestirici_yok = 3,
+  calisma_nesli_degisti = 4,
+  halka_yenilendi = 5,               // emeklilik anında yanıtlanmamış istek
+  halka_yenileniyor = 6,             // yeni halka henüz eşlenmedi
+  halka_hatasi = 7,
+  halka_emekli_hazir = 8,            // emeklilik anında hazır (S_d bekleyen) kare (A2-K86)
+  gorsellestirici_nedeni_tabani = 32,
 };
 
 enum class KameraIptalNedeni : std::uint8_t {
@@ -348,6 +364,14 @@ struct Hosgeldin {                   // 600 B; ardından: govde_sayisi × GovdeB
   std::uint16_t govde_sayisi;
   std::uint16_t dolgu0;
   std::uint32_t calisma_nesli;       // o anki çalıştırma nesli (A2-K80)
+};
+
+struct GovdeTablosu {                // 24 B; ardından govde_sayisi × GovdeBilgisi (A2-K90)
+  std::int64_t t_ns;                 // atlamadan sonraki yeni sim zamanı
+  std::uint64_t adim_no;
+  std::uint32_t calisma_nesli;       // atlama olayındaki yeni nesil
+  std::uint16_t govde_sayisi;        // yeni zamanda yaşayan bütün gövdeler
+  std::uint16_t dolgu0;
 };
 
 struct Ret {                         // 128 B
@@ -571,6 +595,7 @@ IDA_A2_DUZ(GovdeBilgisi, 16);
 IDA_A2_DUZ(KameraYapilandirmasi, 184);
 IDA_A2_DUZ(HalkaBilgisi, 96);
 IDA_A2_DUZ(Hosgeldin, 600);
+IDA_A2_DUZ(GovdeTablosu, 24);
 IDA_A2_DUZ(Ret, 128);
 IDA_A2_DUZ(Veda, 8);
 IDA_A2_DUZ(DalgaBileseni, 40);
@@ -601,6 +626,8 @@ static_assert(offsetof(Hosgeldin, manifest_sha256) == 48);
 static_assert(offsetof(Hosgeldin, manifest_yolu) == 80);
 static_assert(offsetof(Hosgeldin, govde_sayisi) == 592);
 static_assert(offsetof(Hosgeldin, calisma_nesli) == 596);
+static_assert(offsetof(GovdeTablosu, calisma_nesli) == 16);
+static_assert(offsetof(GovdeTablosu, govde_sayisi) == 20);
 static_assert(offsetof(KareHazir, yazim_sayaci) == 20);
 static_assert(offsetof(KareHazir, hazir_duvar_ns) == 24);
 static_assert(offsetof(KareHazir, calisma_nesli) == 32);
@@ -658,6 +685,9 @@ inline constexpr std::uint32_t kAzamiDalgaYuku =
     sizeof(DalgaKumesi) + kAzamiDalgaBileseni * sizeof(DalgaBileseni);
 inline constexpr std::uint32_t kAzamiMalzemeOptikYuku =
     sizeof(MalzemeOptik) + kAzamiMalzemeOptik * sizeof(MalzemeOptikGirdisi);
+inline constexpr std::uint32_t kAzamiGovdeTablosuYuku =
+    sizeof(GovdeTablosu) + kAzamiGovde * sizeof(GovdeBilgisi);
+static_assert(kAzamiGovdeTablosuYuku <= kAzamiYuk);
 static_assert(kAzamiDurumYuku <= kAzamiYuk);
 static_assert(kAzamiKameraIstegiYuku <= kAzamiYuk);
 static_assert(kAzamiHosgeldinYuku <= kAzamiYuk);
