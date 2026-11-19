@@ -52,6 +52,19 @@ Bu işin (betik hazırlığının) bitiş ölçütleri:
 
 Windows'taki ölçümün kendi ölçütleri (kullanıcı çalıştırınca değerlendirilir; bu görev belgesi dondurur, hedeftir): **H1** donanım kaydı eksiksiz (işlemci modeli dahil); **H2** görünür, simge durumunda ve örtülü durumların her birinde yol (b) ile 120 saniyede düşen kare < %1 ve kare kimliği kesintisiz; **H3** simge durumunda ve örtülü kareler görünür referansla ortalama mutlak fark ≤ 2/255; **H4** 640 × 480 eşzamanlı geri okuma süresi p50/p99 ve gerçekleşen kare hızı raporlanır (eşik yok; kademe tabanı kararının girdisi); **H5** hangi çizim yöntemiyle (Forward+ / Mobile / uyumluluk) çalıştığı kayıtlı. H2 ya da H3 geçmezse "geçmedi" geçerli sonuçtur.
 
+### Düzeltme turu (mimar, 2026-11-19; 1. tur)
+
+sol incelemesi: `docs/olcumler/inceleme/MP8-sol.md` (dal `olcum/mp8-windows`; 8 kritik, 1 önemli). Dokuz bulgunun hepsi uygulanır. Mimarın kararları:
+
+- **Süreç sahipliği (md.1):** betik yalnız kendi başlattığı süreçleri (kaydettiği süreç kimlikleriyle) kapatır; yürütülebilir dosya yolu sahiplik sayılmaz. `-KuruCalistir` hiçbir sürece dokunmaz.
+- **Çözümleme hükümleri (md.2, md.3, md.6, md.7):** hükümden önce deney koşulları doğrulanır (H2: yol b, 120 s, 640 × 480, 30 Hz, 3600 istek; H4: eşzamanlı okuma yolu, dolu p50/p99); deneme parametreleriyle alınmış kayıt kabul ölçümü sayılmaz. Dış gözlemdeki hata satırları ve zaman boşlukları hükme girer; kapsam yetersizse hüküm "doğrulanmadı"dır. Geçersiz görünür referans çözümlemeyi durdurmaz: H3 "değerlendirilemedi" yazılır, diğer koşular çözümlenir. H1 alanları anlamsal doğrulanır (iki çözünürlük boyutu, bilinen güç durumu, gerçek yenileme hızı, başarılı güç planı sorgusu).
+- **Örtülme (md.4):** tam örtülme, ölçüm penceresinin dikdörtgeninin örtü penceresinin dikdörtgeni içinde kaldığı ve örtünün pencere sırasında üstte olduğu, aynı koordinat düzeninde (DPI farkındalığı açıkça ayarlanarak) doğrulanırsa kabul edilir; beş nokta denetimi ek gözlem olarak kalır. Geometri doğrulanamıyorsa durum "doğrulanmadı" yazılır, H2'nin örtülü satırı "geçti" sayılmaz.
+- **Süreç tamamlanması (md.5):** özetin varlığı ayrı, sürecin temiz bitişi ayrı denetlenir (hata iletisi yok, zaman aşımı yok, çıkış kodu 0); "ölçüt geçmedi" ile "düzenek çalışmadı" ayrı kaydedilir.
+- **Gizlilik (md.9):** başka uygulamaların pencere başlıkları kaydedilmez; ön plandaki pencerenin yalnız bu çalıştırmanın süreçlerine ait olup olmadığı ve pencere sınıf adı kaydedilir. `BENIOKU.md` çıktının içeriğini doğru anlatır.
+- **Toplam süre:** betiğe küresel süre sınırı eklenir (15 dakika); aşılırsa kalan adımlar "atlandı" yazılır.
+- **Hazırlık ölçütleri (md.8):** W2, gerçek argümanlarla 20 saniyelik ölçüm koşusuyla yinelenir. **W1 bu ortamda tamamlanamaz:** `pwsh` çağrısı ortam tarafından reddedilmiştir; hiçbir dolaylı yolla çalıştırılmaz (ilk turdaki Python başlatıcısı yolu kullanılmamalıydı). W1 raporda "tamamlanmadı: betiğin ayrıştırılması ve kuru çalıştırması kullanıcı ya da mimar tarafından yapılacak" diye yazılır ve gereken komutlar tam olarak verilir. Betik bu yüzden özellikle dikkatli, yalın ve satır satır gözden geçirilerek düzenlenir.
+- `docs/olcumler/inceleme/MP8-yanit.md` yazılır (madde → giderildi / kısmen / uygulanmadı, yer, gerekçe).
+
 ## Dosya sahipliği
 
 - Yazılır: `tools/olcum/windows/**`, `docs/olcumler/MP8-windows.md`.
