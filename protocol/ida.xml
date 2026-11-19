@@ -134,14 +134,13 @@
     </enum>
     <enum name="IDA_MI_TYPE">
       <description>A4 IDA_MI_*.</description>
-      <entry value="1" name="IDA_MI_TYPE_WAYPOINT"/>
-      <entry value="2" name="IDA_MI_TYPE_DIVE_TO"/>
-      <entry value="3" name="IDA_MI_TYPE_SURFACE"/>
-      <entry value="4" name="IDA_MI_TYPE_HOLD"/>
-      <entry value="5" name="IDA_MI_TYPE_SCAN_LINES"/>
-      <entry value="6" name="IDA_MI_TYPE_SCAN_POINT"/>
-      <entry value="7" name="IDA_MI_TYPE_WAIT_GNSS"/>
-      <entry value="8" name="IDA_MI_TYPE_TARGET_ALIGN"/>
+      <entry value="1" name="IDA_MI_TYPE_WAYPOINT"><description>Yol noktasina seyir. frame LOCAL/GLOBAL; p0 kabul yaricapi m (0,1-50]; p1 seyir hizi m/s (0,05-3]; p2 = p3 = 0 (A1 3.6).</description></entry>
+      <entry value="2" name="IDA_MI_TYPE_DIVE_TO"><description>Bulundugu yerde derinlige dalis. frame NONE; depth (0-100] m; p0 dikey hiz m/s (0,05-1]; p1 derinlik toleransi m [0,05-5]; p2 = p3 = 0.</description></entry>
+      <entry value="3" name="IDA_MI_TYPE_SURFACE"><description>Yuzeye cikis. frame NONE; depth = 0; p0 cikis hizi m/s (0,05-1]; p1 = p2 = p3 = 0.</description></entry>
+      <entry value="4" name="IDA_MI_TYPE_HOLD"><description>Konum ve derinlikte bekleme. frame NONE (bulundugu yer) ya da LOCAL/GLOBAL; depth [0-100] m; p0 sure s (0-3600]; p1 konum toleransi m [0,1-50]; p2 = p3 = 0.</description></entry>
+      <entry value="5" name="IDA_MI_TYPE_SCAN_LINES"><description>Paralel hatlarla tarama seyri. frame LOCAL/GLOBAL (baslangic kosesi); depth [0-100] m; p0 hat boyu m [1-500]; p1 hatlar arasi m [0,5-100]; p2 hat sayisi (tamsayi degerli) [1-100]; p3 ilk hattin rotasi rad (-pi, pi].</description></entry>
+      <entry value="6" name="IDA_MI_TYPE_SCAN_POINT"><description>Verilen noktada konum tutarak tarama. frame LOCAL/GLOBAL; depth [0-100] m; p0 sure s (0-3600]; p1 konum toleransi m [0,1-50]; p2 = p3 = 0.</description></entry>
+      <entry value="7" name="IDA_MI_TYPE_WAIT_GNSS"><description>Yuzeyde GNSS cozumu bekleme. frame NONE; depth = 0; p0 en cok bekleme s (0-3600]; p1 gereken en az fix turu (tamsayi degerli IDA_GNSS_FIX, 1-4); p2 = p3 = 0.</description></entry>
     </enum>
     <enum name="IDA_MI_FRAME">
       <description>A4 IDA_MI_FRAME_*.</description>
@@ -261,6 +260,7 @@
       <entry value="64" name="IDA_ACT_FLAGS_NARROWED"><description>health.narrowed.</description></entry>
       <entry value="128" name="IDA_ACT_FLAGS_OUT_FIXED"><description>Platform ciktiyi notr guvenliyle degistirdi (A4-K59).</description></entry>
       <entry value="256" name="IDA_ACT_FLAGS_BATCH_INCOMPLETE"><description>Bu cagrinin partisi eksik kapandi (A1-K30).</description></entry>
+      <entry value="512" name="IDA_ACT_FLAGS_CALL_CONFLICT"><description>TF geldiginde baska bir cekirdek cagrisi suruyordu (A1-K117).</description></entry>
     </enum>
     <enum name="IDA_HEALTH">
       <description>A4 ida_health_t bitleri (STATUS.health).</description>
@@ -270,6 +270,8 @@
       <entry value="8" name="IDA_HEALTH_IMU_LAG"/>
       <entry value="16" name="IDA_HEALTH_INPUT_DROPPED"/>
       <entry value="32" name="IDA_HEALTH_NARROWED"/>
+      <entry value="64" name="IDA_HEALTH_SAMPLE_CONFLICT"/>
+      <entry value="128" name="IDA_HEALTH_BG_BAD_INPUT"/>
     </enum>
     <enum name="IDA_GNSS_FIX">
       <description>A4 IDA_GNSS_FIX_*.</description>
@@ -461,7 +463,7 @@
       <field type="uint8_t" name="inst">hdr.inst.</field>
       <field type="uint8_t" name="estop">1: sanal acil durdurma etkin.</field>
       <field type="uint8_t[2]" name="tube" enum="IDA_TUBE_FLAGS" display="bitmask">Tup basina IDA_TUBE_FLAGS.</field>
-      <field type="uint32_t" name="safety_rev">Sim'in emniyet revizyonu: her daraltici emniyet degisiminde artar; calistirmada 1'den baslar (A1-K106).</field>
+      <field type="uint32_t" name="safety_rev">Dunyanin tek emniyet revizyonu: sim surecinin basinda 1, surec boyunca tekduze artar, 0xFFFFFFFF'te doyar (A1-K106).</field>
     </message>
     <message id="46029" name="IDA_PING360_HEAD">
       <description>Sim -> kart. Ping360 tarama satirinin basligi; satirin DATA cercevelerinden sonra gelir ve satiri teslim edildigi partiye baglar (A1-K50).</description>
@@ -551,9 +553,9 @@
       <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
     </message>
     <message id="46043" name="IDA_CMD_MISSION_ITEM">
-      <description>Sim -> kart. A4 IDA_CMD_MISSION_ITEM (A4-K51).</description>
+      <description>Sim -> kart. A4 IDA_CMD_MISSION_ITEM (A4-K51); oge turleri kapali listedir (A1 3.6).</description>
       <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
-      <field type="float[4]" name="p">Ture ozgu parametreler (anlami cekirdek uygulamasinin).</field>
+      <field type="float[4]" name="p">Ture ozgu parametreler; anlam, birim ve aralik IDA_MI_TYPE girdisinde ve A1 3.6'da; tanimsiz parametre 0 olmak zorunda.</field>
       <field type="int32_t" name="lat_e7" units="degE7">frame = GLOBAL.</field>
       <field type="int32_t" name="lon_e7" units="degE7">frame = GLOBAL.</field>
       <field type="float" name="north_m" units="m">frame = LOCAL.</field>
@@ -613,7 +615,7 @@
       <field type="uint32_t" name="batch_seq">Kararin verildigi ciktinin seq'i.</field>
       <field type="uint32_t" name="apply_by_ns" units="ns">Son gecerlilik: t_decide + apply_by.</field>
       <field type="uint32_t" name="hold_ns" units="ns">Yalniz SAFETY_OPEN: izin suresi; digerlerinde 0.</field>
-      <field type="uint32_t" name="safety_rev">Olayi ureten cekirdek cagrisina verilmis en son IDA_SAFETY orneginin safety_rev'i; hic verilmediyse 0 (A1-K106).</field>
+      <field type="uint32_t" name="safety_rev">Olayi ureten cekirdek cagrisina bu oturumda verilmis en son IDA_SAFETY orneginin safety_rev'i; verilmediyse 0 (A1-K106).</field>
       <field type="uint16_t" name="sess">Guncel oturum.</field>
       <field type="uint8_t" name="kind" enum="IDA_EVENT_KIND">Olay turu.</field>
       <field type="uint8_t" name="tube">0-1; SAFETY_CLOSE'ta 255 = iki tup.</field>
@@ -689,8 +691,29 @@
       <field type="uint8_t" name="severity" enum="IDA_SEVERITY">Onem; A4 IDA_SEV_*.</field>
     </message>
     <message id="46067" name="IDA_CORE_COUNTERS">
-      <description>Kart -> sim. A4 ida_core_counters_t (status.cnt), 1 Hz. Dizi sirasi A4 yapisindaki alan sirasidir.</description>
-      <field type="uint32_t[18]" name="cnt">sample_rejected, sample_future, imu_rejected, imu_gap, bad_input, dup_seq, old_seq, wall_backstep, cmd_rejected, widen_blocked, evres_ignored, event_unknown, det_rejected, ping360_rejected, bg_dropped, bg_slice_mismatch, log_dropped, step_miss.</field>
+      <description>Kart -> sim. A4 ida_core_counters_t (status.cnt), 1 Hz; her alan A4'teki ayni adli alandir (A1 3.7).</description>
+      <field type="uint32_t" name="sample_rejected">status.cnt.sample_rejected.</field>
+      <field type="uint32_t" name="sample_future">status.cnt.sample_future.</field>
+      <field type="uint32_t" name="sample_conflict">status.cnt.sample_conflict.</field>
+      <field type="uint32_t" name="sample_dup_dropped">status.cnt.sample_dup_dropped.</field>
+      <field type="uint32_t" name="narrow_from_rejected">status.cnt.narrow_from_rejected.</field>
+      <field type="uint32_t" name="bg_bad_input">status.cnt.bg_bad_input.</field>
+      <field type="uint32_t" name="imu_rejected">status.cnt.imu_rejected.</field>
+      <field type="uint32_t" name="imu_gap">status.cnt.imu_gap.</field>
+      <field type="uint32_t" name="bad_input">status.cnt.bad_input.</field>
+      <field type="uint32_t" name="dup_seq">status.cnt.dup_seq.</field>
+      <field type="uint32_t" name="old_seq">status.cnt.old_seq.</field>
+      <field type="uint32_t" name="wall_backstep">status.cnt.wall_backstep.</field>
+      <field type="uint32_t" name="cmd_rejected">status.cnt.cmd_rejected.</field>
+      <field type="uint32_t" name="widen_blocked">status.cnt.widen_blocked.</field>
+      <field type="uint32_t" name="evres_ignored">status.cnt.evres_ignored.</field>
+      <field type="uint32_t" name="event_unknown">status.cnt.event_unknown.</field>
+      <field type="uint32_t" name="det_rejected">status.cnt.det_rejected.</field>
+      <field type="uint32_t" name="ping360_rejected">status.cnt.ping360_rejected.</field>
+      <field type="uint32_t" name="bg_dropped">status.cnt.bg_dropped.</field>
+      <field type="uint32_t" name="bg_slice_mismatch">status.cnt.bg_slice_mismatch.</field>
+      <field type="uint32_t" name="log_dropped">status.cnt.log_dropped.</field>
+      <field type="uint32_t" name="step_miss">status.cnt.step_miss.</field>
     </message>
     <message id="46068" name="IDA_LINK_STATS">
       <description>Kart -> sim. Kart tarafi A1 ve platform sayaclari (A1 Tablo 3.11b), 1 Hz; acilistan beri birikir, 2^32'de sarar.</description>

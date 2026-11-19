@@ -2,16 +2,16 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, düzeltme turu 1 (2026-11-20) |
+| Sürüm | 1.0-aday, düzeltme turu 2 (2026-11-20) |
 | Görev belgesi | `docs/gorevler/W1-A1.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `protocol/ida.xml` (MAVLink 2 dialect'i; bu belgenin parçasıdır, ikisi çelişemez) |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.8 (§3, §3.1, §3.2, §4, §5, §6, §8, §10); A4 sözleşmesi adayı (`docs/sozlesmeler/A4-port.md`, `core/include/ida/port.h`; düzeltme turu 1); A8 sözleşmesi adayı (`docs/sozlesmeler/A8-kamera-algilama.md`, `core/include/ida/algilama_kaydi.h`; düzeltme turu 1); ölçümler `docs/olcumler/MP3-vcp.md`, `MP4-dongu-yuku.md`, `MP1-arac-zinciri.md`; bölümler 01, 05, 06 (taslak; iskelet 0.8'den eski; çeliştikleri yerde iskelet geçerlidir) |
-| İnceleme | sol: `docs/sozlesmeler/inceleme/A1-sol.md`; yanıt: `docs/sozlesmeler/inceleme/A1-yanit.md` |
-| Durum | Yazan Opus; düzeltme turu 1 mimar kararlarıyla yapıldı; ikinci inceleme bekliyor; dondurulmadı. Kural numaraları korundu; bu turda eklenen kurallar A1-K104'ten başlar |
+| İnceleme | sol: `docs/sozlesmeler/inceleme/A1-sol.md`, `A1-sol-2.md`; yanıtlar: `A1-yanit.md`, `A1-yanit-2.md` |
+| Durum | Yazan Opus; düzeltme turu 1 ve 2 mimar kararlarıyla yapıldı; çapraz uyum incelemesi bekliyor; dondurulmadı. Kural numaraları korundu; birinci turda eklenen kurallar A1-K104–K115, ikinci turda A1-K116–K122 |
 
 **Değerlerin niteliği.** Her süre, hız, boyut ve kapasite ya bir ölçüme (rapor ve başlık atfıyla), ya bir birincil kaynağa (bağlantıyla), ya bir **hesaba** (aritmetik; ölçüm değil) ya da **mimari seçimi (tahmin)** etiketine dayanır. Etiketli değerler ölçülmüş değildir; Bölüm 8'de hangi ölçümle kapanacakları yazılıdır. Bu belgedeki uçtan uca gecikme bütçesi bir tahmindir; kartta ve PC'de birlikte ölçülmedi.
 
-**Atış kontrol sınırı** (W1-ortak.md). Bu sözleşmede atışla ilgili içerik yalnız şunlardır: sanal emniyet girdilerinin ve fırlatıcı durumunun karta geri okunması (`IDA_SAFETY`), izin açma ve kapama olayları ile atış olayının taşınması (`IDA_EVENT`), sim'in olay sonucunu bildirmesi (`IDA_EVENT_RESULT`), kapalı listedeki argümansız emniyet zinciri komutları (`IDA_CMD_FC`; 3.6) ve emniyet zinciri durumunun (`IDA_FC_STATUS`) taşınması ve algılama kayıtlarının taşınması (`IDA_DET_*`). Hedef seçimi, hedefleme çözümü, atış ölçütü, menzil ya da önleme hesabına ilişkin alan, mesaj ya da kural yoktur. Anlamı tanımsız genel alan yoktur: A4'teki `IDA_FC_SELECT` işlemi, olayın `fc_ref`'i ve durumun `ext[]`'i A1'de taşınmaz; `IDA_CMD_FC.arg0/arg1` ayrılmıştır ve sıfır olmak zorundadır (A1-K64).
+**Atış kontrol sınırı** (W1-ortak.md). Bu sözleşmede atışla ilgili içerik yalnız şunlardır: sanal emniyet girdilerinin ve fırlatıcı durumunun karta geri okunması (`IDA_SAFETY`), izin açma ve kapama olayları ile atış olayının taşınması (`IDA_EVENT`), sim'in olay sonucunu bildirmesi (`IDA_EVENT_RESULT`), kapalı listedeki argümansız emniyet zinciri komutları (`IDA_CMD_FC`; 3.6) ve emniyet zinciri durumunun (`IDA_FC_STATUS`) taşınması ve algılama kayıtlarının taşınması (`IDA_DET_*`). Hedef seçimi, hedefleme çözümü, hedefe hizalanma, atış ölçütü, menzil ya da önleme hesabına ilişkin alan, mesaj, görev öğesi ya da kural yoktur; görev öğesi türleri kapalı listedir ve yalnız seyir ve dalış görevlerinden oluşur (3.6). Anlamı tanımsız genel alan yoktur: A4'teki `IDA_FC_SELECT` işlemi, olayın `fc_ref`'i ve durumun `ext[]`'i A1'de taşınmaz; `IDA_CMD_FC.arg0/arg1` ayrılmıştır ve sıfır olmak zorundadır (A1-K64).
 
 ---
 
@@ -72,7 +72,7 @@ Birimler, çerçeveler, kuaterniyon kuralı ve iki zaman damgası iskelet §3.1'
 | **Atanmış üye** | Partisi başka bir sözleşmenin kuralıyla belirlenen üye: kamera algılama partisi, A8-K57'nin `P_k`'sına (A1-K38) |
 | **Gönderim sınıfları (kart)** | (i) kritik sürekli çıktı, (ii) zorunlu-güvenilir, (iii) kaybedilebilir (A1-K110) |
 | **`out_seq`** | Kartın sürekli çıktı üretim sayacı; sim sürekli çıktıları yalnız bu sırayla uygular (A1-K78, K105) |
-| **`safety_rev` (emniyet revizyonu)** | Sim'in her daraltıcı emniyet değişiminde artan sayacı; izin açan olaylar karar anındaki değerle damgalanır (A1-K106) |
+| **`safety_rev` (emniyet revizyonu)** | Dünyanın tek emniyet sayacı (`uint32`, sim süreci başında 1, tekdüze, doyan); izin açan olaylar karar anındaki değerle damgalanır (A1-K106) |
 | **`D_n`** | Yuva `n`'in planlanan duvar son tarihi, `W(a_n) − C_sim` (A1-K108) |
 | **Daraltıcı komut** | A4-K44'teki komutlar: `DISARM`, hedefi GUIDED/AUTO olmayan `SET_MODE`, `op` = FC_DISARM/FC_ABORT olan `FC` |
 | **Eşzamansız güvenli çıktı** | Kartın ızgara tick'inden çıkan, `THR_VALID = 1` ve `IS_SAFE = 1` taşıyan `IDA_ACTUATOR` (`ASYNC` bayrağıyla; A1-K44) |
@@ -138,7 +138,7 @@ Birimler, çerçeveler, kuaterniyon kuralı ve iki zaman damgası iskelet §3.1'
 1. Her mesaj için, kimliğe göre artan sırada: `M <id> <ad> <CRC_EXTRA> <yük_azami>` satırı; ardından tel sırasındaki her alan için `F <tip> <ad> <dizi_boyu>` (dizi değilse 0); tip dizi işaretsiz yazılır (`float`, `uint8_t`).
 2. Her numaralandırma için, ada göre artan sırada (bayt karşılaştırması), değere göre artan sırada her girdi: `E <numaralandırma> <girdi> <ondalık değer>`.
 
-Bu adayın değeri `0x6481E5EBBF66F5F1`'dir (533 satır; bu işte standart kitaplıkla hesaplandı). Değer, XML'deki her tel ya da numaralandırma değişikliğinde değişir; derleme betiği değeri üretir ve sim el sıkışmada iki tarafın derlenmiş değerini karşılaştırır (A1-K14).
+Bu adayın değeri `0x104154A1E68773C8`'dir; kanonik metin **37 mesaj satırı + 334 alan satırı + 186 numaralandırma girdisi satırı = 557 satır**dır (düzeltme turu 2'nin bütün XML değişikliklerinden sonra, en son adım olarak standart kitaplıkla hesaplandı; betik, XML'deki bütün alanların ve numaralandırma girdilerinin metne girdiğini ayrıca denetledi). İlk turdaki `0x6481E5EBBF66F5F1` (533 satır) yanlıştı: son XML değişikliğinden (`IDA_CLOSE_REASON_TX_OVERFLOW`) önce hesaplanmıştı; o XML'in doğru değeri sol'un bulduğu `0x4B9E97C1439CF7FE`'dir (534 satır) ve aynı betik bunu yeniden üretti. Değer, XML'deki her tel ya da numaralandırma değişikliğinde değişir; derleme betiği değeri üretir ve sim el sıkışmada iki tarafın derlenmiş değerini karşılaştırır (A1-K14).
 
 ### 3.3 Mesaj listesi
 
@@ -179,7 +179,7 @@ Boylar MAVLink kırpması olmadan en büyük değerlerdir (yük / çerçeve, bay
 | 46064 | `IDA_STATUS` | kart → sim | 10 Hz | 36 / 48 | (iii) |
 | 46065 | `IDA_FC_STATUS` | kart → sim | 10 Hz | 14 / 26 | (iii) |
 | 46066 | `IDA_LOG` | kart → sim | Olay güdümlü (çağrı başına ≤ 4) | 19 / 31 | (iii) |
-| 46067 | `IDA_CORE_COUNTERS` | kart → sim | 1 Hz | 72 / 84 | (iii) |
+| 46067 | `IDA_CORE_COUNTERS` | kart → sim | 1 Hz | 88 / 100 | (iii) |
 | 46068 | `IDA_LINK_STATS` | kart → sim | 1 Hz | 144 / 156 | (iii) |
 | 46069 | `IDA_CALL_TRACE` | kart → sim | Çekirdek çağrısı başına 1 | 137 / 149 | (iii) |
 | 46070 | `IDA_FAULT_RECORD` | kart → sim | Oturum kurulunca, varsa 1 | 35 / 47 | (iii) |
@@ -250,9 +250,23 @@ Kart algılama alanlarını doğrulamaz ve değiştirmez; doğrulama çekirdeği
 | `IDA_CMD_SIMPLE` | `type` alanı: 1, 2, 3, 4, 7, 9, 10, 12, 13, 14, 15 | `arg` → `SET_MODE`: `u.set_mode.mode`; `MISSION_BEGIN`: `u.mission_begin.count`; `MISSION_CTL`: `u.mission_ctl.action`; `PARAM_GET`: `u.param.id`; diğerlerinde kullanılmaz (0) | `SET_MODE`: 0–7; `MISSION_BEGIN`: 1–128; `MISSION_CTL`: 1–4 | `type` ∉ listedekiler ya da `SET_MODE`'da `arg` > 7: `LINK_BAD_FIELD` |
 | `IDA_CMD_MANUAL` | `MANUAL` (5) | `axes[6]` → `u.manual.axes` | [−1, 1] | — (aralığı çekirdek denetler, A4-K49) |
 | `IDA_CMD_GUIDED` | `GUIDED_SP` (6) | `mask`, `pos_ne[2]`, `depth`, `altitude`, `vel_ned[3]`, `yaw`, `yaw_rate` → `u.guided` | A4-K50 | — |
-| `IDA_CMD_MISSION_ITEM` | `MISSION_ITEM` (8) | `index`, `item_type`, `frame`, `p[4]`, `lat_e7`, `lon_e7`, `north_m`, `east_m`, `depth` → `u.mission_item` | A4-K51 | — |
+| `IDA_CMD_MISSION_ITEM` | `MISSION_ITEM` (8) | `index`, `item_type`, `frame`, `p[4]`, `lat_e7`, `lon_e7`, `north_m`, `east_m`, `depth` → `u.mission_item` | Tablo 3.6a; A4-K51 | Tablo 3.6a'nın herhangi bir koşulu (A1-K122): `LINK_BAD_FIELD` |
 | `IDA_CMD_PARAM_SET` | `PARAM_SET` (11) | `param_id` → `u.param.id`; `param_type` → `u.param.type`; `value_bits` → `u.param.v` (32 bit aynen) | `param_type` 1–3 | `param_type` ∉ 1–3: `LINK_BAD_FIELD` |
 | `IDA_CMD_FC` | `FC` (16) | `op` → `u.fc.op`; `tube` → `u.fc.tube`; `u.fc.arg0 = u.fc.arg1 = 0` | `op` ∈ {1, 2, 3, 5, 6, 7, 8}; `tube` 0–1; `arg0 = arg1 = 0` | `op` kapalı listede değil, `tube` > 1 ya da `arg0`/`arg1` ≠ 0: `LINK_BAD_FIELD` |
+
+**Tablo 3.6a — Görev öğesi türleri (kapalı liste).** Bu sürümde görev öğeleri yalnız seyir ve dalış görevleridir; A4'teki `IDA_MI_TARGET_ALIGN` (8) A1'de yoktur ve taşınamaz. Her türün `p[]` parametrelerinin anlamı, birimi ve aralığı aşağıdadır; "0" yazan parametre tam olarak 0 olmak zorundadır; hiçbir parametrenin anlamı başka bir işe bırakılmaz. Konum alanları: `frame = NONE` iken `lat_e7`, `lon_e7`, `north_m`, `east_m` = 0; `LOCAL` iken `lat_e7 = lon_e7 = 0` ve `north_m`, `east_m` sonlu, mutlak değeri ≤ 10 000 m; `GLOBAL` iken `north_m = east_m = 0`, `lat_e7` ±900 000 000 ve `lon_e7` ±1 800 000 000 içinde. `depth` m, aşağı pozitif. Aralıklar mimari seçimidir (tahmin).
+
+| `item_type` | Ad | `frame` | `depth` (m) | `p[0]` | `p[1]` | `p[2]` | `p[3]` |
+|---|---|---|---|---|---|---|---|
+| 1 | `WAYPOINT` (yol noktasına seyir) | LOCAL, GLOBAL | 0–100 | Kabul yarıçapı, m, 0,1–50 | Seyir hızı, m/s, 0,05–3 | 0 | 0 |
+| 2 | `DIVE_TO` (bulunduğu yerde dalış) | NONE | > 0 – 100 | Dikey hız, m/s, 0,05–1 | Derinlik toleransı, m, 0,05–5 | 0 | 0 |
+| 3 | `SURFACE` (yüzeye çıkış) | NONE | 0 | Çıkış hızı, m/s, 0,05–1 | 0 | 0 | 0 |
+| 4 | `HOLD` (konum ve derinlikte bekleme) | NONE (bulunduğu yer), LOCAL, GLOBAL | 0–100 | Süre, s, > 0 – 3 600 | Konum toleransı, m, 0,1–50 | 0 | 0 |
+| 5 | `SCAN_LINES` (paralel hatlarla tarama seyri) | LOCAL, GLOBAL (başlangıç köşesi) | 0–100 | Hat boyu, m, 1–500 | Hatlar arası, m, 0,5–100 | Hat sayısı, tamsayı değerli, 1–100 | İlk hattın rotası, rad, (−π, π], kuzeyden doğuya |
+| 6 | `SCAN_POINT` (noktada konum tutarak tarama) | LOCAL, GLOBAL | 0–100 | Süre, s, > 0 – 3 600 | Konum toleransı, m, 0,1–50 | 0 | 0 |
+| 7 | `WAIT_GNSS` (yüzeyde GNSS çözümü bekleme) | NONE | 0 | En çok bekleme, s, > 0 – 3 600 | Gereken en az fix türü, tamsayı değerli `IDA_GNSS_FIX`, 1–4 | 0 | 0 |
+
+Bütün `p[]` değerleri sonludur; "tamsayı değerli" alan, kesirli kısmı tam 0 olan `float`'tır. "Tarama" türleri yalnız aracın izleyeceği yolu ve bekleyeceği yeri tanımlar; sonar her türde aynı biçimde çalışır, hiçbir tür bir hedefe ya da algılamaya göre davranış taşımaz.
 
 **Atış kontrol işlemleri kapalı listedir** ve yalnız emniyet zinciri işlemlerinden oluşur. Bu sürümde her işlem argümansızdır; `arg0` ve `arg1` ayrılmıştır, 0 olmak zorundadır ve kart sıfır olmayanı reddeder (A1-K64). A4'teki `IDA_FC_SELECT` (4; hedef seçimi) A1'de yoktur ve taşınamaz; A4'ün kendisinden de çıkarılması beklenir (8.2).
 
@@ -316,13 +330,13 @@ Kart algılama alanlarını doğrulamaz ve değiştirmez; doğrulama çekirdeği
 
 **`IDA_NAV`** (A4 `ida_nav_out_t`; aynı ad ve birimler): `t_ns`, `batch_seq`, `p_ned[3]`, `v_ned[3]`, `q_nb[4]` (w, x, y, z; Hamilton; gövde → NED), `omega_b[3]`, `depth`, `altitude`, `p_sigma[3]`, `v_sigma[3]`, `att_sigma[3]`, `origin_lat_e7`, `origin_lon_e7`, `est_level`, `reset_counter`.
 
-**`IDA_STATUS`**: `boot_count`, `fs_reasons`, `mission_item`, `mode`, `armed`, `fs_level`, `regime`, `phase`, `mission_state`, `param_ok`, `events_ok` (A4 `ida_status_t`); `health` (A4 `ida_health_t`'nin altı biti, `IDA_HEALTH`); `link_state` (kartın A1 durumu); `param_store`, `param_fail`, `param_gen` (A4 `ida_plat_t`); `param_blob_crc` (kalıcı bloğun CRC-32/ISO-HDLC değeri); `batch_seq` (son çıktının `seq`'i); `sess`.
+**`IDA_STATUS`**: `boot_count`, `fs_reasons`, `mission_item`, `mode`, `armed`, `fs_level`, `regime`, `phase`, `mission_state`, `param_ok`, `events_ok` (A4 `ida_status_t`); `health` (A4 `ida_health_t`'nin sekiz alanı, ada göre: `core_ok` → bit 0 (1), `data_ok` → bit 1 (2), `imu_rejected` → bit 2 (4), `imu_lag` → bit 3 (8), `input_dropped` → bit 4 (16), `narrowed` → bit 5 (32), `sample_conflict` → bit 6 (64), `bg_bad_input` → bit 7 (128); `IDA_HEALTH`); `link_state` (kartın A1 durumu); `param_store`, `param_fail`, `param_gen` (A4 `ida_plat_t`); `param_blob_crc` (kalıcı bloğun CRC-32/ISO-HDLC değeri); `batch_seq` (son çıktının `seq`'i); `sess`.
 
 **`IDA_FC_STATUS`** (atış kontrolün emniyet zinciri durumu; A4 `ida_fc_status_t`'nin aynı adlı dört alanı): `state` (emniyet zinciri durumu; 0 = `SAFE`), `inhibit_mask` (etkin emniyet engeli bitleri), `last_event_id`, `last_event_result`. A4'ün `ext_len` ve `ext[64]` alanları (anlamı tanımsız genel alan) A1'de taşınmaz; hedefleme ya da atış ölçütü taşıyan alan yoktur.
 
 **`IDA_LOG`** (A4 `ida_log_t`): `t_w_ns`, `code`, `severity` (`IDA_SEVERITY` = A4 `IDA_SEV_*`), `arg0`, `arg1`.
 
-**`IDA_CORE_COUNTERS`**: `cnt[18]` = A4 `ida_core_counters_t`'nin 18 alanı, yapıdaki sırayla (`sample_rejected` … `step_miss`).
+**`IDA_CORE_COUNTERS`**: A4 `ida_core_counters_t`'nin 22 alanı, her biri **aynı adlı** ayrı bir `uint32_t` alanda (dizi değil; eşleme sıraya değil ada dayanır): `sample_rejected`, `sample_future`, `sample_conflict`, `sample_dup_dropped`, `narrow_from_rejected`, `bg_bad_input`, `imu_rejected`, `imu_gap`, `bad_input`, `dup_seq`, `old_seq`, `wall_backstep`, `cmd_rejected`, `widen_blocked`, `evres_ignored`, `event_unknown`, `det_rejected`, `ping360_rejected`, `bg_dropped`, `bg_slice_mismatch`, `log_dropped`, `step_miss` (A4 düzeltme turu 2 adayı, `core/include/ida/port.h`). Telde MAVLink'in boy sıralaması uygulanır; alıcı alanları adıyla okur. A4'ün yeni `IDA_BG_BAD_INPUT` arka plan dönüşü telde taşınmaz: A4-K117'ye göre dilim sayılmaz (`IDA_CALL_TRACE.bg_slices`'a girmez) ve `bg_bad_input` sayacı ile `health.bg_bad_input` bayrağında görünür. A4'ün `IDA_RC_*` listesi (0–8) `IDA_CORE_RC` ile aynıdır.
 
 **`IDA_LINK_STATS`**: `cnt[36]`, sıra ve tanımlar Tablo 3.11b'de.
 
@@ -389,7 +403,7 @@ Kart algılama alanlarını doğrulamaz ve değiştirmez; doğrulama çekirdeği
 |---|---|---|---|---|---|
 | `P` | 5 ms | sabit | sim | İskelet §4 | A1-K29 |
 | `L_act` | 10 ms (8 fizik adımı) | sabit | sim | İskelet §4 | A1-K74 |
-| `T_bekle` (bariyerde bekleme sınırı) | 50 ms | 10–55 ms | sim duvarı | İskelet §4 başlangıç değeri; mimari seçimi (tahmin) | A1-K75, K84 |
+| `T_bekle` (bariyerde bekleme sınırı) | 30 ms | 10–35 ms | sim duvarı | İskelet §4'ün başlangıç değeri 50 ms'ydi; E8'in iki partilik teslim kanıtı için düşürüldü (mimari seçimi, tahmin) | A1-K75, K84 |
 | `T_kullanım` (çekirdek parametresi `valid_for_ns`) | 100 ms | 60–450 ms | sim (uygulama anından) | Mimari seçimi (tahmin) | A1-K74, K77; A4-K58 |
 | `T_bağ` (bağlantı zaman aşımı; iki taraf) | 500 ms | 500–2 000 ms | her tarafın kendi duvarı | Mimari seçimi (tahmin) | A1-K22, K23 |
 | `apply_by_ns` (atış kontrol parametresi) | 20 ms | 16–1 000 ms | sim (uygulama) | Mimari seçimi (tahmin); A4-K66 aralığı 1 ms – 1 s'nin içi | A1-K80, K84 |
@@ -403,62 +417,68 @@ Kart algılama alanlarını doğrulamaz ve değiştirmez; doğrulama çekirdeği
 | `T_emniyet` | 100 ms (10 Hz) | sabit | sim | 05 §2.3.8 (tahmin) | A1-K56 |
 | TF yazımları arası alt sınır | `P/2` = 2,5 ms | sabit | sim duvarı | Mimari seçimi | A1-K39 |
 | `T_olay_yin` (olay yineleme aralığı) | 15 ms | sabit | kart duvarı | Mimari seçimi (tahmin) | A1-K80 |
-| `T_sonuç_pay` | 75 ms | sabit | kart duvarı | Mimari seçimi; E8 | A1-K80 |
+| `T_sonuç_pay` | 95 ms | sabit | kart duvarı | E8 | A1-K80 |
 | `T_yetim` (Ping360 yetim yuva süresi) | 8 parti kapanışı | sabit | kart | Mimari seçimi; E12 | A1-K51 |
 | `B_pencere` | 1 200 B | sabit | — | Mimari seçimi (MP3'te %80 sabit yük kayıpsız) | A1-K34 |
 | `B_krit` (parti başına kritik bayt) | 520 B | sabit | — | Uçtan uca bütçeden türetildi (E18) | A1-K113 |
 | `S_ayr` (sonarın ayrılmış payı) | 258 B (bir tam `PING360_DATA`) | sabit | — | E13, E14 | A1-K36, K112 |
 | `R_s`, `C_s,max` (sonar kredisi) | 260 B/pencere, 600 B | sabit | — | E14, E15 | A1-K112 |
 | `R_c`, `C_c,max` (toplu komut kredisi) | 60 B/pencere, 236 B (4 × 59) | sabit | — | E15 | A1-K112 |
-| `R_iii` (kart, kaybedilebilir sınıf) | 600 B/periyot | sabit | kart duvarı | Mimari seçimi | A1-K110 |
+| `R_iii` (kart, kaybedilebilir sınıf) | 500 B/periyot | sabit | kart duvarı | Mimari seçimi; E19 | A1-K110 |
 | `N_olay` (kartın açık olay tablosu) | 8 | sabit | — | Mimari seçimi; E16 | A1-K80 |
-| `Q_sonuç` (sim'in olay sonucu kuyruğu) | 8 giriş | sabit | — | E16 | A1-K111 |
-| `Q_ii` (kartın zorunlu-güvenilir kuyruğu) | 48 çerçeve | sabit | — | E17 | A1-K110 |
+| `Q_sonuç` (sim'in yeni olay sonucu kuyruğu) | 8 giriş | sabit | — | E16 | A1-K111 |
+| `Q_ii` (kartın zorunlu-güvenilir kuyruğu) | 64 çerçeve | sabit | — | E17 (kanıtın sınırı 59) | A1-K110 |
+| `S_ii` (zorunlu sınıfa ayrılmış hizmet) | 1 000 B/periyot (200 B/ms) | sabit | kart duvarı | E17 | A1-K110 |
+| Sim komut kovası | Daraltıcı olmayan: patlama 8, hız 2 / 5 ms; daraltıcı: her tür için patlama 1, hız 1 / 5 ms | sabit | sim duvarı | E17 | A1-K119 |
+| Platform olay kovaları | İzin açan: patlama 4, hız 4 / 5 ms; `SAFETY_CLOSE`: patlama 3, hız 3 / 5 ms | sabit | kart duvarı | E17 | A1-K120 |
+| `T_tf_gec`, `T_tick_yasak` | 1 ms, 1 ms (en uzun tick 0,5 ms + koruma 0,5 ms) | sabit | kart duvarı | Mimari seçimi (tahmin) | A1-K117 |
+| `N_bg` (SIL'de parti başına arka plan dilimi) | çalıştırma parametresi | ≥ 0 | — | A1-K121 | A1-K121 |
 | `A_sensör` (ön denetim: TF, IMU, emniyet dışı kritik sensör baytının parti başına ortalaması) | ≤ 150 B | ön denetim sınırı | — | E13 | A1-K113 |
 
 `RTT_maks` = 14,5 ms, MP3'te 600 s'lik koşularda **gözlenen** en uzun gidiş-dönüştür ("Echo profilleri"); güvenceli bir üst sınır değildir. Aşağıdaki eşitsizliklerde kullanıldığı yerde güvence bu gözleme dayanır.
 
-**Zorunlu eşitsizlikler** (aralıkların en kötü köşesinde; ✓ her bileşimde sağlanır):
+**Zorunlu eşitsizlikler** (aralıkların en kötü köşesinde; ✓ her bileşimde sağlanır; E1–E19, düzeltme turu 2'de yeniden hesaplandı):
 
 | # | Eşitsizlik | En kötü köşe | Gerekçe |
 |---|---|---|---|
 | E1 | `P < L_act` | 5 < 10 ✓ | İskelet §4 |
-| E2 | `T_bekle < T_kullanım < T_bağ` | 55 < 60; 450 < 500 ✓ | Bariyerin tolere ettiği bir gecikme HIL 1x'te iticileri nötrlemez; bağlantı ölmeden önce komut kendiliğinden düşer |
+| E2 | `T_bekle < T_kullanım < T_bağ` | 35 < 60; 450 < 500 ✓ | Bariyerin tolere ettiği bir gecikme HIL 1x'te iticileri nötrlemez; bağlantı ölmeden önce komut kendiliğinden düşer |
 | E3 | `T_kullanım ≥ L_act + P + RTT_maks` | 60 ≥ 29,5 ✓ | Gözlenen en uzun gidiş-dönüş tek bir yanıtı kaçırtsa bile önceki komut geçerlidir (varsayılanla `T_kullanım / P − 1` = 19 ardışık kaçırmaya kadar) |
 | E4 | `4 · T_canlı ≤ T_bağ` | 400 ≤ 500 ✓ | Dört ardışık canlılık çerçevesinin kaybı oturumu bitirmez |
-| E5 | `T_bağ > RTT_maks` ve `T_bağ > T_bekle` | 500 > 14,5; 500 > 55 ✓ | Gözlenen seyrek gecikmeler ve bariyer beklemesi oturumu bitirmez |
+| E5 | `T_bağ > RTT_maks` ve `T_bağ > T_bekle` | 500 > 14,5; 500 > 35 ✓ | Gözlenen seyrek gecikmeler ve bariyer beklemesi oturumu bitirmez |
 | E6 | `apply_by_ns ≥ L_act + P` | 16 ≥ 15 ✓ | Zamanında gelen bir olay son geçerliliği geçmez |
 | E7 | `T_olay_yin < apply_by_ns` (kesin) | 15 < 16 ✓ | Son geçerlilik dolmadan en az bir yineleme gider. (İlk adayda alt sınır 15 ms idi ve `15 < 15` sağlanmıyordu; düzeltildi.) Olağan durumda sonuç, kararın kart duvarındaki anından ≈ 3–9 ms sonra kartta olur (hesap, tahmini girdilerle); gereksiz yineleme beklenmez |
-| E8 | `T_bekle + P + RTT_maks ≤ T_sonuç_pay < IDA_EVT_RESULT_MARGIN` | 55 + 5 + 14,5 = 74,5 ≤ 75 < 100 ✓ | A1-K84'ün duvar sınırıyla uygulanabilen bir olayın sonucu, kart `EXPIRED_NO_ACK` vermeden önce ulaşır; kart çekirdeğin kendi süresinden (A4-K70) önce sonuç verir |
+| E8 | `2·T_bekle + P + RTT_maks + b ≤ T_sonuç_pay < IDA_EVT_RESULT_MARGIN` (b = 0,86 ms aşağı yön engellemesi) | 70 + 5 + 14,5 + 0,86 = 90,36 ≤ 95 < 100 ✓ | **Uygulanan** bir olayın sonucu kartın `EXPIRED_NO_ACK`'inden önce ulaşır. Kanıt: kararın kart duvarındaki anı `t_d` ≥ `TF(batch_seq)`'in yazımı; A1-K84 gereği olay ancak TF yazımından en geç `apply_by + T_bekle` sonra uygulanabilir; sonuç ilk dört içindeyse hemen, değilse bir sonraki TF yazımında (≤ `P + T_bekle` sonra; E16) yazılır; önünde en çok bir çerçeve (b) ve taşıma (`RTT_maks`) vardır. Toplam ≤ `t_d + apply_by + 2·T_bekle + P + b + RTT_maks`. Reddedilen bir olayın sonucu geç kalabilir; o durumda çekirdek olayı "sonucu bilinmiyor" sayar ve güvenli duruma geçer (A4-K70), bu güvenli yöndedir. İlk aday ikinci sonuç partisini saymıyordu (sol: 79,5 > 75); `T_bekle` aralığı 10–35 ms'ye, `T_sonuç_pay` 95 ms'ye çekildi |
 | E9 | `hold_ns / 2 ≥ L_act + P + RTT_maks` ve `hold_ns < T_bağ` | 30 ≥ 29,5; 450 < 500 ✓ | Yenilenen izin süresi dolmadan alıcıya ulaşır; bağlantı kopunca izin oturum bitişinden önce kendiliğinden düşer |
 | E10 | `T_imu_stale + IDA_PORT_STALE_MARGIN_NS < T_kullanım` | 20 + 14,5 = 34,5 < 60 ✓ | Bilgi: kartın kendi nötr çıktısı sim'deki kullanım süresinden önce üretilir (A4-K39) |
 | E11 | Gönderen tarafta herhangi bir yarı açık 5 ms'lik pencerede en çok 2 TF | A1-K39 ✓ | A4'ün geliş varsayımı (A4 "A1'den beklenen" 8); varışta sıkışma olabilir (A1-K40) |
 | E12 | `T_yetim ≥` bir satırın ilk parçasıyla HEAD'i arasındaki en çok parti kapanışı | 8 ≥ 6 ✓ | 1 200 örnekli satır 6 çerçevedir (5 DATA + HEAD); E14'e göre kuyruk boş değilken her pencerede en az bir sonar çerçevesi gider; HEAD en geç ilk parçanın penceresinden 5 pencere sonra gelir |
 | E13 | (1)–(5) ≤ `B_krit`; `B_krit` − (1)–(5) ≥ en büyük sensör çerçevesi; `B_krit` + `det_azami` + `S_ayr` ≤ `B_pencere` | 29 + 59 + 34 + 102 + 124 = 348 ≤ 520; 520 − 348 = 172 ≥ 89; 520 + 399 + 258 = 1 177 ≤ 1 200 ✓ | **İzin verilen her yapılandırmada** geçerlidir: kritik bayt A1-K113 ile, algılama partisi A8 ile (tek kamera, en çok 4 kayıt; A8-K18, K35) sınırlıdır; sensör sayısı ya da `inst` ne olursa olsun fazlası kayar, TF, IMU, emniyet girdisi, daraltıcı komutlar ve olay sonuçları kaymaz, sonarın ayrılmış payı her pencereye sığar. İlk adayın tek örneğe dayalı E13'ü (691 + 399) yerine geçer; sol'un karşı örneği (üç DVL ve üç kamera kaydıyla 1 178 B ve 10,023 ms) artık oluşamaz, çünkü kritik bayt 520 B'ı aşamaz ve algılama partisi kuyruğun sonuna değil pencere başına gider (A1-K36, K39). Sensörlerin kaymasız akması ön denetimle (`A_sensör` ≤ 150 B < 172 B) sağlanır; en kötü erteleme süresine güvence yoktur, sayılır (A1-K113) |
 | E14 | `R_s ≥` en büyük Ping360 çerçevesi | 260 ≥ 258 ✓ | Kredi her pencerede en az bir tam çerçeveye yeter; ayrılmış pay (`S_ayr`) yer sağlar; sonar komutlarca çiğnenmez |
-| E15 | Aşağı yön bağlayıcı ortalama ≤ %60 | `B_krit` + kamera + `R_c` + `R_s` = 520 + 59,85 + 60 + 260 = 899,85 ≤ 900 ✓ | **İzin verilen her yapılandırmada** (3.10) |
-| E16 | `Q_sonuç ≥ N_olay` ve kuyruk gecikmesi < `apply_by_ns` + `T_sonuç_pay` | 8 ≥ 8; ≤ 2 parti = 10 ms < 16 + 75 = 91 ms ✓ | Kuyruktaki her sonuç kartta açık bir olaya aittir (kart sonuç almadan ya da `apply_by + T_sonuç_pay` dolmadan olayı kapatmaz); kuyruk 8 girişle partide 4 sonuç hızında en çok 2 partide boşalır, bu sürede kartta yer açılmaz; dolayısıyla giriş sayısı `N_olay`'ı aşamaz (tümevarım) |
-| E17 | `Q_ii` ≥ iki ardışık periyodun en kötü zorunlu-güvenilir varışı; iki periyottaki hizmet bundan büyük | Bir periyotta en çok 8 `CMD_RESULT` (8 × 39 = 312 B; partide ≤ 8 komut) + 8 yeni olay (4 step + 4 ızgara tick'i; 392 B) + 8 yineleme (`N_olay`; 392 B) = 24 çerçeve, 1 096 B; iki periyot 48 çerçeve, 2 192 B; hizmet ≥ 2 × (1 500 − 100 − 156) = 2 488 B ✓ | Taşıma anma hızında boşaldığı sürece kuyruk taşamaz; taşarsa bağlantı hatasıdır (A1-K110) |
-| E18 | Uçtan uca en kötü ≤ `L_act` | 9,733 ≤ 10 ✓ (`B_krit` en çok 600 B olabilirdi) | Aşağıdaki bütçe |
+| E15 | Aşağı yön bağlayıcı ortalama ≤ %60 ve tepe ≤ %90 (A1-K116) | `B_krit` + kamera + `R_c` + `R_s` = 520 + 59,85 + 60 + 260 = 899,85 ≤ 900; tek periyotta ≤ `B_pencere` = 1 200 ≤ 1 350 ✓ | **İzin verilen her yapılandırmada** (3.10) |
+| E16 | Yeni sonuç kuyruğunun (a) her girişi kartta açık bir olaya aittir; dolayısıyla doluluk ≤ `N_olay` = `Q_sonuç` = 8 | Karar ≤ `t_d + apply_by + T_bekle + RTT_maks + h` (geç gelen kopya dahil); kuyrukta ≤ `P + T_bekle`; toplam ≤ `t_d + apply_by` + 14,5 + 1,25 + 35 + 5 + 35 = `t_d + apply_by` + 90,75 < `t_d + apply_by + T_sonuç_pay` (95) ✓ | Kartta bir olay yeri ancak sonuç alınınca ya da `apply_by + T_sonuç_pay` dolunca boşalır; bu sınırın içinde kuyruktaki sonucun olayı açıktır; açık olay sayısı `N_olay` ile ve platform kovasıyla (A1-K120) sınırlıdır. Kuyruk 8 girişle partide 4 sonuç hızında en çok iki pencerede boşalır. Saklı sonuç talepleri (b) kuyruğa girmez (A1-K111); ilk adaydaki karşı örnek (dokuz sonuçlanmış olayın gecikmiş yinelemesi) bu yüzden kuyruğu doldurmaz |
+| E17 | Zorunlu-güvenilir kuyruk (ii) için (σ, ρ) geliş eğrisi ve hizmet eğrisi aynı saatte (kart duvarı), bütün `τ` aralıkları için: kuyruk ≤ 59 çerçeve ≤ `Q_ii` = 64 | Geliş: komut sonuçları ≤ 36 + 1,2·τ çerçeve (sim kovası: daraltıcı olmayan 8 + 0,4/ms, daraltıcı 4 + 0,8/ms; taşıma titreşimi 14,5 ms ve platform ertelemesi 5 ms için 1,2 × 19,5 ≈ 24 eklenir); yeni olaylar ≤ 7 + 1,4·τ (iki platform kovası); yinelemeler ≤ 8 + 0,533·τ (`N_olay` / `T_olay_yin`); bir canlılık ya da oturum çerçevesi; bayt olarak α(τ) ≤ 2 154 + 141,5·τ B (τ ms). Hizmet: (ii)'ye ayrılmış 200 B/ms, gecikme payı `T` = (390 B (i) patlaması + 156 B engelleme) / 275 B/ms ≈ 2,0 ms; β(τ) = 200·(τ − 2)⁺. Kuyruk sınırı = α(T) ≤ 2 437 B ve ≤ 52 + 3,13·2 ≈ 59 çerçeve; gecikme sınırı ≤ T + σ/200 ≈ 12,8 ms; uzun dönem ρ = 141,5 < 200 ✓ | Birleştirme, mandal sonuçları (`COALESCED`, `LINK_DROPPED`, `LINK_BAD_FIELD`) ve `DUPLICATE`, her biri tek bir komut çerçevesine karşılık geldiği için komut gelişinin içindedir. İlk adayın parti sayımına dayalı kanıtının yerine geçer (sol #7). Kuyruk modeli (yanıt belgesi) en kötü patlamada 34 çerçeve gördü |
+| E18 | **Çağrı çakışması olmayan partiler için** uçtan uca en kötü ≤ `L_act` | 9,733 ≤ 10 ✓ | Aşağıdaki bütçe; çakışma A1-K117 ile sayılır ve partiyi zamanlama bakımından geçersiz kılar. Çakışmalı partinin en kötüsü: önceki ızgara tick'i sürerken 10,233 ms; aşan bir step sürerken (A4-K19, başlangıç ≤ 4 ms) 13,233 ms; ikisi de `L_act`'ı aşar ve güvence dışıdır |
+| E19 | Yukarı yön bağlayıcı uzun dönem ≤ %90 (A1-K116) | (i) 75 + (ii) 141,5 × 5 = 707,5 + (iii) `R_iii` 500 = 1 282,5 ≤ 1 350 (%85,5) ✓ | E17'nin geliş hızlarıyla; ilk turun daha gevşek varsayımlarıyla da %84,27 < %90 |
 
-**Uçtan uca bütçe** (HIL, bariyerli ya da 1x; `TF(n)`'nin `W(t_n)`'de yazılmasından sim'in yuva `n`'i `a_n`'de uygulamaya hazır olmasına kadar). **Bütün kalemler tahmin ya da hesaptır; uçtan uca ölçülmedi.** Kuyruk engellemeleri bu turda açık kalem olarak eklendi (A1-K110, K115).
+**Uçtan uca bütçe** (HIL, bariyerli ya da 1x; `TF(n)`'nin `W(t_n)`'de yazılmasından sim'in yuva `n`'i `a_n`'de uygulamaya hazır olmasına kadar; **yalnız çağrı çakışması olmayan partiler için**, A1-K117). Uçtan uca ölçülmedi. "Nitelik": **ölçüm** (bir ölçüm raporunun doğrudan değeri), **hesap** (aritmetik), **ölçümden türetilmiş tahmin**, **tahmin**.
 
-| Kalem | En kötü (ms) | Olağan (ms) | Dayanak |
-|---|---:|---:|---|
-| a. Sim: TF(n) yazımının `W(t_n)`'den gecikmesi | 0,500 | 0,500 | Mimari seçimi (tahmin) |
-| b. Aşağı yön engelleme: taşımada önceden yazılmış bir tam çerçeve (≤ 258 B; A1-K115) | 0,860 | 0 | Hesap; ST-LINK köprüsünün kendi tamponu doğrulanmadı (O7) |
-| c. Aşağı yön kritik kuyruk: en kötü `B_krit` = 520 B; olağan TF + IMU 88 B | 1,733 | 0,293 | Hesap (bayt × 10 / 3 000 000) |
-| d. Aşağı yön USB + ST-LINK ek gecikmesi | 0,400 | 0,200 | MP3'ten türetilmiş tahmin: 64 B echo p50 / p99,9 0,83 / 1,10 ms eksi iki yönün tel süresi 0,43 ms |
-| e. Kart: dağıtım | 0,500 | 0,500 | A4-K19 (tahmin) |
-| f. Kart: `ida_core_step` | 3,500 | 3,500 | A4-K23 bütçesi (tahmin; MP4a yer tutucu en kötü 3,32196875 ms) |
-| g. Kart: çıktı kodlama | 0,100 | 0,100 | 01 §2.4 (tahmin) |
-| h. Yukarı yön engelleme: sürücüdeki bir kritik olmayan çerçeve (≤ 156 B; A1-K110) | 0,520 | 0 | Hesap |
-| i. Yukarı yön kritik: 4 yeni olay + `ACTUATOR` (196 + 50 = 246 B); olağan 50 B | 0,820 | 0,167 | Hesap |
-| j. Yukarı yön USB + ST-LINK ek gecikmesi | 0,400 | 0,200 | d ile aynı |
-| k. Sim: uygulama adımına hazırlık `C_sim` | 0,400 | 0,400 | 06 §2.5 (tahmin) |
-| **Toplam** | **9,733** | **5,860** | `L_act` = 10 ms'ye pay: **0,267 / 4,140 ms (tahmin)** |
+| Kalem | En kötü (ms) | Olağan (ms) | Nitelik | Dayanak |
+|---|---:|---:|---|---|
+| a. Sim: TF(n) yazımının `W(t_n)`'den gecikmesi | 0,500 | 0,500 | tahmin | Mimari seçimi |
+| b. Aşağı yön engelleme: taşımada önceden yazılmış bir tam çerçeve (≤ 258 B; A1-K115) | 0,860 | 0 | hesap (anma hızından); köprü tamponu doğrulanmadı | O7 |
+| c. Aşağı yön kritik kuyruk: en kötü `B_krit` = 520 B; olağan TF + IMU 88 B | 1,733 | 0,293 | hesap | bayt × 10 / 3 000 000 |
+| d. Aşağı yön USB + ST-LINK ek gecikmesi | 0,400 | 0,200 | ölçümden türetilmiş tahmin | MP3 64 B echo p50 / p99,9 0,83 / 1,10 ms eksi iki yönün tel süresi; yön başına ayrı ölçülmedi |
+| e. Kart: dağıtım (önceki çağrı yokken; A1-K117) | 0,500 | 0,500 | tahmin | A4-K19 |
+| f. Kart: `ida_core_step` | 3,500 | 3,500 | tahmin (bütçe) | A4-K23; ölçülen değer yalnız yer tutucunundur: MP4a 200 Hz ağır yükte en çok 3,32196875 ms (ölçüm, gerçek çekirdek değil) |
+| g. Kart: çıktı kodlama | 0,100 | 0,100 | tahmin | 01 §2.4 |
+| h. Yukarı yön engelleme: sürücüdeki bir kritik olmayan çerçeve (≤ 156 B; A1-K110) | 0,520 | 0 | hesap | — |
+| i. Yukarı yön kritik: 4 yeni olay + `ACTUATOR` (246 B); olağan 50 B | 0,820 | 0,167 | hesap | — |
+| j. Yukarı yön USB + ST-LINK ek gecikmesi | 0,400 | 0,200 | ölçümden türetilmiş tahmin | d ile aynı |
+| k. Sim: uygulama adımına hazırlık `C_sim` | 0,400 | 0,400 | tahmin | 06 §2.5 |
+| **Toplam** | **9,733** | **5,860** | | `L_act` = 10 ms'ye pay **0,267 / 4,140 ms (tahmin)** |
 
-İlk adayın 0,57 ms'lik payı kuyruk engellemesini (b, h) sınırlamadan hesaplanmıştı ve doğrulanmış değildi (sol #10). Bu bütçe engellemeyi içerir; `B_krit` bu toplamın 10 ms'yi aşmayacağı en büyük değerin (600 B) altında seçildi. Pay küçüktür ve girdileri tahmindir; MP3'teki seyrek 10–14,5 ms'lik gidiş-dönüşler bu bütçeyle karşılanmaz, o yanıtlar A1-K75'e göre kaçırılır ya da bariyerde beklenir ve çalıştırma geçersiz işaretlenir (A1-K79, K108). Gerçek değerler W3 (gerçek çekirdek, M5) ve W4 (HIL köprüsü; MP5) ölçümleriyle yeniden değerlendirilir (O1–O3).
+Çağrı çakışmalı partiler (A1-K117) bu bütçenin dışındadır: önceki bir ızgara tick'i sürerken TF gelirse e kalemine en çok 0,5 ms eklenir (toplam 10,233 ms); aşan bir step sürerken gelirse dağıtım en çok 4 ms olur (A4-K19; toplam 13,233 ms); ikisi de `L_act`'ı aşar, `cagri_cakismasi` sayılır ve çalıştırma zamanlama bakımından geçersizdir. A1-K117'nin tick takvimi, TF'ler `P` aralıkla ve zamanında geldiği sürece çakışmayı olanaksız kılar (yanıt belgesindeki modelde titreşimsiz akışta 0 çakışma). `B_krit` bu toplamın 10 ms'yi aşmayacağı en büyük değerin (600 B) altında seçildi. MP3'teki seyrek 10–14,5 ms'lik gidiş-dönüşler bu bütçeyle karşılanmaz; o yanıtlar A1-K75'e göre kaçırılır ya da bariyerde beklenir ve çalıştırma geçersiz işaretlenir (A1-K79, K108). Gerçek değerler W3 (gerçek çekirdek, M5) ve W4 (HIL köprüsü; MP5) ölçümleriyle yeniden değerlendirilir (O1–O3).
 
 ### 3.10 Bant bütçesi
 
@@ -497,21 +517,21 @@ Hesap; boylar Tablo 3.3'teki en büyük çerçeve boylarıdır (kırpma kazancı
 | (i) `ACTUATOR` | B (TF başına 1) | 50 × 1 | 50,0 |
 | (i) `ACTUATOR` `ASYNC` (yalnız arıza durumunda) | B (≤ 100 Hz) | 50 × 0,5 | ≤ 25,0 |
 | (ii) `EVENT`: profil ≤ 20/s, bir yinelemeyle | V | 49 × 0,2 | 9,8 |
-| (ii) `EVENT`: üst sınır (yeni ≤ `N_olay` / 2 periyot = 4/periyot; yineleme ≤ `N_olay` / 3 periyot) | B | 49 × (4 + 2,67) | ≤ 326,7 |
+| (ii) `EVENT`: üst sınır (yeni: iki platform kovası 1,4/ms; yineleme ≤ `N_olay` / `T_olay_yin`) | B | 49 × (7 + 2,67) | ≤ 473,7 |
 | (ii) `CMD_RESULT`: profil ≤ 56/s | V | 39 × 0,28 | 10,9 |
-| (ii) `CMD_RESULT`: üst sınır (daraltıcı ≤ 4/parti + toplu ≤ `R_c` / 22 B) | B | 39 × (4 + 2,73) | ≤ 262,4 |
+| (ii) `CMD_RESULT`: üst sınır (sim komut kovası: 1,2 komut/ms) | B | 39 × 6 | ≤ 234,0 |
 | (iii) `CALL_TRACE` (200 step + 100 ızgara tick'i / s) | B (çağrı başına 1) | 149 × 1,5 | 223,5 |
-| (iii) `NAV` 50 Hz, `STATUS` 10 Hz, `FC_STATUS` 10 Hz, sayaçlar 1 Hz | B (A1-K91) | 32,5 + 2,4 + 1,3 + 1,2 | 37,4 |
+| (iii) `NAV` 50 Hz, `STATUS` 10 Hz, `FC_STATUS` 10 Hz, sayaçlar 1 Hz | B (A1-K91) | 32,5 + 2,4 + 1,3 + 1,3 | 37,5 |
 | (iii) `LOG` | V ≈ 0 (bağlayıcı: çağrı başına ≤ 4, ≤ 186) | | — |
 | (iii) `DET_RECORD`: profil, 50 m satır hızında, satır başına 4 kayıt | V (bağlayıcı: ≤ 363,6, 200 örnekli satırlarla `R_s` hızında) | 90 × 4 × 12,1 / 200 | 21,8 |
 
 | Toplam | B / periyot | Kapasiteye oranı |
 |---|---:|---:|
-| Varsayımsal profil (`ASYNC`, `LOG` yok) | 353,4 | %23,6 |
-| İlk adayın varsayımlarıyla (profil + `ASYNC` + `LOG` üst sınırı + 173 satır/s ile algılama 311,4; `CALL_TRACE` 28 elemanlı, bu turun çerçeve boylarıyla) | 854,0 | %56,9 |
-| **Bağlayıcı üst sınır**: (i) 75 + (ii) 589,1 + (iii) `R_iii` 600 | **1 264,1** | **%84,3** |
+| Varsayımsal profil (`ASYNC`, `LOG` yok) | 353,5 | %23,6 |
+| İlk adayın varsayımlarıyla (profil + `ASYNC` + `LOG` üst sınırı + 173 satır/s ile algılama 311,4; bu turun çerçeve boylarıyla) | 854,1 | %56,9 |
+| **Bağlayıcı üst sınır**: (i) 75 + (ii) 707,7 (E17 hızları) + (iii) `R_iii` 500 | **1 282,7** | **%85,5** |
 
-Yukarı yönde %60 hedefi **yalnız varsayımsal profil için** sağlanır; bağlayıcı üst sınırla **güvence yoktur** (en kötü durumda her periyotta 8 komut sonucu ve sürekli olay akışı gerekir). Kapasite (%100) bağlayıcı sınırla da aşılmaz; kaybedilebilir sınıf `R_iii` ile sınırlıdır ve önce `DET_RECORD`, sonra `LOG` atılır (A1-K90 sırası, A1-K110). Sol'un hesapladığı %56,751, ilk adayın çerçeve boylarıyla aynı varsayımın değeridir; bu turda `ACTUATOR` 4 B büyüdü, `FC_STATUS` 65 B küçüldü.
+Bant ölçütü A1-K116'dadır (mimar kararı 2026-11-20; iskelet 0.9'a işlenecek): %60 ortalama hedefi olağan çalışma profili içindir ve iki yönde de sağlanır (%19,2 ve %23,6); bağlayıcı üst sınır her yönde %90'ı (1 350 B/periyot) aşmaz: aşağı yönde uzun dönem %60,0 ve tek periyot %80 (E15), yukarı yönde uzun dönem %85,5 (E19; ilk turun varsayımlarıyla %84,27) ve bu değer E17'nin kuyruk kanıtındaki geliş hızlarıyla aynıdır (zorunlu sınıf 141,5 B/ms < ayrılmış 200 B/ms; kalan kapasite (iii)'e 300 − 15 − 141,5 ≈ 143,5 B/ms ≥ `R_iii` 100 B/ms bırakır). Kapasite (%100) bağlayıcı sınırla da aşılmaz; kaybedilebilir sınıf `R_iii` ile sınırlıdır ve önce `DET_RECORD`, sonra `LOG` atılır (A1-K90 sırası, A1-K110). Sol'un hesapladığı %56,751, ilk adayın çerçeve boylarıyla aynı varsayımın değeridir; bu turda `ACTUATOR` 4 B büyüdü, `FC_STATUS` 65 B küçüldü.
 
 ### 3.11 Sayaçlar
 
@@ -545,6 +565,10 @@ Sim'in sayaçları 64 bittir ve çalıştırma boyunca birikir; kartın sayaçla
 | `kritik_erteleme`, `kritik_erteleme_en_buyuk` | `B_krit` yüzünden kayan kritik üyeler ve en büyük kayma (parti) | A1-K113 |
 | `cagri_izi_eksik` | Gelmeyen `IDA_CALL_TRACE`'ler; ilgili periyot "zamanlaması doğrulanmamış" | A1-K95 |
 | `yapilandirma_ret` | A1-K104 ile reddedilen yapılandırma ve sağlanmayan eşitsizlik | A1-K104 |
+| `cagri_cakismasi` | `CALL_CONFLICT` bayraklı partiler | A1-K117 |
+| `sonuc_talebi_atildi` | Yer olmadığı için yanıtlanmayan saklı sonuç talepleri | A1-K111 |
+| `komut_kovasi_bekleme` | Kova yüzünden bekleyen komutlar | A1-K119 |
+| `emniyet_rev_doydu` | Sayaç doygunluğa ulaştı (bayrak) | A1-K106 |
 
 **Tablo 3.11b — Kart sayaçları (`IDA_LINK_STATS.cnt[]` sırası)**
 
@@ -632,7 +656,7 @@ Kartın durumları: `IDLE` (oturum yok), `HANDSHAKE` (bir `SIM_HELLO` yanıtland
 
 **Yeniden bağlanmada numaralar.** `event_id` açılış sayacından türediği için oturumlar arasında yinelenmez (A4-K61); yeni oturumun ilk TF'si her `batch_seq` ile kabul edilir (A4-K25) ve sim bir çalıştırma içinde `batch_seq`'i kesintisiz sürdürür; `cmd_id` A1-K66'ya göre sürer; MAVLink başlık `seq`'i oturumdan bağımsızdır (A1-K08).
 
-- **A1-K104.** Sim bir çalıştırmayı başlatmadan önce A5'ten gelen zamanlama ve emniyet parametrelerini (`T_bekle`, `valid_for_ns`, `T_bağ`, `apply_by_ns`, `hold_ns`) 3.9'daki izin verilen aralıklarla denetler; biri aralık dışındaysa çalıştırmayı başlatmaz, el sıkışmada `REJECT_CONFIG` gönderir ve A3'e aralık dışı parametreyi ve sağlanmayan eşitsizliğin numarasını (E1–E17) bildirir.
+- **A1-K104.** Sim bir çalıştırmayı başlatmadan önce A5'ten gelen zamanlama ve emniyet parametrelerini (`T_bekle`, `valid_for_ns`, `T_bağ`, `apply_by_ns`, `hold_ns`) 3.9'daki izin verilen aralıklarla denetler; biri aralık dışındaysa çalıştırmayı başlatmaz, el sıkışmada `REJECT_CONFIG` gönderir ve A3'e aralık dışı parametreyi ve sağlanmayan eşitsizliğin numarasını (E1–E19) bildirir.
 - **A1-K107.** Kart oturum sonunu saptadığında (A1-K22), sürmekte olan bir çekirdek çağrısı varsa onun dönüşünden hemen sonra, yoksa hemen, bekleyen parti olmasa da `tf.present = 0`, örneksiz ve komutsuz, `plat.link_event = SESSION_END` taşıyan tek bir `ida_core_tick` çağrısı yapar; bu çağrı dönene kadar yeni bir `IDA_SIM_HELLO`'yu yanıtlamaz ve yeni oturumun hiçbir girdisini (üye, TF, komut, olay sonucu) çekirdeğe vermez; `link_event` bir çağrıda en çok bir olay taşır ve `SESSION_START` en erken bu çağrıdan sonraki çağrıdadır (A1-K16); SIL'de bu çağrının `now_w`'si son kabul edilen zaman çerçevesinin sim zamanıdır.
 
 **Oturum sonundan yeni oturuma geçiş** (A1-K13, K16, K22, K107; zaman aşağı doğru akar):
@@ -670,7 +694,7 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K32.** Kart kapanan her partiyi A4-K16, A4-K19 ve A4-K102'ye göre çekirdeğe verir: partide IMU varsa `ida_core_step`, yoksa `ida_core_tick`; `tf.present = 1`, `tf.seq = batch_seq`, `tf.t = t_sim_ns`, `tf.t_rx` = TF'nin alım damgası.
 - **A1-K33.** Sim her üyeyi tam bir partiye atar; atama yalnız sim zamanına, üyelerin `t_hazır`'ına ve kodlanmış boylarına bağlıdır ve taşımanın duvar saati zamanlamasına bağlı değildir.
 - **A1-K34.** Sim bir partiye en çok şunları koyar: 1 `IDA_IMU`; IMU dışında 16 sensör örneği (A4-K31); 1 `IDA_SAFETY`; 1 `IDA_PING360_HEAD`; 1 kamera algılama partisi (1 `IDA_DET_BATCH` ve en çok 4 `IDA_DET_RECORD`; A8-K18, A8-K35); 4 `IDA_EVENT_RESULT` (A4-K31); her daraltıcı türden 1 komut (A1-K61); 4 daraltıcı olmayan komut; kritik üyelerin toplam kodlanmış boyunu `B_krit` ile (A1-K113), pencerenin TF dahil toplam boyunu `B_pencere` ile sınırlar; sonar ve toplu komut çerçevelerini A1-K112'nin kredileriyle gönderir.
-- **A1-K35.** Sim kritik üyeleri (`IDA_IMU`, diğer sensör mesajları, `IDA_SAFETY`, daraltıcı komutlar, `IDA_EVENT_RESULT`) `t_{n−1} < t_hazır ≤ t_n` olan partiye atar; yalnız A1-K113'ün `B_krit` sınırı aşıldığında bu kuralın öncelik sırasıyla bir sonraki partiye kaydırır; komutun `t_hazır`'ı bağlantı emülatörünün bırakma anı (laboratuvar komutunda veriliş anı), olay sonucunun `t_hazır`'ı sonucun karara bağlandığı fizik adımıdır.
+- **A1-K35.** Sim kritik üyeleri (`IDA_IMU`, diğer sensör mesajları, `IDA_SAFETY`, daraltıcı komutlar, `IDA_EVENT_RESULT`) `t_{n−1} < t_hazır ≤ t_n` olan partiye atar; yalnız A1-K113'ün `B_krit` sınırı aşıldığında bu kuralın öncelik sırasıyla bir sonraki partiye kaydırır, daraltıcı komutlar ayrıca A1-K61'in tür başına kovasını bekleyebilir (≤ 5 ms); komutun `t_hazır`'ı bağlantı emülatörünün bırakma anı (laboratuvar komutunda veriliş anı), olay sonucunun `t_hazır`'ı sonucun karara bağlandığı fizik adımıdır.
 - **A1-K36.** Sim toplu üyeleri (daraltıcı olmayan komutlar ve `IDA_PING360_*`) `t_hazır ≤ t_{n−1}` olan bir partiye atar ve pencere `n`'i şu sırayla doldurur: (1) kritik üyeler (A1-K113); (2) A1-K38'e göre `P_k = n` olan algılama partisi; (3) sonar kuyruğu boş değilse sonarın ayrılmış payı: kredisi yeterse sıradaki tam bir Ping360 çerçevesi (A1-K112); (4) daraltıcı olmayan komutlar varış sırasıyla, komut kredisi (`R_c`) ve A1-K34 sınırları içinde; (5) sonar kredisi ve `B_pencere` yettiği sürece sıradaki tam Ping360 çerçeveleri; çerçeveler bölünmez, sığmayan toplu üye sırasını koruyarak sonraki pencereye kalır.
 - **A1-K37.** Sim gönderimi başlamamış en çok bir Ping360 tarama satırını kuyrukta tutar; kuyruk doluyken yeni bir satır hazır olursa kuyruktaki gönderimi başlamamış eski satırı atar ve `ping360_seyreltildi`'yi artırır (bant payını aşan satır hızında seyreltilen yalnız Ping360 satırlarıdır).
 - **A1-K38.** Sim kamera karesi `k`'nın algılama partisini (başlık ve kayıtları) A8-K57'nin `P_k` partisine, başlık önce ve kayıtlar `batch_index` sırasıyla ardışık olarak koyar ve bir kamera partisini birden çok A1 partisine yaymaz; parti `n`'in oluşturulmaya başlandığı an `M_k` (A8) sim'in `TF(n−1)`'i taşımaya verdiği andır.
@@ -685,6 +709,8 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K113.** Sim bir partinin kritik üyelerinin toplam kodlanmış boyunu `B_krit` ile sınırlar; sınırı aşan üyeleri şu sıranın sonundan başlayarak bir sonraki partiye kaydırır (kayan üyeler sonraki partide yeni kritik üyelerden önce gelir ve kendi sıralarını korur): (1) `IDA_TIME_FRAME`; (2) `IDA_IMU`; (3) `IDA_SAFETY`; (4) daraltıcı komutlar; (5) `IDA_EVENT_RESULT` (A1-K111); (6) diğer sensör örnekleri, eski `t_hazır` önce, eşitlikte MAG, BARO, GNSS, DVL, PING1D, BATT, LEAK sırası, sonra `inst`; (1)–(5)'in toplamı en çok 348 B olduğundan (E13) bunlar hiçbir koşulda kaymaz; kayan her üye `kritik_erteleme`'ye sayılır ve en büyük erteleme (parti) kaydedilir.
 - **A1-K115.** HIL'de sim bir çerçeveyi işletim sisteminin seri sürücüsüne, sürücünün çıkış kuyruğunda önceki çerçeveden kalan bayt yokken verir (kuyruk ölçülebildiği ölçüde); böylece `W(t_n)`'de kritik kuyruğun önünde taşımada en çok bir tam çerçeve (≤ 258 B) bulunur.
 
+- **A1-K116.** Bant ölçütü (mimar kararı 2026-11-20; iskelet 0.9'a işlenecek): her yönde (a) olağan çalışma profilinde (3.10 "V" satırları, A5 değerleriyle ön denetimde yeniden hesaplanır) periyot başına ortalama yük ≤ 900 B (%60); (b) bu sözleşmenin bağlayıcı sınırlarının izin verdiği en kötü uzun dönem yükü ≤ 1 350 B (%90) ve tek periyotluk aşağı yön yükü ≤ `B_pencere`; (c) çakışmasız partilerde kritik çıktının uçtan uca gecikme bütçesi (E18) sağlanır. Sim ön denetimde (a)'yı sağlamayan yapılandırmayı reddeder; (b) ve (c) E15, E19 ve E18'le sağlanır.
+- **A1-K117.** Kart oturum `RUNNING`'de ve TF akarken ızgara tick'ini (A4-K18) yalnız beklenen bir sonraki TF gecikince başlatır: son TF alımından `E = son TF + P` hesaplanır; `[E − T_tick_yasak, E + T_tf_gec)` aralığında ızgara tick'i başlamaz; `E + T_tf_gec`'e kadar TF gelmezse o andan başlayarak ve TF gelene kadar 10 ms aralıkla ızgara tick'i yapılır; oturum yokken ya da TF akmıyorken A4-K18'in 10 ms ızgarası geçerlidir. Bir TF geldiğinde başka bir çekirdek çağrısı (tick ya da süren bir step) sürüyorsa kart o partinin `IDA_ACTUATOR`'ında `CALL_CONFLICT` bayrağını kurar ve `cagri_cakismasi`'nı artırır; sim böyle bir partiyi `cagri_cakismasi`'na sayar ve çalıştırmayı zamanlama bakımından geçersiz işaretler (A1-K79).
 ### 4.4 Sensör, sonar ve algılama üyeleri
 
 - **A1-K46.** Kart her sensör üyesini Tablo 3.4 ve 3.4b'ye göre A4 örneğine çevirir: `IDA_IMU`'yu `in.imu`'ya, diğer sensörleri partideki varış sırasıyla `in.samples[]`'e koyar, değerleri değiştirmez ve tazelik ya da aralık kararı vermez (A4-K36).
@@ -705,10 +731,10 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 
 - **A1-K59.** Panelden gelen komutlar sim'de bağlantı emülatöründen (A5 profili; sim zamanı) geçer ve emülatörün bırakma anına göre bir partiye atanır; sim laboratuvarının komutları (A1-K19) emülatörden geçmez.
 - **A1-K60.** Her komutun sınıfı (genişletir, daraltır, nötr) Tablo 3.6'dadır ve `protocol/ida.xml`'deki ilgili numaralandırma girdisinin açıklamasında `[sinif: genisletir|daraltir|notr|kosullu]` biçiminde de bulunur; "koşullu" girdinin sınıfı Tablo 3.6'daki koşuldan çıkar.
-- **A1-K61.** Sim aynı partiye aynı daraltıcı türden (DISARM, daraltıcı SET_MODE, FC_DISARM, FC_ABORT) en çok bir komut koyar; aynı pencerede birden çok gelirse en sonuncuyu gönderir, öncekilerin her birini kendisi `ACCEPTED` / `IDA_REASON_COALESCED` sonucuyla A3'e bildirir ve sayar.
+- **A1-K61.** Sim aynı partiye aynı daraltıcı türden (DISARM, daraltıcı SET_MODE, FC_DISARM, FC_ABORT) en çok bir komut koyar ve her tür için A1-K119'un kovasına uyar (duvar saatinde 5 ms'de en çok bir); arada aynı türden birden çok gelirse en sonuncusunu gönderir, öncekilerin her birini kendisi `ACCEPTED` / `IDA_REASON_COALESCED` sonucuyla A3'e bildirir ve sayar; bekleyen son daraltıcı kovanın izin verdiği ilk anda (en geç 5 ms içinde) gider.
 - **A1-K62.** Daraltıcı komutlar kritik, diğer komutlar toplu sınıftadır (A1-K35, A1-K36).
 - **A1-K63.** Kart `sess`'i geçerli bir daraltıcı komutu ayrıştırdığı anda A4-K46'ya göre mandala alır ve tampon doluluğundan bağımsız olarak hiçbir koşulda atmaz; daraltıcı olmayan komutu partisinin çağrısının `cmds[]`'ine varış sırasıyla koyar ve kapasite aşımında A4-K105'i uygular.
-- **A1-K64.** Kart Tablo 3.6'daki bir dönüşüm hatasında (aralık dışı tür ya da numaralandırma; `IDA_CMD_FC`'de `op` kapalı listede değil, `tube` > 1 ya da `arg0`/`arg1` ≠ 0) komutu çekirdeğe vermez ve `REJECTED` / `IDA_REASON_LINK_BAD_FIELD` sonucunu kendisi gönderir.
+- **A1-K64.** Kart Tablo 3.6'daki bir dönüşüm hatasında (aralık dışı tür ya da numaralandırma; `IDA_CMD_FC`'de `op` kapalı listede değil, `tube` > 1 ya da `arg0`/`arg1` ≠ 0; `IDA_CMD_MISSION_ITEM`'da A1-K122) komutu çekirdeğe vermez ve `REJECTED` / `IDA_REASON_LINK_BAD_FIELD` sonucunu kendisi gönderir.
 - **A1-K65.** Sim her yeni komuta, aynı sim çalıştırmasında ve kartın aynı açılışında başka hiçbir komutun taşımadığı bir `cmd_id` verir; aynı komutun emülatör ya da hata enjeksiyonu kaynaklı yinelemeleri aynı `cmd_id`'yi taşır.
 - **A1-K66.** Sim her oturumda ilk yeni komuta, kendi sıradaki `cmd_id`'si ile `BOARD_HELLO.last_cmd_id + 1`'in seri aritmetikle büyük olanını verir, sonraki her yeni komutta bir artırır ve 0'ı atlar; kart `last_cmd_id`'yi çekirdeğe verdiği son komutun (mandal dahil) `cmd_id`'si olarak tutar.
 - **A1-K67.** Kart `RUNNING`'de kabul ettiği her komut çerçevesi için en az bir `IDA_CMD_RESULT`'ı zorunlu-güvenilir sınıfta (A1-K110) gönderir: çekirdeğin sonucu (A4-K43; aynı çağrının çıktısından), mandalda üzerine yazılan önceki daraltıcı için platformun `ACCEPTED` / `IDA_REASON_COALESCED` sonucu (üzerine yazıldığı anda), A4-K105'te atılan komut için `REJECTED` / `IDA_REASON_LINK_DROPPED`, dönüşüm hatasında A1-K64; aynı `cmd_id`'li yinelemeye çekirdeğin `DUPLICATE` sonucu ayrıca gider; sim bir `cmd_id` için A1-K109'dan geçen ilk sonucu A3'e iletir, sonrakileri yalnız kaydeder; sonuç ancak oturum biterse (A1-K23) gelmeyebilir.
@@ -716,6 +742,8 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K69.** Sim bir görev yüklemesinin `MISSION_BEGIN`, `MISSION_ITEM` ve `MISSION_END` komutlarını bu sırayla toplu sınıfta gönderir; komutlar birden çok partiye yayılabilir ve atomikliği çekirdek sağlar (A4-K51).
 - **A1-K70.** Panel yer istasyonu canlılığını 1 Hz `IDA_CMD_SIMPLE(HEARTBEAT)` ile bildirir; bu komut emülatörden geçer ve kaybı çekirdeğin yer istasyonu kaybı kuralını işletir (A4-K52).
 
+- **A1-K119.** Sim komut gönderimini duvar saatinde, partilerden bağımsız kovalarla sınırlar: daraltıcı olmayan komut çerçeveleri için patlama 8, hız 5 ms'de 2; her daraltıcı tür için patlama 1, hız 5 ms'de 1 (A1-K61); emülatör ya da hata enjeksiyonu kaynaklı yinelemeler de çerçeve olarak sayılır; kova boşken daraltıcı olmayan komut bekler (A1-K36'nın komut kredisine ek olarak).
+- **A1-K122.** Kart `IDA_CMD_MISSION_ITEM`'ı Tablo 3.6a'ya göre denetler: `item_type` 1–7 değilse (A4'ün `TARGET_ALIGN` = 8'i dahil), `frame` türün izin verdiği değerlerden değilse, kullanılmayan konum alanları 0 değilse, `depth` ya da bir `p[i]` türün aralığı dışında ya da sonlu değilse, "0" yazan bir `p[i]` tam 0 değilse komutu A1-K64'e göre reddeder.
 ### 4.6 Sürekli komut yanıtı ve sim'in kabul kuralı
 
 - **A1-K71.** Kart `IDA_ACTUATOR`'ı Tablo 3.7'ye göre doldurur; `THR_VALID = 0` iken `pwm_us[]` ve `valid_for_ns` 0'dır.
@@ -726,7 +754,7 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K76.** SIL'de sim `a_n`'de yuvanın tamamlanmasını sim zamanını ilerletmeden süre sınırı olmaksızın bekler; yalnız `T_SIL` (duvar) boyunca yanıt gelmezse oturumu bitirir ve A3'e hata bildirir.
 - **A1-K77.** Yürürlükteki komutun kullanım süresi dolduğunda ve yeni bir komut uygulanmadıysa sim itici modelinin girdisini nötr duruma (sekiz itici için sıfır itki isteği) alır; nötr durum ESC modelinin "sinyal kaybı" davranışıyla (ör. son değeri tutma) temsil edilmez.
 - **A1-K78.** Sim sürekli çıktıları (olağan yanıtlar ve `ASYNC`) yalnız `out_seq` sırasıyla uygular (A1-K105): `out_seq`'i son uygulanan sürekli çıktınınkinden seri aritmetikle büyük olmayan çıktıyı uygulamaz (`yanit_ret_eski_uretim`); A1-K109'dan geçen eşzamansız güvenli çıktıyı (`ASYNC`, `THR_VALID = 1`, `IS_SAFE = 1`) alımından sonraki ilk fizik adımı sınırında uygular ve kullanım süresini o andan sayar; bir eşzamansız güvenli çıktı, `out_seq`'i kendisininkinden küçük olan, henüz uygulanmamış bütün sürekli çıktıları (yuvalardaki olağan yanıtlar dahil) iptal eder (`yanit_iptal_esz`); `out_seq`'i büyük olan olağan yanıt kendi yuvasında A1-K72–K75'e göre uygulanır; aynı fizik adımı sınırına birden çok sürekli çıktı düşerse hepsi `out_seq` sırasıyla uygulanır ve sonuncusu yürürlükte kalır.
-- **A1-K79.** Sim bir çalıştırmayı şunlardan biri olduğunda zamanlama bakımından geçersiz işaretler ve nedenleri A3'e bildirir, A6'ya yazar: kaçırılan parti (birleştirilen dahil); A1-K108'e göre kaçırılan son tarih (bariyerde kurtarılanlar dahil) ya da sim gecikmesi; sıfırdan büyük bariyer beklemesi; geç uygulanan olay (A1-K83); uygulanan eşzamansız güvenli çıktı; reddedilen geç yanıt; pencere planının aşılması (`pencere_tasma`); planlanmamış oturum bitişi ya da kart sıfırlanması; HIL'de duraklatma. Zamanlama kabulü yalnız bu sayaçların hepsi sıfır olan çalıştırmalarla yapılır (iskelet §4). Gönderilemeyen `IDA_CALL_TRACE`'in periyodu ayrıca "zamanlaması doğrulanmamış" sayılır (A1-K95).
+- **A1-K79.** Sim bir çalıştırmayı şunlardan biri olduğunda zamanlama bakımından geçersiz işaretler ve nedenleri A3'e bildirir, A6'ya yazar: kaçırılan parti (birleştirilen dahil); A1-K108'e göre kaçırılan son tarih (bariyerde kurtarılanlar dahil) ya da sim gecikmesi; çağrı çakışmalı parti (A1-K117); sıfırdan büyük bariyer beklemesi; geç uygulanan olay (A1-K83); uygulanan eşzamansız güvenli çıktı; reddedilen geç yanıt; pencere planının aşılması (`pencere_tasma`); planlanmamış oturum bitişi ya da kart sıfırlanması; HIL'de duraklatma. Zamanlama kabulü yalnız bu sayaçların hepsi sıfır olan çalıştırmalarla yapılır (iskelet §4). Gönderilemeyen `IDA_CALL_TRACE`'in periyodu ayrıca "zamanlaması doğrulanmamış" sayılır (A1-K95).
 - **A1-K105.** Kart, açılıştan (SIL'de init'ten) başlayan ve gönderdiği her `IDA_ACTUATOR`'da (olağan ya da `ASYNC`) bir artan `out_seq`'i tutar ve çerçeveye yazar; `out_seq` oturumlar arasında sıfırlanmaz ve akıştaki sıra üretim sırasıyla aynıdır; sim bir oturumda `out_seq`'i bir öncekinden seri aritmetikle büyük olmayan yanıtı A1-K109 (V5) ile reddeder.
 - **A1-K108.** HIL kiplerinde sim her yuva `n` için planlanan duvar son tarihini `D_n = W(a_n) − C_sim` olarak tutar ve yuva sonucundan ayrı olarak şunları sayar: yuvayı tamamlayan son çerçeve `D_n`'den sonra alındıysa (bariyerde bekleyip kurtarılan ve kaçırılan yuvalar dahil) `son_tarih_kacirildi`; sim `a_n`'de başlayan fizik adımını `W(a_n)`'den sonra hesaplamaya başladıysa `sim_gecikmesi`; ikisi de çalıştırmayı zamanlama bakımından geçersiz kılar (A1-K79). Bariyer beklemesinden sonra sim `W`'yi bekleme süresi kadar kaydırır ve kaydırmayı `gercek_zaman_kaymasi`'na yazar.
 - **A1-K109.** Sim CRC'si doğru her kart çerçevesini Tablo 4.6'daki denetimlerden sırayla geçirir; ilk tutmayan denetim mesajın tek ret nedenidir; reddedilen mesaj bütünüyle reddedilir ve hiçbir etkisi uygulanmaz (yuva doldurmaz, olay ya da sonuç kaydı açmaz, olay sonucu döndürmez, sayaç dışında durum değiştirmez); ret nedeni tablodaki sayaca sayılır ve ham çerçeve A6'ya yazılır; reddedilen `IDA_ACTUATOR` o parti için hiç gelmemiş sayılır (A1-K75), reddedilen `IDA_EVENT` hiç alınmamış sayılır.
@@ -738,15 +766,15 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 | V1 | `sess` güncel oturumunki | `sess` taşıyan bütün kart mesajları | `yanit_ret_oturum` |
 | V2 | Numaralandırma ve aralık (aşağıda) | Hepsi | `alan_ret_<mesaj>` |
 | V3 | Bağ: bu oturumda gönderilmiş parti ya da komut (aşağıda) | `ACTUATOR`, `EVENT`, `CMD_RESULT` | `bag_ret_<mesaj>` |
-| V4 | Alanlar arası tutarlılık (aşağıda) | `ACTUATOR`, `EVENT` | `alan_ret_<mesaj>` |
+| V4 | Alanlar arası tutarlılık (aşağıda; Tablo 4.6a, 4.6b) | `ACTUATOR`, `EVENT` | `alan_ret_<mesaj>` |
 | V5 | `out_seq` akışta kesin artan (A1-K105) | `ACTUATOR` | `yanit_ret_eski_uretim` |
 
 | Mesaj | V2 | V3 | V4 |
 |---|---|---|---|
-| `IDA_ACTUATOR` | `act_flags`'te 0x01FF dışı bit yok; `fs_level` ≤ 5; `core_rc` ∈ {0, 3, 4, 8}; `n_events` ≤ 4; `THR_VALID = 1` ise `valid_for_ns` A5'teki değere eşit ve her `pwm_us` A5'in ESC alt–üst aralığında; `THR_VALID = 0` ise `valid_for_ns` = 0 ve bütün `pwm_us` = 0 | `ASYNC` yoksa `batch_seq` bu oturumda gönderilmiş bir TF'nin; `ASYNC` varsa `batch_seq` gönderilen son TF'ninkinden büyük değil | `ASYNC` ⇒ `THR_VALID`, `IS_SAFE`, `SRC_TICK`; `THR_VALID ∧ IS_SAFE` ⇒ her `pwm_us` A5'in nötr değeri |
+| `IDA_ACTUATOR` | `act_flags`'te 0x03FF dışı bit yok; `fs_level` ≤ 5; `core_rc` ∈ {0, 3, 4, 8}; `n_events` ≤ 4; `THR_VALID = 1` ise `valid_for_ns` A5'teki değere eşit ve her `pwm_us` A5'in ESC alt–üst aralığında; `THR_VALID = 0` ise `valid_for_ns` = 0 ve bütün `pwm_us` = 0 | `ASYNC` yoksa `batch_seq` bu oturumda gönderilmiş bir TF'nin; `ASYNC` varsa `batch_seq` gönderilen son TF'ninkinden büyük değil | `ASYNC` ⇒ `THR_VALID`, `IS_SAFE`, `SRC_TICK`; `THR_VALID ∧ IS_SAFE` ⇒ her `pwm_us` A5'in nötr değeri |
 | `IDA_EVENT` | `kind` 1–3; `tube` 0–1, ya da `kind = SAFETY_CLOSE` iken 255; `apply_by_ns` 3.9 aralığında; `SAFETY_OPEN`'da `hold_ns` 3.9 aralığında, diğerlerinde 0; `call_kind` 1–3 | `batch_seq` bu oturumda gönderilmiş bir TF'nin ve `t_decide_ns` o TF'nin `t_sim_ns`'ine eşit | `kind` ∈ {SAFETY_OPEN, FIRE} ⇒ `safety_rev` ≠ 0 |
 | `IDA_CMD_RESULT` | `kind` 1–3; `ack` 1–5; `reason` `IDA_REASON` değerlerinden biri ya da ≥ 256; `kind = PARAM_VALUE` ise `param_type` 1–3 | `cmd_id` bu oturumda gönderilmiş bir komutun | — |
-| `IDA_STATUS` | `mode` ≤ 7; `fs_level` ≤ 5; `link_state` ≤ 2; `health`'te 0x3F dışı bit yok; `armed`, `param_ok`, `events_ok` ≤ 1 | — | — |
+| `IDA_STATUS` | `mode` ≤ 7; `fs_level` ≤ 5; `link_state` ≤ 2; `health`'te tanımsız bit yok (8 bitin hepsi tanımlı); `armed`, `param_ok`, `events_ok` ≤ 1 | — | — |
 | `IDA_FC_STATUS` | `last_event_result` 0 ya da `IDA_EVENT_RESULT_CODE` değeri | — | — |
 | `IDA_NAV` | `est_level` ≤ 4 | — | — |
 | `IDA_LOG` | `severity` ≤ 7 | — | — |
@@ -754,14 +782,28 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 | `IDA_KEEPALIVE`, `IDA_SESSION_CLOSE`, `IDA_BOARD_HELLO` | `state` ≤ 2; `reason` 1–6; `role` 1–2 ve `nonce` ≠ 0 (diğer alanlar A1-K14'te) | — | — |
 | Diğerleri (`IDA_CORE_COUNTERS`, `IDA_LINK_STATS`, `IDA_FAULT_RECORD`, `IDA_DET_RECORD`) | Aralık denetimi yok (sayaç ve tanı); `IDA_DET_RECORD` değerlendirmeye ayrıca A8-K28'in sim satırlarıyla girer | — | — |
 
+**Tablo 4.6a — V4: `IDA_ACTUATOR`'da dönüş kodu × çıktı bayrakları** (kaynak: A4 §4.14 düzeltme turu 2; `DUP_SEQ` ve `OLD_SEQ` A1-K31 gereği hiç gönderilmez):
+
+| `core_rc` | `SRC_TICK` | `THR_VALID` | `IS_SAFE` | `valid_for_ns`, `pwm_us` | `ASYNC` | `n_events` |
+|---|---|---|---|---|---|---|
+| `OK` (0), step | 0 | 1 | 0 ya da 1 (1 ise her `pwm_us` nötr) | A5 değeri; ESC aralığı | 0 | 0–4 |
+| `OK` (0), tick | 1 | 0 ya da 1; 1 ise `IS_SAFE = 1` | — | `THR_VALID = 1` ise A5 değeri ve nötr; değilse 0 | 0 ya da 1 (1 ise `THR_VALID = 1`) | 0–4, yalnız `SAFETY_CLOSE` |
+| `IMU_REJECTED` (8) | 0 | 0 ya da 1; 1 ise `IS_SAFE = 1` | — | `THR_VALID = 1` ise A5 değeri ve nötr; değilse 0 | 0 | 0–4, yalnız `SAFETY_CLOSE` |
+| `BAD_INPUT` (3) | 0 ya da 1 | 0 | bilgi | 0 | 0 | 0–4, yalnız `SAFETY_CLOSE` |
+| `NOT_INIT` (4) | 0 ya da 1 | 0 | 1 | 0 | 0 | 0 |
+| `DUP_SEQ` (1), `OLD_SEQ` (2), diğerleri | — | — | — | — | — | ret |
+
+**Tablo 4.6b — V4: `IDA_EVENT`'te olay türü × çağrı türü** (kaynak: A4-K64): `SAFETY_CLOSE` her `call_kind` ile (1–3) geçerlidir; `SAFETY_OPEN` ve `FIRE` yalnız `call_kind = STEP` ile geçerlidir; `TICK_TF` ya da `TICK_GRID` ile gelen `SAFETY_OPEN`/`FIRE` çelişkilidir ve reddedilir. Olayın aynı `batch_seq`'li yanıtla tutarlılığı (`core_rc = OK`, `FIRE` için `ARMED = 1`, `IS_SAFE = 0`) A1-K118'dedir; tutarsız yanıtın yaptırımı A1-K109'un tek ret ve etkisizlik yoludur. Ayrıca, aynı yanıtın `n_events`'inden önce gelen olaylardan herhangi biri bu tablolara aykırıysa yanıt ve o olaylar birlikte reddedilir.
+
 `event_id`'nin üst 32 bitinin oturumun `boot_count`'una eşit olmaması alan hatası değildir; A1-K82'ye göre `REJ_SESSION` sonucudur.
 
+- **A1-K118.** Sim izin açan bir olayı (`SAFETY_OPEN`, `FIRE`; `call_kind = STEP`) ancak aynı `batch_seq`'in `ASYNC` bayraksız `IDA_ACTUATOR`'ı A1-K109'dan (Tablo 4.6b dahil) geçmiş ve olayla tutarlıysa uygular: `core_rc = OK`, `SRC_TICK = 0`; `FIRE` için ayrıca `ARMED = 1` ve `IS_SAFE = 0` (A4-K64). Yanıt hiç gelmediyse, reddedildiyse ya da tutarsızsa olay kalıcı `REJ_SAFE` alır; tutarsızlık durumunda yanıt da reddedilir ve `alan_ret_ACTUATOR`'a sayılır.
 ### 4.7 Tek seferlik olaylar
 
-- **A1-K80.** Kart en çok `N_olay` = 8 olayı aynı anda açık tutar (A4-K67'nin olay tablosu; dolunca `DROPPED_NO_SLOT`); bir olayı ilk kabul kapısından geçirdiği çağrıda `IDA_EVENT` olarak (zorunlu-güvenilir sınıf; A1-K110), izin açan olayları (`SAFETY_OPEN`, `FIRE`) A1-K106'ya göre `safety_rev` ile damgalayarak gönderir ve sonucu gelene ya da olayı çıkaran çağrının `now_w`'sinden `apply_by_ns` geçene kadar aynı yükle `T_olay_yin` aralıkla yineler (A4-K106); `now_w + apply_by_ns + T_sonuç_pay` içinde sonuç gelmezse çekirdeğe `EXPIRED_NO_ACK` verir.
-- **A1-K81.** Sim bir çalıştırma boyunca karara bağladığı her `event_id`'nin son sonucunu ve `t_apply`'ını saklar; aynı `event_id` yeniden gelirse olayı yeniden işlemez ve saklı sonucu yeniden gönderir (`APPLIED` saklıysa `DUPLICATE` ve özgün `t_apply`, ret saklıysa aynı ret kodu); karara bağlanmamış (beklemede) bir olayın yinelemesini yok sayar.
+- **A1-K80.** Kart en çok `N_olay` = 8 olayı aynı anda açık tutar ve A1-K120'nin kovasına uyar (A4-K67'nin olay tablosu; yer ya da kova yoksa `DROPPED_NO_SLOT`); bir olayı ilk kabul kapısından geçirdiği çağrıda `IDA_EVENT` olarak (zorunlu-güvenilir sınıf; A1-K110), izin açan olayları (`SAFETY_OPEN`, `FIRE`) A1-K106'ya göre `safety_rev` ile damgalayarak gönderir ve sonucu gelene ya da olayı çıkaran çağrının `now_w`'sinden `apply_by_ns` geçene kadar aynı yükle `T_olay_yin` aralıkla yineler (A4-K106); `now_w + apply_by_ns + T_sonuç_pay` içinde sonuç gelmezse çekirdeğe `EXPIRED_NO_ACK` verir.
+- **A1-K81.** Sim bir çalıştırma boyunca karara bağladığı her `event_id`'nin son sonucunu ve `t_apply`'ını saklı sonuç tablosunda tutar; aynı `event_id` yeniden gelirse olayı yeniden işlemez: karar henüz verilmediyse yinelemeyi yok sayar; karar verildiyse bu bir **saklı sonuç talebidir** ve A1-K111'in (b) yoluyla yanıtlanır (`APPLIED` saklıysa `DUPLICATE` ve özgün `t_apply`, ret saklıysa aynı ret kodu).
 - **A1-K82.** Sim üst 32 biti oturumun `BOARD_HELLO.boot_count`'una eşit olmayan `event_id`'yi `REJ_SESSION` ile reddeder.
-- **A1-K83.** Sim A1-K109'dan geçmiş, `batch_seq = n` taşıyan ve `a_n`'deki fizik adımı hesaplanmadan alınan bir olayı `a_n`'de, yuvanın sürekli komutuyla aynı adımda uygulamaya çalışır; daha sonra alınan olayı ve `call_kind = TICK_GRID` taşıyan her olayı alımından sonraki ilk fizik adımı sınırında uygulamaya çalışır ve `olay_gec`'i artırır. Uygulama anı yalnız A1-K109'dan geçmiş olaylar için tanımlıdır.
+- **A1-K83.** Sim A1-K109'dan geçmiş, `batch_seq = n` taşıyan ve `a_n`'deki fizik adımı hesaplanmadan alınan bir olayı `a_n`'de, yuvanın sürekli komutuyla aynı adımda uygulamaya çalışır; daha sonra alınan olayı ve `call_kind = TICK_GRID` taşıyan her olayı (Tablo 4.6b'ye göre yalnız `SAFETY_CLOSE` olabilir) alımından sonraki ilk fizik adımı sınırında uygulamaya çalışır ve `olay_gec`'i artırır; izin açan olaylar ayrıca A1-K118'e tabidir. Uygulama anı yalnız A1-K109'dan geçmiş olaylar için tanımlıdır.
 - **A1-K84.** Sim A1-K109'dan geçmiş bir olayı uygulama anı `t_apply > t_decide + apply_by_ns` (sim zamanı) ise ya da `TF(batch_seq)`'in yazım başlangıcından bu yana kendi duvar saatinde `apply_by_ns + T_bekle`'den fazla geçmişse uygulamaz ve `REJ_EXPIRED` ile yanıtlar; `TF(batch_seq)` A1-K109 gereği bu oturumda gönderilmiş bir TF'dir.
 - **A1-K85.** Sim her fizik adımı sınırında şu sırayı uygular: (1) o adıma düşen sanal emniyet girdisi değişiklikleri (A3, A5 zaman çizelgesi); (2) süresi dolan izinlerin kapanması (A1-K86); (3) `SAFETY_CLOSE` olayları; (4) sürekli çıktılar, A1-K78'e göre `out_seq` sırasıyla; (5) `SAFETY_OPEN` olayları; (6) `FIRE` olayları; aynı türdeki olaylar `event_id` sırasıyla; (1)–(3)'ün artırdığı `safety_rev` (A1-K106) aynı adımın (5) ve (6)'sında geçerlidir.
 - **A1-K86.** Sim bir `SAFETY_OPEN`'ı ancak o adımda `estop = 0`, ilgili tüpte `PLUG_IN` ve `PIN_OUT` kurulu ve olayın `safety_rev`'i sim'in güncel `safety_rev`'ine eşitse uygular (`APPLIED`; tüpün izni `t_apply + hold_ns`'e kadar açık; daha yeni bir `SAFETY_OPEN` bu süreyi kendi `t_apply + hold_ns`'ine taşır; süre dolduğunda izin kapanır ve `safety_rev` artar); aksi halde kalıcı `REJ_SAFE` döner (A1-K81'e göre saklanır, aynı kimlik sonradan uygulanmaz).
@@ -769,9 +811,10 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K88.** Sim bir `FIRE`'ı şu denetimlerin ilk tutmayanının koduyla reddeder, hepsi tutarsa uygular: `REJ_SESSION` (A1-K82); `REJ_EXPIRED` (A1-K84); `REJ_SAFE` (olayın `safety_rev`'i güncel `safety_rev`'e eşit değil, ya da o adımda `estop = 1`, ya da tüpte `PLUG_IN` veya `PIN_OUT` kurulu değil, ya da tüpün izni kapalı); `REJ_TUBE_EMPTY` (tüpte `LOADED` kurulu değil); ret kalıcıdır (A1-K81); uygulanan `FIRE` o adımda 04'ün fırlatma modelini tetikler ve tüpün `LOADED` bitini siler.
 - **A1-K89.** Sim bir tüpün iznini, A1-K86–K88'e ek olarak, o tüpü etkileyen bir emniyet girdisi kapandığında (`estop` 1 oldu, `PLUG_IN` ya da `PIN_OUT` 0 oldu) ve oturum bittiğinde aynı adımda kapatır ve her durumda `safety_rev`'i artırır; izin durumu ya da `safety_rev` her değiştiğinde A1-K56'ya göre `IDA_SAFETY` gönderir. Bir girdi yeniden açıldığında eski yetki geri gelmez: o ana kadar damgalanmış her `SAFETY_OPEN` ve `FIRE` eski revizyonu taşır ve reddedilir; yeni bir olay gerekir.
 - **A1-K103.** Sim karara bağladığı her olayın sonucunu `IDA_EVENT_RESULT` ile, `t_hazır`'ı karar adımı olan kritik üye olarak A1-K111'in sıra kuralıyla gönderir; sonuç hiçbir zaman düşmez ve birleştirilmez.
-- **A1-K106.** Sim çalıştırma boyunca tekdüze artan bir emniyet revizyonu `safety_rev` tutar (çalıştırma başında 1; A3 ile ortak kavram) ve her daraltıcı emniyet değişiminde bir artırır: bir sanal emniyet girdisinin kapanması (A1-K89), uygulanan `SAFETY_CLOSE` (A1-K87), oturum sonu (A1-K23) ve bir iznin süresinin dolması (A1-K86); değeri her `IDA_SAFETY`'de taşır. Kartın platformu izin açan her olayı (`SAFETY_OPEN`, `FIRE`) olayı üreten çekirdek çağrısına (o çağrı dahil) verilmiş en son `IDA_SAFETY` örneğinin `safety_rev`'iyle, bu oturumda hiç verilmediyse 0 ile damgalar (A4 arayüzü değişmez; değer platformda tutulur). Sim izin açan bir olayı yalnız damgası uygulama adımındaki güncel `safety_rev`'e (A1-K85 sırasından sonra) eşitse uygular; değilse kalıcı `REJ_SAFE` döner ve sonucu A1-K81'e göre saklar.
-- **A1-K111.** Sim olay sonuçlarını iki öncelikli, `Q_sonuç` = 8 girişlik bir FIFO'da tutar: yeni sonuçlar, saklı sonuçların yinelemelerinden (A1-K81) önce gider; bir partiye en çok 4 sonuç koyar, kalanlar sırasını koruyarak sonraki partilere kalır; kuyrukta bulunan bir `event_id` için gelen yineleme isteği yeni giriş açmaz; hiçbir sonuç atılmaz ya da başka bir sonuçla birleştirilmez; kuyruk yine de taşarsa (E16'nın varsayımı bozulmuştur) sim oturumu protokol hatasıyla bitirir (A1-K23).
+- **A1-K106.** Dünyanın tek bir emniyet revizyonu vardır: sahibi sim'dir, `uint32_t`'dir, sim süreci başlarken 1'dir (0 "platform bu oturumda henüz emniyet örneği görmedi" anlamına ayrılmıştır), süreç ömrü boyunca tekdüze artar ve yeni çalıştırmada ya da oturumda sıfırlanmaz; A3'ün emniyet revizyonuyla aynı sayaçtır. Bir artıran olaylar: A3'ten (ya da A5 zaman çizelgesinden) kabul edilen her kısıtlayan emniyet komutu, durumu değiştirmese de (acil durdurmanın etkinleşmesi, fişin çıkması, pimin takılması); A3'ten gelen her fiilî gevşetme (durumu gerçekten açan komut); süresi dolan her izin (A1-K86); uygulanan her `SAFETY_CLOSE` (A1-K87); oturum sonu ya da kopması (A1-K23); kartın sıfırlanması; yeni çalıştırmanın başlaması; A3'ün `sifirla` işlemi. Kartın izin açması ya da yenilemesi (uygulanan `SAFETY_OPEN`) artırmaz. Değer her `IDA_SAFETY`'de taşınır. Kartın platformu izin açan her olayı (`SAFETY_OPEN`, `FIRE`) olayı üreten çekirdek çağrısına bu oturumda verilmiş en son `IDA_SAFETY` örneğinin revizyonuyla damgalar; oturum her kurulduğunda (`SESSION_START`) bu değeri 0'a çeker (A4 arayüzü değişmez; değer platformda tutulur). Sim izin açan bir olayı yalnız damgası sıfırdan farklı ve uygulama adımındaki (A1-K85 sırasından sonraki) güncel revizyona eşitse uygular; değilse kalıcı `REJ_SAFE` döner ve sonucu A1-K81'e göre saklar. Sayaç `0xFFFFFFFF`'e ulaşırsa doyar: o andan sim süreci yeniden başlatılana kadar her gevşetme komutu reddedilir (A3'e bildirilir) ve izin açan her olay kalıcı `REJ_SAFE` alır.
+- **A1-K111.** Sim olay sonuçlarını iki ayrı yoldan gönderir. (a) **Yeni sonuçlar** (bir `event_id`'nin ilk kararı) `Q_sonuç` = 8 girişlik FIFO'ya girer ve hiçbir zaman atılmaz ya da birleştirilmez; sim bir partiye en çok 4 sonuç koyar, ilk dördü karar anında içinde bulunulan pencereye hemen yazar, kalanlar sırasıyla sonraki pencerelere kalır; kuyruk oturum sonunda silinir. (b) **Saklı sonuç talepleri** (A1-K81) kuyruğa girmez: sim bunları saklı sonuç tablosundan, bir partiye en çok 1 tane ve yalnız (a) yolundan sonra partide yer kaldıysa yanıtlar; sığmayan talebi atar ve `sonuc_talebi_atildi`'yi artırır (kart `T_olay_yin` sonra yeniden sorar; bu yol bilerek kayıplıdır). (a) kuyruğu E16'ya göre taşamaz; yine de taşarsa sim oturumu protokol hatasıyla bitirir (A1-K23).
 
+- **A1-K120.** Kartın platformu yeni olayların ilk gönderimini kendi duvar saatinde iki kovayla sınırlar: izin açan olaylar (`SAFETY_OPEN`, `FIRE`) için patlama 4, hız 5 ms'de 4; kova boşken gelen izin açan olay ilk kabul kapısında `DROPPED_NO_SLOT` alır (A4-K67); `SAFETY_CLOSE` için patlama 3, hız 5 ms'de 3; kova boşken `SAFETY_CLOSE` atılmaz, olay tablosunda bekler ve kova izin verince gönderilir (bu durumda o çağrının `n_events`'ine sayılmaz ve sim onu A1-K83'e göre geç olay olarak uygular).
 ### 4.8 Telemetri, sonuçlar ve izler (kart → sim)
 
 - **A1-K90.** Kart bir çağrının çıktısını şu sırayla gönderir: yeni `IDA_EVENT`'ler, `IDA_ACTUATOR`; ardından zorunlu-güvenilir sınıfın kalanı (`IDA_CMD_RESULT`, olay yinelemeleri, oturum çerçeveleri) ve kaybedilebilir sınıf bu öncelikle: `IDA_STATUS`, `IDA_FC_STATUS`, `IDA_CALL_TRACE`, `IDA_NAV`, `IDA_LOG`, `IDA_CORE_COUNTERS`, `IDA_LINK_STATS`, `IDA_FAULT_RECORD`, `IDA_DET_RECORD`; sınıfların kuyruk kuralları A1-K110'dadır.
@@ -781,7 +824,7 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K94.** Kart her çağrının `out.det_tx[]` öğelerinin her biri için bir `IDA_DET_RECORD` gönderir (kart içi sonar algılamasının değerlendirme kaydı; parti başlığı gönderilmez).
 - **A1-K95.** Kart her çekirdek çağrısı (step, zaman çerçeveli tick, ızgara tick'i, oturum sonu tick'i) için tam bir `IDA_CALL_TRACE`'i kaybedilebilir sınıfta gönderir; sim bunu A6'ya yazar; gönderilemeyen iz (kartta `tx_dropped`, sim'de `CALL_TRACE`'in `batch_seq` ya da çağrı boşluğu) işlevsel hata değildir, ilgili periyot "zamanlaması doğrulanmamış" sayılır ve o çalıştırmanın girdi tekrarı "tam değil" diye işaretlenir.
 - **A1-K96.** Kart oturum kurulduğunda önceki açılıştan bir hata kaydı varsa tam bir `IDA_FAULT_RECORD` gönderir.
-- **A1-K110.** Kart gönderim kuyruğunu üç sınıfla yönetir: (i) kritik sürekli çıktı (`IDA_ACTUATOR`); çağrının yeni olayları o çağrının `IDA_ACTUATOR`'ıyla birlikte bu öncelikte ve ondan önce gider (A1-K73); (ii) zorunlu-güvenilir (`IDA_EVENT`'in ilk gönderimi ve yinelemeleri, `IDA_CMD_RESULT`, `IDA_KEEPALIVE`, `IDA_SESSION_CLOSE`, `IDA_BOARD_HELLO`): `Q_ii` = 48 çerçevelik ayrılmış yeri vardır ve bu sınıftan hiçbir çerçeve atılmaz; yine de taşarsa kart bunu bağlantı hatası sayar, `IDA_SESSION_CLOSE(TX_OVERFLOW)` göndermeyi dener ve oturumu bitirir (A1-K22; daraltma); (iii) kaybedilebilir (diğer bütün çerçeveler): periyot başına en çok `R_iii` bayt gönderilir, kuyruğu dolunca en eskisi atılır ve `tx_dropped` sayılır. Kart taşıma sürücüsüne aynı anda en çok bir çerçeve verir (önceki çerçevenin son baytı sürücüden çıkmadan yenisini vermez) ve her çerçeve sınırında (i) > (ii) > (iii) önceliğiyle seçer; böylece kritik çıktının önünde en çok bir kritik olmayan çerçeve (≤ 156 B) bulunur.
+- **A1-K110.** Kart gönderim kuyruğunu üç sınıfla yönetir: (i) kritik sürekli çıktı (`IDA_ACTUATOR`); çağrının yeni olayları o çağrının `IDA_ACTUATOR`'ıyla birlikte bu öncelikte ve ondan önce gider (A1-K73); (ii) zorunlu-güvenilir (`IDA_EVENT`'in ilk gönderimi ve yinelemeleri, `IDA_CMD_RESULT`, `IDA_KEEPALIVE`, `IDA_SESSION_CLOSE`, `IDA_BOARD_HELLO`): bu sınıfa her periyotta en az `S_ii` = 1 000 B hizmet ayrılmıştır ((iii) bu payı kullanamaz), `Q_ii` = 64 çerçevelik yeri vardır ve bu sınıftan hiçbir çerçeve atılmaz; yine de taşarsa (E17'nin geliş varsayımı bozulmuştur) kart bunu bağlantı hatası sayar, `IDA_SESSION_CLOSE(TX_OVERFLOW)` göndermeyi dener ve oturumu bitirir (A1-K22; daraltma); (iii) kaybedilebilir (diğer bütün çerçeveler): periyot başına en çok `R_iii` bayt gönderilir, kuyruğu dolunca en eskisi atılır ve `tx_dropped` sayılır. Kart taşıma sürücüsüne aynı anda en çok bir çerçeve verir (önceki çerçevenin son baytı sürücüden çıkmadan yenisini vermez) ve her çerçeve sınırında (i) > (ii) > (iii) önceliğiyle seçer; böylece kritik çıktının önünde en çok bir kritik olmayan çerçeve (≤ 156 B) bulunur.
 
 ### 4.9 SIL taşıması
 
@@ -790,9 +833,11 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 - **A1-K99.** SIL'de her yeni TCP bağlantısı yeni bir akıştır (tampon boşaltma gerekmez) ve bağlantının kapanması iki tarafta oturumun bitişidir.
 - **A1-K100.** SIL'de kartın duvar saati zaman çerçevesinden türetilir (A4-K11), ızgara tick'i yoktur (dolayısıyla `ASYNC` çıktı da yoktur), A1-K22'nin `T_bağ` koşulu uygulanmaz ve bariyer süre sınırı yerine A1-K76 geçerlidir.
 - **A1-K101.** `protocol/ida_link` MAVLink ayrıştırma ve kodlama durumunu örneğin kendi yapısında tutar ve yalnız çağıranın durumuyla çalışan işlevleri (`mavlink_frame_char_buffer`, `mavlink_finalize_message_buffer`) kullanır; kitaplığın kanal dizilerini kullanan işlevleri kullanmaz; böylece bir süreçte birden çok SIL örneği koşabilir.
-- **A1-K102.** Aynı senaryo, aynı çalıştırma tohumu, aynı kalıcı başlangıç durumu (A1-K114) ve aynı ikililerle iki SIL koşusu, sim'in duvar saatiyle zamanlanan `IDA_KEEPALIVE` ve `IDA_SIM_HELLO` yinelemeleri ve onların kaydırdığı MAVLink başlık `seq` değerleri dışında, her iki yönde bayt bayt aynı çerçeve dizisini üretir (SIL'de kartın duvar saati sim zamanından türediği için kart tarafındaki zamana bağlı alanlar da belirlenimcidir); HIL'de nonce'lar gerçek rastgelelikten gelir ve bayt eşitliği iddia edilmez.
+- **A1-K102.** A1-K121'in kilitli adım koşulları altında, aynı senaryo, aynı çalıştırma tohumu, aynı kalıcı başlangıç durumu (A1-K114), aynı `N_bg` ve aynı ikililerle iki SIL koşusu, TCP bağlantısının açılışından kapanışına kadar **her iki yöndeki bütün çerçeve dizisini** (başlık `seq` ve sağlamalar dahil) bayt bayt aynı üretir; tek istisna sim'in duvar saati gözetimiyle (`T_SIL`) biten koşudur, o koşu karşılaştırmaya girmez. Bu, A6'nın "tekrar güvencesi yalnız SIL'de, A4 port sınırında" sınırıyla aynıdır: A1 baytlarının eşitliği, A4 port girdilerinin eşitliğini de gerektirir. HIL'de bayt eşitliği iddia edilmez (nonce'lar gerçek rastgelelikten gelir; çağrı takvimi duvar saatine bağlıdır).
 - **A1-K114.** SIL'de sim, `IDA_SIM_HELLO.nonce`'u ve `sess`'i çalıştırma tohumundan, SIL koşucusu `IDA_BOARD_HELLO.nonce`'u sim'in `--a1-seed <16 onaltılık hane>` argümanıyla verdiği tohumdan, A5'in anahtar türetme işleviyle ve A1'e özgü etiketlerle (`ida/a1/nonce_sim/<deneme>`, `ida/a1/nonce_board/<boot_count>/<deneme>`, `ida/a1/sess/<oturum_sırası>`) belirlenimci olarak türetir; SIL koşucusunun kalıcı başlangıç durumu (önceki `boot_count`, `prev_sess`, `sessions_since_boot`, `last_cmd_id`, parametre bloğu) sınama girdisinin parçasıdır ve verilmezse sıfırdır (önceki `boot_count` = 0, blok yok); HIL'de nonce'lar ve `sess` gerçek rastgelelikten gelir.
 
+
+- **A1-K121.** SIL kilitli adımla çalışır: (i) A1'in bütün zamanlayıcıları (`T_hello`, `T_canlı`, `T_hazır`, `T_reboot`, `T_bağ`, `T_olay_yin`, `T_sonuç_pay`) iki tarafta da sim zamanıyla sayılır (koşucunun duvar saati zaten zaman çerçevesinden türer, A4-K11); yalnız `T_SIL` gerçek duvar saatiyle asılmayı gözler; (ii) sıra kesindir: sim parti `n`'i (TF dahil) gönderir, koşucu o partinin çekirdek çağrısını tamamlar ve bütün çıktısını gönderir, sim `IDA_ACTUATOR(n)`'i ve o çağrının çıktılarını aldıktan sonra fiziği ilerletir ve parti `n + 1`'i gönderir; böylece SIL'de parti birleştirme ve çağrı çakışması oluşmaz; (iii) koşucu her step ya da tick çağrısından önce tam `N_bg` arka plan çağrısı yapar (`N_bg` çalıştırma parametresidir ve A6'ya yazılır; `bg_slices = N_bg`; A4-K95'in "IDLE dönene kadar" kuralının yerine SIL'de bu geçer); (iv) kanal kayıpsız olduğundan el sıkışma tek `IDA_SIM_HELLO` ile tamamlanır (sim zamanı el sıkışmada ilerlemediği için `T_hello` yinelemesi doğmaz; koşucu tek `IDA_BOARD_HELLO` gönderir).
 
 ---
 
@@ -845,6 +890,10 @@ Hızlı yeniden bağlantı (yeni `SIM_HELLO` oturum sonu tick'inden önce gelir)
 | H44 | Yapılandırma izin verilen aralıklar dışında | 3.9 | `REJECT_CONFIG`; çalıştırma başlamaz; A3'e eşitsizlik numarası (A1-K104) | `IDLE` |
 | H45 | Bir partinin kritik baytı `B_krit`'i aştı | A1-K113 | Sensörleri öncelik sırasıyla kaydırır, sayar | — |
 | H46 | Planlanan son tarih kaçırıldı ya da sim gecikti | A1-K108 | `son_tarih_kacirildi` / `sim_gecikmesi`; çalıştırma geçersiz | — |
+| H47 | TF geldiğinde başka bir çekirdek çağrısı sürüyor | Kart (A1-K117) | `cagri_cakismasi`; çalıştırma geçersiz | `CALL_CONFLICT` bayrağı |
+| H48 | Görev öğesi kapalı listenin dışında ya da parametresi geçersiz | Kart (A1-K122) | Sonucu A3'e iletir | `LINK_BAD_FIELD` |
+| H49 | Emniyet revizyonu doydu | Sim (A1-K106) | Her gevşetme ve izin açan olay reddedilir; A3'e bildirilir; sim yeniden başlatılmalı | — |
+| H50 | İzin açan olayın yanıtı gelmedi, reddedildi ya da tutarsız | Sim (A1-K118) | Olay kalıcı `REJ_SAFE` | — |
 | H38 | Sim gerçek zamanın gerisinde | TF yazım gecikmesi | `tf_gec_yazim_ns`; geride kalınca A1-K39 ile yetişir; yanıt kaçırılırsa geçersiz | Sıkışık varışı birleştirir (A1-K40) |
 
 ### 5.1 Hata enjeksiyonu (sim)
@@ -859,7 +908,7 @@ Sim'in hata enjektörü A1 çerçeveleri üzerinde, her yönde ayrı ve mesaj ad
 - Sonar kademesi Ping360 satırının içeriğini ve `n_samples`'ı değiştirebilir; iki kademede de üst sınır 1 200 örnektir ve bant bütçesi bu sınırla hesaplanmıştır (3.10). Kademe karta bildirilmez.
 - Kamera kapalı kademede algılama partisi gelmez; sim A8-K64'ün `NO_FRAME` başlığını 1 Hz'te gönderir (A1-K58).
 - Kayıt kademesi "yalnız olaylar" iken A1 trafiği tam kaydedilmez ve girdi tekrarı güvencesi yoktur (iskelet A6).
-- Emniyet zinciriyle ilgili bütün kurallar (A1-K22, K23, K56, K61, K63, K77, K78, K80–K89, K103, K105–K107, K109–K111) her kademede aynıdır ve aynı sınamalardan geçer.
+- Emniyet zinciriyle ilgili bütün kurallar (A1-K22, K23, K56, K61, K63, K77, K78, K80–K89, K103, K105–K107, K109–K111, K118, K120) her kademede aynıdır ve aynı sınamalardan geçer.
 
 ---
 
@@ -902,7 +951,13 @@ Test kodu bu işte yazılmaz. Tür kısaltmaları: **D** derleme, şema ya da st
 | K80–K89, K103, K106, K111 | B (sim), S, SIL | Olay kaybı, sonuç kaybı, yineleme, süre aşımı, eski açılış; her `REJ_*` kodunun tek başına üretilmesi; aynı adımda `SAFETY_CLOSE`, emniyet girdisi değişimi ve `FIRE` sırası; `DUPLICATE`'te özgün `t_apply`; `safety_rev`: girdi kapanıp yeniden açıldıktan sonra eski damgalı `SAFETY_OPEN`/`FIRE`'ın kalıcı reddi ve aynı kimliğin sonra da uygulanmaması; yeni olayın kabulü; partide 5. ve sonraki sonuçların sonraki partiye kalması, hiçbir sonucun düşmemesi, yeni sonucun yinelemeden önce gitmesi, kuyruktaki kimliğe yinelemenin yeni giriş açmaması |
 | K90–K96 | S, K | Yukarı yön önceliği: kritik çerçevenin önünde yazımı süren en çok bir kritik olmayan çerçeve; hızların ölçümü; her çağrı için tam bir `IDA_CALL_TRACE` |
 | K97–K102 | SIL | Aynı senaryonun iki SIL koşusunda iki yönün bayt dizilerinin (A1-K102'nin istisnaları dışında) eşitliği; aynı süreçte iki SIL örneği |
-| 3.9 (E1–E18), K104 | D, S | Yapılandırma doğrulayıcısı: aralığın her köşesinde eşitsizliklerin sağlanması; aralık dışı her parametrede `REJECT_CONFIG` ve doğru eşitsizlik numarası |
+| K116 | B (sim), K | Ön denetimin olağan profili ve bağlayıcı üst sınırı ayrı hesaplaması; kartlı 600 s koşuda iki yönün ölçülen ortalaması ve en kötü periyodu |
+| K117 | B (kart), K | TF akarken ızgara tick'lerinin yalnız beklenen TF `E + 1 ms` geçince başlaması; `[E − 1 ms, E + 1 ms)` içinde hiç tick başlamaması; yapay olarak geciktirilen TF'de `CALL_CONFLICT` ve sim'de `cagri_cakismasi` |
+| K118 | B (sim), S | `SAFETY_OPEN`/`FIRE` ile yanıtın her tutarsız birleşimi (yanıt yok, `core_rc` ≠ `OK`, `SRC_TICK = 1`, `FIRE`'da `ARMED = 0` ya da `IS_SAFE = 1`): kalıcı `REJ_SAFE` |
+| K119, K120 | B, S | Sim'in komut kovası ve platformun olay kovaları: patlama ve hız sınırlarının hiçbir aralıkta aşılmaması; kova boşken izin açan olayın `DROPPED_NO_SLOT`, `SAFETY_CLOSE`'un bekletilmesi |
+| K121 | SIL | Kilitli adımda iki koşunun bütün çerçeve dizilerinin eşitliği (K102); el sıkışmada tek `SIM_HELLO` ve tek `BOARD_HELLO`; `bg_slices = N_bg` |
+| K122 | B (kart), S | Tablo 3.6a'nın her türü ve her koşulu için sınır değerleri: `TARGET_ALIGN`, sıfır olmayan tanımsız `p[i]`, yanlış `frame`, aralık dışı `depth`; hepsinde `LINK_BAD_FIELD` |
+| 3.9 (E1–E19), K104 | D, S | Yapılandırma doğrulayıcısı: aralığın her köşesinde eşitsizliklerin sağlanması; aralık dışı her parametrede `REJECT_CONFIG` ve doğru eşitsizlik numarası |
 | K108 | SIL (yapay gecikme), K | Gecikme enjeksiyonuyla bariyerde kurtarılan bir yuvanın `son_tarih_kacirildi`'ye sayılması; sim'in fizik adımını yapay olarak geciktirince `sim_gecikmesi`; ikisinde de geçersizlik bayrağı |
 | K109 | B (sim), S | Tablo 4.6'nın her satırı için tek alanı bozulmuş ama CRC'si doğru çerçeve: ret sayacı, hiçbir etki (yuva boş kalır, olay sonucu dönmez); gönderilmemiş partiye bağlı olay ve `t_decide` uyuşmazlığı |
 | K110 | B (kart), K | Yapay olarak durdurulmuş alıcıda (ii) sınıfının hiç atılmaması ve taşmada `SESSION_CLOSE(TX_OVERFLOW)`; (iii)'te en eskiden atma; sürücüde aynı anda bir çerçeve; kritik çıktının önündeki en uzun engellemenin ölçümü (≤ 156 B) |
@@ -921,7 +976,7 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 - **`common.xml` denemesi:** dialect `common.xml`'i içerdiğinde üretilen `common/common.h` aynı bayraklarla dört hata verdi (ISO C, `int` aralığını aşan numaralandırıcıları kısıtlar: `MAV_SYS_STATUS_EXTENSION_USED`, `MAV_SYS_STATUS_SENSOR_ENUM_END`, `HIL_SENSOR_UPDATED_RESET`, `HIL_SENSOR_UPDATED_FLAGS_ENUM_END`); bu yüzden dialect standart dosyaları içermez (3.2).
 - **Altın diziler (Ek B):** 37 mesajın her biri için ve ayrıca 1 baytlık tel yükü taşıyan sıfır Ping360 parçası (A1-K51) için, toplam 38 çerçeve, üç bağımsız yolla: (1) bu işte yazılan, yalnız MAVLink serileştirme belgesindeki kurallara (alan sırası, `CRC_EXTRA`, CRC-16/MCRF4XX, kırpma) dayanan standart kitaplık kodlayıcısı; (2) pymavlink'in ürettiği Python dialect'i; ikisi 38 çerçevenin 38'inde bayt bayt aynı. (3) Üretilmiş C başlıklarının `*_encode_status` işlevleriyle 46010, 46030 (kırpılmış son Ping360 parçası), 46030 ek vakası (sıfır parça) ve 46060 kodlandı; dördü de aynı. Düzeltme turu 1'den sonra hepsi yeniden üretildi. CRC-16/MCRF4XX denetim değeri ("123456789" → 0x6F91) üretilmiş C işleviyle elde edildi ve RevEng katalogundaki değerle aynı.
 - **Kitaplığın örnek başına durum işlevleri:** üretilmiş `mavlink_helpers.h`'te `mavlink_frame_char_buffer(rxmsg, status, c, r_message, r_status)` ve `mavlink_finalize_message_buffer(msg, sysid, compid, status, min_len, len, crc_extra)` işlevlerinin durumu çağırandan aldığı kaynaktan okundu; ayrıştırıcının bozuk CRC'de aday çerçeveyi bütünüyle tükettiği, `incompat_flags`'te bilinmeyen bit görünce hemen boşta durumuna döndüğü ve `MAVLINK_CHECK_MESSAGE_LENGTH` tanımlıyken kırpılmış (kısa) yükleri de reddettiği görüldü (bu yüzden A1-K05'in uzunluk denetimi `ida_link`'te yapılır, bu makro tanımlanmaz). Bu işlevlerle birden çok örneğin aynı süreçte çalışması koşturularak **doğrulanmadı**.
-- **`dialect_hash`:** 3.2'deki tanımla standart kitaplıkla hesaplandı.
+- **`dialect_hash`:** 3.2'deki tanımla standart kitaplıkla, düzeltme turu 2'nin en son adımı olarak hesaplandı; betik M/F/E satır sayılarını XML'deki mesaj, alan ve numaralandırma girdisi sayılarıyla karşılaştırır.
 - **Doğrulanmadı:** `arm-none-eabi-gcc` ile derleme (makinede yok); kartta kodlama ve ayrıştırma maliyeti (MP5); MAVLink belgesindeki bir mesajın en çok 64 alan sınırı (MAVLink XML tanımı) bu dialect'te sağlanıyor (en çok 28 alan, `IDA_BOARD_HELLO`) ama araçla ayrıca sınanmadı.
 
 ---
@@ -935,7 +990,7 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 | O1 | Uçtan uca bütçe (3.9): sim yazım gecikmesi, `C_sim`, USB/ST-LINK ek gecikmesi, kartta dağıtım ve kodlama | Tahmin | W4 HIL köprüsü ve kartlı 30 dakikalık bariyerli koşu (7.2); W3 sonunda gerçek çekirdeğin adım süresi (M5) |
 | O2 | Kartta MAVLink ayrıştırma ve kodlama maliyeti ve 1 200 B'lık pencerenin kart alım yoluna yükü | Ölçülecek | MP5 ya da protokol kütüphanesinin ilk sürümü (W2); sonuç adım bütçesini aşarsa yedek biçim (iskelet §8, Ö2) ayrı karardır |
 | O3 | MP3'teki 10–14,5 ms'lik seyrek gecikmelerin nedeni ve temiz koşulda sıklığı | Ölçülecek | MP3 temiz koşul yinelemesi |
-| O4 | `T_bekle`, `T_kullanım`, `T_bağ`, `T_canlı`, `T_olay_yin`, `T_sonuç_pay`, `apply_by_ns`, `hold_ns` varsayılanları ve izin verilen aralıkları; `B_krit`, `R_s`, `R_c`, `R_iii`, `N_olay` | Tahmin | SIL arıza senaryoları ve kartlı koşu (W4); E1–E18 korunarak |
+| O4 | `T_bekle`, `T_kullanım`, `T_bağ`, `T_canlı`, `T_olay_yin`, `T_sonuç_pay`, `apply_by_ns`, `hold_ns` varsayılanları ve izin verilen aralıkları; `B_krit`, `R_s`, `R_c`, `R_iii`, `N_olay` | Tahmin | SIL arıza senaryoları ve kartlı koşu (W4); E1–E19 korunarak |
 | O5 | `B_pencere` (%80) ve `B_p360` | Tahmin | Kartlı 600 s koşu (7.1, 3.10 satırı); MP3'te yalnız sabit 256 B çerçeveli %80 yük sınandı |
 | O6 | SIL TCP geri döngüsünün gidiş-dönüşü ve koşu hızına etkisi (AB-215) | Ölçülecek | W4 SIL koşucusu |
 | O7 | İşletim sisteminin uyku ve USB güç yönetiminin gidiş-dönüşe etkisi; ST-LINK köprüsünün kendi gecikmesi (AB-215) | Ölçülecek | W4 kartlı koşu; MP8 Windows |
@@ -944,7 +999,7 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 | O10 | DTR/RTS hatlarının ST-LINK V3 sanal seri portunda kartı etkileyip etkilemediği | Doğrulanmadı | Kart yazılımının ilk sürümü (W3); A1-K01 davranış bağlamaz |
 | O11 | `IDA_CALL_TRACE`'in girdi tekrarı için yeterliliği (birleştirme ve kapasite düşmelerinde hangi üyenin hangi çağrıya girdiği izde yoktur; sim bunu partinin içeriği ve `n_merged` ile yeniden kurar) | Tahmin | A6 tekrar oynatıcısının ilk sürümü (W5) |
 | O12 | Kritik sensör üyelerinin `B_krit` yüzünden en uzun kayma süresi | Güvence yok | Ön denetim (`A_sensör` ≤ 150 B) kuyruğun kararlılığını sağlar; en kötü kayma süresi kanıtlanmadı, `kritik_erteleme_en_buyuk` ile ölçülür (W4) |
-| O13 | Yukarı yönde %60 ortalama hedefi | Bağlayıcı üst sınırla güvence yok (3.10) | Varsayımsal profilde %23,6; kartlı koşuda ölçülür (W4) |
+| O13 | Bant ölçütü | Kural (A1-K116; mimar kararı 2026-11-20, iskelet 0.9) | Olağan profilde %19,2 / %23,6; bağlayıcı sınırla %60,0 (tepe %80) / %85,5; kartlı koşuda ölçülür (W4) |
 
 ### 8.2 Başka sözleşmelerden beklenenler
 
@@ -957,6 +1012,10 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 5. **Atış kontrol sınırı:** `IDA_FC_SELECT` (hedef seçimi) işleminin A4'ten çıkarılması; `ida_event_t.fc_ref` ve `ida_fc_status_t.ext_len/ext[64]` alanlarının kaldırılması ya da "ayrılmış, sıfır" yapılması; `ida_fc_cmd_t.arg0/arg1`'in işlem başına kapalı tabloyla tanımlanması (bu sürümde hepsi 0). A1 bu alanları taşımaz (3.6, 3.7).
 6. SIL'de oturum sonu tick'ine (A1-K107) izin: A4-K11 "SIL'de ızgara tick'i yapılmaz" der; oturum sonu tick'i bir ızgara tick'i değildir ve `now_w`'si son kabul edilen zaman çerçevesinin sim zamanıdır.
 7. Platformun olay tablosunun boyunun `N_olay` = 8 olması (A4-K67'nin "tabloda yer"i; A1-K80, E16).
+9. Görev öğesi tablosunun A1 Tablo 3.6a ile aynı kapalı listeyi taşıması: `IDA_MI_TARGET_ALIGN`'ın çıkarılması ve her türün `p[]` anlamının, biriminin ve aralığının A4'te de tanımlanması ("anlamı çekirdek uygulamasınındır" ifadesinin kaldırılması).
+10. Izgara tick'i takvimi: A4-K18'in 10 ms mutlak ızgarasının, oturumda TF akarken A1-K117'ye göre beklenen TF'nin `[E − 1 ms, E + 1 ms)` aralığında tick başlatmayacak ve yalnız TF gecikince tick yapacak biçimde yazılması.
+11. SIL'de arka plan dilimlerinin parti başına sabit `N_bg` olması (A1-K121); A4-K95'in "IDLE dönene kadar" kuralıyla çelişir, A4'te SIL için değiştirilmesi beklenir.
+12. Platformun yeni olay kovası (A1-K120) A4-K67'nin `DROPPED_NO_SLOT` sonucuyla bildirilir; A4'te bu nedenin "yer ya da kova yok" olarak genişletilmesi.
 8. `safety_rev` damgası A4 arayüzünü değiştirmez: platform son verdiği `IDA_SAFETY` örneğinin revizyonunu kendisi tutar ve olay çıkışında A1 mesajına yazar (A1-K106); A4'te değişiklik beklenmez, yalnız A4-K75/K111 ile birlikte okunmalıdır.
 
 **A8'den beklenen**
@@ -965,7 +1024,7 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 
 **A3'ten beklenen**
 
-0. **Emniyet revizyonu (`emniyet_rev`):** A3'ün emniyet revizyonu ile A1'in `safety_rev`'i aynı sayaçtır; panelden verilen her daraltıcı sanal girdi değişimi (acil durdurma, fişin çıkması, pimin takılması) bu sayacı artırır; A3 güncel değeri ve `olay_rev_ret` sayacını gösterir (A1-K106).
+0. **Emniyet revizyonu (`emniyet_rev`):** A3'ün emniyet revizyonu ile A1'in `safety_rev`'i tek sayaçtır ve A1-K106'nın tanımını taşır: genişlik `uint32` (A3 şu an `u64` diyor; çapraz uyum turunda bu tanıma çekilir), sim süreci başında 1, süreç boyunca tekdüze, yeni çalıştırmada ve oturumda sıfırlanmaz, `0xFFFFFFFF`'te doyar; artıran olaylar A1-K106'daki listedir (kabul edilen her kısıtlayan komut, her fiilî gevşetme, `sifirla` dahil); A3 güncel değeri, doygunluğu ve `olay_rev_ret` sayacını gösterir.
 1. Tablo 3.11a sayaçlarının ve çalıştırma geçerliliği nedenlerinin gösterimi; `IDA_STATUS`, `IDA_FC_STATUS`, `IDA_NAV` alanlarının panelde gösterimi.
 2. Panel komutlarının sim ağ geçidine Tablo 3.6'daki türlerle ve sınıflarla verilmesi; sınıfların `protocol/ida.xml`'den okunması (A1-K60).
 3. Sanal emniyet girdilerinin (acil durdurma, fiş, pim) denetimi; bunların A1 mesajı olmadığı, etkilerinin `IDA_SAFETY` ile karta gittiği.
@@ -973,6 +1032,7 @@ Bütçenin (3.9) kalemleri kartlı koşuda ayrı ayrı ölçülür: sim'de `W(t_
 **A5'ten beklenen**
 
 1. Otopilot parametresi `valid_for_ns` = 100 ms; atış kontrol parametreleri `apply_by_ns` (varsayılan 20 ms) ve `hold_ns` (varsayılan 200 ms); sim parametreleri `T_bekle`, `T_bağ`; hepsi 3.9'daki izin verilen aralıklarla (A1-K104).
+1c. Sim komut kovası (A1-K119) ve bağlantı emülatörü profillerinin birlikte sınanması: emülatörün bıraktığı komutlar kovada bekleyebilir.
 1a. Anahtar türetme işlevinin A1'e özgü etiketlerle (`ida/a1/nonce_sim/…`, `ida/a1/nonce_board/…`, `ida/a1/sess/…`) kullanılabilmesi ve SIL sınamasının kalıcı başlangıç durumunu (önceki `boot_count`, `prev_sess`, `sessions_since_boot`, `last_cmd_id`, parametre bloğu; varsayılan sıfır) girdi olarak tanımlayabilmesi (A1-K114).
 1b. ESC eşlemesinin nötr değerinin ve alt–üst aralığının sim'in doğrulamasında kullanılabilmesi (Tablo 4.6, `IDA_ACTUATOR` V2/V4).
 2. İtici modelinin nötr durumunun "sıfır itki isteği" olarak tanımlanması; ESC "sinyal kaybı" seçeneğinin (son değeri tutma) A1 nötrü için kullanılmaması (A1-K77; AB-001).
@@ -1025,7 +1085,7 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A1 — Sim sunucusu ↔ kart" başlığ�
 | AB-011 | belirtilmemiş | kapandı | 3.4 (`seq`) | Her sensör mesajı sensörün kendi `seq`'ini taşır. |
 | AB-012 | belirtilmemiş | kapandı | 3.4, A1-K46 | Basınç ölçüm zamanı pencere sonudur; bayatlık eşiği yalnız çekirdeğin parametresidir (A4-K39), A1 kendi eşiğini koymaz. |
 | AB-013 | belirtilmemiş | kapandı | 3.8 TF; A1-K44, K78, K81, K74, K77 | Zaman çerçevesi alanları, eşzamansız güvenli çıktı, olay tekilleştirmesi ve kullanım süresinin alıcıda uygulanması tanımlandı. |
-| AB-014 | kritik | kapandı | A1-K106, K85–K89, K22, K82 | Her daraltıcı emniyet değişimi (girdinin kapanması, `SAFETY_CLOSE`, izin süresinin dolması, oturum sonu) `safety_rev`'i artırır; bekleyen her izin açan olay karar anındaki revizyonla damgalıdır ve damgası güncel değilse kalıcı `REJ_SAFE` alır; girdi yeniden açılsa da eski yetki geri gelmez, yeni olay gerekir; oturum sonunda olaylar `SESSION_END` ile biter. |
+| AB-014 | kritik | kapandı | A1-K106, K118, K85–K89, K22, K82 | Tek emniyet sayacı (`uint32`, süreç başında 1, tekdüze, doyan) her kısıtlama, gevşetme, süre dolumu, `SAFETY_CLOSE`, oturum sonu, kart sıfırlanması ve yeni çalıştırmada artar; bekleyen izin açan her olay karar anındaki revizyonla damgalıdır, damga güncel değilse ya da 0 ise kalıcı `REJ_SAFE` alır; olay ayrıca yanıtıyla tutarlı olmalıdır. |
 | AB-015 | kritik | kapandı | A1-K85, K78, K86, K88, K106 | Aynı adımda sıra tek anlamlı: emniyet girdisi değişimi, süre dolumu ve `SAFETY_CLOSE` önce (revizyonu artırır), sürekli çıktılar `out_seq` sırasıyla, sonra izin açan olaylar güncel revizyonla. |
 | AB-016 | kritik | kapandı | A1-K81, K82; A4-K61, K86 | Açılış sayacının sahibi platformdur (A4); sim çalıştırma boyunca her `event_id`'nin sonucunu saklar, yeniden bağlantıda eski açılışın olayı `REJ_SESSION` alır. |
 | AB-017 | kritik | kapandı | A1-K84, K86; 3.9 (`apply_by_ns`, `hold_ns`) | Bütün olaylar son geçerlilik taşır; iznin süresi alıcıda sim zamanında uygulama anından, üreticide duvar saatinde sayılır (A4-K66). |
@@ -1038,17 +1098,17 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A1 — Sim sunucusu ↔ kart" başlığ�
 | AB-024 | önemli | kapandı | 1.3; 3.4 (PING360_HEAD aralıkları) | A1'de Ping360 yapılandırma komutu yoktur (A4 çıktısında karşılığı yok); tarama yapılandırması A5'tedir, böylece yinelenen komutun ek ping üretmesi olanaksızdır; cihaz aralıkları HEAD denetimine bağlandı. |
 | AB-025 | önemli | uygulamaya devredildi | 3.4 | Etkin `n_samples` ve `sample_period` HEAD'de taşınır; kırpmadaki menzil hatası sonar modeli ve A5'in işidir. |
 | AB-026 | belirtilmemiş | kapandı | A1-K54, K46 | Köprüde zaman dönüşümü yoktur; Ping1D `t_meas` yansıma anıdır. |
-| AB-027 | kritik | kapandı | A1-K73, K109; 3.7 (`n_events`) | Yanıt, çağrının yeni olay sayısını taşır ve olaylar yanıttan önce gelir; geçersiz `n_events`, `kind`, `tube`, `call_kind` ve gönderilmemiş partiye bağlı olay Tablo 4.6 ile reddedilir ve hiçbir etki uygulanmaz. |
+| AB-027 | kritik | kapandı | A1-K73, K109, K118; Tablo 4.6, 4.6a, 4.6b | Yanıt, çağrının yeni olay sayısını taşır ve olaylar yanıttan önce gelir; geçersiz alanlar, dönüş kodu × bayrak ve olay türü × çağrı türü çelişkileri tek ret ve etkisizlik yolundan reddedilir. |
 | AB-028 | kritik | kapandı | A1-K81 | Sim reddedilenler dahil her `event_id`'nin son sonucunu saklar ve yinelemeye aynı sonucu döner. |
-| AB-029 | kritik | kapandı | A1-K106, K85–K87, K89 | İzin olaylarının nesli `safety_rev`'dir: uygulanan her kapatma ve her daraltıcı emniyet değişimi revizyonu artırır, eski revizyonla damgalı açma daha yeni bir kapatmadan sonra uygulanamaz; izin `hold_ns` ile düşer ve düşüş de revizyonu artırır. |
+| AB-029 | kritik | kapandı | A1-K106, K85–K87, K89 | İzin olaylarının nesli tek emniyet sayacıdır; eski revizyonla damgalı açma daha yeni bir kapatmadan ya da gevşetmeden sonra uygulanamaz; oturum yenilenmesinde platformun revizyonu 0'a çekilir; sayaç doyduğunda bütün izin açan olaylar reddedilir. |
 | AB-030 | kritik | kapandı | A1-K49–K51, K112; E12, E14 | Satırın teslim partisi HEAD'in partisidir ve HEAD satırın son çerçevesidir; parçalar bölünmez tam çerçevelerdir, sonarın komutlarca çiğnenmeyen ayrılmış payı her pencerede en az bir çerçeve gönderir; yetim süresi bu sınırdan türetildi; parça uzunluğu sıfırla tamamlamadan sonra denetlenir. |
 | AB-031 | önemli | kapandı | A1-K28, K30 | Üye indisi ve bit eşlemi kaldırıldı; üyelik akıştaki konumla, eksiklik `n_members` ile, yineleme çekirdeğin `seq` denetimiyle ele alınır. |
 | AB-032 | önemli | kapandı | A1-K31, K99 | Büyük boşluklar `GAP` olarak kabul edilir (üst sınır yok); SIL'de TCP TF kaybetmez. |
 | AB-033 | önemli | kapandı | A1-K72, K74, K78 | Ömür sabit uygulama anından sayılır, geç yanıt reddedilir; `THR_VALID = 0`'ın anlamı yazıldı; sürekli çıktılar tek üretim sayacıyla sıralanır. |
 | AB-034 | önemli | kapandı | 3.9 (bütçe ilk kalemi), A1-K108, 7.2 | Bütçe `W(t_n)`'den başlar; sim yazım gecikmesi ve sim'in fizik adımı gecikmesi ayrı kalem ve ayrı sayaçtır; planlanan son tarih yuva sonucundan ayrı izlenir. |
-| AB-035 | önemli | kapandı | 3.9 (bütçe), A1-K113, O1 | Kritik bayt `B_krit` = 520 B ile sınırlandı; kuyruk engellemeleri dahil tahmini en kötü toplam 9,733 ms (pay 0,267 ms, tahmin); ölçüm O1'de. |
+| AB-035 | önemli | kapandı | 3.9 (bütçe), A1-K113, K117, O1 | Kritik bayt `B_krit` = 520 B; çakışmasız partilerde tahmini en kötü 9,733 ms (pay 0,267 ms); çakışma tick takvimiyle önlenir, olursa sayılır ve geçersiz kılar (çakışmalı en kötü 10,233 / 13,233 ms). |
 | AB-036 | önemli | kapandı | A1-K73, K44, K56, K110, K113; 3.9 | Yukarı yön kritik içeriği (en çok dört yeni olay + yanıt) ve önündeki en uzun engelleme (bir çerçeve) sınırlandı; aşağı yön kritik bayt sınırlı; emniyet geri okuması partide birdir. |
-| AB-037 | önemli | kapandı | A1-K33–K39, K110, K112, K115; 3.10 | Pencere planı bölünmez tam çerçeve boylarıyla yapılır; taşımaya iki yönde de aynı anda en çok bir çerçeve verilir; kart çıkış kuyruğu sınıflıdır ve zorunlu sınıfın taşamayacağı gösterildi (E17). |
+| AB-037 | önemli | kapandı | A1-K33–K39, K110, K112, K115, K119, K120; E17 | Pencere planı bölünmez tam çerçevelerle; taşımaya iki yönde tek çerçeve; zorunlu sınıfın kuyruğu (σ, ρ) geliş ve hizmet eğrileriyle kanıtlandı (≤ 55 çerçeve, `Q_ii` = 64). |
 | AB-038 | önemli | kapandı | A1-K11, K13, K27 | Aynı nonce'un yinelenmesi oturumu bitirmez; ilk kart çerçevesi gelmezse sim yeniden dener; kart sıfırlandıktan sonra duyuru gönderir. |
 | AB-039 | önemli | kapandı | A1-K12, K15, K25, K27, K28 | Oturum kimliği son oturumlardan ve kartın son oturumundan farklı seçilir; veri mesajlarının oturuma bağlılığı nonce'lu el sıkışma ve FIFO akıştaki konumla sağlanır; karar taşıyan mesajlar ayrıca `sess` taşır. |
 | AB-040 | kritik | kapandı | 3.4 (`IDA_SAFETY`), 3.7 (`IDA_EVENT_RESULT`); A1-K56 | Tüp başına izin durumu (`PERMIT_OPEN`) eklendi; bakım girdisi yoktur (iskelet §10 md. 8); olay sonucu `in.evres[]` ile çekirdeğe döner. |
@@ -1057,7 +1117,7 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A1 — Sim sunucusu ↔ kart" başlığ�
 | AB-043 | önemli | kapandı | 3.2 (`dialect_hash`), A1-K14 | Uzantı alanı yoktur; sürüm ve özet tam eşitlik ister. |
 | AB-044 | kritik | kapandı | A1-K65–K67 | `cmd_id` sim'de komut başına tektir, yinelemelerde aynıdır, oturumlar arasında kartın son kimliğinden sürer. |
 | AB-045 | önemli | kapandı | 3.7 (`IDA_FC_STATUS`, `IDA_CORE_COUNTERS`, `IDA_LINK_STATS`), 3.6 (`IDA_CMD_FC`) | Bütün alanlar ve tipleri tanımlı; atış kontrol komutları kapalı listedir ve argümansızdır, durum emniyet zinciriyle sınırlıdır, anlamı tanımsız genel alan yoktur; `BAD_INPUT` `core_rc` ile taşınır. |
-| AB-046 | belirtilmemiş | kapandı | 3.1, 3.2, A1-K101; 7.3 | Kimlikler, aralık, kanonik metin ve altı eksenli elle kumanda (`IDA_CMD_MANUAL`) tanımlı; örnek başına durum işlevlerinin varlığı kaynaktan doğrulandı, çok örnekli koşu sınanmadı (7.3). |
+| AB-046 | belirtilmemiş | kapandı | 3.1, 3.2, A1-K101; 7.3 | Kimlikler, aralık, kanonik metin (satır sayısı üç kalemin toplamı olarak yazılı) ve altı eksenli elle kumanda tanımlı; örnek başına durum işlevleri kaynaktan doğrulandı, çok örnekli koşu sınanmadı. |
 | AB-047 | belirtilmemiş | kapandı | 3.5, 3.10 | Partide en çok 4 kayıt (A8); bütçe 399 B/kare ile hesaplandı. |
 | AB-234 | önemli | kapandı | A1-K11, K12; H31 | Port açılışında tampon boşaltma, nonce eşleşmesine kadar atma, oturumsuz kartın yalnız duyuru göndermesi. |
 | AB-235 | kritik | uygulamaya devredildi | 3.9 (bütçe), O1 | A1 200 Hz'e ve A4'ün 3,5 ms'lik adım bütçesine göre yazıldı; gerçek çekirdeğin ölçümü W3 sonunun işidir (M5). |
@@ -1125,18 +1185,20 @@ A4 sözleşmesinin "Ek A. A1 için dışa açılan adlar" listesindeki her ad i�
 | `ida_cmd_result_t` (`cmd_id`, `kind`, `ack`, `reason`, `value`, `save.gen`, `save.len`) | `IDA_CMD_RESULT`; `save.blob` telde yoktur (`save_crc` ile özetlenir; A1-K68) |
 | `ida_nav_out_t` (14 alan) | `IDA_NAV` |
 | `ida_status_t` (`mode`, `armed`, `fs_level`, `fs_reasons`, `regime`, `phase`, `mission_state`, `mission_item`, `param_ok`, `events_ok`, `boot_count`) | `IDA_STATUS` |
-| `ida_status_t.cnt.*` | `IDA_CORE_COUNTERS.cnt[18]` |
-| `ida_health_t` (`core_ok`, `data_ok`, `imu_rejected`, `imu_lag`, `input_dropped`, `narrowed`) | `IDA_STATUS.health`; ayrıca `IDA_ACTUATOR` `INPUT_DROPPED`, `NARROWED` |
+| `ida_status_t.cnt.*` (22 alan) | `IDA_CORE_COUNTERS`'ın aynı adlı 22 alanı (3.7) |
+| `ida_health_t` (`core_ok`, `data_ok`, `imu_rejected`, `imu_lag`, `input_dropped`, `narrowed`, `sample_conflict`, `bg_bad_input`) | `IDA_STATUS.health` bit 0–7 (3.7); ayrıca `IDA_ACTUATOR` `INPUT_DROPPED`, `NARROWED` |
 | `ida_log_t` (`t_w`, `code`, `severity`, `arg0`, `arg1`) | `IDA_LOG` |
 | `ida_fc_status_t` (`state`, `inhibit_mask`, `last_event_id`, `last_event_result`) | `IDA_FC_STATUS` |
 | `ida_fc_status_t.ext_len`, `.ext[64]` | A1'de taşınmaz (8.2 A4 md. 5) |
 | `IDA_FC_SELECT` (`ida_fc_cmd_t.op` = 4) | A1'de yoktur; `IDA_FC_OP` kapalı listesinde değildir (3.6) |
+| `IDA_MI_TARGET_ALIGN` (`item_type` = 8) | A1'de yoktur; görev öğesi türleri kapalı listedir (Tablo 3.6a) |
+| `ida_mission_item_t.p[4]` | Tablo 3.6a'daki tür başına anlam, birim ve aralık |
 | `ida_fc_cmd_t.arg0`, `.arg1` | `IDA_CMD_FC.arg0/arg1`; ayrılmış, 0 (A1-K64) |
 | `ida_init_in_t` (`boot_count`, `boot_count_ok`, `reset_cause`, `reset_flags`, `consecutive_faults`, `param_src`) | `IDA_BOARD_HELLO` |
 | `ida_core_info_t` (`port_major`, `port_minor`, `param_schema_hash`, `core_version`) | `IDA_BOARD_HELLO` |
 | Dönüş kodları (`OK`, `IMU_REJECTED`, `DUP_SEQ`, `OLD_SEQ`, `BAD_INPUT`, `NOT_INIT`) | `IDA_ACTUATOR.core_rc`, `IDA_CALL_TRACE.core_rc` (`DUP_SEQ`/`OLD_SEQ` olağanda görülmez; A1-K31) |
 | `ida_core_step`, `ida_core_tick` | A1-K32, K44 |
-| `ida_core_background` | Çağrı sayısı `bg_slices` ile izlenir |
+| `ida_core_background` | Çağrı sayısı `bg_slices` ile izlenir; `IDA_BG_BAD_INPUT` dönen çağrı sayılmaz (A4-K117) |
 | `ida_core_param_count`, `_desc`, `_find` | A1'de karşılığı yoktur: parametre tablosu A1'de taşınmaz; sim aynı kaynaktan derlenen tabloyu kullanır ve `param_schema_hash`'le doğrular (A1-K14) |
 | `ida_core_param_get` | A1'de doğrudan karşılığı yoktur; değer `IDA_CMD_SIMPLE(PARAM_GET)` komutunun sonucuyla gelir (A4-K43) |
 
@@ -1507,14 +1569,15 @@ fd 13 00 00 20 01 01 f2 b3 00 00 ca 9a 3b 00 00 00 00 11 fc ff ff 0a fc ff ff f1
 
 ### 46067 IDA_CORE_COUNTERS
 
-- Başlık: seq = 33, sysid = 1, compid = 1; CRC_EXTRA = 2; yük azami 72 B, çerçeve azami 84 B; bu dizide yük 71 B, çerçeve 83 B. Doğrulama: bağımsız kodlayıcı ve pymavlink üreteci bayt bayt aynı.
+- Başlık: seq = 33, sysid = 1, compid = 1; CRC_EXTRA = 23; yük azami 88 B, çerçeve azami 100 B; bu dizide yük 87 B, çerçeve 99 B. Doğrulama: bağımsız kodlayıcı ve pymavlink üreteci bayt bayt aynı.
 
-- Alanlar: cnt = [100000, 100001, 100002, 100003, 100004, 100005, … (18 öğe)]
+- Alanlar: sample_rejected = 100000; sample_future = 100011; sample_conflict = 100022; sample_dup_dropped = 100033; narrow_from_rejected = 100044; bg_bad_input = 100055; imu_rejected = 100066; imu_gap = 100077; bad_input = 100088; dup_seq = 100099; old_seq = 100110; wall_backstep = 100121; cmd_rejected = 100132; widen_blocked = 100143; evres_ignored = 100154; event_unknown = 100165; det_rejected = 100176; ping360_rejected = 100187; bg_dropped = 100198; bg_slice_mismatch = 100209; log_dropped = 100220; step_miss = 100231
 
 ```
-fd 47 00 00 21 01 01 f3 b3 00 a0 86 01 00 a1 86 01 00 a2 86 01 00 a3 86 01 00 a4 86 01 00 a5 86
-01 00 a6 86 01 00 a7 86 01 00 a8 86 01 00 a9 86 01 00 aa 86 01 00 ab 86 01 00 ac 86 01 00 ad 86
-01 00 ae 86 01 00 af 86 01 00 b0 86 01 00 b1 86 01 23 96
+fd 57 00 00 21 01 01 f3 b3 00 a0 86 01 00 ab 86 01 00 b6 86 01 00 c1 86 01 00 cc 86 01 00 d7 86
+01 00 e2 86 01 00 ed 86 01 00 f8 86 01 00 03 87 01 00 0e 87 01 00 19 87 01 00 24 87 01 00 2f 87
+01 00 3a 87 01 00 45 87 01 00 50 87 01 00 5b 87 01 00 66 87 01 00 71 87 01 00 7c 87 01 00 87 87
+01 5d de
 ```
 
 ### 46068 IDA_LINK_STATS
