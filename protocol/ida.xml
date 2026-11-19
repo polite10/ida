@@ -35,6 +35,7 @@
       <entry value="5" name="IDA_SESSION_RESULT_REJECT_DET_SCHEMA"><description>A8 algilama kaydi sema surumu uyusmuyor.</description></entry>
       <entry value="6" name="IDA_SESSION_RESULT_REJECT_RATE"><description>Kontrol periyodu uyusmuyor.</description></entry>
       <entry value="7" name="IDA_SESSION_RESULT_REJECT_PARAM_SCHEMA"><description>param_schema_hash sim'in bekledigiyle uyusmuyor.</description></entry>
+      <entry value="8" name="IDA_SESSION_RESULT_REJECT_CONFIG"><description>Zamanlama ve emniyet parametreleri A1 3.9 izin verilen araliklari ya da zorunlu esitsizlikleri saglamiyor (A1-K104).</description></entry>
     </enum>
     <enum name="IDA_LINK_STATE">
       <description>Kartin A1 oturum durumu (A1 4.2).</description>
@@ -49,6 +50,7 @@
       <entry value="3" name="IDA_CLOSE_REASON_PROTOCOL"><description>Protokol hatasi.</description></entry>
       <entry value="4" name="IDA_CLOSE_REASON_SAFE_STATE"><description>Kart platform guvenli beklemesine girdi.</description></entry>
       <entry value="5" name="IDA_CLOSE_REASON_RUN_END"><description>Calistirma bitti.</description></entry>
+      <entry value="6" name="IDA_CLOSE_REASON_TX_OVERFLOW"><description>Kartin zorunlu-guvenilir gonderim kuyrugu tasti (A1-K110).</description></entry>
     </enum>
     <enum name="IDA_TF_FLAGS" bitmask="true">
       <description>TIME_FRAME bayraklari.</description>
@@ -161,11 +163,10 @@
       <entry value="3" name="IDA_PARAM_TYPE_F32"/>
     </enum>
     <enum name="IDA_FC_OP">
-      <description>A4 IDA_FC_* (CMD_FC.op). Islemlerin anlami ve arg0/arg1 atis kontrol uygulamasinindir (W4); A1 yalniz tasir.</description>
+      <description>A4 IDA_FC_* (CMD_FC.op); kapali liste, yalniz emniyet zinciri islemleri (A1 3.6). Bu surumde butun islemler argumansizdir: arg0 = arg1 = 0. A4'teki IDA_FC_SELECT (4) A1'de yoktur.</description>
       <entry value="1" name="IDA_FC_OP_ARM"><description>[sinif: genisletir]</description></entry>
       <entry value="2" name="IDA_FC_OP_DISARM"><description>Mandal IDA_NARROW_FC_DISARM. [sinif: daraltir]</description></entry>
       <entry value="3" name="IDA_FC_OP_ABORT"><description>Mandal IDA_NARROW_FC_ABORT. [sinif: daraltir]</description></entry>
-      <entry value="4" name="IDA_FC_OP_SELECT"><description>[sinif: genisletir]</description></entry>
       <entry value="5" name="IDA_FC_OP_FIRE"><description>[sinif: genisletir]</description></entry>
       <entry value="6" name="IDA_FC_OP_RESET"><description>[sinif: genisletir]</description></entry>
       <entry value="7" name="IDA_FC_OP_TEST_ENTER"><description>[sinif: genisletir]</description></entry>
@@ -460,6 +461,7 @@
       <field type="uint8_t" name="inst">hdr.inst.</field>
       <field type="uint8_t" name="estop">1: sanal acil durdurma etkin.</field>
       <field type="uint8_t[2]" name="tube" enum="IDA_TUBE_FLAGS" display="bitmask">Tup basina IDA_TUBE_FLAGS.</field>
+      <field type="uint32_t" name="safety_rev">Sim'in emniyet revizyonu: her daraltici emniyet degisiminde artar; calistirmada 1'den baslar (A1-K106).</field>
     </message>
     <message id="46029" name="IDA_PING360_HEAD">
       <description>Sim -> kart. Ping360 tarama satirinin basligi; satirin DATA cercevelerinden sonra gelir ve satiri teslim edildigi partiye baglar (A1-K50).</description>
@@ -573,10 +575,10 @@
       <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
     </message>
     <message id="46045" name="IDA_CMD_FC">
-      <description>Sim -> kart. A4 IDA_CMD_FC. arg0 ve arg1 opaktir; anlamlari atis kontrol uygulamasinindir (W4). A1 bu alanlari yorumlamaz.</description>
+      <description>Sim -> kart. A4 IDA_CMD_FC; islemler kapali listedir (IDA_FC_OP) ve argumansizdir (A1 3.6).</description>
       <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
-      <field type="uint32_t" name="arg0">Opak.</field>
-      <field type="uint32_t" name="arg1">Opak.</field>
+      <field type="uint32_t" name="arg0">Ayrilmis: 0 olmak zorunda; sifir degilse kart reddeder (LINK_BAD_FIELD).</field>
+      <field type="uint32_t" name="arg1">Ayrilmis: 0 olmak zorunda; sifir degilse kart reddeder (LINK_BAD_FIELD).</field>
       <field type="uint16_t" name="sess">Guncel oturum.</field>
       <field type="uint8_t" name="op" enum="IDA_FC_OP">Islem.</field>
       <field type="uint8_t" name="tube">0-1.</field>
@@ -602,6 +604,7 @@
       <field type="uint8_t" name="core_rc" enum="IDA_CORE_RC">Cagrinin donus kodu.</field>
       <field type="uint8_t" name="n_events">Bu cagrinin urettigi yeni olay sayisi (0-4); olaylar bu cerceveden once gonderilir (A1-K73).</field>
       <field type="uint8_t" name="n_merged">Bu cagriya birlestirilen onceki parti sayisi (A4-K102).</field>
+      <field type="uint32_t" name="out_seq">Kartin surekli cikti uretim sayaci; acilista 1'den baslar, gonderilen her ACTUATOR'da (olagan ya da ASYNC) bir artar (A1-K105).</field>
     </message>
     <message id="46061" name="IDA_EVENT">
       <description>Kart -> sim. Tek seferlik olay (A4 ida_event_t). Yinelemeler ayni baytlarla gonderilir (A4-K106).</description>
@@ -610,7 +613,7 @@
       <field type="uint32_t" name="batch_seq">Kararin verildigi ciktinin seq'i.</field>
       <field type="uint32_t" name="apply_by_ns" units="ns">Son gecerlilik: t_decide + apply_by.</field>
       <field type="uint32_t" name="hold_ns" units="ns">Yalniz SAFETY_OPEN: izin suresi; digerlerinde 0.</field>
-      <field type="uint32_t" name="fc_ref">Atis kontrolun ic basvuru numarasi; alici yalniz kayda yazar.</field>
+      <field type="uint32_t" name="safety_rev">Olayi ureten cekirdek cagrisina verilmis en son IDA_SAFETY orneginin safety_rev'i; hic verilmediyse 0 (A1-K106).</field>
       <field type="uint16_t" name="sess">Guncel oturum.</field>
       <field type="uint8_t" name="kind" enum="IDA_EVENT_KIND">Olay turu.</field>
       <field type="uint8_t" name="tube">0-1; SAFETY_CLOSE'ta 255 = iki tup.</field>
@@ -671,13 +674,11 @@
       <field type="uint8_t" name="param_fail">plat.param_fail (A4 IDA_PSFAIL_*).</field>
     </message>
     <message id="46065" name="IDA_FC_STATUS">
-      <description>Kart -> sim. A4 ida_fc_status_t; 10 Hz. ext[] opaktir; bicimi atis kontrol uygulamasinindir (W4).</description>
+      <description>Kart -> sim. Atis kontrolun emniyet zinciri durumu (A4 ida_fc_status_t'nin state, inhibit_mask, last_event_id, last_event_result alanlari); 10 Hz.</description>
       <field type="uint64_t" name="last_event_id">Son cikan olay; yoksa 0.</field>
-      <field type="uint32_t" name="inhibit_mask">Etkin engel bitleri (tablo W4'un).</field>
-      <field type="uint8_t" name="state">0 = SAFE; digerleri W4'un.</field>
+      <field type="uint32_t" name="inhibit_mask">Etkin emniyet engeli bitleri (bit tablosu atis kontrol uygulamasinin; yalniz emniyet engelleri).</field>
+      <field type="uint8_t" name="state">Emniyet zinciri durumu; 0 = SAFE (diger degerler atis kontrol uygulamasinin durum makinesi).</field>
       <field type="uint8_t" name="last_event_result" enum="IDA_EVENT_RESULT_CODE">Son olayin sonucu; yoksa 0.</field>
-      <field type="uint8_t" name="ext_len">0-64.</field>
-      <field type="uint8_t[64]" name="ext">Opak ek durum.</field>
     </message>
     <message id="46066" name="IDA_LOG">
       <description>Kart -> sim. A4 ida_log_t.</description>
@@ -701,7 +702,7 @@
       <field type="uint32_t" name="batch_seq">tf.seq; izgara tick'inde son kabul edilen.</field>
       <field type="uint32_t" name="bg_slices">A4 in.bg_slices.</field>
       <field type="uint32_t" name="prev_call_ns" units="ns">plat.prev_call_ns.</field>
-      <field type="uint32_t[27]" name="rx_age_ns" units="ns">now_w - t_rx; sira: tf, imu, samples[0..15], det_batch[0..1], det[0..7]; kullanilmayan 0; 2^32-1'de doyar.</field>
+      <field type="uint32_t[28]" name="rx_age_ns" units="ns">now_w - t_rx; indis 0 tf, 1 imu, 2-17 samples[0..15], 18-19 det_batch[0..1], 20-27 det[0..7]; kullanilmayan 0; 2^32-1'de doyar.</field>
       <field type="uint8_t" name="n_rx">rx_age_ns'teki anlamli oge sayisi.</field>
       <field type="uint8_t" name="call_kind" enum="IDA_CALL_KIND">Cagri turu.</field>
       <field type="uint8_t" name="core_rc" enum="IDA_CORE_RC">Donus kodu.</field>
