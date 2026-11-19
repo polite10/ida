@@ -1,0 +1,725 @@
+<?xml version="1.0"?>
+<!--
+  IDA dialect: sim sunucusu <-> kart (ve SIL kosucusu) baglantisi, A1.
+  Sozlesme: docs/sozlesmeler/A1-kart-baglantisi.md, surum 1.0-aday.
+  Bu dosya sozlesmenin makinece okunur parcasidir; belgeyle celisemez.
+  Mesaj kimlikleri 46000-46099 araligindadir (A1 3.2).
+  Komut siniflari (A1-K60): enum aciklamalarinda "[sinif: genisletir|daraltir|notr|kosullu]" bicimindedir.
+  A4 ayna enumlari (IDA_CMD_TYPE, IDA_MODE, IDA_FC_OP, IDA_EVENT_*, IDA_ACK, IDA_REASON, IDA_CORE_RC,
+  IDA_SAMPLE_FLAGS, IDA_DVL_FLAGS, IDA_TUBE_FLAGS, IDA_SP_MASK, IDA_MI_*, IDA_MCTL, IDA_PARAM_TYPE,
+  IDA_RES_KIND, IDA_FS_LEVEL, IDA_GNSS_FIX, IDA_SEVERITY) core/include/ida/port.h ile ayni degerleri tasir (A1-K03).
+  Standart MAVLink mesaji kullanilmaz; common.xml icerilmez (A1 3.2).
+-->
+<mavlink>
+  <enums>
+    <!-- ================= Oturum ve baglanti ================= -->
+    <enum name="IDA_ROLE">
+      <description>BOARD_HELLO gondereninin rolu.</description>
+      <entry value="1" name="IDA_ROLE_BOARD"><description>STM32U5A9J-DK uzerindeki kart yazilimi.</description></entry>
+      <entry value="2" name="IDA_ROLE_SIL"><description>PC uzerindeki SIL kosucusu.</description></entry>
+    </enum>
+    <enum name="IDA_RUN_MODE">
+      <description>Calistirma kipi (bilgi; kartin davranisini degistirmez, A1-K24).</description>
+      <entry value="1" name="IDA_RUN_MODE_SIL"><description>SIL; sanal zaman.</description></entry>
+      <entry value="2" name="IDA_RUN_MODE_HIL_1X"><description>HIL, gercek zaman, bariyersiz.</description></entry>
+      <entry value="3" name="IDA_RUN_MODE_HIL_BARRIER"><description>HIL, gercek zaman, adim bariyerli.</description></entry>
+      <entry value="4" name="IDA_RUN_MODE_PREP"><description>Hazirlik oturumu: fizik yurumez, yalniz zaman cercevesi ve komut (parametre esitleme).</description></entry>
+    </enum>
+    <enum name="IDA_SESSION_RESULT">
+      <description>SESSION_ACCEPT sonucu.</description>
+      <entry value="0" name="IDA_SESSION_RESULT_OK"><description>Oturum kuruldu.</description></entry>
+      <entry value="1" name="IDA_SESSION_RESULT_REBOOT"><description>Kart planli yeniden baslatma yapar (kartta sistem sifirlamasi, SIL'de cekirdegin yeni boot_count ile yeniden kurulmasi). [sinif: daraltir]</description></entry>
+      <entry value="2" name="IDA_SESSION_RESULT_REJECT_PROTO"><description>proto_major/proto_minor uyusmuyor.</description></entry>
+      <entry value="3" name="IDA_SESSION_RESULT_REJECT_DIALECT"><description>dialect_hash uyusmuyor.</description></entry>
+      <entry value="4" name="IDA_SESSION_RESULT_REJECT_PORT"><description>A4 port surumu uyusmuyor.</description></entry>
+      <entry value="5" name="IDA_SESSION_RESULT_REJECT_DET_SCHEMA"><description>A8 algilama kaydi sema surumu uyusmuyor.</description></entry>
+      <entry value="6" name="IDA_SESSION_RESULT_REJECT_RATE"><description>Kontrol periyodu uyusmuyor.</description></entry>
+      <entry value="7" name="IDA_SESSION_RESULT_REJECT_PARAM_SCHEMA"><description>param_schema_hash sim'in bekledigiyle uyusmuyor.</description></entry>
+    </enum>
+    <enum name="IDA_LINK_STATE">
+      <description>Kartin A1 oturum durumu (A1 4.2).</description>
+      <entry value="0" name="IDA_LINK_STATE_IDLE"><description>Oturum yok; duyuru gonderir.</description></entry>
+      <entry value="1" name="IDA_LINK_STATE_HANDSHAKE"><description>SIM_HELLO yanitlandi, SESSION_ACCEPT bekleniyor.</description></entry>
+      <entry value="2" name="IDA_LINK_STATE_RUNNING"><description>Oturum kuruldu (A4 IDA_LINK_RUNNING).</description></entry>
+    </enum>
+    <enum name="IDA_CLOSE_REASON">
+      <description>SESSION_CLOSE nedeni.</description>
+      <entry value="1" name="IDA_CLOSE_REASON_SHUTDOWN"><description>Olagan kapanis.</description></entry>
+      <entry value="2" name="IDA_CLOSE_REASON_PEER_TIMEOUT"><description>Karsi taraftan T_bag suresince gecerli cerceve gelmedi.</description></entry>
+      <entry value="3" name="IDA_CLOSE_REASON_PROTOCOL"><description>Protokol hatasi.</description></entry>
+      <entry value="4" name="IDA_CLOSE_REASON_SAFE_STATE"><description>Kart platform guvenli beklemesine girdi.</description></entry>
+      <entry value="5" name="IDA_CLOSE_REASON_RUN_END"><description>Calistirma bitti.</description></entry>
+    </enum>
+    <enum name="IDA_TF_FLAGS" bitmask="true">
+      <description>TIME_FRAME bayraklari.</description>
+      <entry value="1" name="IDA_TF_FLAGS_IMU"><description>Partide bir IDA_IMU uyesi vardir.</description></entry>
+    </enum>
+    <enum name="IDA_CALL_KIND">
+      <description>Kartin cekirdek cagrisinin turu (CALL_TRACE).</description>
+      <entry value="1" name="IDA_CALL_KIND_STEP"><description>ida_core_step.</description></entry>
+      <entry value="2" name="IDA_CALL_KIND_TICK_TF"><description>Zaman cerceveli ida_core_tick (IMU'suz parti).</description></entry>
+      <entry value="3" name="IDA_CALL_KIND_TICK_GRID"><description>Izgara tick'i (tf.present = 0).</description></entry>
+    </enum>
+    <enum name="IDA_PLAT_FLAGS" bitmask="true">
+      <description>CALL_TRACE platform bayraklari (A4 ida_plat_t).</description>
+      <entry value="1" name="IDA_PLAT_FLAGS_PREV_OVERRUN"><description>plat.prev_overrun.</description></entry>
+      <entry value="2" name="IDA_PLAT_FLAGS_TX_STALLED"><description>plat.tx_stalled.</description></entry>
+      <entry value="4" name="IDA_PLAT_FLAGS_BATCH_MERGED"><description>plat.batch_merged.</description></entry>
+      <entry value="8" name="IDA_PLAT_FLAGS_INPUT_DROPPED"><description>plat.input_dropped.</description></entry>
+      <entry value="16" name="IDA_PLAT_FLAGS_SESSION_START"><description>plat.link_event = SESSION_START.</description></entry>
+      <entry value="32" name="IDA_PLAT_FLAGS_SESSION_END"><description>plat.link_event = SESSION_END.</description></entry>
+    </enum>
+    <!-- ================= A4 ayna: ornek bayraklari ================= -->
+    <enum name="IDA_SAMPLE_FLAGS" bitmask="true">
+      <description>A4 ida_hdr_t.flags (IDA_HF_*).</description>
+      <entry value="1" name="IDA_SAMPLE_FLAGS_VALID"><description>IDA_HF_VALID.</description></entry>
+      <entry value="2" name="IDA_SAMPLE_FLAGS_SATURATED"><description>IDA_HF_SATURATED.</description></entry>
+      <entry value="4" name="IDA_SAMPLE_FLAGS_SENSOR_FAULT"><description>IDA_HF_SENSOR_FAULT.</description></entry>
+    </enum>
+    <enum name="IDA_DVL_FLAGS" bitmask="true">
+      <description>A4 ida_dvl_t.dvl_flags (IDA_DVL_*).</description>
+      <entry value="1" name="IDA_DVL_FLAGS_VEL_VALID"><description>IDA_DVL_VEL_VALID.</description></entry>
+      <entry value="2" name="IDA_DVL_FLAGS_COV_PRESENT"><description>IDA_DVL_COV_PRESENT.</description></entry>
+      <entry value="4" name="IDA_DVL_FLAGS_TRACK_BOTTOM"><description>IDA_DVL_TRACK_BOTTOM (0: su izi).</description></entry>
+    </enum>
+    <enum name="IDA_TUBE_FLAGS" bitmask="true">
+      <description>A4 ida_safety_t.tube[] (IDA_TUBE_*). Yalniz geri okuma; kart degistiremez.</description>
+      <entry value="1" name="IDA_TUBE_FLAGS_LOADED"><description>Tup dolu.</description></entry>
+      <entry value="2" name="IDA_TUBE_FLAGS_PLUG_IN"><description>Sanal silahlandirma fisi takili.</description></entry>
+      <entry value="4" name="IDA_TUBE_FLAGS_PIN_OUT"><description>Sanal emniyet pimi cikarilmis.</description></entry>
+      <entry value="8" name="IDA_TUBE_FLAGS_PERMIT_OPEN"><description>Firlaticinin sureli izni alicida (sim) su an acik.</description></entry>
+    </enum>
+    <!-- ================= A4 ayna: komutlar ================= -->
+    <enum name="IDA_CMD_TYPE">
+      <description>A4 ida_cmd_t.type (IDA_CMD_*). Sinif A4-K44/K104'ten.</description>
+      <entry value="1" name="IDA_CMD_TYPE_HEARTBEAT"><description>Yer istasyonu canliligi. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="2" name="IDA_CMD_TYPE_ARM"><description>Silahlandirma (motorlar). CMD_SIMPLE. [sinif: genisletir]</description></entry>
+      <entry value="3" name="IDA_CMD_TYPE_DISARM"><description>Devre disi. CMD_SIMPLE; kartta mandal IDA_NARROW_DISARM. [sinif: daraltir]</description></entry>
+      <entry value="4" name="IDA_CMD_TYPE_SET_MODE"><description>Kip degisimi; arg = IDA_MODE. CMD_SIMPLE. Hedef GUIDED/AUTO ise genisletir, degilse daraltir (mandal IDA_NARROW_MODE). [sinif: kosullu]</description></entry>
+      <entry value="5" name="IDA_CMD_TYPE_MANUAL"><description>CMD_MANUAL. [sinif: notr]</description></entry>
+      <entry value="6" name="IDA_CMD_TYPE_GUIDED_SP"><description>CMD_GUIDED. [sinif: notr]</description></entry>
+      <entry value="7" name="IDA_CMD_TYPE_MISSION_BEGIN"><description>Gorev yuklemesi basi; arg = oge sayisi. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="8" name="IDA_CMD_TYPE_MISSION_ITEM"><description>CMD_MISSION_ITEM. [sinif: notr]</description></entry>
+      <entry value="9" name="IDA_CMD_TYPE_MISSION_END"><description>Gorev yuklemesi sonu. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="10" name="IDA_CMD_TYPE_MISSION_CTL"><description>Gorev denetimi; arg = IDA_MCTL. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="11" name="IDA_CMD_TYPE_PARAM_SET"><description>CMD_PARAM_SET. [sinif: notr]</description></entry>
+      <entry value="12" name="IDA_CMD_TYPE_PARAM_GET"><description>Parametre okuma; arg = parametre kimligi. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="13" name="IDA_CMD_TYPE_PARAM_COMMIT"><description>Bekleyen degerleri uygula. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="14" name="IDA_CMD_TYPE_PARAM_SAVE"><description>Kalici kayit. CMD_SIMPLE. [sinif: notr]</description></entry>
+      <entry value="15" name="IDA_CMD_TYPE_FAILSAFE_RESET"><description>Mandalli ariza eylemlerinin temizlenmesi. CMD_SIMPLE. [sinif: genisletir]</description></entry>
+      <entry value="16" name="IDA_CMD_TYPE_FC"><description>CMD_FC; sinif IDA_FC_OP'a gore. [sinif: kosullu]</description></entry>
+    </enum>
+    <enum name="IDA_MODE">
+      <description>A4 IDA_MODE_*.</description>
+      <entry value="0" name="IDA_MODE_INIT"/>
+      <entry value="1" name="IDA_MODE_DISARMED"/>
+      <entry value="2" name="IDA_MODE_MANUAL"/>
+      <entry value="3" name="IDA_MODE_STABILIZE"/>
+      <entry value="4" name="IDA_MODE_DEPTH_HOLD"/>
+      <entry value="5" name="IDA_MODE_STATION_KEEP"/>
+      <entry value="6" name="IDA_MODE_GUIDED"/>
+      <entry value="7" name="IDA_MODE_AUTO"/>
+    </enum>
+    <enum name="IDA_SP_MASK" bitmask="true">
+      <description>A4 IDA_SP_* (CMD_GUIDED.mask).</description>
+      <entry value="1" name="IDA_SP_MASK_POS_NE"/>
+      <entry value="2" name="IDA_SP_MASK_DEPTH"/>
+      <entry value="4" name="IDA_SP_MASK_ALTITUDE"/>
+      <entry value="8" name="IDA_SP_MASK_VEL_NE"/>
+      <entry value="16" name="IDA_SP_MASK_VEL_D"/>
+      <entry value="32" name="IDA_SP_MASK_YAW"/>
+      <entry value="64" name="IDA_SP_MASK_YAW_RATE"/>
+    </enum>
+    <enum name="IDA_MI_TYPE">
+      <description>A4 IDA_MI_*.</description>
+      <entry value="1" name="IDA_MI_TYPE_WAYPOINT"/>
+      <entry value="2" name="IDA_MI_TYPE_DIVE_TO"/>
+      <entry value="3" name="IDA_MI_TYPE_SURFACE"/>
+      <entry value="4" name="IDA_MI_TYPE_HOLD"/>
+      <entry value="5" name="IDA_MI_TYPE_SCAN_LINES"/>
+      <entry value="6" name="IDA_MI_TYPE_SCAN_POINT"/>
+      <entry value="7" name="IDA_MI_TYPE_WAIT_GNSS"/>
+      <entry value="8" name="IDA_MI_TYPE_TARGET_ALIGN"/>
+    </enum>
+    <enum name="IDA_MI_FRAME">
+      <description>A4 IDA_MI_FRAME_*.</description>
+      <entry value="0" name="IDA_MI_FRAME_NONE"/>
+      <entry value="1" name="IDA_MI_FRAME_LOCAL"/>
+      <entry value="2" name="IDA_MI_FRAME_GLOBAL"/>
+    </enum>
+    <enum name="IDA_MCTL">
+      <description>A4 IDA_MCTL_*.</description>
+      <entry value="1" name="IDA_MCTL_START"/>
+      <entry value="2" name="IDA_MCTL_PAUSE"/>
+      <entry value="3" name="IDA_MCTL_RESUME"/>
+      <entry value="4" name="IDA_MCTL_ABORT"/>
+    </enum>
+    <enum name="IDA_PARAM_TYPE">
+      <description>A4 IDA_PT_*.</description>
+      <entry value="1" name="IDA_PARAM_TYPE_I32"/>
+      <entry value="2" name="IDA_PARAM_TYPE_U32"/>
+      <entry value="3" name="IDA_PARAM_TYPE_F32"/>
+    </enum>
+    <enum name="IDA_FC_OP">
+      <description>A4 IDA_FC_* (CMD_FC.op). Islemlerin anlami ve arg0/arg1 atis kontrol uygulamasinindir (W4); A1 yalniz tasir.</description>
+      <entry value="1" name="IDA_FC_OP_ARM"><description>[sinif: genisletir]</description></entry>
+      <entry value="2" name="IDA_FC_OP_DISARM"><description>Mandal IDA_NARROW_FC_DISARM. [sinif: daraltir]</description></entry>
+      <entry value="3" name="IDA_FC_OP_ABORT"><description>Mandal IDA_NARROW_FC_ABORT. [sinif: daraltir]</description></entry>
+      <entry value="4" name="IDA_FC_OP_SELECT"><description>[sinif: genisletir]</description></entry>
+      <entry value="5" name="IDA_FC_OP_FIRE"><description>[sinif: genisletir]</description></entry>
+      <entry value="6" name="IDA_FC_OP_RESET"><description>[sinif: genisletir]</description></entry>
+      <entry value="7" name="IDA_FC_OP_TEST_ENTER"><description>[sinif: genisletir]</description></entry>
+      <entry value="8" name="IDA_FC_OP_TEST_EXIT"><description>[sinif: notr]</description></entry>
+    </enum>
+    <!-- ================= A4 ayna: olaylar ve sonuclar ================= -->
+    <enum name="IDA_EVENT_KIND">
+      <description>A4 IDA_EVT_*.</description>
+      <entry value="1" name="IDA_EVENT_KIND_SAFETY_OPEN"><description>Firlaticiya sureli izin. [sinif: genisletir]</description></entry>
+      <entry value="2" name="IDA_EVENT_KIND_SAFETY_CLOSE"><description>Izni kaldirir; suresiz. [sinif: daraltir]</description></entry>
+      <entry value="3" name="IDA_EVENT_KIND_FIRE"><description>Atis. [sinif: genisletir]</description></entry>
+    </enum>
+    <enum name="IDA_EVENT_RESULT_CODE">
+      <description>A4 IDA_EVR_*. 1-15 alicinin (sim), 16+ kart platformunun.</description>
+      <entry value="1" name="IDA_EVENT_RESULT_CODE_APPLIED"/>
+      <entry value="2" name="IDA_EVENT_RESULT_CODE_DUPLICATE"/>
+      <entry value="3" name="IDA_EVENT_RESULT_CODE_REJ_EXPIRED"/>
+      <entry value="4" name="IDA_EVENT_RESULT_CODE_REJ_SAFE"/>
+      <entry value="5" name="IDA_EVENT_RESULT_CODE_REJ_TUBE_EMPTY"/>
+      <entry value="6" name="IDA_EVENT_RESULT_CODE_REJ_SESSION"/>
+      <entry value="16" name="IDA_EVENT_RESULT_CODE_DROPPED_GATE"/>
+      <entry value="17" name="IDA_EVENT_RESULT_CODE_DROPPED_NO_SLOT"/>
+      <entry value="18" name="IDA_EVENT_RESULT_CODE_EXPIRED_NO_ACK"/>
+      <entry value="19" name="IDA_EVENT_RESULT_CODE_SESSION_END"/>
+    </enum>
+    <enum name="IDA_RES_KIND">
+      <description>A4 IDA_RES_*.</description>
+      <entry value="1" name="IDA_RES_KIND_ACK"/>
+      <entry value="2" name="IDA_RES_KIND_PARAM_VALUE"/>
+      <entry value="3" name="IDA_RES_KIND_PARAM_SAVE"/>
+    </enum>
+    <enum name="IDA_ACK">
+      <description>A4 IDA_ACK_*.</description>
+      <entry value="1" name="IDA_ACK_ACCEPTED"/>
+      <entry value="2" name="IDA_ACK_REJECTED"/>
+      <entry value="3" name="IDA_ACK_IN_PROGRESS"/>
+      <entry value="4" name="IDA_ACK_DUPLICATE"/>
+      <entry value="5" name="IDA_ACK_UNSUPPORTED"/>
+    </enum>
+    <enum name="IDA_REASON">
+      <description>A4 IDA_REASON_* (0-15) ve A1 baglanti katmani nedenleri (128-191). 256 ve ustu atis kontrolunundur (A4).</description>
+      <entry value="0" name="IDA_REASON_NONE"/>
+      <entry value="1" name="IDA_REASON_CALL_REJECTED"/>
+      <entry value="2" name="IDA_REASON_ARMED"/>
+      <entry value="3" name="IDA_REASON_NOT_ARMABLE"/>
+      <entry value="4" name="IDA_REASON_PARAM_BUSY"/>
+      <entry value="5" name="IDA_REASON_PARAM_INVALID"/>
+      <entry value="6" name="IDA_REASON_OUT_OF_RANGE"/>
+      <entry value="7" name="IDA_REASON_BAD_MODE"/>
+      <entry value="8" name="IDA_REASON_EVENTS_OFF"/>
+      <entry value="9" name="IDA_REASON_SESSION"/>
+      <entry value="10" name="IDA_REASON_NARROWED"/>
+      <entry value="11" name="IDA_REASON_IMU_LAG"/>
+      <entry value="12" name="IDA_REASON_IMU_REJECTED"/>
+      <entry value="13" name="IDA_REASON_ONE_PER_CALL"/>
+      <entry value="14" name="IDA_REASON_NOT_INIT"/>
+      <entry value="15" name="IDA_REASON_COALESCED"/>
+      <entry value="128" name="IDA_REASON_LINK_DROPPED"><description>Kart platformu erteleme tamponu dolu oldugu icin komutu atti (A4-K105).</description></entry>
+      <entry value="129" name="IDA_REASON_LINK_SESSION_END"><description>Komut cekirdege ulasmadan oturum bitti (A4-K74).</description></entry>
+      <entry value="130" name="IDA_REASON_LINK_BAD_FIELD"><description>Donusturucu alani A4 tipine cevirmedi (gecersiz tur, aralik disi enum).</description></entry>
+      <entry value="131" name="IDA_REASON_LINK_STALE_SESSION"><description>Komutun sess alani guncel oturum degil.</description></entry>
+    </enum>
+    <enum name="IDA_CORE_RC">
+      <description>A4 ida_rc_t (IDA_RC_*).</description>
+      <entry value="0" name="IDA_CORE_RC_OK"/>
+      <entry value="1" name="IDA_CORE_RC_DUP_SEQ"/>
+      <entry value="2" name="IDA_CORE_RC_OLD_SEQ"/>
+      <entry value="3" name="IDA_CORE_RC_BAD_INPUT"/>
+      <entry value="4" name="IDA_CORE_RC_NOT_INIT"/>
+      <entry value="5" name="IDA_CORE_RC_PARAM_DEFAULTS"/>
+      <entry value="6" name="IDA_CORE_RC_VERSION"/>
+      <entry value="7" name="IDA_CORE_RC_NOT_FOUND"/>
+      <entry value="8" name="IDA_CORE_RC_IMU_REJECTED"/>
+    </enum>
+    <enum name="IDA_FS_LEVEL">
+      <description>A4 IDA_FS_*.</description>
+      <entry value="0" name="IDA_FS_LEVEL_NONE"/>
+      <entry value="1" name="IDA_FS_LEVEL_WARN"/>
+      <entry value="2" name="IDA_FS_LEVEL_HOLD"/>
+      <entry value="3" name="IDA_FS_LEVEL_SURFACE"/>
+      <entry value="4" name="IDA_FS_LEVEL_PASSIVE_SURFACE"/>
+      <entry value="5" name="IDA_FS_LEVEL_DISARM"/>
+    </enum>
+    <enum name="IDA_ACT_FLAGS" bitmask="true">
+      <description>ACTUATOR bayraklari (A1 3.7).</description>
+      <entry value="1" name="IDA_ACT_FLAGS_THR_VALID"><description>out.thr_valid; 0 ise pwm_us anlamsizdir ve yururlukteki komut degismez.</description></entry>
+      <entry value="2" name="IDA_ACT_FLAGS_IS_SAFE"><description>out.is_safe.</description></entry>
+      <entry value="4" name="IDA_ACT_FLAGS_ARMED"><description>out.armed.</description></entry>
+      <entry value="8" name="IDA_ACT_FLAGS_SRC_TICK"><description>out.src = IDA_SRC_TICK.</description></entry>
+      <entry value="16" name="IDA_ACT_FLAGS_ASYNC"><description>Izgara tick'inin eszamansiz guvenli ciktisi (A1-K44).</description></entry>
+      <entry value="32" name="IDA_ACT_FLAGS_INPUT_DROPPED"><description>health.input_dropped.</description></entry>
+      <entry value="64" name="IDA_ACT_FLAGS_NARROWED"><description>health.narrowed.</description></entry>
+      <entry value="128" name="IDA_ACT_FLAGS_OUT_FIXED"><description>Platform ciktiyi notr guvenliyle degistirdi (A4-K59).</description></entry>
+      <entry value="256" name="IDA_ACT_FLAGS_BATCH_INCOMPLETE"><description>Bu cagrinin partisi eksik kapandi (A1-K30).</description></entry>
+    </enum>
+    <enum name="IDA_HEALTH">
+      <description>A4 ida_health_t bitleri (STATUS.health).</description>
+      <entry value="1" name="IDA_HEALTH_CORE_OK"/>
+      <entry value="2" name="IDA_HEALTH_DATA_OK"/>
+      <entry value="4" name="IDA_HEALTH_IMU_REJECTED"/>
+      <entry value="8" name="IDA_HEALTH_IMU_LAG"/>
+      <entry value="16" name="IDA_HEALTH_INPUT_DROPPED"/>
+      <entry value="32" name="IDA_HEALTH_NARROWED"/>
+    </enum>
+    <enum name="IDA_GNSS_FIX">
+      <description>A4 IDA_GNSS_FIX_*.</description>
+      <entry value="0" name="IDA_GNSS_FIX_NONE"/>
+      <entry value="1" name="IDA_GNSS_FIX_2D"/>
+      <entry value="2" name="IDA_GNSS_FIX_3D"/>
+      <entry value="3" name="IDA_GNSS_FIX_DGPS"/>
+      <entry value="4" name="IDA_GNSS_FIX_RTK"/>
+    </enum>
+    <enum name="IDA_SEVERITY">
+      <description>A4 IDA_SEV_* (degerler MAVLink MAV_SEVERITY ile ayni sirada; A4 3.8).</description>
+      <entry value="0" name="IDA_SEVERITY_EMERGENCY"/>
+      <entry value="1" name="IDA_SEVERITY_ALERT"/>
+      <entry value="2" name="IDA_SEVERITY_CRITICAL"/>
+      <entry value="3" name="IDA_SEVERITY_ERROR"/>
+      <entry value="4" name="IDA_SEVERITY_WARNING"/>
+      <entry value="5" name="IDA_SEVERITY_NOTICE"/>
+      <entry value="6" name="IDA_SEVERITY_INFO"/>
+      <entry value="7" name="IDA_SEVERITY_DEBUG"/>
+    </enum>
+  </enums>
+  <messages>
+    <!-- ================= Oturum ================= -->
+    <message id="46000" name="IDA_SIM_HELLO">
+      <description>Sim -> kart. Oturum acma istegi; yanit gelene kadar 100 ms'de bir yinelenir (A1-K12).</description>
+      <field type="uint64_t" name="dialect_hash">Dialect ozeti (A1 3.2).</field>
+      <field type="uint32_t" name="nonce">Bu el sikismanin sim tek kullanimlik sayisi; 0 olamaz.</field>
+      <field type="uint32_t" name="run_id">Sim calistirma kimligi (bilgi).</field>
+      <field type="uint32_t" name="ctrl_period_ns" units="ns">Kontrol periyodu; 1.0'da 5000000.</field>
+      <field type="uint8_t" name="proto_major">A1 ana surumu; 1.</field>
+      <field type="uint8_t" name="proto_minor">A1 alt surumu; 0.</field>
+    </message>
+    <message id="46001" name="IDA_BOARD_HELLO">
+      <description>Kart -> sim. Oturum yokken 200 ms'de bir duyuru (peer_nonce = 0); SIM_HELLO'ya yanit (peer_nonce = SIM_HELLO.nonce). Acilis kaydini tasir (A1-K11, A1-K13).</description>
+      <field type="uint64_t" name="dialect_hash">Kartin derlendigi dialect ozeti.</field>
+      <field type="uint64_t" name="param_schema_hash">ida_core_info.param_schema_hash (A4-K79).</field>
+      <field type="uint32_t" name="peer_nonce">Yanitlanan SIM_HELLO.nonce; duyuruda 0.</field>
+      <field type="uint32_t" name="nonce">Kartin bu el sikisma icin tek kullanimlik sayisi; 0 olamaz.</field>
+      <field type="uint32_t" name="boot_count">A4 ida_init_in_t.boot_count.</field>
+      <field type="uint32_t" name="reset_flags">Ham sifirlama bayraklari (bilgi).</field>
+      <field type="uint32_t" name="core_version">ida_core_info.core_version.</field>
+      <field type="uint32_t" name="fw_version">Kart yazilimi ya da SIL kosucusu surumu.</field>
+      <field type="uint32_t" name="fw_git">Kaynak deposu commit ozetinin ilk 32 biti.</field>
+      <field type="uint32_t" name="param_blob_crc">Kalici parametre blogunun tamaminin CRC-32/ISO-HDLC degeri; blok yoksa 0.</field>
+      <field type="uint32_t" name="param_gen">plat.param_gen.</field>
+      <field type="uint32_t" name="last_cmd_id">Bu acilista cekirdege verilen son cmd_id; hic yoksa 0 (A1-K66).</field>
+      <field type="uint32_t" name="ctrl_period_ns" units="ns">Kartin derlendigi kontrol periyodu; 1.0'da 5000000 (A1-K14).</field>
+      <field type="uint16_t" name="param_blob_len" units="bytes">Blok boyu; yoksa 0.</field>
+      <field type="uint16_t" name="port_major">IDA_PORT_VERSION_MAJOR.</field>
+      <field type="uint16_t" name="port_minor">IDA_PORT_VERSION_MINOR.</field>
+      <field type="uint16_t" name="det_schema_major">IDA_DET_SCHEMA_MAJOR (A8).</field>
+      <field type="uint16_t" name="det_schema_minor">IDA_DET_SCHEMA_MINOR (A8).</field>
+      <field type="uint16_t" name="prev_sess">Bu acilistaki son oturum kimligi; yoksa 0.</field>
+      <field type="uint16_t" name="sessions_since_boot">Bu acilista kurulmus oturum sayisi.</field>
+      <field type="uint8_t" name="proto_major">A1 ana surumu.</field>
+      <field type="uint8_t" name="proto_minor">A1 alt surumu.</field>
+      <field type="uint8_t" name="role" enum="IDA_ROLE">Gonderenin rolu.</field>
+      <field type="uint8_t" name="reset_cause">A4 IDA_RESET_*.</field>
+      <field type="uint8_t" name="consecutive_faults">A4 ida_init_in_t.consecutive_faults.</field>
+      <field type="uint8_t" name="boot_count_ok">A4 ida_init_in_t.boot_count_ok (0/1).</field>
+      <field type="uint8_t" name="param_src">A4 IDA_PSRC_*.</field>
+      <field type="uint8_t" name="init_rc" enum="IDA_CORE_RC">ida_core_init donusu.</field>
+    </message>
+    <message id="46002" name="IDA_SESSION_ACCEPT">
+      <description>Sim -> kart. El sikismanin sonucu (A1-K14).</description>
+      <field type="uint32_t" name="run_id">Sim calistirma kimligi.</field>
+      <field type="uint32_t" name="nonce_sim">SIM_HELLO.nonce.</field>
+      <field type="uint32_t" name="nonce_board">BOARD_HELLO.nonce.</field>
+      <field type="uint16_t" name="sess">Oturum kimligi; OK'de 0 olamaz.</field>
+      <field type="uint8_t" name="result" enum="IDA_SESSION_RESULT">Sonuc.</field>
+      <field type="uint8_t" name="run_mode" enum="IDA_RUN_MODE">Calistirma kipi (bilgi).</field>
+    </message>
+    <message id="46003" name="IDA_KEEPALIVE">
+      <description>Iki yon. Gonderen son T_canli (100 ms) icinde baska cerceve gondermediyse gonderir (A1-K20).</description>
+      <field type="uint16_t" name="sess">Guncel oturum; oturum yoksa 0.</field>
+      <field type="uint8_t" name="state" enum="IDA_LINK_STATE">Gonderenin durumu (sim de ayni kodlari kullanir).</field>
+    </message>
+    <message id="46004" name="IDA_SESSION_CLOSE">
+      <description>Iki yon. Oturumu hemen bitirir (A1-K21).</description>
+      <field type="uint16_t" name="sess">Kapatilan oturum.</field>
+      <field type="uint8_t" name="reason" enum="IDA_CLOSE_REASON">Neden.</field>
+    </message>
+    <!-- ================= Parti ve zaman ================= -->
+    <message id="46010" name="IDA_TIME_FRAME">
+      <description>Sim -> kart. Partiyi kapatir (A1-K28).</description>
+      <field type="int64_t" name="t_sim_ns" units="ns">Partinin kapanis ani, sim zamani (A4 tf.t).</field>
+      <field type="uint32_t" name="batch_seq">Partinin sira numarasi (A4 tf.seq).</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="n_members">Bu partinin TIME_FRAME disindaki cerceve sayisi.</field>
+      <field type="uint8_t" name="tf_flags" enum="IDA_TF_FLAGS" display="bitmask">Bayraklar.</field>
+      <field type="uint8_t" name="run_mode" enum="IDA_RUN_MODE">Calistirma kipi (bilgi; A1-K24).</field>
+    </message>
+    <!-- ================= Sensorler (sim -> kart) ================= -->
+    <message id="46020" name="IDA_IMU">
+      <description>Sim -> kart. A4 ida_imu_sample_t. t_meas = aralik sonu.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="uint32_t" name="window_ns" units="ns">hdr.window_ns (&gt; 0).</field>
+      <field type="float[3]" name="gyro" units="rad/s">IMU cercevesinde acisal hiz.</field>
+      <field type="float[3]" name="accel" units="m/s/s">IMU montaj noktasinda ozgul kuvvet.</field>
+      <field type="float" name="temp_c" units="degC">Sicaklik.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst (0-3).</field>
+    </message>
+    <message id="46021" name="IDA_MAG">
+      <description>Sim -> kart. A4 ida_mag_t; anlik.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="float[3]" name="field">Manyetik alan, tesla (T), sensor cercevesi.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+    </message>
+    <message id="46022" name="IDA_BARO">
+      <description>Sim -> kart. A4 ida_baro_t; t_meas = donusum penceresinin sonu.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="uint32_t" name="window_ns" units="ns">hdr.window_ns (&gt; 0).</field>
+      <field type="float" name="p_abs" units="Pa">Mutlak basinc.</field>
+      <field type="float" name="temp_c" units="degC">Sicaklik.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+    </message>
+    <message id="46023" name="IDA_GNSS">
+      <description>Sim -> kart. A4 ida_gnss_t; t_meas = cozum ani.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="int32_t" name="lat_e7" units="degE7">WGS-84 enlem.</field>
+      <field type="int32_t" name="lon_e7" units="degE7">WGS-84 boylam.</field>
+      <field type="int32_t" name="alt_mm" units="mm">Ortalama deniz seviyesine gore yukseklik.</field>
+      <field type="float[3]" name="vel_ned" units="m/s">NED hiz.</field>
+      <field type="float" name="eph" units="m">Yatay konum belirsizligi, 1 sigma.</field>
+      <field type="float" name="epv" units="m">Dikey konum belirsizligi, 1 sigma.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="fix_type" enum="IDA_GNSS_FIX">A4 fix_type (IDA_GNSS_FIX_*).</field>
+      <field type="uint8_t" name="n_sv">Kullanilan uydu sayisi.</field>
+    </message>
+    <message id="46024" name="IDA_DVL">
+      <description>Sim -> kart. A4 ida_dvl_t; t_meas = yansima ani.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="float[3]" name="vel" units="m/s">DVL cercevesinde hiz.</field>
+      <field type="float[6]" name="cov">Hiz kovaryansi, (m/s)^2, DVL cercevesi, ust ucgen xx, xy, xz, yy, yz, zz.</field>
+      <field type="float" name="fom" units="m/s">Basarim olcusu.</field>
+      <field type="float[4]" name="beam_dist" units="m">Isin boyunca mesafe; cozulemeyen isinda -1.</field>
+      <field type="float" name="altitude" units="m">Dibe dik mesafe; bilinmiyorsa -1.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="dvl_flags" enum="IDA_DVL_FLAGS" display="bitmask">dvl_flags.</field>
+      <field type="uint8_t" name="beam_valid">Bit i: isin i gecerli (0x00-0x0F).</field>
+    </message>
+    <message id="46025" name="IDA_PING1D">
+      <description>Sim -> kart. A4 ida_ping1d_t; t_meas = yansima ani.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="float" name="distance" units="m">Dibe mesafe.</field>
+      <field type="float" name="scan_start" units="m">Tarama penceresi basi.</field>
+      <field type="float" name="scan_length" units="m">Tarama penceresi boyu.</field>
+      <field type="uint32_t" name="ping_number">Cihaz sayaci.</field>
+      <field type="uint32_t" name="tx_offset_ns" units="ns">Gonderim ani = t_meas - tx_offset_ns.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="confidence" units="%">0-100.</field>
+    </message>
+    <message id="46026" name="IDA_BATT">
+      <description>Sim -> kart. A4 ida_batt_t; t_meas = pencere sonu.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="uint32_t" name="window_ns" units="ns">hdr.window_ns (&gt; 0).</field>
+      <field type="float" name="voltage" units="V">Paket gerilimi.</field>
+      <field type="float" name="current" units="A">Akim; pozitif bosalma.</field>
+      <field type="float" name="temp_c" units="degC">Paket sicakligi.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+    </message>
+    <message id="46027" name="IDA_LEAK">
+      <description>Sim -> kart. A4 ida_leak_t; anlik.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="mask">Bit i: sizinti algilayicisi i islak.</field>
+    </message>
+    <message id="46028" name="IDA_SAFETY">
+      <description>Sim -> kart. A4 ida_safety_t: sanal emniyet girdileri ve firlatici durumunun geri okunmasi; anlik (ornekleme ya da degisim ani). Kart degistiremez.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas.</field>
+      <field type="uint32_t" name="seq">hdr.seq.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="estop">1: sanal acil durdurma etkin.</field>
+      <field type="uint8_t[2]" name="tube" enum="IDA_TUBE_FLAGS" display="bitmask">Tup basina IDA_TUBE_FLAGS.</field>
+    </message>
+    <message id="46029" name="IDA_PING360_HEAD">
+      <description>Sim -> kart. Ping360 tarama satirinin basligi; satirin DATA cercevelerinden sonra gelir ve satiri teslim edildigi partiye baglar (A1-K50).</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">hdr.t_meas = darbenin gonderim ani.</field>
+      <field type="uint32_t" name="seq">hdr.seq; satir kimligi.</field>
+      <field type="uint16_t" name="angle_grad">0-399 gradyan.</field>
+      <field type="uint16_t" name="n_samples">200-1200.</field>
+      <field type="uint16_t" name="sample_period">25 ns biriminde, 80-40000.</field>
+      <field type="uint16_t" name="tx_duration_us" units="us">Darbe suresi.</field>
+      <field type="uint16_t" name="tx_freq_khz">Darbe frekansi, kHz.</field>
+      <field type="uint16_t" name="flags" enum="IDA_SAMPLE_FLAGS" display="bitmask">hdr.flags.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="gain">Cihaz kazanc kodu.</field>
+      <field type="uint8_t" name="n_frag">DATA cercevesi sayisi = ceil(n_samples / 240).</field>
+    </message>
+    <message id="46030" name="IDA_PING360_DATA">
+      <description>Sim -> kart. Ping360 tarama satirinin bir parcasi; parca k ornek [240k, 240k + 239] (A1-K49).</description>
+      <field type="uint32_t" name="seq">Ait oldugu satirin HEAD.seq'i.</field>
+      <field type="uint8_t" name="inst">hdr.inst.</field>
+      <field type="uint8_t" name="frag_idx">0 .. n_frag-1.</field>
+      <field type="uint8_t[240]" name="data">Genlik ornekleri; son parcada kullanilmayan kuyruk 0.</field>
+    </message>
+    <!-- ================= Algilama kayitlari (A8) ================= -->
+    <message id="46035" name="IDA_DET_BATCH">
+      <description>Sim -> kart. A8 ida_det_batch_t (reserved haric), alanlar bit duzeyinde ayni.</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">A8 t_meas_ns.</field>
+      <field type="uint32_t" name="batch_seq">A8 batch_seq.</field>
+      <field type="uint32_t" name="window_ns" units="ns">A8 window_ns.</field>
+      <field type="uint16_t" name="calib_ver">A8 calib_ver.</field>
+      <field type="uint16_t" name="producer_ver">A8 producer_ver.</field>
+      <field type="uint16_t" name="flags">A8 IDA_DET_BF_*.</field>
+      <field type="uint8_t" name="source">A8 IDA_DET_SRC_*.</field>
+      <field type="uint8_t" name="inst">A8 inst.</field>
+      <field type="uint8_t" name="status">A8 IDA_DET_ST_*.</field>
+      <field type="uint8_t" name="count">A8 count (0-4).</field>
+      <field type="uint8_t" name="producer_id">A8 producer_id.</field>
+    </message>
+    <message id="46036" name="IDA_DET_RECORD">
+      <description>Iki yon. A8 ida_det_record_t (reserved haric), alanlar bit duzeyinde ayni. Sim -> kart: kamera kayitlari; kart -> sim: kart ici sonar algilamasinin kayitlari (A4 out.det_tx).</description>
+      <field type="int64_t" name="t_meas_ns" units="ns">A8 t_meas_ns.</field>
+      <field type="uint32_t" name="det_seq">A8 det_seq.</field>
+      <field type="uint32_t" name="batch_seq">A8 batch_seq.</field>
+      <field type="uint32_t" name="window_ns" units="ns">A8 window_ns.</field>
+      <field type="uint32_t" name="t_sigma_ns" units="ns">A8 t_sigma_ns.</field>
+      <field type="float[3]" name="z">A8 z[3] = (r m, az rad, el rad).</field>
+      <field type="float[6]" name="chol">A8 chol[6].</field>
+      <field type="float" name="confidence">A8 confidence.</field>
+      <field type="uint16_t" name="calib_ver">A8 calib_ver.</field>
+      <field type="uint16_t" name="producer_ver">A8 producer_ver.</field>
+      <field type="uint16_t" name="flags">A8 IDA_DET_F_*.</field>
+      <field type="uint8_t" name="source">A8 IDA_DET_SRC_*.</field>
+      <field type="uint8_t" name="inst">A8 inst.</field>
+      <field type="uint8_t" name="kind">A8 IDA_DET_KIND_*.</field>
+      <field type="uint8_t" name="frame">A8 IDA_DET_FRAME_*.</field>
+      <field type="uint8_t" name="class_id">A8 class_id.</field>
+      <field type="uint8_t" name="producer_id">A8 producer_id.</field>
+      <field type="uint8_t" name="batch_index">A8 batch_index.</field>
+      <field type="uint8_t" name="batch_count">A8 batch_count.</field>
+    </message>
+    <!-- ================= Yer istasyonu komutlari (sim -> kart) ================= -->
+    <message id="46040" name="IDA_CMD_SIMPLE">
+      <description>Sim -> kart. Yuksuz ya da tek tamsayi argumanli komut (A1 3.6).</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi (A1-K65).</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint16_t" name="arg">SET_MODE: IDA_MODE; MISSION_BEGIN: oge sayisi; MISSION_CTL: IDA_MCTL; PARAM_GET: parametre kimligi; digerlerinde 0.</field>
+      <field type="uint8_t" name="type" enum="IDA_CMD_TYPE">Komut turu (yalniz CMD_SIMPLE'a ait turler).</field>
+      <field type="uint8_t" name="source">Komutu baslatan sistem kimligi (A4 ida_cmd_t.source).</field>
+    </message>
+    <message id="46041" name="IDA_CMD_MANUAL">
+      <description>Sim -> kart. A4 IDA_CMD_MANUAL.</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
+      <field type="float[6]" name="axes">Govde cercevesi X, Y, Z, K, M, N; [-1, 1] (A4-K49).</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
+    </message>
+    <message id="46042" name="IDA_CMD_GUIDED">
+      <description>Sim -> kart. A4 IDA_CMD_GUIDED_SP (A4-K50).</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
+      <field type="float[2]" name="pos_ne" units="m">NED kuzey, dogu; senaryo orijinine gore.</field>
+      <field type="float" name="depth" units="m">Asagi pozitif.</field>
+      <field type="float" name="altitude" units="m">Dipten yukari pozitif.</field>
+      <field type="float[3]" name="vel_ned" units="m/s">NED hiz.</field>
+      <field type="float" name="yaw" units="rad">(-pi, pi], kuzeyden doguya.</field>
+      <field type="float" name="yaw_rate" units="rad/s">Govde z ekseni.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="mask" enum="IDA_SP_MASK" display="bitmask">Gecerli alanlar.</field>
+      <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
+    </message>
+    <message id="46043" name="IDA_CMD_MISSION_ITEM">
+      <description>Sim -> kart. A4 IDA_CMD_MISSION_ITEM (A4-K51).</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
+      <field type="float[4]" name="p">Ture ozgu parametreler (anlami cekirdek uygulamasinin).</field>
+      <field type="int32_t" name="lat_e7" units="degE7">frame = GLOBAL.</field>
+      <field type="int32_t" name="lon_e7" units="degE7">frame = GLOBAL.</field>
+      <field type="float" name="north_m" units="m">frame = LOCAL.</field>
+      <field type="float" name="east_m" units="m">frame = LOCAL.</field>
+      <field type="float" name="depth" units="m">Asagi pozitif.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint16_t" name="index">0 .. count-1.</field>
+      <field type="uint8_t" name="item_type" enum="IDA_MI_TYPE">Oge turu.</field>
+      <field type="uint8_t" name="frame" enum="IDA_MI_FRAME">Konum cercevesi.</field>
+      <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
+    </message>
+    <message id="46044" name="IDA_CMD_PARAM_SET">
+      <description>Sim -> kart. A4 IDA_CMD_PARAM_SET (A4-K81).</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
+      <field type="uint32_t" name="value_bits">Degerin 32 bitlik gosterimi: I32 ikiye tumleyen, U32, F32 IEEE-754 binary32 bitleri.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint16_t" name="param_id">Parametre kimligi.</field>
+      <field type="uint8_t" name="param_type" enum="IDA_PARAM_TYPE">Deger turu.</field>
+      <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
+    </message>
+    <message id="46045" name="IDA_CMD_FC">
+      <description>Sim -> kart. A4 IDA_CMD_FC. arg0 ve arg1 opaktir; anlamlari atis kontrol uygulamasinindir (W4). A1 bu alanlari yorumlamaz.</description>
+      <field type="uint32_t" name="cmd_id">Komut kimligi.</field>
+      <field type="uint32_t" name="arg0">Opak.</field>
+      <field type="uint32_t" name="arg1">Opak.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="op" enum="IDA_FC_OP">Islem.</field>
+      <field type="uint8_t" name="tube">0-1.</field>
+      <field type="uint8_t" name="source">Baslatan sistem kimligi.</field>
+    </message>
+    <message id="46046" name="IDA_EVENT_RESULT">
+      <description>Sim -> kart. Bir olayin alicidaki (sim) son sonucu (A4 ida_event_result_t; A1-K81).</description>
+      <field type="uint64_t" name="event_id">Olay kimligi.</field>
+      <field type="int64_t" name="t_apply_ns" units="ns">APPLIED ve DUPLICATE'te uygulandigi sim ani; digerlerinde 0.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="result" enum="IDA_EVENT_RESULT_CODE">Sonuc (1-15).</field>
+    </message>
+    <!-- ================= Kart -> sim ================= -->
+    <message id="46060" name="IDA_ACTUATOR">
+      <description>Kart -> sim. Bir cekirdek cagrisinin surekli komutu (A1 3.7).</description>
+      <field type="uint32_t" name="batch_seq">A4 out.seq.</field>
+      <field type="uint32_t" name="valid_for_ns" units="ns">A4 out.valid_for_ns; THR_VALID = 0 ise 0.</field>
+      <field type="uint16_t[8]" name="pwm_us" units="us">A5 itici sirasiyla ESC darbe genisligi; THR_VALID = 0 ise 0.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint16_t" name="act_flags" enum="IDA_ACT_FLAGS" display="bitmask">Bayraklar.</field>
+      <field type="uint16_t" name="rx_to_tx_us" units="us">TIME_FRAME aliminden bu cercevenin gonderim kuyruguna verilmesine kadar (tani; 65535'te doyar).</field>
+      <field type="uint8_t" name="fs_level" enum="IDA_FS_LEVEL">A4 out.fs_level.</field>
+      <field type="uint8_t" name="core_rc" enum="IDA_CORE_RC">Cagrinin donus kodu.</field>
+      <field type="uint8_t" name="n_events">Bu cagrinin urettigi yeni olay sayisi (0-4); olaylar bu cerceveden once gonderilir (A1-K73).</field>
+      <field type="uint8_t" name="n_merged">Bu cagriya birlestirilen onceki parti sayisi (A4-K102).</field>
+    </message>
+    <message id="46061" name="IDA_EVENT">
+      <description>Kart -> sim. Tek seferlik olay (A4 ida_event_t). Yinelemeler ayni baytlarla gonderilir (A4-K106).</description>
+      <field type="uint64_t" name="event_id">(boot_count &lt;&lt; 32) | sayac.</field>
+      <field type="int64_t" name="t_decide_ns" units="ns">Kararin verildigi ciktinin t_ref'i.</field>
+      <field type="uint32_t" name="batch_seq">Kararin verildigi ciktinin seq'i.</field>
+      <field type="uint32_t" name="apply_by_ns" units="ns">Son gecerlilik: t_decide + apply_by.</field>
+      <field type="uint32_t" name="hold_ns" units="ns">Yalniz SAFETY_OPEN: izin suresi; digerlerinde 0.</field>
+      <field type="uint32_t" name="fc_ref">Atis kontrolun ic basvuru numarasi; alici yalniz kayda yazar.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="kind" enum="IDA_EVENT_KIND">Olay turu.</field>
+      <field type="uint8_t" name="tube">0-1; SAFETY_CLOSE'ta 255 = iki tup.</field>
+      <field type="uint8_t" name="call_kind" enum="IDA_CALL_KIND">Olayi cikaran cagrinin turu (A1-K73).</field>
+    </message>
+    <message id="46062" name="IDA_CMD_RESULT">
+      <description>Kart -> sim. Bir komutun tek sonucu (A4 ida_cmd_result_t; A1-K67).</description>
+      <field type="uint32_t" name="cmd_id">Sonucun ait oldugu komut.</field>
+      <field type="uint32_t" name="value_bits">kind = PARAM_VALUE: degerin 32 bitlik gosterimi.</field>
+      <field type="uint32_t" name="save_gen">kind = PARAM_SAVE ve ACCEPTED: blogun kusagi.</field>
+      <field type="uint32_t" name="save_crc">kind = PARAM_SAVE ve ACCEPTED: blogun CRC-32/ISO-HDLC degeri.</field>
+      <field type="uint16_t" name="save_len" units="bytes">kind = PARAM_SAVE ve ACCEPTED: blok boyu.</field>
+      <field type="uint16_t" name="reason" enum="IDA_REASON">Neden.</field>
+      <field type="uint16_t" name="param_id">kind = PARAM_VALUE: parametre kimligi.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="kind" enum="IDA_RES_KIND">Sonuc turu.</field>
+      <field type="uint8_t" name="ack" enum="IDA_ACK">Kabul ya da ret.</field>
+      <field type="uint8_t" name="param_type" enum="IDA_PARAM_TYPE">kind = PARAM_VALUE: deger turu.</field>
+    </message>
+    <message id="46063" name="IDA_NAV">
+      <description>Kart -> sim. A4 ida_nav_out_t; OK donen step ciktilarindan 50 Hz'te bir (A1-K91).</description>
+      <field type="int64_t" name="t_ns" units="ns">Cikis durumunun olcum zamani.</field>
+      <field type="uint32_t" name="batch_seq">Ciktinin seq'i.</field>
+      <field type="float[3]" name="p_ned" units="m">Senaryo orijinine gore, govde referans noktasi.</field>
+      <field type="float[3]" name="v_ned" units="m/s">NED hiz.</field>
+      <field type="float[4]" name="q_nb">(w, x, y, z), Hamilton, govde -&gt; NED.</field>
+      <field type="float[3]" name="omega_b" units="rad/s">Govde acisal hizi.</field>
+      <field type="float" name="depth" units="m">Asagi pozitif.</field>
+      <field type="float" name="altitude" units="m">Dibe; bilinmiyorsa -1.</field>
+      <field type="float[3]" name="p_sigma" units="m">1 sigma.</field>
+      <field type="float[3]" name="v_sigma" units="m/s">1 sigma.</field>
+      <field type="float[3]" name="att_sigma" units="rad">1 sigma.</field>
+      <field type="int32_t" name="origin_lat_e7" units="degE7">Orijin.</field>
+      <field type="int32_t" name="origin_lon_e7" units="degE7">Orijin.</field>
+      <field type="uint8_t" name="est_level">A4 IDA_EST_*.</field>
+      <field type="uint8_t" name="reset_counter">A4 reset_counter.</field>
+    </message>
+    <message id="46064" name="IDA_STATUS">
+      <description>Kart -> sim. A4 ida_status_t ve ida_health_t ozeti ile kalici kayit durumu; 10 Hz (A1-K91).</description>
+      <field type="uint32_t" name="boot_count">status.boot_count.</field>
+      <field type="uint32_t" name="fs_reasons">status.fs_reasons (A4 IDA_FSR_*).</field>
+      <field type="uint32_t" name="param_gen">plat.param_gen.</field>
+      <field type="uint32_t" name="param_blob_crc">Kalici blogun CRC-32/ISO-HDLC degeri; yoksa 0.</field>
+      <field type="uint32_t" name="batch_seq">Son ciktinin seq'i.</field>
+      <field type="uint16_t" name="mission_item">status.mission_item.</field>
+      <field type="uint16_t" name="sess">Guncel oturum.</field>
+      <field type="uint8_t" name="mode" enum="IDA_MODE">status.mode.</field>
+      <field type="uint8_t" name="armed">status.armed.</field>
+      <field type="uint8_t" name="fs_level" enum="IDA_FS_LEVEL">status.fs_level.</field>
+      <field type="uint8_t" name="regime">A4 IDA_REG_*.</field>
+      <field type="uint8_t" name="phase">A4 IDA_PH_*.</field>
+      <field type="uint8_t" name="mission_state">A4 IDA_MS_*.</field>
+      <field type="uint8_t" name="param_ok">status.param_ok.</field>
+      <field type="uint8_t" name="events_ok">status.events_ok.</field>
+      <field type="uint8_t" name="health" enum="IDA_HEALTH" display="bitmask">ida_health_t bitleri.</field>
+      <field type="uint8_t" name="link_state" enum="IDA_LINK_STATE">Kartin A1 durumu.</field>
+      <field type="uint8_t" name="param_store">plat.param_store (A4 IDA_PSTORE_*).</field>
+      <field type="uint8_t" name="param_fail">plat.param_fail (A4 IDA_PSFAIL_*).</field>
+    </message>
+    <message id="46065" name="IDA_FC_STATUS">
+      <description>Kart -> sim. A4 ida_fc_status_t; 10 Hz. ext[] opaktir; bicimi atis kontrol uygulamasinindir (W4).</description>
+      <field type="uint64_t" name="last_event_id">Son cikan olay; yoksa 0.</field>
+      <field type="uint32_t" name="inhibit_mask">Etkin engel bitleri (tablo W4'un).</field>
+      <field type="uint8_t" name="state">0 = SAFE; digerleri W4'un.</field>
+      <field type="uint8_t" name="last_event_result" enum="IDA_EVENT_RESULT_CODE">Son olayin sonucu; yoksa 0.</field>
+      <field type="uint8_t" name="ext_len">0-64.</field>
+      <field type="uint8_t[64]" name="ext">Opak ek durum.</field>
+    </message>
+    <message id="46066" name="IDA_LOG">
+      <description>Kart -> sim. A4 ida_log_t.</description>
+      <field type="int64_t" name="t_w_ns" units="ns">Cagrinin duvar saati.</field>
+      <field type="int32_t" name="arg0">Arguman.</field>
+      <field type="int32_t" name="arg1">Arguman.</field>
+      <field type="uint16_t" name="code">Kod (tablo cekirdek uygulamasinin).</field>
+      <field type="uint8_t" name="severity" enum="IDA_SEVERITY">Onem; A4 IDA_SEV_*.</field>
+    </message>
+    <message id="46067" name="IDA_CORE_COUNTERS">
+      <description>Kart -> sim. A4 ida_core_counters_t (status.cnt), 1 Hz. Dizi sirasi A4 yapisindaki alan sirasidir.</description>
+      <field type="uint32_t[18]" name="cnt">sample_rejected, sample_future, imu_rejected, imu_gap, bad_input, dup_seq, old_seq, wall_backstep, cmd_rejected, widen_blocked, evres_ignored, event_unknown, det_rejected, ping360_rejected, bg_dropped, bg_slice_mismatch, log_dropped, step_miss.</field>
+    </message>
+    <message id="46068" name="IDA_LINK_STATS">
+      <description>Kart -> sim. Kart tarafi A1 ve platform sayaclari (A1 Tablo 3.11b), 1 Hz; acilistan beri birikir, 2^32'de sarar.</description>
+      <field type="uint32_t[36]" name="cnt">Sira A1 Tablo 3.11b'dedir.</field>
+    </message>
+    <message id="46069" name="IDA_CALL_TRACE">
+      <description>Kart -> sim. Her cekirdek cagrisinin (izgara tick'leri dahil) kart tarafi girdileri; A6 girdi tekrari ve A4-K109 icin (A1-K95).</description>
+      <field type="int64_t" name="now_w_ns" units="ns">Cagrinin now_w'si.</field>
+      <field type="uint32_t" name="batch_seq">tf.seq; izgara tick'inde son kabul edilen.</field>
+      <field type="uint32_t" name="bg_slices">A4 in.bg_slices.</field>
+      <field type="uint32_t" name="prev_call_ns" units="ns">plat.prev_call_ns.</field>
+      <field type="uint32_t[27]" name="rx_age_ns" units="ns">now_w - t_rx; sira: tf, imu, samples[0..15], det_batch[0..1], det[0..7]; kullanilmayan 0; 2^32-1'de doyar.</field>
+      <field type="uint8_t" name="n_rx">rx_age_ns'teki anlamli oge sayisi.</field>
+      <field type="uint8_t" name="call_kind" enum="IDA_CALL_KIND">Cagri turu.</field>
+      <field type="uint8_t" name="core_rc" enum="IDA_CORE_RC">Donus kodu.</field>
+      <field type="uint8_t" name="plat_flags" enum="IDA_PLAT_FLAGS" display="bitmask">Platform bayraklari.</field>
+      <field type="uint8_t" name="n_merged">Birlestirilen onceki parti sayisi.</field>
+    </message>
+    <message id="46070" name="IDA_FAULT_RECORD">
+      <description>Kart -> sim. Onceki acilisin hata kaydi; varsa oturum kurulunca bir kez (01 2.8).</description>
+      <field type="uint32_t" name="cfsr">CFSR.</field>
+      <field type="uint32_t" name="hfsr">HFSR.</field>
+      <field type="uint32_t" name="mmfar">MMFAR.</field>
+      <field type="uint32_t" name="bfar">BFAR.</field>
+      <field type="uint32_t" name="pc">Yigina itilmis PC.</field>
+      <field type="uint32_t" name="lr">Yigina itilmis LR.</field>
+      <field type="uint32_t" name="xpsr">Yigina itilmis xPSR.</field>
+      <field type="uint32_t" name="step_counter">Adim sayaci.</field>
+      <field type="uint16_t" name="fault_seq">Hata kaydi sayaci.</field>
+      <field type="uint8_t" name="stacking_valid">1: PC/LR/xPSR gecerli.</field>
+    </message>
+  </messages>
+</mavlink>
