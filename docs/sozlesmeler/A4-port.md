@@ -2,16 +2,16 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, düzeltme turu 1 (2026-11-19) |
+| Sürüm | 1.0-aday, düzeltme turu 2 (2026-11-20) |
 | Görev belgesi | `docs/gorevler/W1-A4.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `core/include/ida/port.h` (bu belgenin parçasıdır; ikisi çelişemez) |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.8 (§2, §3, §3.1, §3.2, §4, §5, §8, §10); `docs/olcumler/MP4-dongu-yuku.md`, `MP1-arac-zinciri.md`, `MP3-vcp.md` (iskelet üzerinden); bölümler 01, 02, 03, 06 (taslak; iskeletle çeliştikleri yerde iskelet geçerlidir) |
-| İnceleme | sol: `docs/sozlesmeler/inceleme/A4-sol.md`; yanıt: `docs/sozlesmeler/inceleme/A4-yanit.md` |
-| Durum | Yazan Opus; düzeltme turu 1 mimar kararlarıyla yapıldı; ikinci inceleme ve mimar denetimi bekliyor; dondurulmadı |
+| İnceleme | sol: `docs/sozlesmeler/inceleme/A4-sol.md`, `A4-sol-2.md`; yanıtlar: `A4-yanit.md`, `A4-yanit-2.md` (aynı dizin) |
+| Durum | Yazan Opus; iki düzeltme turu mimar kararlarıyla yapıldı; çapraz uyum incelemesi ve mimar denetimi bekliyor; dondurulmadı |
 
 Değerlerin niteliği: bu belgedeki her süre, hız ve kapasite ya bir ölçüme (rapor ve başlık atfıyla), ya bir birincil kaynağa, ya da **mimari seçimi (tahmin)** etiketine dayanır. Etiketli değerler ölçülmüş değildir; Bölüm 8'de hangi ölçümle kapanacakları yazılıdır.
 
-Kural numaraları ilk sürümdekiyle aynı tutuldu; düzeltme turunda eklenen kurallar A4-K102'den başlar ve konularının bölümüne yerleştirildi.
+Kural numaraları ilk sürümdekiyle aynı tutuldu; birinci düzeltme turunda eklenen kurallar A4-K102–K112, ikinci turda eklenenler A4-K113–K117'dir ve konularının bölümüne yerleştirildi.
 
 ---
 
@@ -207,8 +207,8 @@ Daraltıcı komutlar (`IDA_CMD_DISARM`; hedefi `GUIDED`/`AUTO` olmayan `IDA_CMD_
 
 | Ad | Tip | Aralık | Anlamı |
 |---|---|---|---|
-| `mask` | `uint8_t` | `IDA_NARROW_DISARM` (0x01), `IDA_NARROW_MODE` (0x02), `IDA_NARROW_FC_DISARM` (0x04), `IDA_NARROW_FC_ABORT` (0x08) | Kurulu mandallar |
-| `mode` | `uint8_t` | `IDA_MODE_*` ∉ {`GUIDED`, `AUTO`} | `NARROW_MODE` kuruluysa en son gelen daraltıcı hedef kip |
+| `mask` | `uint8_t` | `IDA_NARROW_DISARM` (0x01), `IDA_NARROW_MODE` (0x02), `IDA_NARROW_FC_DISARM` (0x04), `IDA_NARROW_FC_ABORT` (0x08); tanımlı bitlerin birleşimi `IDA_NARROW_DEFINED` (0x0F), başka bit `BAD_INPUT` | Kurulu mandallar |
+| `mode` | `uint8_t` | `MANUAL`, `STABILIZE`, `DEPTH_HOLD`, `STATION_KEEP`; başka değer `NARROW_MODE` kuruluyken `BAD_INPUT` (A4-K46) | `NARROW_MODE` kuruluysa en son gelen daraltıcı hedef kip |
 | `cmd_id[4]` | `uint32_t` | tümü | Bit `i`'yi kuran en son komutun kimliği (dizin `i`: 0 DISARM, 1 MODE, 2 FC_DISARM, 3 FC_ABORT) |
 | `coalesced[4]` | `uint8_t` | tümü (255'te doyar) | Bit `i`'de en son komuttan önce birleştirilen ek komut sayısı |
 
@@ -298,7 +298,7 @@ Sayaçlar kart sayımıyla birikir ve 2³²'de sarar; çekirdek farkı mod 2³²
 | `n_det` | `uint8_t` | 0–8 | Z | Algılama kaydı sayısı | `BAD_INPUT` |
 | `det[8]` | `ida_det_record_t` | A8 | K | Algılama kayıtları (A8) | Kayıt reddedilir |
 | `det_t_rx[8]` | `ida_wtime_t` | ≤ `now_w` | K | Kayıt `i`'nin alım zamanı | Kayıt reddedilir |
-| `narrow` | `ida_narrow_t` | 3.4 | Z | Daraltıcı mandallar (A4-K46) | Bilinmeyen bit yok sayılır; daraltıcı bitler her durumda uygulanır |
+| `narrow` | `ida_narrow_t` | 3.4 | Z | Daraltıcı mandallar (A4-K46) | Tanımsız bit ya da geçersiz hedefli `NARROW_MODE`: `BAD_INPUT`; tanımlı bitler her durumda uygulanır (A4-K113 (b)) |
 | `n_cmds` | `uint8_t` | 0–8 | Z | Daraltıcı olmayan komut sayısı | `BAD_INPUT` (A4-K31) |
 | `cmds[8]` | `ida_cmd_t` | 3.4 | K | Daraltıcı olmayan komutlar, varış sırasıyla | Tek tek yanıtlanır |
 | `n_evres` | `uint8_t` | 0–4 | Z | Olay sonucu sayısı | `BAD_INPUT` |
@@ -359,9 +359,9 @@ Hangi alanın hangi dönüş kodunda geçerli olduğu Bölüm 4.14'teki tablodad
 
 **`ida_status_t`** (A4-K88): `mode` (`IDA_MODE_*`), `armed`, `fs_level`, `fs_reasons` (`IDA_FSR_*` bit maskesi: sızıntı, yer istasyonu kaybı, düşük ve kritik batarya, derinlik sınırı, en az irtifa, coğrafi sınır, kestirim bozulması ve kötülüğü, sayısal çökme, IMU bayat, IMU gecikmeli, adım kaçırma, parametre, oturum), `regime` (`IDA_REG_*`), `phase` (`IDA_PH_*`), `mission_state` (`IDA_MS_*`), `mission_item`, `param_ok`, `events_ok`, `boot_count`, `cnt`.
 
-**`ida_core_counters_t`** (`status.cnt`; init'ten beri birikir, 2³²'de sarar): `sample_rejected` (A4-K33), `sample_future` (A4-K14, A4-K33), `imu_rejected` (A4-K103), `imu_gap` (A4-K38), `bad_input`, `dup_seq`, `old_seq` (dönüş kodu sayıları), `wall_backstep` (A4-K10), `cmd_rejected` (`REJECTED` yanıtlanan komut), `widen_blocked` (A4-K45, A4-K108 ile engellenen genişletici komut ya da olay), `evres_ignored` (A4-K69), `event_unknown` (A4-K70), `det_rejected` (A4-K41), `ping360_rejected` (A4-K40), `bg_dropped` (A4-K94), `bg_slice_mismatch` (A4-K109), `log_dropped` (A4-K90), `step_miss` (`prev_overrun` gören çağrılar, `cnt_batch_skipped` artışları ve `cnt_batch_merged` artışlarının toplamı).
+**`ida_core_counters_t`** (`status.cnt`; init'ten beri birikir, 2³²'de sarar): `sample_rejected` (A4-K33), `sample_future` (A4-K14, A4-K33), `sample_conflict` (çelişkili eşit anahtarlı çift başına bir; A4-K115), `sample_dup_dropped` (bayt bayt aynı yinelenme; A4-K115), `narrow_from_rejected` (reddedilen emniyet örneğinden uygulanan daraltma; A4-K116), `bg_bad_input` (A4-K117), `imu_rejected` (A4-K103), `imu_gap` (A4-K38), `bad_input`, `dup_seq`, `old_seq` (dönüş kodu sayıları), `wall_backstep` (A4-K10), `cmd_rejected` (`REJECTED` yanıtlanan komut), `widen_blocked` (A4-K45, A4-K108 ile engellenen genişletici komut ya da olay), `evres_ignored` (A4-K69), `event_unknown` (A4-K70), `det_rejected` (A4-K41), `ping360_rejected` (A4-K40), `bg_dropped` (A4-K94), `bg_slice_mismatch` (A4-K109), `log_dropped` (A4-K90), `step_miss` (`prev_overrun` gören çağrılar, `cnt_batch_skipped` artışları ve `cnt_batch_merged` artışlarının toplamı).
 
-**`ida_health_t`** (A4-K89): `core_ok` (iç tutarlılık; gözetimi yalnız bu besler), `data_ok` (taze IMU ve `IDA_LINK_RUNNING`), `imu_rejected` (bu çağrının IMU'su reddedildi; A4-K103), `imu_lag` (`IMU_LAG` mandalı kurulu; A4-K37), `input_dropped` (bu çağrının girdisinde üye düştü; A4-K102), `narrowed` (bu çağrıda daraltma uygulandı; A4-K45).
+**`ida_health_t`** (A4-K89): `core_ok` (iç tutarlılık; gözetimi yalnız bu besler), `data_ok` (taze IMU ve `IDA_LINK_RUNNING`), `imu_rejected` (bu çağrının IMU'su reddedildi; A4-K103), `imu_lag` (`IMU_LAG` mandalı kurulu; A4-K37), `input_dropped` (bu çağrının girdisinde üye düştü; A4-K102), `narrowed` (bu çağrıda daraltma uygulandı; A4-K45, A4-K113, A4-K116), `sample_conflict` (bu çağrıda çelişkili eşit anahtarlı örnek çifti vardı; A4-K115), `bg_bad_input` (önceki step/tick çağrısından beri en az bir arka plan çağrısı `IDA_BG_BAD_INPUT` döndü; A4-K117).
 
 **`ida_log_t`** (A4-K90): `t_w` (çağrının kullanılan `now_w`'si), `code` (`uint16_t`; kod tablosu çekirdek uygulamasınındır), `severity` (`IDA_SEV_*`, 0–7; MAVLink `MAV_SEVERITY` ile aynı sıra ve değerler: 0 `EMERGENCY` … 7 `DEBUG`; kaynak: `mavlink/mavlink` deposu `message_definitions/v1.0/common.xml`, `master` 3fbb88560a06, 2026-11-19'da okundu), `arg0`, `arg1` (`int32_t`).
 
@@ -415,19 +415,49 @@ CRC-32/ISO-HDLC: çokterimli 0x04C11DB7, yansıtılmış giriş ve çıkış, ba
 
 ### 3.11 Dönüş kodları
 
-Step, tick, init ve parametre işlevleri `ida_rc_t`, arka plan işlevi `ida_bg_rc_t` (`IDA_BG_IDLE` = 0, `IDA_BG_MORE` = 1) döner. Bu iki tip yalnız dönüş değeridir, hiçbir yapı alanında kullanılmaz. İşlev başına hangi kodların dönebileceği Bölüm 4.15'tedir; çıktının içeriği Bölüm 4.14'tedir.
+Step, tick, init ve parametre işlevleri `ida_rc_t`, arka plan işlevi `ida_bg_rc_t` (`IDA_BG_IDLE` = 0, `IDA_BG_MORE` = 1, `IDA_BG_BAD_INPUT` = 2) döner. Bu iki tip yalnız dönüş değeridir, hiçbir yapı alanında kullanılmaz. İşlev başına hangi kodların dönebileceği Bölüm 4.15'tedir; çıktının içeriği Bölüm 4.14'tedir.
 
 | Kod | Değer | Sınıf | Anlamı |
 |---|---|---|---|
-| `IDA_RC_OK` | 0 | olağan | Olağan |
-| `IDA_RC_DUP_SEQ` | 1 | hata | `tf.present` ve `tf.seq` son kabul edilene eşit |
-| `IDA_RC_OLD_SEQ` | 2 | hata | `tf.present` ve `tf.seq` seri aritmetikle son kabul edilenden küçük |
-| `IDA_RC_BAD_INPUT` | 3 | hata | Yapısal girdi hatası (Bölüm 4.15 önkoşulları; sayı alanı kapasiteyi aşıyor; step'te IMU yok ya da tick'te IMU var; `now_w` ya da `tf` geçersiz) |
+| `IDA_RC_OK` | 0 | kabul | Olağan |
+| `IDA_RC_DUP_SEQ` | 1 | hata (ret) | `tf.present` ve `tf.seq` son kabul edilene eşit |
+| `IDA_RC_OLD_SEQ` | 2 | hata (ret) | `tf.present` ve `tf.seq` seri aritmetikle son kabul edilenden küçük |
+| `IDA_RC_BAD_INPUT` | 3 | hata (ret) | Yapısal girdi hatası (aşağıdaki (c) adımı) ya da 4.15'teki işaretçi önkoşulu |
 | `IDA_RC_NOT_INIT` | 4 | hata | Örnek başarıyla kurulmamış |
 | `IDA_RC_PARAM_DEFAULTS` | 5 | yalnız init | Örnek kuruldu ama blok geçersiz; varsayılanlar yüklü, arm engelli |
 | `IDA_RC_VERSION` | 6 | yalnız init | Port sürümü uyuşmuyor; örnek kurulmadı |
 | `IDA_RC_NOT_FOUND` | 7 | yalnız parametre işlevleri | İndis, ad ya da kimlik yok |
-| `IDA_RC_IMU_REJECTED` | 8 | yalnız step; hata değil | IMU örneği reddedildi; çağrı tick kurallarıyla sürdü (A4-K103) |
+| `IDA_RC_IMU_REJECTED` | 8 | yalnız step; kabul (hata değil) | IMU örneği reddedildi; çağrı tick kurallarıyla sürdü (A4-K103) |
+
+"Reddedilen çağrı" `BAD_INPUT`, `DUP_SEQ` ya da `OLD_SEQ` dönen step/tick çağrısıdır; "kabul edilen çağrı" `OK` ya da `IMU_REJECTED` dönendir.
+
+**Step ve tick'in değerlendirme sırası (A4-K113).** Çekirdek her step ve tick çağrısını şu sırayla değerlendirir; ilk tutan adımın dönüş kodu çağrının dönüş kodudur:
+
+| Adım | Denetim | Sonuç |
+|---|---|---|
+| (a1) | `c` ya da `in` NULL | `BAD_INPUT`; hiçbir şey okunmaz, yazılmaz, uygulanmaz |
+| (a2) | Örnek kurulmamış | `NOT_INIT`; hiçbir daraltma uygulanmaz (uygulanacak durum yok); `out` NULL değilse 4.14 `NOT_INIT` satırı |
+| (b) | Daraltma: `in.narrow`'un tanımlı bitleri (`IDA_NARROW_DEFINED` = 0x0F), `plat.link_event = SESSION_END` ve `samples[]`'in ilk `min(n_samples, 16)` girdisi arasındaki yapısal olarak geçerli her emniyet örneğinin (kabul edilecek ya da reddedilecek) A4-K116'daki daraltıcı içeriği uygulanır | Dönüş kodu belirlemez; bu adım `in` okunabilen **her** çağrıda (`out` NULL olsa da, çağrı (c) ya da (d)'de reddedilse de) yapılır ve geri alınmaz |
+| (b2) | `out` NULL | `BAD_INPUT`; (b) uygulanmış kalır, başka hiçbir şey yapılmaz ve yazılmaz |
+| (c) | Yapısal doğrulama: `now_w` aralık dışı (A4-K08); `tf.present` iken `tf.t` aralık dışı ya da `tf.t_rx` > `now_w`; `tf.seq` arttığı halde `tf.t` artmamış (A4-K15); step'te `imu_present = 0` ya da tick'te `imu_present = 1` (A4-K17); bir sayı alanı kapasiteyi aşıyor (A4-K31); `narrow.mask`'te tanımsız bit ya da `NARROW_MODE` kuruluyken `narrow.mode` daraltıcı bir hedef değil (A4-K46) | `BAD_INPUT` |
+| (d) | Sıra denetimi (`tf.present` iken; A4-K25) | `DUP_SEQ` ya da `OLD_SEQ` |
+| (e) | Olağan işleniş; IMU doğrulaması yalnız burada (A4-K103) | `OK` ya da (yalnız step) `IMU_REJECTED` |
+
+**Birlikte oluşabilen koşulların önceliği.** Tablo, aynı çağrıda iki koşul birlikte tutarsa dönüş kodunu verir (soldan sağa okunur; köşegen dışındaki her çift tek kez yazılmıştır):
+
+| Birlikte | `NOT_INIT` | `BAD_INPUT` | `DUP_SEQ` | `OLD_SEQ` | `IMU_REJECTED` |
+|---|---|---|---|---|---|
+| `c`/`in` NULL | `BAD_INPUT` | `BAD_INPUT` | `BAD_INPUT` | `BAD_INPUT` | `BAD_INPUT` |
+| `NOT_INIT` | — | `NOT_INIT` | `NOT_INIT` | `NOT_INIT` | `NOT_INIT` |
+| `BAD_INPUT` ((b2) `out` NULL dahil) | | — | `BAD_INPUT` | `BAD_INPUT` | `BAD_INPUT` |
+| `DUP_SEQ` | | | — | birlikte oluşmaz | `DUP_SEQ` |
+| `OLD_SEQ` | | | | — | `OLD_SEQ` |
+
+Daraltıcı girdinin bulunması dönüş kodunu değiştirmez; yalnız (b) adımında uygulanır ve kabul edilen çağrıda A4-K45'i tetikler.
+
+**Init'in değerlendirme sırası.** (1) `c` NULL → `BAD_INPUT`, hiçbir şey yazılmaz; (2) `in` NULL → örnek kurulmamış işaretlenir, `BAD_INPUT`; (3) sürüm uyuşmazlığı → örnek kurulmamış işaretlenir, `VERSION`; (4) `now_w` aralık dışı ya da `param_blob`/`param_len` çelişkili → örnek kurulmamış işaretlenir, `BAD_INPUT`; (5) blok geçersiz ya da yok → örnek kurulur, `PARAM_DEFAULTS`; (6) `OK`. İlk tutan adım kazanır.
+
+**Arka plan çağrısının değerlendirme sırası (A4-K117).** (1) `c` NULL → `IDA_BG_BAD_INPUT`; (2) `now_w` aralık dışı → `IDA_BG_BAD_INPUT`; (3) örnek kurulmamış → `IDA_BG_IDLE`; (4) dilim çalışır → `IDA_BG_IDLE` ya da `IDA_BG_MORE`.
 
 ### 3.12 Kapasiteler
 
@@ -479,7 +509,7 @@ Diğer kod aileleri (`IDA_SENS_*`, `IDA_HF_*`, `IDA_GNSS_FIX_*`, `IDA_DVL_*`, `I
 
 ## 4. Davranış kuralları
 
-Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'deki taraflardır. Kurallar arasında öncelik: **A4-K28** (hata dönüşünde sürekli komut ve genişletici yok) her kuraldan, **A4-K45** (daraltma çağrıya hâkimdir) genişletmeye izin veren her kuraldan önce gelir.
+Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'deki taraflardır. Kurallar arasında öncelik: **A4-K113** (değerlendirme sırası) dönüş kodunu belirleyen her kuraldan, **A4-K28** (hata dönüşünde sürekli komut ve genişletici yok) çıktıyı belirleyen her kuraldan, **A4-K45** (kabul edilen çağrıda daraltma çağrıya hâkimdir) genişletmeye izin veren her kuraldan önce gelir.
 
 ### 4.1 Genel, sürüm, sayı tipleri
 
@@ -493,7 +523,7 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 ### 4.2 Zaman
 
 - **A4-K07.** Ölçüm zamanı (`ida_stime_t`) ile duvar saati (`ida_wtime_t`) ayrı yapı tipleridir; çekirdekte ve platformda hiçbir işlem bir ölçüm zamanını bir duvar saatinden çıkarmaz, onunla karşılaştırmaz ya da ona atamaz.
-- **A4-K08.** Geçerli bir zaman değeri 0 ile `IDA_TIME_MAX_NS` (2⁶²) arasındadır; bu aralığın dışındaki `now_w` ya da `tf.t` `IDA_RC_BAD_INPUT` üretir, aralık dışı `t_meas` ya da `t_rx` taşıyan örnek reddedilir.
+- **A4-K08.** Geçerli bir zaman değeri 0 ile `IDA_TIME_MAX_NS` (2⁶²) arasındadır; aralık dışı `now_w` ya da `tf.t` step ve tick'te `IDA_RC_BAD_INPUT`, init'te `IDA_RC_BAD_INPUT` (3.11 init sırası), `ida_core_background`'da `IDA_BG_BAD_INPUT` (A4-K117) üretir; aralık dışı `t_meas` ya da `t_rx` taşıyan örnek reddedilir.
 - **A4-K09.** Platformun verdiği duvar saati bir çekirdek örneğinin ömrü boyunca (init, step, tick ve background çağrılarında) azalmaz, sarmaz ve 1 µs ya da daha ince çözünürlüklüdür.
 - **A4-K10.** Çekirdek bir çağrıda önceki çağrınınkinden küçük `now_w` görürse o çağrıda önceki değeri kullanır ve `status.cnt.wall_backstep`'i bir artırır.
 - **A4-K11.** Kartta duvar saati açılıştan beri geçen süredir; SIL'de her çağrının `now_w`'si o çağrının partisini kapatan zaman çerçevesinin sim zamanına eşittir (`now_w.ns = tf.t.ns`), SIL'de ızgara tick'i yapılmaz, init'in `now_w`'si ilk zaman çerçevesinin sim zamanını aşmaz ve sim zamanı geri başlarsa SIL koşucusu çekirdeği yeni `boot_count` ile yeniden kurar.
@@ -513,8 +543,10 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 - **A4-K22.** Çekirdek değişebilir küresel ya da statik durum tutmaz; bütün durumu `ida_core_t` içindedir (çekirdek nesne dosyalarında yazılabilir veri bölümüne düşen sembol yoktur).
 - **A4-K23.** Kartta (`fw-release` derlemesi, 160 MHz) çekirdeğin en kötü durum süresi `ida_core_step` için `IDA_PORT_STEP_BUDGET_NS` = 3,5 ms, `ida_core_tick` için `IDA_PORT_TICK_BUDGET_NS` = 0,5 ms, tek `ida_core_background` çağrısı için `IDA_PORT_BG_BUDGET_NS` = 0,3 ms'dir; bu bütçelere uymak çekirdek uygulamasının sorumluluğudur, platform her çağrının süresini ölçer ve sonraki çağrıda `plat.prev_call_ns` ve `plat.prev_overrun` ile bildirir (değerler mimari seçimi, tahmin; dayanak Bölüm 4.13).
 - **A4-K24.** Aynı ikilide, aynı init girdisi ve (`bg_slices` dahil) aynı çağrı girdileri dizisi verilen ve aynı dizide aynı sayıda arka plan çağrısı yapılan iki çekirdek örneği bit düzeyinde aynı çıktı dizisini üretir (A4-K109, A4-K110).
-- **A4-K25.** `ida_core_step` ve `ida_core_tick` 3.11'deki koşullarla ve 4.15'teki listeyle dönen kodlardan birini döner; `tf.present = 0` olan çağrı `DUP_SEQ` ya da `OLD_SEQ` dönmez; ilk zaman çerçevesi (init ya da `SESSION_START`'tan sonra) her sıra numarasıyla kabul edilir; seri aritmetikle `son + 1`'den büyük `tf.seq` (atlanan ya da birleştirilmiş partiler) kabul edilir.
-- **A4-K26.** Hata dönüşü veren çağrıda çekirdek kestirimi, güdümü, kontrolü ve atış kontrolün adım kısmını çalıştırmaz, o çağrının hiçbir örneğini, algılama kaydını ya da olay sonucunu kabul etmez, tazeliği yenilemez, daraltıcı girdileri yine uygular (A4-K45; `NOT_INIT` hariç) ve geri kalan her komutu 4.14'teki nedenle `IDA_ACK_REJECTED` yanıtlar.
+- **A4-K25.** `ida_core_step` ve `ida_core_tick` 3.11'deki değerlendirme sırasıyla (A4-K113) ve 4.15'teki listeden tek bir kod döner; `tf.present = 0` olan çağrı `DUP_SEQ` ya da `OLD_SEQ` dönmez; ilk zaman çerçevesi (init ya da `SESSION_START`'tan sonra) her sıra numarasıyla kabul edilir; seri aritmetikle `son + 1`'den büyük `tf.seq` (atlanan ya da birleştirilmiş partiler) kabul edilir.
+- **A4-K26.** Hata dönüşü veren çağrıda çekirdek kestirimi, güdümü, kontrolü ve atış kontrolün adım kısmını çalıştırmaz, o çağrının hiçbir örneğini, algılama kaydını ya da olay sonucunu kabul etmez, tazeliği yenilemez ve hiçbir komutu işlemez; daraltma yalnız A4-K113'ün (b) adımına göre uygulanır ve komut sonuçları A4-K114'e göre yazılır.
+- **A4-K113.** Çekirdek her step ve tick çağrısını 3.11'deki sırayla değerlendirir: (a) `c`/`in` işaretçisi ve kurulmamış örnek denetimleri, (b) daraltmanın uygulanması ve ardından `out` NULL denetimi (b2), (c) yapısal doğrulama (`BAD_INPUT`), (d) sıra denetimi (`DUP_SEQ`, `OLD_SEQ`), (e) olağan işleniş; ilk tutan adımın kodu döner, (c) ve (d) birlikte tutarsa `BAD_INPUT` döner; (b) adımı `in` okunabilen ve örnek kurulu olan her çağrıda yapılır, tanımlı mandal bitlerini, `SESSION_END`'i ve A4-K116'daki emniyet daraltmasını uygular, çağrı sonradan reddedilse de geri alınmaz ve aynı daraltmanın yinelenen uygulanması ek etki üretmez.
+- **A4-K114.** Reddedilen çağrıda (`BAD_INPUT`, `DUP_SEQ`, `OLD_SEQ`) çekirdek `cmds[]`'teki hiçbir komutu işlemez ve yinelenen kimlik penceresine (A4-K48) almaz; `n_cmds` ≤ 8 ise her komut için `IDA_ACK_REJECTED` / `IDA_REASON_CALL_REJECTED`, `n_cmds` > 8 ise `cmds[]` için hiç sonuç yazar; (b) adımında uygulanan her mandal biti için `IDA_ACK_ACCEPTED` yazar; `IDA_REASON_NARROWED` yalnız kabul edilen çağrıda verilir. `NOT_INIT`'te mandal bitleri ve `n_cmds` ≤ 8 ise komutlar `IDA_ACK_REJECTED` / `IDA_REASON_NOT_INIT` alır.
 - **A4-K27.** Çekirdek, dönüş kodu ne olursa olsun (4.15'te "yazılmaz" denen NULL durumları hariç), `out`'un her alanını o çağrıda yazar; önceki çağrıdan kalmış bir değer çıktıda bulunmaz.
 - **A4-K28.** Hata dönüşü veren her çağrının çıktısında `thr_valid = 0`, `valid_for_ns = 0`, sekiz `thr_cmd` = `0.0f`'tır ve genişletici olay (`SAFETY_OPEN`, `FIRE`) yoktur; bu kural bu sözleşmenin başka her kuralından önce gelir ve çıktının geri kalanı 4.14'teki tabloya göre yazılır.
 - **A4-K29.** Bir çıktının A1 üzerinden gönderilip gönderilmeyeceği (`OLD_SEQ`, ızgara tick'i, hata dönüşleri) A1 sözleşmesinin kuralıdır; çekirdek her durumda A4-K27'ye göre tanımlı bir çıktı verir.
@@ -523,11 +555,13 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 ### 4.4 Sensör örnekleri ve teslim
 
 - **A4-K30.** Her örnek `ida_hdr_t` başlığını taşır; `ida_sample_t`'nin birlik alanı `hdr.type`'a göre okunur; `hdr.type` bilinmeyen ya da kabının türüyle uyuşmayan (IMU alanında `IDA_SENS_IMU` dışı, `samples[]`'ta IMU ya da Ping360) ya da `inst` ≥ 4 olan örnek reddedilir.
-- **A4-K31.** Bir çağrıda `n_samples` ≤ 16, `n_cmds` ≤ 8, `n_det` ≤ 8, `n_det_batch` ≤ 2, `n_evres` ≤ 4 ve en çok bir IMU ve bir Ping360 satırı bulunur; sayı alanlarından biri sınırı aşarsa çekirdek `IDA_RC_BAD_INPUT` döner (daraltıcı mandallar A4-K45'e göre yine uygulanır).
+- **A4-K31.** Bir çağrıda `n_samples` ≤ 16, `n_cmds` ≤ 8, `n_det` ≤ 8, `n_det_batch` ≤ 2, `n_evres` ≤ 4 ve en çok bir IMU ve bir Ping360 satırı bulunur; sayı alanlarından biri sınırı aşarsa çekirdek `IDA_RC_BAD_INPUT` döner (daraltma A4-K113'ün (b) adımına göre yine uygulanır).
 - **A4-K32.** Platform bir girdide kapasiteyi aşan örnekleri sonraki çağrıya taşır ya da atar ve her ikisinde `plat.cnt_member_overflow`'u artırır; kapasiteyi aşan olay sonuçlarını hiçbir durumda atmaz, sonraki çağrılara taşır.
-- **A4-K33.** Çekirdek bir örneği ancak şunların hepsi tutarsa kabul eder: `flags`'te `IDA_HF_VALID`; bütün `float` alanlar sonlu; `t_meas` ve `t_rx` geçerli aralıkta; `t_rx` ≤ `now_w`; `tf.present` ise `t_meas` ≤ `tf.t`; `seq` aynı (`type`, `inst`) için son kabul edilenden seri aritmetikle büyük; `t_meas` aynı (`type`, `inst`) için son kabul edilenden kesin büyük (`IDA_SENS_SAFETY` için A4-K34); reddedilen örnek kullanılmaz, `status.cnt.sample_rejected` (ya da gelecek damgada `sample_future`) artar ve tazelik yenilenmez. Init'ten ya da `SESSION_START`'tan sonraki ilk örnek `seq` ve `t_meas` koşulundan muaftır.
+- **A4-K33.** Çekirdek bir örneği ancak şunların hepsi tutarsa kabul eder: `flags`'te `IDA_HF_VALID`; bütün `float` alanlar sonlu; `t_meas` ve `t_rx` geçerli aralıkta; `t_rx` ≤ `now_w`; `tf.present` ise `t_meas` ≤ `tf.t`; `seq` aynı (`type`, `inst`) için son kabul edilenden seri aritmetikle büyük; `t_meas` aynı (`type`, `inst`) için son kabul edilenden kesin büyük (`IDA_SENS_SAFETY` için A4-K34); aynı çağrıda eşit anahtarlı başka bir örnekle çelişmiyor (A4-K115); reddedilen örnek kullanılmaz (yalnız emniyet örneğinin daraltıcı içeriği A4-K116'ya göre uygulanır), `status.cnt.sample_rejected` (ya da gelecek damgada `sample_future`) artar ve tazelik yenilenmez. Init'ten ya da `SESSION_START`'tan sonraki ilk örnek `seq` ve `t_meas` koşulundan muaftır.
 - **A4-K34.** `IDA_SENS_SAFETY` örneğinde `t_meas` son kabul edilene eşitse ve `seq` büyükse örnek kabul edilir ve değeri günceller, ama o sensörün ölçüm zamanı tazeliğini yenilemez.
-- **A4-K35.** Çekirdeğin çıktısı, aynı çağrıdaki `samples[]` dizisinin sırasından bağımsızdır (çekirdek örnekleri kendi sabit sırasıyla, `t_meas`, tür, `inst`, `seq` anahtarıyla işler).
+- **A4-K115.** Aynı çağrıda aynı (`t_meas`, `type`, `inst`, `seq`) anahtarını taşıyan iki ya da daha çok örnek bayt bayt aynıysa çekirdek birini A4-K33'e göre değerlendirir, diğerlerini düşürür ve her biri için `status.cnt.sample_dup_dropped`'u artırır; içerikleri farklıysa girdideki sıralarından bağımsız olarak hepsini reddeder, her çelişkili anahtar için `status.cnt.sample_conflict`'i bir artırır ve `health.sample_conflict = 1` verir.
+- **A4-K116.** Bir `IDA_SENS_SAFETY` örneğinin daraltıcı içeriği, aynı sensörün son kabul edilen örneğine göre `estop`'un 0 iken 1 olması ya da bir tüpte `PLUG_IN` veya `PIN_OUT` bitinin 1 iken 0 olmasıdır (init ya da `SESSION_START`'tan sonra kabul edilmiş örnek yoksa `estop = 1` ve 0 olan her `PLUG_IN`/`PIN_OUT` biti daraltıcıdır); yapısal olarak geçerli (`type` ve `inst` doğru, alanlar okunabilir) her emniyet örneğinin daraltıcı içeriği, örnek sıra, anahtar, yinelenme ya da çelişki nedeniyle reddedilse (A4-K33, A4-K115) ya da çağrı reddedilse (A4-K113) de o çağrı için uygulanır ve genişletici içeriği (`estop`'un 0 olması, bitlerin 1 olması) yalnız kabul edilen örnekten uygulanır; reddedilen örnek son kabul edilen değeri ve tazeliği değiştirmez ve daraltıcı içeriği uygulandığında `status.cnt.narrow_from_rejected` artar; çelişkili bir çiftte emniyet girdisi o çağrı için kapalı sayılır (`estop = 0` ile `estop = 1` çiftinin sonucu sıradan bağımsız olarak daraltmadır); önceki bir çağrıda kabul edilmiş anahtarın farklı içerikle yeniden gelmesi de bu kurala tabidir.
+- **A4-K35.** Çekirdeğin çıktısı, aynı çağrıdaki `samples[]` dizisinin sırasından bağımsızdır: çekirdek örnekleri kendi sabit sırasıyla (`t_meas`, tür, `inst`, `seq` anahtarıyla) işler ve eşit anahtarlı örnekleri A4-K115'e göre sıradan bağımsız ele alır.
 - **A4-K36.** Örnek tazeliği yalnız çekirdekte, iki ölçütle (son kabul edilen örneğin `t_rx`'inden bu yana geçen duvar süresi ve ölçüm zamanının ilerlemesi; iskelet §4) değerlendirilir; platform tazelik kararı vermez ve bayat örneği süzmez.
 - **A4-K37.** `tf.present = 1` olan her çağrıda çekirdek gecikmeyi `lag = tf.t − t_meas(son kabul edilen IMU)` olarak hesaplar; `lag` > `T_lag_set` olduğunda `IMU_LAG` mandalını kurar; mandal, `lag` ≤ `T_lag_clear` olan art arda `N_lag_clear` zaman çerçeveli çağrıdan sonra çözülür; mandal kuruluyken `status.fs_reasons`'ta `IDA_FSR_IMU_LAG` ve `health.imu_lag = 1`'dir (`T_lag_set` = 20 ms, `T_lag_clear` = 10 ms, `N_lag_clear` = 20; hepsi mimari seçimi, tahmin; çekirdek parametresi).
 - **A4-K108.** `IMU_LAG` mandalı kuruluyken çekirdek genişletici olay (`SAFETY_OPEN`, `FIRE`) üretmez, genişletici komutları (A4-K104) `IDA_REASON_IMU_LAG` ile reddeder ve `status.cnt.widen_blocked`'u artırır; kestirim, güdüm ve kontrol sürer ve mandal kendi başına arıza eylemi düzeyini değiştirmez.
@@ -540,14 +574,14 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 
 ### 4.5 Komutlar, daraltma ve genişletme
 
-- **A4-K43.** Çekirdek her çağrıda, `narrow.mask`'te kurulu her bit için (dizin sırasıyla) ve `cmds[]`'teki her komut için (dizi sırasıyla) `results[]` dizisine aynı `cmd_id`'li tam bir sonuç yazar (`n_results` = kurulu bit sayısı + `min(n_cmds, 8)` ≤ 12); `PARAM_GET` ve `PARAM_SET` sonucu `IDA_RES_PARAM_VALUE`, `PARAM_SAVE` sonucu `IDA_RES_PARAM_SAVE`, diğerleri `IDA_RES_ACK` türündedir; tek değerli ayrı bir parametre değeri ya da kayıt yuvası yoktur.
+- **A4-K43.** Çekirdek kabul edilen her çağrıda (reddedilen çağrı ve `NOT_INIT` için A4-K114), `narrow.mask`'te kurulu her tanımlı bit için (dizin sırasıyla) ve `cmds[]`'teki her komut için (dizi sırasıyla) `results[]` dizisine aynı `cmd_id`'li tam bir sonuç yazar (`n_results` = kurulu bit sayısı + `min(n_cmds, 8)` ≤ 12); `PARAM_GET` ve `PARAM_SET` sonucu `IDA_RES_PARAM_VALUE`, `PARAM_SAVE` sonucu `IDA_RES_PARAM_SAVE`, diğerleri `IDA_RES_ACK` türündedir; tek değerli ayrı bir parametre değeri ya da kayıt yuvası yoktur.
 - **A4-K44.** Daraltıcı girdiler şunlardır: `IDA_CMD_DISARM`; hedefi `IDA_MODE_GUIDED` ya da `IDA_MODE_AUTO` olmayan `IDA_CMD_SET_MODE`; `fc.op` = `IDA_FC_DISARM` ya da `IDA_FC_ABORT` olan `IDA_CMD_FC`; `plat.link_event = SESSION_END` (A4-K73); emniyet girdisinin kapanması (A4-K111); bunların dışında daraltıcı girdi yoktur.
 - **A4-K104.** Genişleticiler şunlardır: `IDA_CMD_ARM`; hedefi `IDA_MODE_GUIDED` ya da `IDA_MODE_AUTO` olan `IDA_CMD_SET_MODE`; `IDA_CMD_FAILSAFE_RESET`; `fc.op` ∈ {`FC_ARM`, `FC_SELECT`, `FC_FIRE`, `FC_RESET`, `FC_TEST_ENTER`} olan `IDA_CMD_FC`; `SAFETY_OPEN` ve `FIRE` olayları; geri kalan komutlar nötrdür.
-- **A4-K45.** Bir çağrının girdisinde daraltıcı bir girdi varsa (dönüş kodundan bağımsız; `NOT_INIT` hariç) çekirdek bütün daraltıcıları uygular, çağrının son durumu daraltılmış durumdur, aynı çağrıdaki bütün genişletici komutları girdideki sıralarından bağımsız olarak `IDA_REASON_NARROWED` ile reddeder, aynı çağrının çıktısında genişletici olay üretmez, `health.narrowed = 1` verir ve engellenen her genişletici için `status.cnt.widen_blocked`'u artırır.
-- **A4-K46.** Platform her daraltıcı tür için (`IDA_NARROW_DISARM`, `_MODE`, `_FC_DISARM`, `_FC_ABORT`) tek bitlik bir mandal tutar, daraltıcı komutu `cmds[]`'e koymaz ve hiçbir koşulda atmaz: komut geldiğinde ilgili biti kurar, `cmd_id[i]`'yi en son komutun kimliği, `NARROW_MODE`'da `mode`'u en son hedef kip yapar, önceki aynı türden komutu `coalesced[i]`'ye ve `plat.cnt_narrow_coalesced`'a sayar, mandalları bir sonraki çekirdek çağrısının `narrow` alanında verir ve o çağrıdan sonra temizler; böylece bir daraltıcının çekirdeğe ulaşması en çok bir sonraki çağrı kadar gecikir.
+- **A4-K45.** Kabul edilen bir çağrının (`OK`, `IMU_REJECTED`) girdisinde daraltıcı bir girdi varsa (A4-K113'ün (b) adımında uygulanan: mandal biti, `SESSION_END` ya da A4-K111) çağrının son durumu daraltılmış durumdur; çekirdek aynı çağrıdaki bütün genişletici komutları girdideki sıralarından bağımsız olarak `IDA_REASON_NARROWED` ile reddeder, aynı çağrının çıktısında genişletici olay üretmez, `health.narrowed = 1` verir ve engellenen her genişletici için `status.cnt.widen_blocked`'u artırır; bu ret nedeni A4-K103 ve A4-K108'in ret nedenlerinden önce gelir; reddedilen çağrıda bu kural uygulanmaz (A4-K114).
+- **A4-K46.** Platform her daraltıcı tür için (`IDA_NARROW_DISARM`, `_MODE`, `_FC_DISARM`, `_FC_ABORT`) tek bitlik bir mandal tutar, daraltıcı komutu `cmds[]`'e koymaz ve hiçbir koşulda atmaz: komut geldiğinde ilgili biti kurar, `cmd_id[i]`'yi en son komutun kimliği, `NARROW_MODE`'da `mode`'u en son hedef kip yapar, önceki aynı türden komutu `coalesced[i]`'ye ve `plat.cnt_narrow_coalesced`'a sayar, mandalları bir sonraki çekirdek çağrısının `narrow` alanında verir ve o çağrıdan sonra temizler; böylece bir daraltıcının çekirdeğe ulaşması en çok bir sonraki çağrı kadar gecikir. `NARROW_MODE`'un geçerli hedefleri `MANUAL`, `STABILIZE`, `DEPTH_HOLD` ve `STATION_KEEP`'tir; çekirdek `narrow.mask`'te `IDA_NARROW_DEFINED` dışında bit ya da geçersiz hedefli `NARROW_MODE` görürse çağrıyı `BAD_INPUT` ile reddeder (A4-K113 (c)), tanımlı ve geçerli bitleri yine uygular ve geçersiz hedefli `NARROW_MODE` için kipi değiştirmeden yalnız atış iznini kip koşulundan düşürür.
 - **A4-K105.** Platform bir çağrıya 8'den fazla daraltıcı olmayan komut düşerse fazlasını sonraki çağrıya erteler ve `plat.cnt_cmd_deferred`'i artırır; erteleme tamponu dolarsa gelen daraltıcı olmayan komutu atar ve `plat.cnt_cmd_dropped`'u artırır.
 - **A4-K47.** Çekirdek bir çağrıdaki bütün mandal bitlerini ve sekiz komutun hepsini o çağrıda işler ve atış kontrol modülüne giden komutlar için iç kapasitesi bir çağrıda 12 komuttan az değildir.
-- **A4-K48.** Son 32 komut içinde görülmüş bir `cmd_id` ile gelen komut yeni etki üretmez ve `IDA_ACK_DUPLICATE` ile yanıtlanır (mandal bitleri bu denetimden muaftır ve her zaman uygulanır).
+- **A4-K48.** Son 32 komut içinde görülmüş bir `cmd_id` ile gelen komut yeni etki üretmez ve `IDA_ACK_DUPLICATE` ile yanıtlanır; pencereye yalnız kabul edilen çağrıda işlenen komutlar girer (A4-K114); mandal bitleri bu denetimden muaftır ve A4-K113'e göre her zaman uygulanır.
 - **A4-K49.** `IDA_CMD_MANUAL`'ın `axes[6]` alanı gövde çerçevesinde (X, Y, Z, K, M, N sırası; iskelet §3.1) [−1, 1] aralığında normalleştirilmiş istektir: `MANUAL` kipinde `axes[j] × tau_max_manual[j]` genelleştirilmiş kuvvet isteğidir; `STABILIZE` kipinde ilk üç eksen aynı anlamdadır, son üçü `axes[j] × omega_max_manual[j]` açısal hız isteğidir; `DEPTH_HOLD` kipinde X, Y ve N `STABILIZE`'deki anlamdadır, Z `axes[2] × w_max_manual` derinlik değişim hızı isteğidir, K ve M yok sayılır; diğer kiplerde komut `IDA_REASON_BAD_MODE` ile reddedilir; sonlu olmayan ya da aralık dışı eksen `IDA_REASON_OUT_OF_RANGE` ile reddedilir (ölçek değerleri çekirdek parametresidir).
 - **A4-K50.** `IDA_CMD_GUIDED_SP` yalnız `GUIDED` kipinde kabul edilir; alanların birimi ve çerçevesi 3.4'teki tablodadır, yalnız `mask`'teki alanlar kullanılır, `mask` = 0 ya da maskeli bir alan sonlu değilse komut `IDA_REASON_OUT_OF_RANGE` ile reddedilir.
 - **A4-K51.** Görev yüklemesi atomiktir: çekirdek `MISSION_BEGIN(count)`, `count` adet sıra indisli `MISSION_ITEM` ve `MISSION_END`'i birlikte kabul eder ya da hepsini reddeder; görev ancak `IDA_MS_IDLE`, `LOADED`, `PAUSED`, `COMPLETE` ya da `ABORTED` durumunda ya da `HOLD` arıza eylemi sürerken değiştirilir; 128'den fazla öğe reddedilir.
@@ -586,7 +620,7 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 - **A4-K73.** `SESSION_END` daraltıcıdır: çekirdek aynı çağrıda silahlandırmayı kaldırır, atış kontrolü güvenli duruma alır, atış kontrolün jeton ve ön izinlerini iptal eder ve bir `SAFETY_CLOSE` (`tube = IDA_TUBE_ALL`) üretir; yeni oturumda yeniden silahlandırma için yeni bir `IDA_CMD_ARM` gerekir.
 - **A4-K74.** Oturum sona erdiğinde platform ertelenmiş komutları, bekleyen partiyi ve Ping360 yuvalarını siler (daraltıcı mandalları silmez, bir sonraki çağrıda verir) ve eski oturumdan gelen hiçbir başka girdiyi çekirdeğe vermez.
 - **A4-K75.** Sanal emniyet girdileri (acil durdurma, silahlandırma fişi, emniyet pimi) ve fırlatıcı durumu çekirdeğe yalnız `IDA_SENS_SAFETY` örneği olarak gelir; A4'te bu girdileri değiştiren hiçbir çıkış alanı yoktur; `PERMIT_OPEN` biti fırlatıcının süreli izninin alıcıdaki durumudur ve yalnız olaylarla ve `hold_ns`'in dolmasıyla değişir; "bakım" girdisi yoktur (iskelet §10, öneri 8).
-- **A4-K111.** Emniyet girdisinin kapanması şudur: çağrıda kabul edilen bir `IDA_SENS_SAFETY` örneğinde `estop = 1` ya da bir tüpte `PLUG_IN` veya `PIN_OUT` bitinin, aynı sensörün son kabul edilen örneğinde 1 iken 0 olması; bu bir daraltıcı girdidir (A4-K44, A4-K45) ve ilgili tüpte (acil durdurmada iki tüpte) çekirdek aynı çağrıda bir `SAFETY_CLOSE` üretir.
+- **A4-K111.** Emniyet girdisinin kapanması, çağrıdaki yapısal olarak geçerli herhangi bir `IDA_SENS_SAFETY` örneğinin (kabul edilsin ya da edilmesin) A4-K116'da tanımlı daraltıcı içeriğidir; bu bir daraltıcı girdidir (A4-K44), A4-K113'ün (b) adımında uygulanır ve ilgili tüpte (acil durdurmada iki tüpte) çekirdek aynı çağrıda bir `SAFETY_CLOSE` üretir.
 - **A4-K76.** Batarya ve sızıntı bilgisi yalnız `IDA_SENS_BATT` ve `IDA_SENS_LEAK` örnekleriyle gelir; eşikleri ve arıza eylemleri çekirdeğin parametresi ve kuralıdır.
 - **A4-K77.** Çekirdek her init'ten sonra `IDA_MODE_INIT`'te ve silahsız başlar; silahlandırma durumu hiçbir yoldan init'ler arasında taşınmaz ve `reset_cause`, `reset_flags` ve `consecutive_faults` yalnız günlüğe yazılır, çekirdeğin davranışını değiştirmez.
 
@@ -614,10 +648,11 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 
 ### 4.11 Arka plan işi
 
-- **A4-K93.** `ida_core_background(c, now_w)` çekirdeğin sonar verisindeki arka plan işinden bir dilim çalıştırır, A4-K23'teki bütçeyi aşmaz ve bekleyen iş kaldıysa `IDA_BG_MORE`, kalmadıysa `IDA_BG_IDLE` döner; `now_w` A4-K09'a tabidir.
+- **A4-K93.** `ida_core_background(c, now_w)`, `c` ve `now_w` geçerliyse çekirdeğin sonar verisindeki arka plan işinden bir dilim çalıştırır, A4-K23'teki bütçeyi aşmaz ve bekleyen iş kaldıysa `IDA_BG_MORE`, kalmadıysa `IDA_BG_IDLE` döner; `now_w` A4-K09 ve A4-K10'a tabidir; geçersiz girdide A4-K117 uygulanır.
+- **A4-K117.** `ida_core_background` `c` NULL ise ya da `now_w` A4-K08'in aralığı dışındaysa hiçbir arka plan işi yapmaz, işin ve çekirdeğin işlevsel durumunu değiştirmez ve `IDA_BG_BAD_INPUT` döner; bu çağrı dilim sayılmaz (çekirdeğin kendi dilim sayımına da platformun `bg_slices` sayımına da girmez); `c` NULL değilse çekirdek yalnız tanılama sayacı `status.cnt.bg_bad_input`'u artırır ve bir sonraki step ya da tick çıktısında `health.bg_bad_input = 1` verir.
 - **A4-K110.** Bir arka plan çağrısının yaptığı iş miktarı ve sonucu yalnız çekirdeğin durumuna bağlıdır, süreye ya da `now_w`'ye bağlı değildir; dilim sınırı zamanla değil iş birimiyle belirlenir (iş biriminin büyüklüğü çekirdek uygulamasınındır ve A4-K23 bütçesine sığacak biçimde seçilir).
 - **A4-K94.** Bir arka plan işinin sonucu, işin gönderildiği step'ten sabit `K_bg` step sonra (parametre) tüketilir; o step'te iş bitmemişse düşürülür, `out.bg.dropped` ve `status.cnt.bg_dropped` artar; erken biten iş erken tüketilmez.
-- **A4-K109.** Platform her step ve tick çağrısında `bg_slices` alanına, aynı örnekte önceki step ya da tick çağrısından (ilk çağrıda init'ten) beri dönen `ida_core_background` çağrısı sayısını yazar; çekirdek bu sayıyı kendi saydığıyla karşılaştırır, eşit değilse `status.cnt.bg_slice_mismatch`'i artırır ve günlük kaydı üretir (davranışını değiştirmez); A6 bu sayıyı her çağrı için kaydeder ve tekrar oynatıcı her çağrıdan önce tam bu sayıda arka plan çağrısı yapar.
+- **A4-K109.** Platform her step ve tick çağrısında `bg_slices` alanına, aynı örnekte önceki step ya da tick çağrısından (ilk çağrıda init'ten) beri `IDA_BG_IDLE` ya da `IDA_BG_MORE` dönen `ida_core_background` çağrısı sayısını yazar (`IDA_BG_BAD_INPUT` dönenler sayılmaz; A4-K117); çekirdek bu sayıyı kendi saydığıyla karşılaştırır, eşit değilse `status.cnt.bg_slice_mismatch`'i artırır ve günlük kaydı üretir (davranışını değiştirmez); A6 bu sayıyı her çağrı için kaydeder ve tekrar oynatıcı her çağrıdan önce tam bu sayıda arka plan çağrısı yapar.
 - **A4-K95.** Canlı SIL koşucusu her step çağrısından önce `ida_core_background`'u `IDA_BG_IDLE` dönene kadar çağırır; tekrar oynatma koşucusu A4-K109'a göre kayıtlı sayıda çağırır.
 - **A4-K96.** Kartta platform, `ida_core_background` en son `IDA_BG_MORE` döndüyse her kontrol periyodunda (5 ms) en az bir arka plan çağrısı yapar.
 
@@ -639,21 +674,21 @@ Her kural tek bir sınanabilir cümledir. "Çekirdek" ve "platform" Bölüm 1.1'
 
 ---
 
-### 4.14 Dönüş koduna göre çıktı (A4-K26, A4-K28, A4-K103)
+### 4.14 Dönüş koduna göre çıktı (A4-K26, A4-K28, A4-K103, A4-K113, A4-K114)
 
-"Son geçerli" = son kabul edilen zaman çerçevesinin değeri (hiç yoksa 0). "Daraltıcılar" = A4-K45'e göre uygulanır. Bütün satırlarda `status`, `health` (`core_ok` dahil) ve `fc` geçerlidir.
+Dönüş kodunun hangisi olacağı 3.11'deki değerlendirme sırasıyla belirlenir; bu tablo yalnız seçilen kodun çıktısını verir. "Son geçerli" = son kabul edilen zaman çerçevesinin değeri (hiç yoksa 0). "(b) daraltması" = A4-K113'ün (b) adımında uygulanan daraltma (mandal bitleri, `SESSION_END`, A4-K116). Bütün satırlarda `status`, `health` (`core_ok` dahil) ve `fc` geçerlidir.
 
 | Dönüş | `thr_valid` | `is_safe` | `thr_cmd` | `valid_for_ns` | `seq`, `t_ref` | Olaylar | Komut sonuçları | `nav_valid` | Örnek ve kayıt kabulü | `det_tx`, `bg.submitted` |
 |---|---|---|---|---|---|---|---|---|---|---|
-| step `OK` | 1 | A4-K55 | komut ya da 0 (güvenli) | 1 ms – 1 s | `tf.seq`, `tf.t` | Hepsi (A4-K45, A4-K64, A4-K108 saklı) | Her komuta A4-K43 | 1 | Evet | Geçerli |
-| tick `OK` | A4-K56: 0 ya da 1 (yalnız nötr güvenli) | A4-K55 | 0 | 0 ya da 1 ms – 1 s | `tf` varsa `tf.seq`, `tf.t`; ızgarada son geçerli | Yalnız `SAFETY_CLOSE` | Her komuta; genişleticiler kip ve izin kurallarıyla | 0 | Evet | 0 |
-| step `IMU_REJECTED` | A4-K56: 0 ya da 1 (yalnız nötr güvenli) | A4-K55 | 0 | 0 ya da 1 ms – 1 s | `tf.seq`, `tf.t` | Yalnız `SAFETY_CLOSE` | Genişleticiler `IMU_REJECTED`; diğerleri olağan | 0 | IMU hariç evet | 0 |
-| `DUP_SEQ` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli | Yalnız daraltmadan doğan `SAFETY_CLOSE` | Mandal bitleri `ACCEPTED`; diğerleri `REJECTED` / `CALL_REJECTED` | 0 | Hayır | 0 |
-| `OLD_SEQ` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli | Aynı | Aynı | 0 | Hayır | 0 |
-| `BAD_INPUT` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli (girdideki geçersiz zaman yazılmaz) | Aynı | Aynı (`n_cmds` > 8 ise ilk sekizi yanıtlanır) | 0 | Hayır | 0 |
-| `NOT_INIT` | **0** | 1 | 0 | 0 | 0, 0 | Yok | Her biri `REJECTED` / `NOT_INIT` | 0 | Hayır | 0 |
+| step `OK` | 1 | A4-K55 | komut ya da 0 (güvenli) | 1 ms – 1 s | `tf.seq`, `tf.t` | Hepsi (A4-K45, A4-K64, A4-K108 saklı) | Mandal bitleri ve her komut A4-K43'e göre; daraltma varsa genişleticiler `NARROWED` | 1 | Evet (A4-K33, A4-K115) | Geçerli |
+| tick `OK` | A4-K56: 0 ya da 1 (yalnız nötr güvenli) | A4-K55 | 0 | 0 ya da 1 ms – 1 s | `tf` varsa `tf.seq`, `tf.t`; ızgarada son geçerli | Yalnız `SAFETY_CLOSE` | step `OK` ile aynı; genişleticiler ayrıca kip ve izin kurallarına tabi | 0 | Evet | 0 |
+| step `IMU_REJECTED` | A4-K56: 0 ya da 1 (yalnız nötr güvenli) | A4-K55 | 0 | 0 ya da 1 ms – 1 s | `tf.seq`, `tf.t` | Yalnız `SAFETY_CLOSE` | Mandal bitleri `ACCEPTED`; genişleticiler `NARROWED` (daraltma varsa) ya da `IMU_REJECTED`; diğerleri olağan | 0 | IMU hariç evet | 0 |
+| `BAD_INPUT` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli (girdideki geçersiz zaman yazılmaz) | Yalnız (b) daraltmasından doğan `SAFETY_CLOSE` | Uygulanan mandal bitleri `ACCEPTED`; `n_cmds` ≤ 8 ise her komut `REJECTED` / `CALL_REJECTED`, `n_cmds` > 8 ise komutlar için sonuç yok (A4-K114) | 0 | Hayır (yalnız A4-K116'nın daraltıcı içeriği) | 0 |
+| `DUP_SEQ` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli | `BAD_INPUT` ile aynı | Uygulanan mandal bitleri `ACCEPTED`; her komut `REJECTED` / `CALL_REJECTED` | 0 | `BAD_INPUT` ile aynı | 0 |
+| `OLD_SEQ` | **0** | Sınıf (bilgi) | 0 | 0 | Son geçerli | `BAD_INPUT` ile aynı | `DUP_SEQ` ile aynı | 0 | `BAD_INPUT` ile aynı | 0 |
+| `NOT_INIT` | **0** | 1 | 0 | 0 | 0, 0 | Yok | Mandal bitleri ve (`n_cmds` ≤ 8 ise) komutlar `REJECTED` / `NOT_INIT`; hiçbir daraltma uygulanmaz | 0 | Hayır | 0 |
 
-Hata dönüşlerinde `is_safe`, çağrı sonundaki durumun A4-K55'e göre sınıfını bilgi olarak verir; sürekli komut taşımaz.
+Hata dönüşlerinde `is_safe`, çağrı sonundaki durumun A4-K55'e göre sınıfını bilgi olarak verir; sürekli komut taşımaz. Kabul edilen bir çağrıda bir genişleticinin ret nedeni önceliği: `NARROWED` (A4-K45) > `IMU_REJECTED` (A4-K103) > `IMU_LAG` (A4-K108) > komutun kendi kuralının nedeni. Örnek: `DISARM` mandalı + `ARM` + yinelenen `tf.seq` → dönüş `DUP_SEQ`, `DISARM` uygulanmış ve `ACCEPTED`, `ARM` `REJECTED` / `CALL_REJECTED`; aynı girdi `tf.seq` yeni olsaydı → dönüş `OK`, `ARM` `REJECTED` / `NARROWED`.
 
 ### 4.15 İşlevler: önkoşullar, dönüşler, hata halinde çıktı (A4-K101)
 
@@ -661,9 +696,9 @@ Hata dönüşlerinde `is_safe`, çağrı sonundaki durumun A4-K55'e göre sını
 |---|---|---|---|
 | `void ida_core_info(ida_core_info_t *info)` | `info` NULL olabilir | — | `info` NULL ise hiçbir şey yapmaz; değilse her alanı yazar |
 | `ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)` | `c`, `in` NULL değil; `in->param_blob` NULL ise `in->param_len` = 0 | `OK`, `PARAM_DEFAULTS`, `VERSION`, `BAD_INPUT` | `c` NULL: hiçbir yere yazmaz, `BAD_INPUT`. `in` NULL, `param_blob`/`param_len` çelişkili, `now_w` aralık dışı: örneği kurulmamış işaretler, `BAD_INPUT`. `VERSION`: örneği kurulmamış işaretler. `PARAM_DEFAULTS`: örnek kurulu |
-| `ida_rc_t ida_core_step(ida_core_t *c, const ida_in_t *in, ida_out_t *out)` | `c`, `in`, `out` NULL değil; `in->ping360` NULL olabilir | `OK`, `IMU_REJECTED`, `DUP_SEQ`, `OLD_SEQ`, `BAD_INPUT`, `NOT_INIT` | `c` ya da `in` NULL: hiçbir yere yazmaz, durum değişmez, `BAD_INPUT`. `out` NULL (c ve in geçerli, örnek kurulu): daraltıcıları (A4-K45) örneğe uygular, başka hiçbir şey yapmaz ve yazmaz, `BAD_INPUT`. Diğer hatalar: 4.14 |
+| `ida_rc_t ida_core_step(ida_core_t *c, const ida_in_t *in, ida_out_t *out)` | `c`, `in`, `out` NULL değil; `in->ping360` NULL olabilir | `OK`, `IMU_REJECTED`, `DUP_SEQ`, `OLD_SEQ`, `BAD_INPUT`, `NOT_INIT` | Sıra ve öncelik 3.11 (A4-K113). `c` ya da `in` NULL: hiçbir yere yazmaz, durum değişmez, `BAD_INPUT`. Örnek kurulmamış: `NOT_INIT` (`out` NULL değilse 4.14). `out` NULL (c ve in geçerli, örnek kurulu): (b) daraltmasını örneğe uygular, başka hiçbir şey yapmaz ve yazmaz, `BAD_INPUT`. Diğer hatalar: 4.14 |
 | `ida_rc_t ida_core_tick(ida_core_t *c, const ida_in_t *in, ida_out_t *out)` | step ile aynı | `OK`, `DUP_SEQ`, `OLD_SEQ`, `BAD_INPUT`, `NOT_INIT` | step ile aynı |
-| `ida_bg_rc_t ida_core_background(ida_core_t *c, ida_wtime_t now_w)` | `c` NULL olabilir | `IDA_BG_IDLE`, `IDA_BG_MORE` | `c` NULL ya da örnek kurulmamış: hiçbir şey yapmaz, `IDA_BG_IDLE`; bu çağrı `bg_slices` sayımına girer |
+| `ida_bg_rc_t ida_core_background(ida_core_t *c, ida_wtime_t now_w)` | `c` NULL olabilir | `IDA_BG_IDLE`, `IDA_BG_MORE`, `IDA_BG_BAD_INPUT` | Sıra 3.11. `c` NULL ya da `now_w` aralık dışı: iş yapmaz, `IDA_BG_BAD_INPUT`; dilim sayılmaz; `c` NULL değilse yalnız `cnt.bg_bad_input` artar ve sonraki step/tick'te `health.bg_bad_input = 1` (A4-K117). Örnek kurulmamış: iş yapmaz, `IDA_BG_IDLE`; platformun `bg_slices` sayımına girer (sonraki init sayımı sıfırlar) |
 | `uint16_t ida_core_param_count(void)` | — | parametre sayısı | — |
 | `ida_rc_t ida_core_param_desc(uint16_t index, ida_param_desc_t *d)` | `d` NULL değil | `OK`, `NOT_FOUND`, `BAD_INPUT` | `d` NULL: `BAD_INPUT`. `index` ≥ sayı: `NOT_FOUND`. Hata halinde `*d` yazılmaz |
 | `ida_rc_t ida_core_param_find(const char *name, uint16_t *id)` | `name` ve `id` NULL değil; `name` NUL ile biter | `OK`, `NOT_FOUND`, `BAD_INPUT` | NULL: `BAD_INPUT`. Ad 16 karakterden uzun ya da yok: `NOT_FOUND`. Hata halinde `*id` yazılmaz; çekirdek `name`'den en çok 17 bayt okur |
@@ -709,6 +744,12 @@ Hata dönüşlerinde `is_safe`, çağrı sonundaki durumun A4-K55'e göre sını
 | H32 | `bg_slices` çekirdeğin sayımıyla uyuşmuyor | A4-K109 | Sayar, günlük; davranış değişmez | Platform hatasıdır |
 | H33 | Çekirdeğin iç durumu bozuk | A4-K89 | `core_ok = 0` | Gözetimi beslemez; kartta sıfırlama |
 | H34 | Çağrılar arası aralık 11 ms'yi aştı (kart) | Çekirdek `now_w` farkından görür | Duvar saatine bağlı süreler gerçek aralıkla işler; günlük | Platform hatasıdır; kartlı testte ölçülür |
+| H35 | Reddedilen çağrıda daraltıcı girdi (ör. `DISARM` mandalı + `ARM` + yinelenen `tf.seq`) | A4-K113 | Dönüş (c)/(d)'ye göre (`DUP_SEQ`); daraltma (b)'de uygulanır; komutlar `CALL_REJECTED`; `NARROWED` verilmez | Çıktıyı A1 kuralına göre kullanır; mandalı temizler |
+| H36 | Aynı çağrıda yapısal hata ve yinelenen sıra | A4-K113 | `BAD_INPUT` | — |
+| H37 | Mandal alanında tanımsız bit ya da geçersiz hedefli `NARROW_MODE` | A4-K46, A4-K113 (c) | Tanımlı bitler uygulanır; `BAD_INPUT` | Platform hatasıdır |
+| H38 | Eşit anahtarlı örnekler: aynı içerik ya da çelişkili içerik | A4-K115 | Aynıysa biri değerlendirilir, diğerleri `sample_dup_dropped`; çelişkiliyse hepsi reddedilir, `sample_conflict`, `health.sample_conflict` | — |
+| H39 | Reddedilen emniyet örneğinde daraltıcı içerik (çelişkili çift, eski ya da yinelenen anahtar, reddedilen çağrı) | A4-K116 | Daraltıcı içerik o çağrı için uygulanır, genişletici içerik uygulanmaz; `narrow_from_rejected` | — |
+| H40 | Arka plan çağrısında `c` NULL ya da geçersiz `now_w` | A4-K117 | İş yok; `IDA_BG_BAD_INPUT`; `cnt.bg_bad_input`; sonraki step/tick'te `health.bg_bad_input` | Çağrıyı `bg_slices`'a saymaz |
 
 ---
 
@@ -718,7 +759,7 @@ Hata dönüşlerinde `is_safe`, çağrı sonundaki durumun A4-K55'e göre sını
 
 - Sonar kademesi Ping360 satırının içeriğini ve `n_samples` değerini (sade 600, tam 1200; 06 §2.7) değiştirir, biçimini değiştirmez.
 - Kamera kapalıyken dış algılama kaydı ve partisi gelmez (`n_det` = 0, `n_det_batch` = 0); çekirdek bu durumda yalnız kendi sonar algılamasıyla çalışır.
-- Emniyet zinciriyle ilgili bütün kurallar (A4-K28, A4-K44–K46, A4-K55, A4-K60–K75, A4-K103–K108, A4-K111) her kademede aynıdır ve aynı sınamalardan geçer (iskelet §6).
+- Emniyet zinciriyle ilgili bütün kurallar (A4-K28, A4-K44–K46, A4-K55, A4-K60–K75, A4-K103–K108, A4-K111, A4-K113–K116) her kademede aynıdır ve aynı sınamalardan geçer (iskelet §6).
 
 ---
 
@@ -747,8 +788,10 @@ Test kodu bu işte yazılmaz. Tür kısaltmaları: **D** derleme ya da sembol de
 | K24, K109, K95, K110 | SIL, S | HIL kaydının (`bg_slices` dahil) iki kez yeniden oynatılması ve canlı çıktılarla bit düzeyinde eşitlik; arka plan işi düşen bir kaydın yeniden oynatılmasında aynı düşmenin aynı adımda olması; yanlış `bg_slices`'ta `cnt.bg_slice_mismatch` artışı ve çıktının değişmemesi; arka plan çağrısına farklı `now_w` verilmesinin sonucu değiştirmemesi |
 | K27 | S | Her çağrıdan önce `out`'u desenle doldurup çağrı sonrası desenin hiçbir alanda kalmadığını denetleme |
 | K30, K33, K34 | S | Tür başına geçersiz bayrak, sonlu olmayan değer, yinelenen `seq`, eşit `t_meas`, gelecek damga; kabul/ret ve sayaçlar; SAFETY'de eşit `t_meas`'la değer güncellenir ama tazelik yenilenmez |
+| K113, K114, 3.11 | S | (1) `DISARM` mandalı + `ARM` + `tf.seq` = son kabul: dönüş `DUP_SEQ`, çağrı sonunda `armed = 0`, `DISARM` sonucu `ACCEPTED`, `ARM` sonucu `REJECTED` / `CALL_REJECTED`, `NARROWED` hiç görülmez; aynı girdi yeni `tf.seq` ile: dönüş `OK`, `ARM` `NARROWED`. (2) `n_samples` = 17 ve `tf.seq` = son kabul: dönüş `BAD_INPUT`. (3) `n_cmds` = 9 ile `BAD_INPUT`: komutlar için sonuç yok, mandal sonuçları var. (4) Tanımsız mandal biti (0x10) + `DISARM` biti: `BAD_INPUT`, `armed = 0`. (5) `out` NULL + `DISARM` mandalı: `BAD_INPUT`, sonraki çağrıda `armed = 0`. (6) 3.11 öncelik tablosunun her dolu hücresi için bir girdi |
+| K115, K116 | S | Son kabul edilen `estop = 0` ve fiş takılı iken aynı anahtarlı iki SAFETY örneği, `estop = 0` / `estop = 1`, iki sıralamada: her iki sıralamada sonuç aynı, ikisi de reddedilir, `sample_conflict` +1, `health.sample_conflict = 1`, çağrı daraltılmış (genişleticiler `NARROWED`, `SAFETY_CLOSE`); aynı sınama fiş biti 1/0 çiftiyle; bayt bayt aynı iki örnekte biri kabul, `sample_dup_dropped` +1; önceki çağrıda kabul edilmiş anahtarın `estop = 1` ile yeniden gelmesi: örnek reddedilir, daraltma uygulanır, son kabul edilen değer değişmez; `DUP_SEQ` dönen çağrıdaki `estop = 1` örneği: daraltma uygulanır |
 | K32 | B (platform) | Kapasiteyi aşan parti: taşınan/atılan örnek sayısı ve sayaç; olay sonucu kaybı 0 |
-| K35 | S | Aynı örneklerin rastgele sıralarıyla 1000 çağrı dizisi; çıktılar bit düzeyinde aynı |
+| K35 | S | Aynı örneklerin (eşit ve çelişkili anahtarlılar dahil) rastgele sıralarıyla 1000 çağrı dizisi; çıktılar bit düzeyinde aynı |
 | K36 | İnceleme | Platform kodunda tazelik kararı yokluğu |
 | K37, K108 | S, SIL | IMU `t_meas`'ı tf'nin 25 ms gerisinde ama düzenli gelen akış: mandal kurulur, genişletici komutlar `IMU_LAG` ile reddedilir, `SAFETY_OPEN`/`FIRE` 0, kontrol çıktısı sürer; gecikme 5 ms'ye inince 20 çağrı sonra mandal çözülür, 19'da çözülmez |
 | K38 | S | Bir IMU aralığı atlanmış akış; `cnt.imu_gap` artışı 1 |
@@ -758,7 +801,7 @@ Test kodu bu işte yazılmaz. Tür kısaltmaları: **D** derleme ya da sembol de
 | K41 | S | A8'in geçersiz kayıt ve parti örnekleri; `cnt.det_rejected` |
 | K42 | SIL | Dönen araçta IMU montajı gövde referans noktasından uzakken kestirim hatasının montajsız duruma göre karşılaştırılması (dönme kolunun çıkarıldığının göstergesi) |
 | K43, K48 | S | Her komut türü ve her mandal biti için sonuç sayısı ve `cmd_id` eşleşmesi; iki `PARAM_GET` ve iki `PARAM_SAVE` içeren çağrıda iki ayrı sonuç; yinelenen `cmd_id`'de `DUPLICATE` ve durum değişmezliği |
-| K44, K45, K104, K111 | S | Her daraltıcı girdi (dört mandal biti, `SESSION_END`, `estop`, fişin çıkması, pimin takılması) ile her genişleticinin (`ARM`, `SET_MODE(GUIDED)`, `FAILSAFE_RESET`, `FC_ARM/SELECT/FIRE/RESET/TEST_ENTER`) aynı çağrıda, genişletici dizide önce ve sonra iken; her dönüş kodunda: çağrı sonunda `armed = 0` (DISARM'da), genişletici sonucu `NARROWED`, `SAFETY_OPEN` ve `FIRE` 0, `health.narrowed = 1` |
+| K44, K45, K104, K111 | S | Her daraltıcı girdi (dört mandal biti, `SESSION_END`, `estop`, fişin çıkması, pimin takılması) ile her genişleticinin (`ARM`, `SET_MODE(GUIDED)`, `FAILSAFE_RESET`, `FC_ARM/SELECT/FIRE/RESET/TEST_ENTER`) aynı çağrıda, genişletici dizide önce ve sonra iken: kabul edilen çağrıda (`OK`, `IMU_REJECTED`) çağrı sonunda `armed = 0` (DISARM'da), genişletici sonucu `NARROWED`, `SAFETY_OPEN` ve `FIRE` 0, `health.narrowed = 1`; reddedilen çağrıda daraltma yine uygulanmış ve genişletici sonucu `CALL_REJECTED` |
 | K46, K105, K47 | B (platform), S | Yalnız daraltıcılardan oluşan yük: bir çağrı aralığında 100 `DISARM`, 50 `FC_ABORT`, 20 daraltıcı `SET_MODE`: bir sonraki çağrıda dört bitin kurulu olması, `cmd_id` = son kimlik, `mode` = son hedef, `coalesced` ve `cnt_narrow_coalesced` doğru, daraltıcı kaybı 0; karışık yükte daraltıcı olmayan erteleme ve atma sayaçları |
 | K49, K50, K51 | S | Kip başına manuel eksenlerin etkisi, geçersiz maske, görev yüklemesinin atomikliği (yarım yüklemede görev değişmez) |
 | K52 | S | HEARTBEAT kesilmesinde arıza eyleminin duvar saati süresinde başlaması |
@@ -778,6 +821,7 @@ Test kodu bu işte yazılmaz. Tür kısaltmaları: **D** derleme ya da sembol de
 | K87, K88, K90, K91, K92 | S | Dönüş koduna göre `nav_valid`; durum alanları; günlük taşması sayacı; `det_tx` sayısı |
 | K89 | S, K | Bozulmuş koruma sözcüğünde `core_ok = 0`; IMU kesilmesi, IMU reddi, `IMU_LAG` ve oturum kopmasında `core_ok = 1`; kartta 01 K8 senaryoları |
 | K93, K94, K96 | S, K | Bitmeyen işte `bg.dropped`; kartta en hızlı Ping360 ile `bg_dropped` = 0 (01 K18) |
+| K117, K08 | S | `now_w` = −1 ve 2⁶² + 1 ile arka plan çağrısı: dönüş `IDA_BG_BAD_INPUT`, iş durumu değişmez (sonraki geçerli arka plan çağrılarının dönüş dizisi ve step çıktıları, geçersiz çağrı hiç yapılmamış koşuyla bit düzeyinde aynı; `cnt.bg_bad_input` ve `health.bg_bad_input` hariç), `bg_slices` bu çağrıyı saymazken `cnt.bg_slice_mismatch` artmaz, sonraki step/tick'te `health.bg_bad_input = 1`, ondan sonrakinde 0; `c` NULL: `IDA_BG_BAD_INPUT` |
 | K99, K100, K101 | S, B | Çağrıdan sonra girdi tamponunu bozup sonraki çağrının etkilenmediğini görme (adres temizleyicisiyle); 4.15'teki NULL durumları |
 
 ---
@@ -810,11 +854,11 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A4 — Ortak çekirdek ↔ çevresi" ba�
 | Bulgu | Önem | Durum | Sözleşmede nerede | Gerekçe |
 |---|---|---|---|---|
 | AB-059 | kritik | kapandı | A4-K89; H33 | İç sağlık (`core_ok`) ile veri kullanılabilirliği ayrıldı ve gözetimi yalnız iç sağlığın beslediği kural oldu. |
-| AB-060 | kritik | kapandı | A4-K45, A4-K73, A4-K74, A4-K71, A4-K46 | Oturum sonu daraltıcı girdidir ve çağrıya hâkimdir: aynı çağrıda silahsızlandırma, atış kontrolün jeton ve izin iptali, `SAFETY_CLOSE`, aynı çağrıdaki her genişleticinin reddi ve bekleyen olaylara `SESSION_END`; mandallar oturum sonunda silinmez. |
+| AB-060 | kritik | kapandı | A4-K45, A4-K73, A4-K74, A4-K71, A4-K46, A4-K113 | Oturum sonu daraltıcı girdidir ve çağrıya hâkimdir: aynı çağrıda silahsızlandırma, atış kontrolün jeton ve izin iptali, `SAFETY_CLOSE`, aynı çağrıdaki her genişleticinin reddi ve bekleyen olaylara `SESSION_END`; mandallar oturum sonunda silinmez; daraltma reddedilen çağrıda da (b) adımında uygulanır. |
 | AB-061 | önemli | kapandı | A4-K61, A4-K62, A4-K86 | Olay sayacının başlangıcı, sarmaması, son 16 değerin yalnız emniyet kapatmaya ayrılması ve açılış sayacının geçersizliğinde olaysız çalışma kural oldu; `ARM_CHANGE(0)` yerini `SAFETY_CLOSE` aldı. |
 | AB-062 | kritik | kapandı | A4-K37, A4-K108; O13 | IMU ölçüm zamanı bağımsız zaman çerçevesine göre denetleniyor; `IMU_LAG` mandalının kurulma ve çözülme koşulları ve zorunlu emniyet tepkisi (genişletici yok, arm reddi, kontrol sürer) sözleşmede; yalnız zaman çerçevesinin kendisinin geride olması kart tarafında ölçülemez sınır olarak A1'e kaldı. |
 | AB-063 | önemli | kapandı | A4-K83, A4-K82 | Parametre kaydı `BUSY` iken ve kayıtla aynı çağrıda arm/kayıt çakışması bağlayıcı kural oldu. |
-| AB-064 | kritik | kapandı | A4-K26, A4-K28, A4-K45, A4-K57, Bölüm 4.14 | Hata dönüşlerinde sürekli komut ve genişletici yok (her kuraldan önce); daraltıcılar her dönüşte uygulanıyor; her dönüş kodunun bütün çıktı alanları tek tabloda; geçersiz girdi zamanı çıktıya yazılmıyor; gönderme kararı A1'in. |
+| AB-064 | kritik | kapandı | A4-K26, A4-K28, A4-K45, A4-K57, A4-K113, A4-K114, Bölüm 3.11, 4.14 | Dönüş kodu tek değerlendirme sırasıyla ve birlikte oluşan koşullar için tek öncelik tablosuyla belirleniyor; hata dönüşlerinde sürekli komut ve genişletici yok (her kuraldan önce); daraltma reddedilen çağrıda da uygulanıyor ve komutlar `CALL_REJECTED` alıyor; her dönüş kodunun bütün çıktı alanları tek tabloda; geçersiz girdi zamanı çıktıya yazılmıyor; gönderme kararı A1'in. |
 | AB-065 | önemli | kapandı | 3.6, 3.8, 4.14, 4.15; A4-K87–K92 | `plat` alanlarının tam listesi, durum, telemetri ve günlük yapıları ile her dönüş kodunun ve işlevin çıktı anlamı tanımlandı. |
 | AB-066 | belirtilmemiş | kapandı | A4-K63, A4-K67, A4-K106, A4-K68 | Olayı çekirdek bir kez üretir; ilk kabul kapısı ile taşıma yinelemesi ayrı kurallar; yinelemenin sahibi platform ve A1; düşürülen ya da yanıtsız her olayın sonucu çekirdeğe döner. |
 | AB-067 | belirtilmemiş | kapandı | 3.8 (`fs_level`, `is_safe`); A4-K55 | Çıktı arıza eylemi düzeyini ve güvenli sınıfı açıkça taşıyor. |
@@ -831,7 +875,7 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A4 — Ortak çekirdek ↔ çevresi" ba�
 | AB-078 | kritik | kapandı | A4-K46, A4-K105, A4-K47, A4-K102 | Daraltıcılar kuyruğa değil tür başına tek bitlik mandala girer; sonlu tamponla hiçbiri düşmez ve en çok bir sonraki çağrıda çekirdeğe ulaşır; daraltıcı olmayan komutların erteleme ve atma politikası ayrı; çekirdeğin iç kapasitesi çağrı kapasitesinden az olamaz. |
 | AB-079 | önemli | kapandı | A4-K60–K68, A4-K106, A4-K93, A4-K109 | Olay alanları, sonuç dönüşü, arka plan imzası, arka plan işinin yeniden oynatılması ve olay üretiminin sahipliği port düzeyinde tekleşti. |
 | AB-080 | belirtilmemiş | kapandı | A4-K45, A4-K64, A4-K73, A4-K103 | IMU'suz ve IMU'su reddedilen çağrı da daraltıcıları atış kontrolden önce uygular ve emniyet kapatma olayı üretebilir; genişletici üretemez; iç çağrı biçimi W4'ün. |
-| AB-081 | belirtilmemiş | kapandı | 3.3 (`ida_safety_t`); A4-K34, A4-K111 | Tüp başına fırlatıcı izni geri okuma alanında; eşit ölçüm zamanlı değişim örneği reddedilmeden değer güncelliyor; emniyet girdisinin kapanması daraltıcı. A1'den ilgili alanlar bekleniyor (Bölüm 10). |
+| AB-081 | belirtilmemiş | kapandı | 3.3 (`ida_safety_t`); A4-K34, A4-K111, A4-K115, A4-K116 | Tüp başına fırlatıcı izni geri okuma alanında; eşit ölçüm zamanlı değişim örneği reddedilmeden değer güncelliyor; eşit anahtarlı çelişkili örnekler sıradan bağımsız reddediliyor ve daraltıcı içerikleri uygulanıyor; emniyet girdisinin kapanması daraltıcı. A1'den ilgili alanlar bekleniyor (Bölüm 10). |
 | AB-082 | belirtilmemiş | kapandı | A4-K75 | "Bakım" girdisi yok (iskelet §10, öneri 8); "kart değiştiremez" yalnız sanal girdilere ait, fırlatıcı izni olaylarla değişiyor. |
 | AB-083 | önemli | kapandı | A4-K61, A4-K62, A4-K86 | Açılış sayacının platformdan beklenen güvencesi (kesin artan ya da geçersiz) ve olay sayacının sarmaması kural oldu; flash'taki atomik artırımın gerçeklemesi kart yazılımı uygulamasınındır. |
 | AB-084 | belirtilmemiş | kapandı | 3.3, 3.5, 3.8; A4-K61, A4-K66, A4-K107 | Emniyet ve tüp örneği, olay sonuç yolu, son geçerlilik ve iznin iki saatteki süresi tanımlandı; kimlik açılış sayacından kuruluyor. |
@@ -895,7 +939,7 @@ Kaynak: `docs/mimari/acik-bulgular.md` "A4 — Ortak çekirdek ↔ çevresi" ba�
 
 ## Ek A. A1 için dışa açılan adlar
 
-A1 sözleşmesi bu adları kullanır. Tip ve anlamlar Bölüm 3'tedir. Düzeltme turu 1'de değişenler: `ida_cmd_ack_t`, `out.cmd_acks`, `out.param_value`, `out.param_save` ve `out.regen` kaldırıldı; `ida_cmd_result_t` / `out.results`, `ida_narrow_t` / `in.narrow`, `in.det_batch`, `in.bg_slices`, yeni `plat` ve `health` alanları ve `IDA_RC_IMU_REJECTED` eklendi; algılama tipleri `ida_det_record_t` ve `ida_det_batch_t` oldu.
+A1 sözleşmesi bu adları kullanır. Tip ve anlamlar Bölüm 3'tedir. Düzeltme turu 1'de değişenler: `ida_cmd_ack_t`, `out.cmd_acks`, `out.param_value`, `out.param_save` ve `out.regen` kaldırıldı; `ida_cmd_result_t` / `out.results`, `ida_narrow_t` / `in.narrow`, `in.det_batch`, `in.bg_slices`, yeni `plat` ve `health` alanları ve `IDA_RC_IMU_REJECTED` eklendi; algılama tipleri `ida_det_record_t` ve `ida_det_batch_t` oldu. Düzeltme turu 2'de eklenenler: `IDA_BG_BAD_INPUT`, `IDA_NARROW_DEFINED`, `health.sample_conflict`, `health.bg_bad_input`, `cnt.sample_conflict`, `cnt.sample_dup_dropped`, `cnt.narrow_from_rejected`, `cnt.bg_bad_input`; dönüş kodunun değerlendirme sırası (3.11).
 
 | Port yapısı | Alanlar |
 |---|---|
@@ -922,10 +966,10 @@ A1 sözleşmesi bu adları kullanır. Tip ve anlamlar Bölüm 3'tedir. Düzeltme
 | `ida_cmd_result_t` | `cmd_id`, `kind` (`IDA_RES_*`), `ack` (`IDA_ACK_*`), `reason` (`IDA_REASON_*`), `value`, `save` (`gen`, `blob`, `len`) |
 | `ida_nav_out_t` | `t`, `p_ned[3]`, `v_ned[3]`, `q_nb[4]`, `omega_b[3]`, `depth`, `altitude`, `p_sigma[3]`, `v_sigma[3]`, `att_sigma[3]`, `origin_lat_e7`, `origin_lon_e7`, `est_level`, `reset_counter` |
 | `ida_status_t` | `mode`, `armed`, `fs_level`, `fs_reasons`, `regime`, `phase`, `mission_state`, `mission_item`, `param_ok`, `events_ok`, `boot_count`, `cnt.*` |
-| `ida_health_t` | `core_ok`, `data_ok`, `imu_rejected`, `imu_lag`, `input_dropped`, `narrowed` |
+| `ida_health_t` | `core_ok`, `data_ok`, `imu_rejected`, `imu_lag`, `input_dropped`, `narrowed`, `sample_conflict`, `bg_bad_input` |
 | `ida_log_t` | `t_w`, `code`, `severity`, `arg0`, `arg1` |
 | `ida_fc_status_t` | `state`, `inhibit_mask`, `last_event_id`, `last_event_result`, `ext_len`, `ext[64]` |
 | `ida_init_in_t` (açılış kaydı için) | `boot_count`, `boot_count_ok`, `reset_cause`, `reset_flags`, `consecutive_faults`, `param_src` |
 | `ida_core_info_t` (el sıkışma için) | `port_major`, `port_minor`, `param_schema_hash`, `core_version` |
-| Dönüş kodları | `IDA_RC_OK`, `IDA_RC_IMU_REJECTED`, `IDA_RC_DUP_SEQ`, `IDA_RC_OLD_SEQ`, `IDA_RC_BAD_INPUT`, `IDA_RC_NOT_INIT` |
+| Dönüş kodları | `IDA_RC_OK`, `IDA_RC_IMU_REJECTED`, `IDA_RC_DUP_SEQ`, `IDA_RC_OLD_SEQ`, `IDA_RC_BAD_INPUT`, `IDA_RC_NOT_INIT`; arka plan: `IDA_BG_IDLE`, `IDA_BG_MORE`, `IDA_BG_BAD_INPUT` (yalnız ilk ikisi `bg_slices`'a sayılır) |
 | İşlevler | `ida_core_step`, `ida_core_tick`, `ida_core_background`, `ida_core_param_count`, `ida_core_param_desc`, `ida_core_param_find`, `ida_core_param_get` |

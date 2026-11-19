@@ -1,7 +1,7 @@
 /*
  * İDA — ortak çekirdek <-> çevresi: port arayüzü (A4)
  *
- * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (düzeltme turu 1).
+ * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (düzeltme turu 2).
  * Bu dosya sözleşmenin makinece okunur parçasıdır; belgeyle çelişemez.
  * Yalnız tip tanımları, sabitler ve işlev bildirimleri içerir (A4-K01).
  * Her bildirimin üstündeki yorum, ilgili kural numarasını verir.
@@ -110,7 +110,8 @@ typedef struct {
 /* 4. Dönüş kodları ve sensör tür kodları                              */
 /* ------------------------------------------------------------------ */
 
-/* A4-K25, A4-K28, A4-K101; dönüş tabloları Bölüm 4.14 ve 4.15. */
+/* A4-K25, A4-K28, A4-K101, A4-K113; değerlendirme sırası ve öncelik
+   Bölüm 3.11; çıktılar Bölüm 4.14; işlevler Bölüm 4.15. */
 typedef enum {
     IDA_RC_OK             = 0,
     IDA_RC_DUP_SEQ        = 1,  /* tf.seq son kabul edilene eşit (hata)          */
@@ -123,10 +124,12 @@ typedef enum {
     IDA_RC_IMU_REJECTED   = 8   /* yalnız step: IMU reddedildi, tick kuralı (K103) */
 } ida_rc_t;
 
-/* A4-K93: arka plan çağrısının dönüşü. */
+/* A4-K93, A4-K117: arka plan çağrısının dönüşü. Platform yalnız IDLE ve MORE
+   dönen çağrıları bg_slices'a sayar (A4-K109). */
 typedef enum {
-    IDA_BG_IDLE = 0,            /* bekleyen arka plan işi yok                    */
-    IDA_BG_MORE = 1             /* bekleyen iş var                               */
+    IDA_BG_IDLE      = 0,       /* bekleyen arka plan işi yok                    */
+    IDA_BG_MORE      = 1,       /* bekleyen iş var                               */
+    IDA_BG_BAD_INPUT = 2        /* c NULL ya da now_w aralık dışı; iş yapılmadı  */
 } ida_bg_rc_t;
 
 /* A4-K30: sensör türü (ida_hdr_t.type). */
@@ -425,6 +428,7 @@ typedef struct {
 #define IDA_NARROW_MODE       0x02u   /* GUIDED/AUTO dışına IDA_CMD_SET_MODE     */
 #define IDA_NARROW_FC_DISARM  0x04u   /* IDA_CMD_FC, op = IDA_FC_DISARM          */
 #define IDA_NARROW_FC_ABORT   0x08u   /* IDA_CMD_FC, op = IDA_FC_ABORT           */
+#define IDA_NARROW_DEFINED    0x0Fu   /* tanımlı bitler; diğerleri BAD_INPUT (K113) */
 
 /* A4-K46: platformun daraltıcı mandalları; tür başına tek bit ve son kimlik. */
 typedef struct {
@@ -678,6 +682,10 @@ typedef struct {
 typedef struct {
     uint32_t sample_rejected;     /* A4-K33 ile reddedilen örnek (bütün türler)  */
     uint32_t sample_future;       /* t_meas > tf.t ya da t_rx > now_w            */
+    uint32_t sample_conflict;     /* A4-K115: eşit anahtar, farklı içerik (çift başına 1) */
+    uint32_t sample_dup_dropped;  /* A4-K115: bayt bayt aynı yinelenme            */
+    uint32_t narrow_from_rejected;/* A4-K116: reddedilen örnekten uygulanan daraltma */
+    uint32_t bg_bad_input;        /* A4-K117                                      */
     uint32_t imu_rejected;        /* A4-K103                                      */
     uint32_t imu_gap;             /* A4-K38                                       */
     uint32_t bad_input;           /* BAD_INPUT dönüşü                             */
@@ -719,7 +727,9 @@ typedef struct {
     bool imu_rejected;            /* bu çağrının IMU örneği reddedildi            */
     bool imu_lag;                 /* IMU_LAG mandalı kurulu (A4-K37)              */
     bool input_dropped;           /* bu çağrının girdisinde üye düştü (K102)      */
-    bool narrowed;                /* bu çağrıda daraltma uygulandı (A4-K45)       */
+    bool narrowed;                /* bu çağrıda daraltma uygulandı (A4-K45, K113) */
+    bool sample_conflict;         /* bu çağrıda çelişkili eşit anahtar (A4-K115)  */
+    bool bg_bad_input;            /* önceki step/tick'ten beri IDA_BG_BAD_INPUT (A4-K117) */
 } ida_health_t;
 
 /* Günlük önem düzeyleri (MAVLink MAV_SEVERITY sırası). */
@@ -880,8 +890,9 @@ ida_rc_t ida_core_step(ida_core_t *c, const ida_in_t *in, ida_out_t *out);
    Dönüş: OK, DUP_SEQ, OLD_SEQ, BAD_INPUT, NOT_INIT. */
 ida_rc_t ida_core_tick(ida_core_t *c, const ida_in_t *in, ida_out_t *out);
 
-/* A4-K93 … A4-K96, A4-K109, A4-K110: arka plan işinin bir dilimi.
-   c NULL ya da kurulmamışsa IDA_BG_IDLE döner ve hiçbir şey yapmaz. */
+/* A4-K93 … A4-K96, A4-K109, A4-K110, A4-K117: arka plan işinin bir dilimi.
+   c NULL ya da now_w aralık dışıysa IDA_BG_BAD_INPUT; örnek kurulmamışsa
+   IDA_BG_IDLE döner; ikisinde de iş yapılmaz. */
 ida_bg_rc_t ida_core_background(ida_core_t *c, ida_wtime_t now_w);
 
 /* A4-K85: parametre tablosu (örneksiz, salt okunur). */
