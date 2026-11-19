@@ -243,6 +243,12 @@
         "tip": "u32",
         "birim": "-",
         "anlam": "son atanan A3 komut numarası; yoksa 0"
+      },
+      {
+        "ad": "durum_rev",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "durum revizyonu: sim süreci boyunca 1'den başlayan, uygulanan her çalıştırma kontrolü komutunda ve her durum geçişinde bir artan sayaç (A3-K122)"
       }
     ],
     "yuk_sayac_gercek_zaman": [
@@ -836,7 +842,7 @@
         "ad": "emniyet_rev",
         "tip": "u64",
         "birim": "-",
-        "anlam": "emniyet revizyonu: sim sureci boyunca 1'den başlayan, her emniyet ya da yetki durumu degisiminde bir artan sayaç (A3-K117)"
+        "anlam": "emniyet revizyonu: sim süreci boyunca 1'den başlayan; kabul edilen her kısıtlayan komutta, her fiilî gevşetmede ve A3-K117'deki olaylarda bir artan sayaç"
       }
     ],
     "yuk_ariza_etkin": [
@@ -2941,7 +2947,7 @@
     {
       "kod": "beklenen_durum_uyusmuyor",
       "http": 409,
-      "anlam": "beklenen_run_id ya da beklenen_durum güncel değil"
+      "anlam": "`beklenen_run_id` güncel `run_id` değil ya da çalıştırma yokken `null` değil (A3-K124)"
     },
     {
       "kod": "onay_gerekli",
@@ -2956,7 +2962,7 @@
     {
       "kod": "kimlik_cakismasi",
       "http": 409,
-      "anlam": "aynı istemci oturumunda aynı istek_kimligi farklı yontem, yol ya da gövdeyle (A3-K53)"
+      "anlam": "aynı istemci oturumunda aynı istek_kimligi farklı yöntem, yol ya da gövdeyle (A3-K53)"
     },
     {
       "kod": "emniyet_rev_uyusmuyor",
@@ -2964,19 +2970,24 @@
       "anlam": "`beklenen_emniyet_rev` güncel emniyet revizyonu değil; `ayrinti.guncel_emniyet_rev` (A3-K118)"
     },
     {
+      "kod": "durum_rev_uyusmuyor",
+      "http": 409,
+      "anlam": "`beklenen_durum_rev` güncel durum revizyonu değil; `ayrinti.guncel_durum_rev` (A3-K123)"
+    },
+    {
       "kod": "kisitlama_hakim",
       "http": 409,
-      "anlam": "aynı adım sinirinda aynı girdi için kisitlayan bir degisiklik var; yalnız `komut_sonucu` olayında kullanılır (A3-K95)"
+      "anlam": "aynı adım sınırında aynı girdi için kısıtlayan bir değişiklik var; yalnız `komut_sonucu` olayında kullanılır (A3-K95)"
     },
     {
       "kod": "tekrar_kosulu_saglanmiyor",
       "http": 409,
-      "anlam": "sürüm, platform ya da özet kosulu saglanmiyor; `ayrinti.nedenler` (A3-K68)"
+      "anlam": "sürüm, platform ya da özet koşulu sağlanmıyor; `ayrinti.nedenler` (A3-K68)"
     },
     {
       "kod": "tekrar_kipinde_yasak",
       "http": 409,
-      "anlam": "kayıtlı girdiyle beslenen tekrar kipinde girdiyi degistiren müdahale (A3-K120)"
+      "anlam": "kayıtlı girdiyle beslenen tekrar kipinde girdiyi değiştiren müdahale (A3-K120)"
     },
     {
       "kod": "izleme_etkin",
@@ -3426,7 +3437,7 @@
     "istek_kimligi": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]{8,64}$",
-      "description": "istemcinin ürettiği istek kimliği; yineleme anahtari (istemci oturumu, yontem, yol, istek_kimligi) (A3-K53)"
+      "description": "istemcinin ürettiği istek kimliği; yineleme anahtari (istemci oturumu, yöntem, yol, istek_kimligi) (A3-K53)"
     },
     "rapor_kimligi": {
       "type": "string",
@@ -3450,12 +3461,29 @@
           "boolean",
           "null"
         ],
-        "maxLength": 64
+        "maxLength": 64,
+        "pattern": "^[^\\u0000-\\u001f]*$",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
       }
     },
     "run_id": {
       "type": "string",
       "pattern": "^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$"
+    },
+    "run_id_ya_da_null": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$",
+      "description": "güncel run_id; çalıştırma yokken null zorunlu (A3-K124)"
+    },
+    "durum_rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "beklenen durum revizyonu (A3-K123)"
     },
     "yanit_kabul": {
       "type": "object",
@@ -3532,6 +3560,7 @@
                 "onay_jetonu_gecersiz",
                 "kimlik_cakismasi",
                 "emniyet_rev_uyusmuyor",
+                "durum_rev_uyusmuyor",
                 "kisitlama_hakim",
                 "tekrar_kosulu_saglanmiyor",
                 "tekrar_kipinde_yasak",
@@ -3888,6 +3917,10 @@
           "type": "integer",
           "minimum": 1
         },
+        "durum_rev": {
+          "type": "integer",
+          "minimum": 1
+        },
         "son_komut_no": {
           "type": "integer",
           "minimum": 0
@@ -3908,6 +3941,7 @@
         "kademeler",
         "yayin_tavani_hz",
         "emniyet_rev",
+        "durum_rev",
         "son_komut_no"
       ]
     },
@@ -4137,32 +4171,25 @@
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
         },
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
+        },
         "ad": {
           "$ref": "#/$defs/senaryo_adi"
         },
         "icerik": {
           "type": "string",
           "maxLength": 4194304
-        },
-        "beklenen_durum": {
-          "type": "string",
-          "enum": [
-            "bos",
-            "yuklendi",
-            "hazirlaniyor",
-            "kosuyor",
-            "duraklatildi",
-            "bitti",
-            "durduruldu",
-            "hata",
-            "izleme"
-          ]
         }
       },
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_durum"
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ],
       "oneOf": [
         {
@@ -4235,13 +4262,11 @@
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
         },
-        "beklenen_durum": {
-          "type": "string",
-          "const": "yuklendi"
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
-        "beklenen_senaryo_ozeti": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "kayit_kademesi": {
           "type": "string",
@@ -4263,8 +4288,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_durum",
-        "beklenen_senaryo_ozeti"
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ]
     },
     "istek_calistirma": {
@@ -4274,13 +4299,17 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         }
       },
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_run_id"
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ]
     },
     "istek_duraklat": {
@@ -4290,7 +4319,10 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "gecersizligi_onayla": {
           "type": "boolean"
@@ -4299,7 +4331,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_run_id"
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ]
     },
     "istek_adimla": {
@@ -4309,7 +4342,10 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "periyot_sayisi": {
           "type": "integer",
@@ -4321,6 +4357,7 @@
       "required": [
         "istek_kimligi",
         "beklenen_run_id",
+        "beklenen_durum_rev",
         "periyot_sayisi"
       ]
     },
@@ -4331,7 +4368,10 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "carpan": {
           "type": "number",
@@ -4343,6 +4383,7 @@
       "required": [
         "istek_kimligi",
         "beklenen_run_id",
+        "beklenen_durum_rev",
         "carpan"
       ]
     },
@@ -4353,13 +4394,17 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         }
       },
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_run_id"
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ]
     },
     "istek_yeniden_kostur": {
@@ -4368,15 +4413,11 @@
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
         },
-        "beklenen_durum": {
-          "type": "string",
-          "enum": [
-            "bos",
-            "yuklendi",
-            "bitti",
-            "durduruldu",
-            "hata"
-          ]
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "run_id": {
           "$ref": "#/$defs/run_id"
@@ -4396,7 +4437,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_durum",
+        "beklenen_run_id",
+        "beklenen_durum_rev",
         "run_id",
         "duzey"
       ]
@@ -4408,7 +4450,7 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
         "tanim": {
           "$ref": "#/$defs/a5_ariza_tanimi"
@@ -4548,7 +4590,7 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         }
       },
       "additionalProperties": false,
@@ -4687,7 +4729,7 @@
       "type": "object",
       "properties": {
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
         "girdi": {
           "$ref": "#/$defs/girdi_adi"
@@ -4742,7 +4784,7 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
         "girdi": {
           "$ref": "#/$defs/girdi_adi"
@@ -4774,7 +4816,7 @@
       "type": "object",
       "properties": {
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
         "komut": {
           "type": "string",
@@ -4798,7 +4840,7 @@
           "$ref": "#/$defs/istek_kimligi"
         },
         "beklenen_run_id": {
-          "$ref": "#/$defs/run_id"
+          "$ref": "#/$defs/run_id_ya_da_null"
         },
         "komut": {
           "type": "string",
@@ -4994,15 +5036,11 @@
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
         },
-        "beklenen_durum": {
-          "type": "string",
-          "enum": [
-            "bos",
-            "yuklendi",
-            "bitti",
-            "durduruldu",
-            "hata"
-          ]
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "run_id": {
           "$ref": "#/$defs/run_id"
@@ -5011,7 +5049,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
-        "beklenen_durum",
+        "beklenen_run_id",
+        "beklenen_durum_rev",
         "run_id"
       ]
     },
@@ -5020,11 +5059,19 @@
       "properties": {
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
+        },
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         }
       },
       "additionalProperties": false,
       "required": [
-        "istek_kimligi"
+        "istek_kimligi",
+        "beklenen_run_id",
+        "beklenen_durum_rev"
       ]
     },
     "istek_izleme_ara": {
@@ -5032,6 +5079,12 @@
       "properties": {
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
+        },
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "t_ns": {
           "type": "integer",
@@ -5041,6 +5094,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
+        "beklenen_run_id",
+        "beklenen_durum_rev",
         "t_ns"
       ]
     },
@@ -5049,6 +5104,12 @@
       "properties": {
         "istek_kimligi": {
           "$ref": "#/$defs/istek_kimligi"
+        },
+        "beklenen_run_id": {
+          "$ref": "#/$defs/run_id_ya_da_null"
+        },
+        "beklenen_durum_rev": {
+          "$ref": "#/$defs/durum_rev"
         },
         "carpan": {
           "type": "number",
@@ -5059,6 +5120,8 @@
       "additionalProperties": false,
       "required": [
         "istek_kimligi",
+        "beklenen_run_id",
+        "beklenen_durum_rev",
         "carpan"
       ]
     },
@@ -5363,7 +5426,8 @@
         },
         "neden": {
           "type": "string",
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         }
       },
       "additionalProperties": false,
@@ -5396,7 +5460,8 @@
         },
         "ilk_adim": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5409,11 +5474,13 @@
       "properties": {
         "ilk_step_seq": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "ilk_adim": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "neden": {
           "type": "string",
@@ -5433,19 +5500,23 @@
       "properties": {
         "ilk_step_seq": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "son_step_seq": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "adet": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "pencere_duvar_ns": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5472,7 +5543,8 @@
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "hata_kodu": {
           "type": "string",
@@ -5484,6 +5556,14 @@
             "a3",
             "kayit"
           ]
+        },
+        "kaynak_run_id": {
+          "$ref": "#/$defs/run_id"
+        },
+        "kaynak_komut_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
         },
         "sonuc_ayrinti": {
           "$ref": "#/$defs/sinirli_nesne"
@@ -5500,7 +5580,8 @@
       "properties": {
         "fault_id": {
           "type": "string",
-          "maxLength": 32
+          "maxLength": 32,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "islem": {
           "type": "string",
@@ -5520,11 +5601,13 @@
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "neden": {
           "type": "string",
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         }
       },
       "additionalProperties": false,
@@ -5579,11 +5662,13 @@
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "emniyet_rev": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5607,7 +5692,8 @@
         },
         "olay_turu": {
           "type": "string",
-          "maxLength": 32
+          "maxLength": 32,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "sonuc": {
           "type": "string",
@@ -5621,11 +5707,13 @@
         },
         "normallestirilmis_sira": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5697,11 +5785,13 @@
       "properties": {
         "onceki_acilis_sayaci": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "yeni_acilis_sayaci": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "planli": {
           "type": "boolean"
@@ -5726,7 +5816,8 @@
         },
         "emniyet_rev": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "durum": {
           "type": "string",
@@ -5774,7 +5865,8 @@
       "properties": {
         "ad": {
           "type": "string",
-          "maxLength": 128
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "senaryo_ozeti": {
           "type": "string",
@@ -5894,7 +5986,8 @@
         },
         "dosya": {
           "type": "string",
-          "maxLength": 64
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "kademe": {
           "type": "string",
@@ -5915,19 +6008,23 @@
       "properties": {
         "kanal": {
           "type": "string",
-          "maxLength": 64
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "ilk_adim": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "son_adim": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "kayip_sayisi": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5968,7 +6065,8 @@
         },
         "neden": {
           "type": "string",
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         }
       },
       "additionalProperties": false,
@@ -5982,7 +6080,8 @@
       "properties": {
         "kayip_sayisi": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -5995,7 +6094,8 @@
       "properties": {
         "yol": {
           "type": "string",
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "neden": {
           "type": "string",
@@ -6008,7 +6108,8 @@
         },
         "adet": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -6036,7 +6137,8 @@
         },
         "konum_ns": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
@@ -6049,7 +6151,8 @@
       "properties": {
         "oge_kimligi": {
           "type": "string",
-          "maxLength": 64
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         },
         "tur": {
           "type": "string",
@@ -6063,7 +6166,8 @@
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "sonuc": {
           "type": "string",
@@ -6088,7 +6192,8 @@
         },
         "ileti": {
           "type": "string",
-          "maxLength": 1024
+          "maxLength": 1024,
+          "pattern": "^[^\\u0000-\\u001f]*$"
         }
       },
       "additionalProperties": false,
@@ -6107,7 +6212,8 @@
         },
         "uygulama_adimi": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "tur": {
           "type": "string",

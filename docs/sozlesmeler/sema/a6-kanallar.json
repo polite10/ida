@@ -197,6 +197,12 @@
         "tip": "u32",
         "birim": "-",
         "anlam": "son atanan A3 komut numarası; yoksa 0"
+      },
+      {
+        "ad": "durum_rev",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "durum revizyonu: sim süreci boyunca 1'den başlayan, uygulanan her çalıştırma kontrolü komutunda ve her durum geçişinde bir artan sayaç (A3-K122)"
       }
     ],
     "yuk_sayac_gercek_zaman": [
@@ -790,7 +796,7 @@
         "ad": "emniyet_rev",
         "tip": "u64",
         "birim": "-",
-        "anlam": "emniyet revizyonu: sim sureci boyunca 1'den başlayan, her emniyet ya da yetki durumu degisiminde bir artan sayaç (A3-K117)"
+        "anlam": "emniyet revizyonu: sim süreci boyunca 1'den başlayan; kabul edilen her kısıtlayan komutta, her fiilî gevşetmede ve A3-K117'deki olaylarda bir artan sayaç"
       }
     ],
     "yuk_ariza_etkin": [
@@ -2548,7 +2554,7 @@
         "sayac": "u32",
         "azami": 4194304,
         "birim": "bayt",
-        "anlam": "istek gövdesi; yalnız geçerli UTF-8 JSON gövde bu kanala yazılır, diğerleri `a3/gecersiz_istek`e (A3-K52)"
+        "anlam": "istek gövdesi; yalnız uç şemasından geçen istekler bu kanala yazılır, diğerleri `a3/gecersiz_istek`e (A3-K52)"
       },
       {
         "ad": "alim_duvar_ns",
@@ -2675,6 +2681,18 @@
     ],
     "yuk_cekirdek_baslatma": [
       {
+        "ad": "cagri_sirasi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "çalıştırma genelinde 1'den başlayan, init dahil her çekirdek çağrısında bir artan sıra; init'te sıfırlanmaz (A6-K54)"
+      },
+      {
+        "ad": "init_kusagi",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "bu init çağrısıyla başlayan kuşak; çalıştırmanın ilk init'i 1, her yeni init bir artar"
+      },
+      {
         "ad": "port_major",
         "tip": "u16",
         "birim": "-",
@@ -2722,7 +2740,13 @@
         "ad": "cagri_sirasi",
         "tip": "u64",
         "birim": "-",
-        "anlam": "son `ida_core_init`'ten beri 1'den artan çekirdek çağrısı sırası; step, tick ve background ortak sıradadır"
+        "anlam": "çalıştırma genelinde tekdüze çekirdek çağrısı sırası; init, step, tick ve background ortak sıradadır, init'te sıfırlanmaz (A6-K54)"
+      },
+      {
+        "ad": "init_kusagi",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "çağrının ait olduğu init kuşağı (`cekirdek/baslatma.init_kusagi`)"
       },
       {
         "ad": "islev",
@@ -2763,7 +2787,21 @@
         "ad": "komut_no",
         "tip": "u32",
         "birim": "-",
-        "anlam": "A3 komut numarası"
+        "anlam": "bu sim sürecinin A3 komut numarası; tekrarda uygulanan kayıtlı komut da güncel süreçten yeni numara alır (A6-K37)"
+      },
+      {
+        "ad": "kaynak_run_id",
+        "tip": "metin",
+        "sayac": "u16",
+        "azami": 32,
+        "birim": "bayt",
+        "anlam": "tekrar koşusunda komutun alındığı kaydın `run_id`'si; canlı komutta boş"
+      },
+      {
+        "ad": "kaynak_komut_no",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "tekrar koşusunda komutun kaynak kayıttaki `komut_no`'su; canlı komutta 0"
       },
       {
         "ad": "sonuc",
@@ -3100,7 +3138,8 @@
       "a3_ortak": false,
       "kosul": null,
       "tekrar_duzeyi": [
-        "izleme"
+        "izleme",
+        "yeniden_kurma"
       ],
       "kaynak": "06 oturum"
     },
@@ -3145,7 +3184,8 @@
       "tekrar_duzeyi": [
         "izleme",
         "fizik",
-        "girdi"
+        "girdi",
+        "yeniden_kurma"
       ],
       "kaynak": "kayıt yazıcısı"
     },
@@ -3260,7 +3300,7 @@
       "kosul": null,
       "tekrar_duzeyi": [
         "izleme",
-        "girdi"
+        "yeniden_kurma"
       ],
       "kaynak": "06 G/Ç iş parçacığı"
     },
@@ -3274,7 +3314,8 @@
       "a3_ortak": false,
       "kosul": null,
       "tekrar_duzeyi": [
-        "izleme"
+        "izleme",
+        "yeniden_kurma"
       ],
       "kaynak": "06 §2.5"
     },
@@ -3289,7 +3330,7 @@
       "kosul": null,
       "tekrar_duzeyi": [
         "izleme",
-        "girdi"
+        "yeniden_kurma"
       ],
       "kaynak": "06 §2.12"
     },
@@ -3696,7 +3737,7 @@
       "kosul": null,
       "tekrar_duzeyi": [
         "izleme",
-        "girdi"
+        "yeniden_kurma"
       ],
       "kaynak": "06 G/Ç iş parçacığı"
     },
@@ -3958,13 +3999,34 @@
       ]
     },
     {
+      "kayit": "ida_kayit_guncelleme",
+      "ne_zaman": "acilista boş bırakılan bir kosullu anahtar sonradan öğrenildiğinde (A6-K46)",
+      "anahtarlar": [
+        {
+          "ad": "a2_surumu",
+          "zorunlu": "kosullu",
+          "anlam": "görselleştirici bağlandıysa"
+        },
+        {
+          "ad": "a8_surumu",
+          "zorunlu": "kosullu",
+          "anlam": "algılama bileşeni bağlandıysa"
+        },
+        {
+          "ad": "kart_yazilimi_ozeti",
+          "zorunlu": "kosullu",
+          "anlam": "HIL'de kartın BOOT_RECORD'undaki yazılım özeti (A1'den beklenen)"
+        }
+      ]
+    },
+    {
       "kayit": "ida_kayit_kapanis",
       "ne_zaman": "olağan kapanışta, son iletiden sonra",
       "anahtarlar": [
         {
           "ad": "bitis_durumu",
           "zorunlu": "evet",
-          "anlam": "`bitti`, `durduruldu`, `on_denetim_kaldi`, `hata`, `disk_dolu`, `sinira_ulasti`, `sim_kapanisi`"
+          "anlam": "`bitti`, `durduruldu`, `on_denetim_kaldi`, `hata`, `disk_dolu`, `yazma_hatasi`, `sinira_ulasti`, `sim_kapanisi`"
         },
         {
           "ad": "son_adim_no",
@@ -4019,7 +4081,7 @@
         {
           "ad": "guvence_nedenleri",
           "zorunlu": "kosullu",
-          "anlam": "`tekrar_guvencesi` beklenen duzeyden düşükse nedenler, virgülle ayrılmış (örnek: `canli_mudahale`, `guvencesiz_baslatma`, `kayit_eksik`)"
+          "anlam": "`tekrar_guvencesi` beklenen düzeyden düşükse nedenler, virgülle ayrılmış (örnek: `canli_mudahale`, `guvencesiz_baslatma`, `kayit_eksik`)"
         },
         {
           "ad": "canli_mudahale_adimi",
@@ -4204,7 +4266,28 @@
         "l_act_ns",
         "baslangic_utc",
         "kayit_duvar_saati"
-      ]
+      ],
+      "description": "açılış kaydı (fiziksel Metadata kaydı); kosullu anahtarlar yok ya da boş olabilir (A6-K46)"
+    },
+    "ust_veri_ida_kayit_guncelleme": {
+      "type": "object",
+      "properties": {
+        "kart_yazilimi_ozeti": {
+          "type": "string",
+          "minLength": 1
+        },
+        "a2_surumu": {
+          "type": "string",
+          "minLength": 1
+        },
+        "a8_surumu": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "kısmi güncelleme kaydı; yalnız kapalı listedeki anahtarlar; acilista boş olani doldurur, dolu olani değiştirirse dosya bozuktur (A6-K46)"
     },
     "ust_veri_ida_kayit_kapanis": {
       "type": "object",
