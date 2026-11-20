@@ -1,0 +1,1749 @@
+{
+  "surum": "1.0",
+  "komutlar": [
+    {
+      "ad": "arm",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_ARM"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "disarm",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_DISARM"
+      },
+      "sinif": "daraltici",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "set_mode_daraltici",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_SET_MODE"
+      },
+      "sinif": "daraltici",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "MANUAL",
+              "STABILIZE",
+              "DEPTH_HOLD",
+              "STATION_KEEP"
+            ],
+            "description": "IDAW_MODE 2-5"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "set_mode_genisletici",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_SET_MODE"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "GUIDED",
+              "AUTO"
+            ],
+            "description": "IDAW_MODE 6-7"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "manual",
+      "a1": {
+        "mesaj": "IDA_CMD_MANUAL",
+        "tur": "IDAW_CMD_TYPE_MANUAL"
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "axes": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1
+            },
+            "minItems": 6,
+            "maxItems": 6,
+            "description": "Govde X, Y, Z, K, M, N (A4-K49)"
+          }
+        },
+        "required": [
+          "axes"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "guided_sp",
+      "a1": {
+        "mesaj": "IDA_CMD_GUIDED",
+        "tur": "IDAW_CMD_TYPE_GUIDED_SP"
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mask"
+        ],
+        "description": "IDA_CMD_GUIDED; yalniz mask'teki alanlar kullanilir, verilmeyen alan 0 yazilir (A4-K50)",
+        "properties": {
+          "mask": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "POS_NE",
+                "DEPTH",
+                "ALTITUDE",
+                "VEL_NE",
+                "VEL_D",
+                "YAW",
+                "YAW_RATE"
+              ]
+            },
+            "uniqueItems": true,
+            "minItems": 1,
+            "description": "IDAW_SP_MASK girdilerinin oneksiz adlari"
+          },
+          "pos_ne": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "depth": {
+            "type": "number"
+          },
+          "altitude": {
+            "type": "number"
+          },
+          "vel_ned": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "yaw": {
+            "type": "number",
+            "exclusiveMinimum": -3.141592653589793,
+            "maximum": 3.141592653589793
+          },
+          "yaw_rate": {
+            "type": "number"
+          }
+        }
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "mission_upload",
+      "a1": {
+        "mesaj": [
+          "IDA_CMD_SIMPLE",
+          "IDA_CMD_MISSION_ITEM",
+          "IDA_CMD_SIMPLE"
+        ],
+        "tur": [
+          "IDAW_CMD_TYPE_MISSION_BEGIN",
+          "IDAW_CMD_TYPE_MISSION_ITEM",
+          "IDAW_CMD_TYPE_MISSION_END"
+        ]
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "item_type",
+                "frame",
+                "depth",
+                "p",
+                "lat_e7",
+                "lon_e7",
+                "north_m",
+                "east_m"
+              ],
+              "description": "A1 Tablo 3.6a (kapali liste); alanlar IDA_CMD_MISSION_ITEM ile bire bir; index ag gecidince 0'dan verilir",
+              "properties": {
+                "item_type": {
+                  "enum": [
+                    "WAYPOINT",
+                    "DIVE_TO",
+                    "SURFACE",
+                    "HOLD",
+                    "SCAN_LINES",
+                    "SCAN_POINT",
+                    "WAIT_GNSS"
+                  ]
+                },
+                "frame": {
+                  "enum": [
+                    "NONE",
+                    "LOCAL",
+                    "GLOBAL"
+                  ]
+                },
+                "depth": {
+                  "type": "number"
+                },
+                "p": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "lat_e7": {
+                  "type": "integer",
+                  "minimum": -900000000,
+                  "maximum": 900000000
+                },
+                "lon_e7": {
+                  "type": "integer",
+                  "minimum": -1800000000,
+                  "maximum": 1800000000
+                },
+                "north_m": {
+                  "type": "number",
+                  "minimum": -10000,
+                  "maximum": 10000
+                },
+                "east_m": {
+                  "type": "number",
+                  "minimum": -10000,
+                  "maximum": 10000
+                }
+              },
+              "allOf": [
+                {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "frame": {
+                          "const": "NONE"
+                        },
+                        "lat_e7": {
+                          "const": 0
+                        },
+                        "lon_e7": {
+                          "const": 0
+                        },
+                        "north_m": {
+                          "const": 0
+                        },
+                        "east_m": {
+                          "const": 0
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "frame": {
+                          "const": "LOCAL"
+                        },
+                        "lat_e7": {
+                          "const": 0
+                        },
+                        "lon_e7": {
+                          "const": 0
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "frame": {
+                          "const": "GLOBAL"
+                        },
+                        "north_m": {
+                          "const": 0
+                        },
+                        "east_m": {
+                          "const": 0
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "WAYPOINT"
+                        },
+                        "frame": {
+                          "enum": [
+                            "LOCAL",
+                            "GLOBAL"
+                          ]
+                        },
+                        "depth": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "minimum": 0.1,
+                              "maximum": 50
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.05,
+                              "maximum": 3
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "DIVE_TO"
+                        },
+                        "frame": {
+                          "enum": [
+                            "NONE"
+                          ]
+                        },
+                        "depth": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 100
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "minimum": 0.05,
+                              "maximum": 1
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.05,
+                              "maximum": 5
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "SURFACE"
+                        },
+                        "frame": {
+                          "enum": [
+                            "NONE"
+                          ]
+                        },
+                        "depth": {
+                          "const": 0
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "minimum": 0.05,
+                              "maximum": 1
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "HOLD"
+                        },
+                        "frame": {
+                          "enum": [
+                            "NONE",
+                            "LOCAL",
+                            "GLOBAL"
+                          ]
+                        },
+                        "depth": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 3600
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.1,
+                              "maximum": 50
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "SCAN_LINES"
+                        },
+                        "frame": {
+                          "enum": [
+                            "LOCAL",
+                            "GLOBAL"
+                          ]
+                        },
+                        "depth": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "minimum": 1,
+                              "maximum": 500
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.5,
+                              "maximum": 100
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 1,
+                              "maximum": 100,
+                              "multipleOf": 1
+                            },
+                            {
+                              "type": "number",
+                              "exclusiveMinimum": -3.141592653589793,
+                              "maximum": 3.141592653589793
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "SCAN_POINT"
+                        },
+                        "frame": {
+                          "enum": [
+                            "LOCAL",
+                            "GLOBAL"
+                          ]
+                        },
+                        "depth": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 3600
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.1,
+                              "maximum": 50
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "item_type": {
+                          "const": "WAIT_GNSS"
+                        },
+                        "frame": {
+                          "enum": [
+                            "NONE"
+                          ]
+                        },
+                        "depth": {
+                          "const": 0
+                        },
+                        "p": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 3600
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 1,
+                              "maximum": 4,
+                              "multipleOf": 1
+                            },
+                            {
+                              "const": 0
+                            },
+                            {
+                              "const": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 128
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          },
+          "adim": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
+          }
+        },
+        "required": [
+          "ack",
+          "reason",
+          "adim"
+        ]
+      },
+      "bilesik": true
+    },
+    {
+      "ad": "mission_ctl",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_MISSION_CTL"
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "ABORT"
+            ],
+            "description": "IDAW_MCTL"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "param_get",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_PARAM_GET"
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "param_id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "param_id"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ack",
+          "reason"
+        ],
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          },
+          "param_id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "param_type": {
+            "enum": [
+              "I32",
+              "U32",
+              "F32"
+            ],
+            "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "description": "ACCEPTED'te param_id, param_type ve value bulunur (IDA_CMD_RESULT kind = PARAM_VALUE)"
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "param_apply",
+      "a1": {
+        "mesaj": [
+          "IDA_CMD_PARAM_SET",
+          "IDA_CMD_SIMPLE"
+        ],
+        "tur": [
+          "IDAW_CMD_TYPE_PARAM_SET",
+          "IDAW_CMD_TYPE_PARAM_COMMIT"
+        ]
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "param_id",
+                "param_type",
+                "value"
+              ],
+              "properties": {
+                "param_id": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "param_type": {
+                  "enum": [
+                    "I32",
+                    "U32",
+                    "F32"
+                  ],
+                  "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "I32"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": -2147483648,
+                      "maximum": 2147483647
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "U32"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "F32"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": -3.4028234663852886e+38,
+                      "maximum": 3.4028234663852886e+38
+                    }
+                  }
+                }
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "params"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          },
+          "adim": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
+          }
+        },
+        "required": [
+          "ack",
+          "reason",
+          "adim"
+        ]
+      },
+      "bilesik": true
+    },
+    {
+      "ad": "param_save",
+      "a1": {
+        "mesaj": [
+          "IDA_CMD_PARAM_SET",
+          "IDA_CMD_SIMPLE",
+          "IDA_CMD_SIMPLE"
+        ],
+        "tur": [
+          "IDAW_CMD_TYPE_PARAM_SET",
+          "IDAW_CMD_TYPE_PARAM_COMMIT",
+          "IDAW_CMD_TYPE_PARAM_SAVE"
+        ]
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "param_id",
+                "param_type",
+                "value"
+              ],
+              "properties": {
+                "param_id": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "param_type": {
+                  "enum": [
+                    "I32",
+                    "U32",
+                    "F32"
+                  ],
+                  "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "I32"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": -2147483648,
+                      "maximum": 2147483647
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "U32"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "param_type": {
+                      "const": "F32"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": -3.4028234663852886e+38,
+                      "maximum": 3.4028234663852886e+38
+                    }
+                  }
+                }
+              ]
+            },
+            "minItems": 0
+          }
+        },
+        "required": [
+          "params"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ack",
+          "reason",
+          "adim"
+        ],
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          },
+          "adim": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
+          },
+          "save_gen": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "save_len": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "save_crc": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "description": "ACCEPTED'te save_gen, save_len, save_crc bulunur (PARAM_SAVE sonucu; A1-K68)"
+      },
+      "bilesik": true
+    },
+    {
+      "ad": "failsafe_reset",
+      "a1": {
+        "mesaj": "IDA_CMD_SIMPLE",
+        "tur": "IDAW_CMD_TYPE_FAILSAFE_RESET"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_arm",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_ARM"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tube": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "tube"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_fire",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_FIRE"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tube": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "tube"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_disarm",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_DISARM"
+      },
+      "sinif": "daraltici",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_abort",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_ABORT"
+      },
+      "sinif": "daraltici",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_reset",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_RESET"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tube": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "tube"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_test_enter",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_TEST_ENTER"
+      },
+      "sinif": "genisletici",
+      "onay": true,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tube": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "tube"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    },
+    {
+      "ad": "fc_test_exit",
+      "a1": {
+        "mesaj": "IDA_CMD_FC",
+        "tur": "IDAW_FC_OP_TEST_EXIT"
+      },
+      "sinif": "notr",
+      "onay": false,
+      "parametreler": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tube": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "tube"
+        ]
+      },
+      "sonuc": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ack": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "IN_PROGRESS",
+              "DUPLICATE",
+              "UNSUPPORTED"
+            ],
+            "description": "IDAW_ACK girdisinin oneksiz adi"
+          },
+          "reason": {
+            "type": "integer",
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 15
+              },
+              {
+                "minimum": 128,
+                "maximum": 131
+              }
+            ],
+            "description": "IDAW_REASON: 0-15 A4 ortak tablosu, 128-131 A1 baglanti katmani (A4-K120)"
+          }
+        },
+        "required": [
+          "ack",
+          "reason"
+        ]
+      },
+      "bilesik": false
+    }
+  ]
+}
