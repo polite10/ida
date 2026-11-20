@@ -192,7 +192,7 @@
       ],
       "properties": {
         "taban_derinligi_m": {
-          "description": "Yalnız statik varlıkta, isteğe bağlı: REF noktasından gövde +z (aşağı) yönünde taban üst yüzeyine düşey uzaklık, m (A7-K56).",
+          "description": "Yalnız statik varlıkta, isteğe bağlı: varlığın kendi gövde çerçevesinde REF noktasından +z ekseni boyunca taban üst yüzeyine uzaklık, m. Yerel uzunluktur, dünya su derinliği değildir (A7-K56).",
           "type": "number", "exclusiveMinimum": 0, "maximum": 11000
         },
         "kimlik": { "$ref": "#/$defs/kimlik" },
