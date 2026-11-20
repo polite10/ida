@@ -225,11 +225,11 @@
       <entry value="0" name="IDAW_REASON_NONE"/>
       <entry value="1" name="IDAW_REASON_CALL_REJECTED"/>
       <entry value="2" name="IDAW_REASON_ARMED"/>
-      <entry value="3" name="IDAW_REASON_NOT_ARMABLE"/>
+      <entry value="3" name="IDAW_REASON_NOT_ARMABLE"><description>Genisletmenin durum on kosulu tutmuyor (arm dahil); anlami A4 3.17.</description></entry>
       <entry value="4" name="IDAW_REASON_PARAM_BUSY"/>
       <entry value="5" name="IDAW_REASON_PARAM_INVALID"/>
       <entry value="6" name="IDAW_REASON_OUT_OF_RANGE"/>
-      <entry value="7" name="IDAW_REASON_BAD_MODE"/>
+      <entry value="7" name="IDAW_REASON_BAD_MODE"><description>Kip, gorev ya da atis kontrol durumu uygun degil; anlami A4 3.17.</description></entry>
       <entry value="8" name="IDAW_REASON_EVENTS_OFF"/>
       <entry value="9" name="IDAW_REASON_SESSION"/>
       <entry value="10" name="IDAW_REASON_NARROWED"><description>Daraltma hakim: ayni cagrida daraltici vardi (A4-K45) ya da kart daraltici mandala alinca ertelenmis genisleticiyi atti (A1-K63).</description></entry>
