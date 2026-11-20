@@ -238,14 +238,38 @@ static void test_A4_K85_tablo_tutarliligi(void)
             TEST_ASSERT_TRUE_MESSAGE(fa <= fv && fv <= fb, d->name);
         }
         for (unsigned ju = 0; ju < (unsigned)(i); ++ju) {
-        uint16_t j = (uint16_t)ju;
+            uint16_t j = (uint16_t)ju;
             TEST_ASSERT_TRUE_MESSAGE(kc_param_desc(j)->id != d->id, "yinelenen id");
             TEST_ASSERT_TRUE_MESSAGE(strcmp(kc_param_desc(j)->name, d->name) != 0, "yinelenen ad");
         }
         uint16_t id = 0u;
         TEST_ASSERT_EQUAL_INT(IDA_RC_OK, ida_core_param_find(d->name, &id));
         TEST_ASSERT_EQUAL_UINT16(d->id, id);
+        /* A4-K85 (B17): min/max/def.type = type, def.id = id. */
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(d->type, d->min.type, d->name);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(d->type, d->max.type, d->name);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(d->type, d->def.type, d->name);
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(d->id, d->def.id, d->name);
     }
+}
+
+/* A4-K80 (6) (B7): şemada olmayan param_id'li kayıt bloğu geçersiz kılar. */
+static void test_A4_K80_denetim_6_semada_olmayan_kayit(void)
+{
+    size_t n = gecerli_kayitlar();
+    uint16_t azami = 0u;
+    for (size_t i = 0; i < n; ++i) {
+        if (g_k[i].id > azami) {
+            azami = g_k[i].id;
+        }
+    }
+    TEST_ASSERT_TRUE(azami < UINT16_MAX);
+    g_k[n].id = (uint16_t)(azami + 1u);
+    g_k[n].type = (uint8_t)IDA_PT_U32;
+    g_k[n].rsv = 0u;
+    g_k[n].ham = 1u;
+    size_t boy = kc_blok_kur(g_blok, sizeof g_blok, g_k, n + 1u, kc_sema_ozeti());
+    varsayilana_dustu(blokla_init(g_blok, (uint32_t)boy, 6), 6);
 }
 
 /* A4 §3.9: sözleşmenin değerini verdiği altı parametre şemada tip, varsayılan ve aralıkla. */
@@ -429,7 +453,7 @@ static void test_A4_K80_ilk_basarisiz_denetim(void)
     varsayilana_dustu(blokla_init(g_blok, (uint32_t)boy, 4), 4);
     n = gecerli_kayitlar();
     boy = kc_blok_kur(g_blok, sizeof g_blok, g_k, n, kc_sema_ozeti() + 5u); /* (2) */
-    g_blok[21] = (uint8_t)(g_blok[21] ^ 0x01u);                                                      /* (4) */
+    g_blok[21] = (uint8_t)(g_blok[21] ^ 0x01u); /* (4) */
     varsayilana_dustu(blokla_init(g_blok, (uint32_t)boy, 2), 2);
 }
 
@@ -475,6 +499,176 @@ static void test_A4_K78_arm_engeli(void)
     arm_dene((uint8_t)IDA_REASON_NOT_ARMABLE, (uint8_t)IDA_PSTORE_IDLE);
 }
 
+/* ---- Parametre komutları: A4-K81, K82, K83 (fark turu) ------------------------------ */
+
+/* Bir step: verilen kayıt durumu ve kuşağıyla; komutlar çağıran tarafından eklenir. */
+static void param_step_hazirla(uint8_t store, uint32_t gen)
+{
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    g_in.plat.param_store = store;
+    g_in.plat.param_gen = gen;
+}
+
+static void kayit_kabul(const ida_cmd_result_t *r, uint32_t gen, const char *ad)
+{
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_RES_PARAM_SAVE, r->kind, ad);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_ACCEPTED, r->ack, ad);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(gen, r->save.gen, ad);
+}
+
+static void reddedildi(const ida_cmd_result_t *r, uint16_t neden, const char *ad)
+{
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_REJECTED, r->ack, ad);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(neden, r->reason, ad);
+}
+
+/* Son çıktıdaki PARAM_SAVE günlüklerinin sayısı; varsa ilkinin (gen, param_store)'u
+   beklenenle aynı olmalı (3.15). */
+static int kayit_gunlugu(uint32_t gen, uint8_t store)
+{
+    int n = kc_gunluk_say(kc_out(), (uint16_t)IDA_LOG_PARAM_SAVE);
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_PARAM_SAVE);
+    if (l != NULL) {
+        TEST_ASSERT_EQUAL_INT32_MESSAGE((int32_t)gen, l->arg0, "PARAM_SAVE arg0 = gen");
+        TEST_ASSERT_EQUAL_INT32_MESSAGE((int32_t)store, l->arg1, "PARAM_SAVE arg1 = param_store");
+    }
+    return n;
+}
+
+static void fail_step(uint32_t gen)
+{
+    param_step_hazirla((uint8_t)IDA_PSTORE_FAIL, gen);
+    g_in.plat.param_fail = (uint8_t)IDA_PSFAIL_FLASH;
+}
+
+/* A4-K82, K83: FAIL de kuşak taşır. Bekleyen SAVE'in başarısız tamamlanması durum kodu
+   geçişine bakmadan FAIL + param_gen = bekleyen gen eşleşmesiyle saptanır, günlük tam bir
+   kez üretilir; FAIL bildirilen SAVE'in gen'i üretilmiş sayılır (taban yükselir). */
+static void test_A4_K82_K83_fail_kusak_tasir(void)
+{
+    kc_init_bloksuz();
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    (void)kc_komut_ekle(&g_in, 9001u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    (void)kc_komut_ekle(&g_in, 9002u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+    kayit_kabul(&kc_out()->results[1], 1u, "ilk kayıt gen 1");
+    /* FAIL/1: gen 1'in başarısız tamamlanması; günlük bir kez. */
+    fail_step(1u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, kayit_gunlugu(1u, (uint8_t)IDA_PSTORE_FAIL), "FAIL/1 tamamlanması");
+    TEST_ASSERT_FALSE(kc_out()->status.param_ok);
+    /* Girdi FAIL/1 kalırken yeni SAVE: gen 2; FAIL/1 yeniden günlüklenmez. */
+    fail_step(1u);
+    (void)kc_komut_ekle(&g_in, 9003u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kayit_kabul(&kc_out()->results[0], 2u, "FAIL bildirilen kaydın gen'i yeniden kullanılmaz (A4-K82)");
+    TEST_ASSERT_EQUAL_INT(0, kayit_gunlugu(1u, (uint8_t)IDA_PSTORE_FAIL));
+    /* Girdide hâlâ FAIL/1: gen 2'nin beklemesi bitmez. */
+    fail_step(1u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, kayit_gunlugu(2u, (uint8_t)IDA_PSTORE_FAIL), "FAIL/1 gen 2'yi bitirmemeli");
+    /* FAIL/2 (arada başka durum yok): ikinci tamamlanma saptanır, günlük bir kez. */
+    fail_step(2u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, kayit_gunlugu(2u, (uint8_t)IDA_PSTORE_FAIL), "FAIL/2 tamamlanması");
+    fail_step(2u);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_RC_OK, kc_step(&g_in), "FAIL/2 yinelenir");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, kayit_gunlugu(2u, (uint8_t)IDA_PSTORE_FAIL), "günlük tam bir kez");
+    /* Sonraki SAVE'in gen'i 3. */
+    fail_step(2u);
+    (void)kc_komut_ekle(&g_in, 9004u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kayit_kabul(&kc_out()->results[0], 3u, "gen 3");
+}
+
+/* A4-K83, K78 (sol bulgu 2'nin karşı örneği): başarılı tamamlanma arada BUSY görülmeden
+   aynı durum koduyla (OK/41 -> OK/42) gelirse de gen eşleşmesiyle saptanır: arm engeli
+   kalkar, PARAM_SAVE günlüğü tam bir kez üretilir (eski belirsiz R1). */
+static void test_A4_K83_ayni_durum_koduyla_tamamlanma(void)
+{
+    kc_init_bloksuz();
+    param_step_hazirla((uint8_t)IDA_PSTORE_OK, 41u);
+    (void)kc_komut_ekle(&g_in, 9011u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    (void)kc_komut_ekle(&g_in, 9012u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kayit_kabul(&kc_out()->results[1], 42u, "gen = max(0, 41) + 1");
+    TEST_ASSERT_FALSE(kc_out()->status.param_ok);
+    for (int k = 0; k < 3; ++k) {
+        param_step_hazirla((uint8_t)IDA_PSTORE_OK, 42u);
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        TEST_ASSERT_TRUE_MESSAGE(kc_out()->status.param_ok,
+                                 "OK/42 görüldü: kayıt tamamlandı, param_ok = 1 (A4-K78, K83)");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(k == 0 ? 1 : 0, kayit_gunlugu(42u, (uint8_t)IDA_PSTORE_OK),
+                                      "PARAM_SAVE günlüğü tamamlanmanın saptandığı çağrıda tam bir kez");
+    }
+}
+
+/* A4-K81, K82: aynı çağrıdaki her ARM sayılır (yinelenen ya da NARROWED alan dahil). */
+static void test_A4_K81_K82_her_ARM_sayilir(void)
+{
+    kc_init_bloksuz();
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    (void)kc_komut_ekle(&g_in, 9101u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    (void)kc_komut_ekle(&g_in, 9100u, (uint8_t)IDA_CMD_ARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    /* NARROWED alan ARM. */
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    kc_mandal_kur(&g_in, (uint8_t)IDA_NARROW_DISARM, 9190u);
+    (void)kc_komut_ekle(&g_in, 9102u, (uint8_t)IDA_CMD_ARM);
+    (void)kc_komut_ekle(&g_in, 9103u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, kc_out()->results[1].reason);
+    reddedildi(&kc_out()->results[2], (uint16_t)IDA_REASON_ARMED, "NARROWED ARM ile aynı çağrıda SAVE");
+    /* Yinelenen kimlikli ARM. */
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    (void)kc_komut_ekle(&g_in, 9104u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    (void)kc_komut_ekle(&g_in, 9100u, (uint8_t)IDA_CMD_ARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_DUPLICATE, kc_out()->results[1].ack);
+    reddedildi(&kc_out()->results[0], (uint16_t)IDA_REASON_ARMED, "yinelenen ARM ile aynı çağrıda SAVE");
+    /* ARM'sız SAVE kabul edilir (karşı örnek). */
+    param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+    (void)kc_komut_ekle(&g_in, 9105u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kayit_kabul(&kc_out()->results[0], 1u, "ARM'sız SAVE");
+    /* B sınıfı bekleyen değer + aynı çağrıda ARM: COMMIT ARMED ve bekleyenler atılır. */
+    int b_sinifi = -1;
+    for (unsigned iu = 0; iu < kc_param_sayisi() && b_sinifi < 0; ++iu) {
+        const ida_param_desc_t *d = kc_param_desc((uint16_t)iu);
+        if (d->cls == IDA_PCLS_B && kc_param_ham(&d->max) != kc_param_ham(&d->def)) {
+            b_sinifi = (int)iu;
+        }
+    }
+    if (b_sinifi < 0) {
+        TEST_MESSAGE("şemada max ≠ def olan B sınıfı parametre yok; COMMIT/ARM vakası koşulmadı");
+    } else {
+        const ida_param_desc_t *d = kc_param_desc((uint16_t)b_sinifi);
+        param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+        ida_cmd_t *c = kc_komut_ekle(&g_in, 9106u, (uint8_t)IDA_CMD_PARAM_SET);
+        c->u.param = d->max;
+        c->u.param.id = d->id;
+        c->u.param.type = d->type;
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+        param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+        (void)kc_komut_ekle(&g_in, 9107u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+        (void)kc_komut_ekle(&g_in, 9108u, (uint8_t)IDA_CMD_ARM);
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        reddedildi(&kc_out()->results[0], (uint16_t)IDA_REASON_ARMED, "B sınıfı commit + ARM (A4-K81)");
+        param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+        (void)kc_komut_ekle(&g_in, 9109u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        param_step_hazirla((uint8_t)IDA_PSTORE_IDLE, 0u);
+        kc_komut_ekle(&g_in, 9110u, (uint8_t)IDA_CMD_PARAM_GET)->u.param.id = d->id;
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(kc_param_ham(&d->def), kc_param_ham(&kc_out()->results[0].value),
+                                        "reddedilen commit'in bekleyen değerleri atılmalı (A4-K81)");
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -493,5 +687,9 @@ int main(void)
     RUN_TEST(test_A4_K80_denetim_8_iliski);
     RUN_TEST(test_A4_K80_ilk_basarisiz_denetim);
     RUN_TEST(test_A4_K78_arm_engeli);
+    RUN_TEST(test_A4_K80_denetim_6_semada_olmayan_kayit);
+    RUN_TEST(test_A4_K82_K83_fail_kusak_tasir);
+    RUN_TEST(test_A4_K83_ayni_durum_koduyla_tamamlanma);
+    RUN_TEST(test_A4_K81_K82_her_ARM_sayilir);
     return UNITY_END();
 }

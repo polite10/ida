@@ -89,7 +89,6 @@ static void test_A4_K113_b_mandal_her_ret_turunde(void)
 {
     for (int r = 0; r < RET_SAYISI; ++r) {
         kc_hazirla(5);
-        uint8_t kip0 = kc_out()->status.mode;
         kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
         kc_mandal_kur(&g_in, (uint8_t)IDA_NARROW_DEFINED, 100u);
         g_in.narrow.mode = (uint8_t)IDA_MODE_MANUAL;
@@ -107,12 +106,8 @@ static void test_A4_K113_b_mandal_her_ret_turunde(void)
         }
         const ida_out_t *o = kc_out();
         TEST_ASSERT_FALSE(o->armed);
-        /* A4-K127: INIT'te NARROW_MODE kipi değiştirmez; başka kipte daraltıcı hedefe geçer. */
-        if (kip0 == IDA_MODE_INIT) {
-            TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_MODE_INIT, o->status.mode, ret_ad(r));
-        } else {
-            TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_MODE_MANUAL, o->status.mode, ret_ad(r));
-        }
+        /* A4-K127 (B15): yer tutucu INIT'ten çıkmaz; INIT'te NARROW_MODE kipi değiştirmez. */
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_MODE_INIT, o->status.mode, ret_ad(r));
     }
 }
 
@@ -751,6 +746,9 @@ static void test_A4_K116_reddedilen_cagride_kapanma(void)
             if (r == RET_OUT_NULL) {
                 TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_adim());
                 kapanma_tum(kc_out(), kc_son_seq(), kc_son_t(), "bekletilen A4-K111 kapanması");
+                /* 3.11 (b2): out NULL çağrısının emniyet örneğinden doğan kapanma reddedilen
+                   örnekten doğmuş sayılır. */
+                TEST_ASSERT_EQUAL_UINT32(1u, KC_FARK(narrow_from_rejected));
                 TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_adim());
                 TEST_ASSERT_EQUAL_UINT8(0u, kc_out()->n_events);
             } else {
@@ -948,6 +946,200 @@ static void test_A4_K108_IMU_LAG_genisleticiyi_reddeder(void)
     TEST_ASSERT_EQUAL_UINT32(2u, KC_FARK(widen_blocked));
 }
 
+/* ===================================================================================
+ * A4 fark turunda kesinleşenler (eski belirsiz B11, B13, B20) ve §3.17 GUIDED_SP.
+ * =================================================================================== */
+
+/* A4-K73 (B11): arada SESSION_START olmadan gelen ikinci SESSION_END yeni kapanma üretmez,
+   dönüş kodunu değiştirmez ve yine daraltıcı girdidir (genişleticiler NARROWED). */
+static void test_A4_K73_ikinci_session_end_kapanma_uretmez(void)
+{
+    kc_hazirla(2);
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(1u, kc_out()->n_events);
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 34000u, (uint8_t)IDA_CMD_ARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0u, kc_out()->n_events, "ikinci SESSION_END kapanma üretmemeli (A4-K73)");
+    TEST_ASSERT_TRUE(kc_out()->health.narrowed);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, kc_out()->results[0].reason);
+    /* out NULL çağrısındaki üçüncü SESSION_END de bekletilen kapanma bırakmaz. */
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_cagir_out_null(KC_TICK, &g_in));
+    kc_in_izgara(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(0u, kc_out()->n_events);
+    /* SESSION_START'tan sonraki SESSION_END yine kapanma üretir. */
+    kc_in_izgara(&g_in, kc_sonraki_t());
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(1u, kc_out()->n_events);
+}
+
+/* A4-K46, K48, 3.17 (B13): cmds[]'teki daraltıcı yineleme penceresiyle karşılaştırılmaz ve
+   pencereye yazılmaz; FC_ABORT/FC_DISARM'ın tube, arg0, arg1 alanları okunmaz. */
+static void test_A4_K46_K48_cmds_daraltici_pencereden_iki_yonde_muaf(void)
+{
+    kc_hazirla(2);
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 35000u, (uint8_t)IDA_CMD_HEARTBEAT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    /* Pencerede bulunan kimlikle DISARM: ACCEPTED ve uygulanmış. */
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 35000u, (uint8_t)IDA_CMD_DISARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+    TEST_ASSERT_TRUE(kc_out()->health.narrowed);
+    /* Yeni kimlikli DISARM pencereye yazılmaz: aynı kimlikli sonraki komut DUPLICATE almaz. */
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 35001u, (uint8_t)IDA_CMD_DISARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 35001u, (uint8_t)IDA_CMD_HEARTBEAT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_TRUE_MESSAGE(kc_out()->results[0].ack != IDA_ACK_DUPLICATE, "cmds[]'teki daraltıcı pencereye yazılmış");
+    /* FC_ABORT tube = 255, FC_DISARM ayrılmış argümanlı: ACCEPTED, uygulanmış. */
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_fc_ekle(&g_in, 35002u, (uint8_t)IDA_FC_ABORT, 255u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+    TEST_ASSERT_TRUE(kc_out()->health.narrowed);
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    ida_cmd_t *c = kc_fc_ekle(&g_in, 35003u, (uint8_t)IDA_FC_DISARM, 255u);
+    c->u.fc.arg0 = 7u;
+    c->u.fc.arg1 = 9u;
+    (void)kc_komut_ekle(&g_in, 35004u, (uint8_t)IDA_CMD_ARM);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, kc_out()->results[0].reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, kc_out()->results[1].reason);
+    /* Reddedilen çağrıda da (b)'de uygulanır ve ACCEPTED. */
+    kc_in_step(&g_in, kc_son_seq(), kc_sonraki_t());
+    (void)kc_fc_ekle(&g_in, 35005u, (uint8_t)IDA_FC_ABORT, 255u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_DUP_SEQ, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, kc_out()->results[0].ack);
+    TEST_ASSERT_TRUE(kc_out()->health.narrowed);
+}
+
+/* A4-K69 (B20): bekleyen olayın kimliğiyle gelen tanımsız sonuç kodu yok sayılır:
+   evres_ignored artar, olay beklemede kalır, last_event_result değişmez. */
+static void test_A4_K69_tanimsiz_olay_sonucu_yok_sayilir(void)
+{
+    kc_hazirla(2);
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(1u, kc_out()->n_events);
+    uint64_t id = kc_out()->events[0].event_id;
+    uint8_t onceki = kc_out()->fc.last_event_result;
+    kc_in_izgara(&g_in, kc_sonraki_t());
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    g_in.n_evres = 1u;
+    g_in.evres[0].event_id = id;
+    g_in.evres[0].result = 198u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(1u, KC_FARK(evres_ignored));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(onceki, kc_out()->fc.last_event_result, "tanımsız kod last_event_result'a yazılmamalı");
+    /* Olay hâlâ beklemede: tanımlı sonuç kabul edilir. */
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    g_in.n_evres = 1u;
+    g_in.evres[0].event_id = id;
+    g_in.evres[0].result = (uint8_t)IDA_EVR_APPLIED;
+    g_in.evres[0].t_apply.ns = g_in.tf.t.ns;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(0u, KC_FARK(evres_ignored));
+    TEST_ASSERT_EQUAL_UINT8(IDA_EVR_APPLIED, kc_out()->fc.last_event_result);
+}
+
+/* §3.17 GUIDED_SP, A4-K50, 3.4 aralıkları: OUT_OF_RANGE BAD_MODE'dan önce gelir. Yer tutucu
+   INIT'te kalır (GUIDED değil); geçerli içerik BAD_MODE alır. Komut türü bu sürümde
+   uygulanmıyorsa bütün vakalar UNSUPPORTED / NONE alır (3.17) — iki durum karışamaz. */
+static float f32_bit(uint32_t u)
+{
+    float f;
+    memcpy(&f, &u, sizeof f);
+    return f;
+}
+
+static void guided_ekle(ida_in_t *in, uint32_t id, uint8_t mask, int alan, float deger)
+{
+    ida_cmd_t *c = kc_komut_ekle(in, id, (uint8_t)IDA_CMD_GUIDED_SP);
+    memset(&c->u.guided, 0, sizeof c->u.guided);
+    c->u.guided.mask = mask;
+    if (alan == 1) {
+        c->u.guided.depth = deger;
+    } else if (alan == 2) {
+        c->u.guided.altitude = deger;
+    } else if (alan == 3) {
+        c->u.guided.yaw = deger;
+    } else if (alan == 4) {
+        c->u.guided.pos_ne[0] = deger;
+    } else if (alan == 5) {
+        /* maskesiz alanlarda aralık dışı değer: denetlenmez */
+        c->u.guided.altitude = -1.0f;
+        c->u.guided.yaw = 99.0f;
+        c->u.guided.depth = deger;
+    }
+}
+
+static void test_A4_3_17_GUIDED_SP_araliklari(void)
+{
+    static const uint16_t beklenen[2][8] = {
+        {IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE,
+         IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE, IDA_REASON_OUT_OF_RANGE},
+        {IDA_REASON_BAD_MODE, IDA_REASON_BAD_MODE, IDA_REASON_BAD_MODE, IDA_REASON_BAD_MODE, 0u, 0u, 0u, 0u}};
+    const float pi_f = f32_bit(0x40490FDBu);      /* float π = 3,14159274… > π */
+    const float pi_alti = f32_bit(0x40490FDAu);   /* π'nin altındaki en büyük float */
+    const float eksi_pi_f = f32_bit(0xC0490FDBu); /* −3,14159274… < −π */
+    const float nan_f32 = f32_bit(0x7FC00000u);
+    bool unsupported = false;
+    kc_hazirla(2);
+    for (int tur = 0; tur < 2; ++tur) {
+        kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+        uint32_t id = 36000u + 100u * (uint32_t)tur;
+        unsigned n = 0u;
+        if (tur == 0) {
+            guided_ekle(&g_in, id + 0u, (uint8_t)IDA_SP_DEPTH, 1, -1.0f);
+            guided_ekle(&g_in, id + 1u, (uint8_t)IDA_SP_ALTITUDE, 2, -1.0f);
+            guided_ekle(&g_in, id + 2u, (uint8_t)IDA_SP_YAW, 3, 4.0f);
+            guided_ekle(&g_in, id + 3u, (uint8_t)IDA_SP_YAW, 3, pi_f);
+            guided_ekle(&g_in, id + 4u, (uint8_t)IDA_SP_YAW, 3, eksi_pi_f);
+            guided_ekle(&g_in, id + 5u, 0x80u, 0, 0.0f);
+            guided_ekle(&g_in, id + 6u, 0u, 0, 0.0f);
+            guided_ekle(&g_in, id + 7u, (uint8_t)IDA_SP_POS_NE, 4, nan_f32);
+            n = 8u;
+        } else {
+            guided_ekle(&g_in, id + 0u, (uint8_t)IDA_SP_YAW, 3, pi_alti);
+            guided_ekle(&g_in, id + 1u, (uint8_t)IDA_SP_DEPTH, 5, 1.0f);
+            guided_ekle(&g_in, id + 2u, (uint8_t)(IDA_SP_YAW | IDA_SP_DEPTH), 1, 5.0f);
+            guided_ekle(&g_in, id + 3u, (uint8_t)IDA_SP_ALTITUDE, 2, 0.0f);
+            n = 4u;
+        }
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+        for (unsigned k = 0; k < n; ++k) {
+            const ida_cmd_result_t *r = &kc_out()->results[k];
+            char msj[96];
+            if (tur == 0 && k == 0u) {
+                unsupported = r->ack == IDA_ACK_UNSUPPORTED;
+            }
+            if (unsupported) {
+                (void)snprintf(msj, sizeof msj, "GUIDED_SP vaka %d/%u: UNSUPPORTED tutarlı olmalı", tur, k);
+                TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_UNSUPPORTED, r->ack, msj);
+                TEST_ASSERT_EQUAL_UINT16_MESSAGE(IDA_REASON_NONE, r->reason, msj);
+            } else {
+                (void)snprintf(msj, sizeof msj, "GUIDED_SP vaka %d/%u (3.17, A4-K50)", tur, k);
+                TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_REJECTED, r->ack, msj);
+                TEST_ASSERT_EQUAL_UINT16_MESSAGE(beklenen[tur][k], r->reason, msj);
+            }
+        }
+    }
+    if (unsupported) {
+        TEST_MESSAGE("GUIDED_SP bu çekirdekte UNSUPPORTED: aralık sırası gözlenemedi (yalnız tutarlılık sınandı)");
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -978,5 +1170,9 @@ int main(void)
     RUN_TEST(test_A4_K119_fc_gecersiz_alanlar);
     RUN_TEST(test_A4_3_17_bilinmeyen_tur_UNSUPPORTED);
     RUN_TEST(test_A4_K108_IMU_LAG_genisleticiyi_reddeder);
+    RUN_TEST(test_A4_K73_ikinci_session_end_kapanma_uretmez);
+    RUN_TEST(test_A4_K46_K48_cmds_daraltici_pencereden_iki_yonde_muaf);
+    RUN_TEST(test_A4_K69_tanimsiz_olay_sonucu_yok_sayilir);
+    RUN_TEST(test_A4_3_17_GUIDED_SP_araliklari);
     return UNITY_END();
 }

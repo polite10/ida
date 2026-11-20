@@ -16,8 +16,9 @@
 #   kabul.cekirdek.A4-K113.daraltma  (b) adımı ve emniyet değişmezleri; A4-K124, 3.17
 #   kabul.cekirdek.A4-K24            belirlenimcilik: sabit tohumlu karışık uzun diziler
 #   kabul.cekirdek.A4-K80.param      parametre işlevleri, kodlanmış blok, A4-K78
-#   kabul.cekirdek.belirsiz          A4'ün iki biçimde okunabildiği vakalar: gözlenen davranış
-#                                    iletiyle yazılır, test kırmızı olmaz
+#
+# Önceki "belirsiz" grubunun bütün vakaları A4'ün fark turunda kesinleşti ve yukarıdaki
+# gruplara kesin test olarak taşındı; grup kaldırıldı.
 #
 # Yalnız PC kökünde derlenir (tests/ yalnız host'ta eklenir).
 
@@ -42,4 +43,3 @@ kabul_cekirdek_testi(A4-4.15            kabul_onkosul)
 kabul_cekirdek_testi(A4-K113.daraltma   kabul_daraltma)
 kabul_cekirdek_testi(A4-K24             kabul_belirlenim)
 kabul_cekirdek_testi(A4-K80.param       kabul_param)
-kabul_cekirdek_testi(belirsiz           kabul_belirsiz)

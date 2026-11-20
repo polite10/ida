@@ -30,7 +30,8 @@ typedef struct {
     uint32_t ornek_seq[16];
     uint32_t cmd_id;
     uint32_t son_cmd[8];
-    bool out_null;
+    bool out_null;      /* bütün dağılım (dizi 1): out NULL, tanımsız olay sonucu, art arda SESSION_END */
+    bool oturum_kapali; /* son yazılabilir çağrıda SESSION_END verildi, SESSION_START henüz yok */
     /* istatistik */
     unsigned n_cagri;
     unsigned n_rc[9];
@@ -242,6 +243,10 @@ static kc_islev_t girdi_uret(uretec_t *g, ida_in_t *in)
     uint32_t l = zar(g, 100u);
     if (l < 3u) {
         in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    } else if (l < 6u && !g->out_null && g->oturum_kapali) {
+        /* Dizi 2: arada SESSION_START olmadan ikinci SESSION_END üretilmez (A4-K73 yolu
+           ayrı kesin testte; dizi 1 bütün dağılımı koşar). */
+        in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
     } else if (l < 6u) {
         in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
         if (zar(g, 2u) == 0u) {
@@ -265,8 +270,11 @@ static kc_islev_t girdi_uret(uretec_t *g, ida_in_t *in)
             ida_event_result_t *e = &in->evres[k];
             e->event_id = zar(g, 2u) == 0u ? kc_out()->fc.last_event_id : kc_rng_u64(&g->r);
             static const uint8_t sonuc[10] = {1u, 2u, 3u, 4u, 5u, 6u, 16u, 17u, 18u, 19u};
-            /* Tanımsız sonuç kodunda çekirdeğin davranışı A4'te yazılı değil (belirsiz B20). */
-            e->result = sonuc[zar(g, 10u)];
+            /* Tanımsız sonuç kodu yok sayılır (A4-K69); ortak denetim last_event_result'ın
+               tanımlı kümede kaldığını sınar. Yalnız dizi 1'de (bütün dağılım); dizi 2 bu
+               yolu ayrı kesin teste bırakır (kabul_daraltma.c, A4-K69). */
+            uint32_t z = zar(g, 10u);
+            e->result = (uint8_t)(z < 9u || !g->out_null ? sonuc[zar(g, 10u)] : 20u + zar(g, 200u));
             e->t_apply.ns = e->result <= 2u ? t_olcum : 0;
         }
     }
@@ -333,6 +341,7 @@ static void init_uret(uretec_t *g)
     if (g->now < g->init_now) {
         g->now = g->init_now;
     }
+    g->oturum_kapali = false; /* init oturum durumunu sıfırlar */
     g->n_init++;
 }
 
@@ -352,6 +361,11 @@ static void dizi_kos(uint64_t tohum, int n_ornek, bool out_null, uint64_t *ozet,
         if (secim < 75u || (secim < 83u && !g->out_null)) {
             kc_islev_t f = girdi_uret(g, &g_in);
             ida_rc_t rc = kc_cagir(f, &g_in);
+            if (g_in.plat.link_event == IDA_LINKEV_SESSION_END) {
+                g->oturum_kapali = true;
+            } else if (g_in.plat.link_event == IDA_LINKEV_SESSION_START) {
+                g->oturum_kapali = false;
+            }
             size_t n = kc_serilestir(kc_out(), g_ser, sizeof g_ser);
             h = fnv(g_ser, n) ^ (uint64_t)rc;
             g->n_cagri++;
@@ -414,8 +428,11 @@ static void test_A4_K24_karisik_dizi_out_null_dahil(void)
     karsilastir_ve_raporla(&g_u0, "dizi 1");
 }
 
-/* İkinci tohum; out NULL çağrısı yok ((b2) yolu ayrı testlerde): dizinin geri kalanı,
-   (b2) ile ilgili bir uyuşmazlık ilk dizide görülse de sonuna kadar koşar. */
+/* İkinci tohum; dağılım daraltılmış: out NULL çağrısı, tanımsız olay sonucu kodu ve arada
+   SESSION_START olmadan ikinci SESSION_END yok. Bu üç yol kendi kesin testlerinde
+   sınanır ((b2): kabul_sira.c, A4-K69 ve A4-K73: kabul_daraltma.c); dizi 1 onları içerir.
+   Böylece dizinin geri kalanı, o yollardaki bir uyuşmazlık dizi 1'i durdursa da sonuna
+   kadar koşar. */
 static void test_A4_K24_karisik_dizi_out_null_yok(void)
 {
     dizi_kos(UINT64_C(0x5EED2026), KC_N_AZAMI, false, g_ozet[0], &g_u0);

@@ -65,7 +65,7 @@ ida_core_t *kc_core(int i);
 unsigned char *kc_bellek(int i);
 size_t kc_core_boyu(void);
 
-/* Model: bir sonraki çağrının genel denetimini kapatır/açar (yalnız belirsiz grup). */
+/* Model: genel denetimi kapatır/açar (şu an hiçbir test kapatmıyor; hata ayıklama içindir). */
 void kc_genel_denetim_ac(bool acik);
 
 /* ---- Başlatma --------------------------------------------------------------------- */
@@ -125,6 +125,8 @@ const ida_out_t *kc_out(void);
 const ida_out_t *kc_onceki_out(void);
 /* Bir önceki yazılabilir çıktıdan bu yana sayaç farkı. */
 uint32_t kc_fark(size_t alan_konumu);
+/* İki sayaç kümesi arasında bir üyenin mod 2^32 farkı (offsetof + memcpy; A4-K88 sarma). */
+uint32_t kc_sayac_farki(const ida_core_counters_t *yeni, const ida_core_counters_t *eski, size_t konum);
 #define KC_FARK(alan) kc_fark(offsetof(ida_core_counters_t, alan))
 
 /* ---- Çıktı yardımcıları ----------------------------------------------------------- */

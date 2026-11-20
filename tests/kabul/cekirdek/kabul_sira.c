@@ -860,6 +860,7 @@ typedef enum {
     IMU_SONSUZ,
     IMU_INST,
     IMU_TUR,
+    IMU_PENCERE, /* window_ns = 0 (A4-K33 tür kuralı, A4-K103) */
     IMU_SEQ_YINELENEN,
     IMU_T_ARTMADI,
     IMU_T_GELECEK_TF,
@@ -888,6 +889,9 @@ static void test_A4_K103_e_imu_reddi_her_kosul(void)
             break;
         case IMU_INST:
             h->inst = 4u;
+            break;
+        case IMU_PENCERE:
+            h->window_ns = 0u;
             break;
         case IMU_TUR:
             h->type = (uint8_t)IDA_SENS_MAG;
@@ -1059,6 +1063,293 @@ static void test_A4_K109_bg_slices_karsilastirmasi(void)
     TEST_ASSERT_EQUAL_UINT32(1u, KC_FARK(bg_slice_mismatch));
 }
 
+/* ===================================================================================
+ * A4 fark turunda kesinleşenler (eski belirsiz B1, B2, B3, B6, B8, B18, B19) ve
+ * (b2)/(b3)'ün yeni maddeleri.
+ * =================================================================================== */
+
+/* A4-K10 (B1): geri adım izinin tabanı init'in now_w'sidir. */
+static void test_A4_K10_init_now_w_geri_adim_tabani(void)
+{
+    ida_init_in_t ii;
+    kc_init_girdi(&ii);
+    ii.now_w.ns = KC_T0 + 50 * KC_MS;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_PARAM_DEFAULTS, kc_init(&ii));
+    kc_in_step(&g_in, 1u, KC_T0 + 10 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(1u, kc_out()->status.cnt.wall_backstep);
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_WALL_BACKSTEP);
+    TEST_ASSERT_NOT_NULL(l);
+    TEST_ASSERT_EQUAL_INT32(40000, l->arg0);
+    TEST_ASSERT_TRUE_MESSAGE(l->t_w.ns == KC_T0 + 50 * KC_MS, "t_w kullanılan now_w (init tabanı)");
+}
+
+/* A4-K10 (B6): aralık dışı now_w geri adım sayılmaz; iz, sayaç ve günlük değişmez. */
+static void test_A4_K10_aralik_disi_now_w_geri_adim_sayilmaz(void)
+{
+    kc_hazirla(2); /* iz: T0 + 10 ms */
+    kc_in_izgara(&g_in, -1);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(0u, KC_FARK(wall_backstep));
+    TEST_ASSERT_EQUAL_INT(0, kc_gunluk_say(kc_out(), (uint16_t)IDA_LOG_WALL_BACKSTEP));
+    kc_in_izgara(&g_in, IDA_TIME_MAX_NS + 1);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(0u, KC_FARK(wall_backstep));
+    /* İz değişmedi: T0 + 12 ms geri adım değildir; T0 + 8 ms geri adımdır. */
+    kc_in_izgara(&g_in, KC_T0 + 12 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(0u, KC_FARK(wall_backstep));
+    kc_in_izgara(&g_in, KC_T0 + 8 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(1u, KC_FARK(wall_backstep));
+}
+
+/* 3.8 t_w (B2): (b2) çağrısında bekletilen kaydın t_w'si o çağrının kullanılan now_w'si. */
+static void test_A4_3_8_bekletilen_gunlugun_t_w(void)
+{
+    kc_hazirla(2);
+    kc_in_izgara(&g_in, KC_T0 + 40 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    kc_in_izgara(&g_in, KC_T0 + 30 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_cagir_out_null(KC_TICK, &g_in));
+    kc_in_izgara(&g_in, KC_T0 + 60 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_WALL_BACKSTEP);
+    TEST_ASSERT_NOT_NULL(l);
+    TEST_ASSERT_TRUE_MESSAGE(l->t_w.ns == KC_T0 + 40 * KC_MS, "bekletilen kaydın t_w'si (b2) çağrısının kullanılan now_w'si");
+}
+
+/* 3.8 t_w (B3): RESET_INFO ve PARAM_LOAD'da init'in now_w'si. */
+static void test_A4_3_8_init_gunluklerinin_t_w(void)
+{
+    kc_init_bloksuz();
+    kc_in_step(&g_in, 1u, KC_T0 + 5 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    const ida_log_t *r = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_RESET_INFO);
+    const ida_log_t *p = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_PARAM_LOAD);
+    TEST_ASSERT_NOT_NULL(r);
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_TRUE(r->t_w.ns == KC_T0);
+    TEST_ASSERT_TRUE(p->t_w.ns == KC_T0);
+}
+
+/* A4-K33 (B8 ve tür kuralı): IMU, basınç ve batarya window_ns > 0; diğerleri 0. */
+static void test_A4_K33_window_ns_tur_kurali(void)
+{
+    kc_hazirla(2);
+    int64_t t = kc_sonraki_t();
+    kc_in_step(&g_in, kc_sonraki_seq(), t);
+    kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_MAG, 1u, 1u, t)->hdr.window_ns = (uint32_t)KC_P;
+    kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_BARO, 1u, 1u, t)->hdr.window_ns = 0u;
+    ida_sample_t *b = kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_BATT, 1u, 1u, t);
+    b->hdr.window_ns = 0u;
+    b->u.batt.voltage = 16.0f;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(3u, KC_FARK(sample_rejected));
+    /* Kurala uyan aynı örnekler kabul (ilk örnek muafiyetiyle). */
+    t = kc_sonraki_t();
+    kc_in_step(&g_in, kc_sonraki_seq(), t);
+    (void)kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_MAG, 1u, 1u, t);
+    (void)kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_BARO, 1u, 1u, t);
+    b = kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_BATT, 1u, 1u, t);
+    b->hdr.window_ns = (uint32_t)(100 * KC_MS);
+    b->u.batt.voltage = 16.0f;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32(0u, KC_FARK(sample_rejected));
+}
+
+/* A4-K122 (B19): oturum sonu çağrısındaki örnekler ve komutlar olağan kurallarla işlenir. */
+static void test_A4_K122_oturum_sonu_cagrisinin_ornek_ve_komutlari(void)
+{
+    kc_hazirla(2);
+    int64_t t = kc_son_now();
+    kc_in_oturum_sonu(&g_in, t + KC_P);
+    (void)kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_MAG, 1u, 5u, t);
+    (void)kc_komut_ekle(&g_in, 7770u, (uint8_t)IDA_CMD_HEARTBEAT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(1u, kc_out()->n_results);
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_ornek_ekle(&g_in, (uint8_t)IDA_SENS_MAG, 1u, 5u, t);
+    (void)kc_komut_ekle(&g_in, 7770u, (uint8_t)IDA_CMD_HEARTBEAT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, KC_FARK(sample_rejected), "oturum sonu çağrısının örneği kabul edilmiş olmalı");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_DUPLICATE, kc_out()->results[0].ack,
+                                    "oturum sonu çağrısının komutu pencereye girmiş olmalı");
+}
+
+/* 3.8 step_miss, 3.11 (b2): init'ten sonraki ilk step/tick out NULL ise taban orada kurulur. */
+static void test_A4_3_8_step_miss_tabani_out_null_cagrisinda(void)
+{
+    kc_init_bloksuz();
+    kc_in_step(&g_in, 1u, KC_T0 + KC_P);
+    g_in.plat.prev_overrun = true;
+    g_in.plat.cnt_batch_skipped = 5u;
+    g_in.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_cagir_out_null(KC_STEP, &g_in));
+    kc_in_step(&g_in, 1u, KC_T0 + 2 * KC_P);
+    g_in.plat.cnt_batch_skipped = 7u;
+    g_in.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(2u, kc_out()->status.cnt.step_miss,
+                                     "taban out NULL çağrısında kurulmalı (skipped 5 -> 7)");
+    /* (b2): out NULL çağrısında görülen prev_overrun step_miss'e sayılmaz; atlanan parti
+       artışı (7 -> 8) sayılır. */
+    kc_in_step(&g_in, 2u, KC_T0 + 3 * KC_P);
+    g_in.plat.prev_overrun = true;
+    g_in.plat.cnt_batch_skipped = 7u;
+    g_in.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_cagir_out_null(KC_STEP, &g_in));
+    kc_in_step(&g_in, 2u, KC_T0 + 4 * KC_P);
+    g_in.plat.cnt_batch_skipped = 8u;
+    g_in.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(3u, kc_out()->status.cnt.step_miss,
+                                     "out NULL çağrısının prev_overrun'u sayılmamalı (3.11 (b2))");
+}
+
+/* A4-K10, 3.8 t_w (eski belirsiz R2): aralık dışı now_w taşıyan çağrıda kullanılan now_w
+   geri adım izinin değeridir; o çağrının günlüklerinin t_w'si budur. */
+static void test_A4_K10_aralik_disi_now_w_cagrisinin_t_w(void)
+{
+    kc_hazirla(2); /* iz: T0 + 10 ms */
+    kc_in_izgara(&g_in, -1);
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_tick(&g_in));
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_SESSION);
+    TEST_ASSERT_NOT_NULL(l);
+    TEST_ASSERT_TRUE_MESSAGE(l->t_w.ns == KC_T0 + 2 * KC_P, "t_w = geri adım izinin değeri (T0 + 10 ms)");
+    /* out NULL çağrısında bekletilen kayıt için de aynı değer. */
+    kc_in_izgara(&g_in, IDA_TIME_MAX_NS + 1);
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, kc_cagir_out_null(KC_TICK, &g_in));
+    kc_in_izgara(&g_in, KC_T0 + 40 * KC_MS);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_SESSION);
+    TEST_ASSERT_NOT_NULL(l);
+    TEST_ASSERT_TRUE_MESSAGE(l->t_w.ns == KC_T0 + 2 * KC_P, "bekletilen kaydın t_w'si (b2) çağrısının iz değeri");
+}
+
+/* A4-K39 (B18): init durumu için IMU_STALE = 1 günlüğü yok; her bayat -> taze geçişinde 0;
+   taze -> bayat geçişinde 1; IMU_STALE engel biti ilk çağrıdan kurulu. */
+static void test_A4_K39_imu_stale_gunlukleri(void)
+{
+    kc_init_bloksuz();
+    kc_in_izgara(&g_in, KC_T0 + KC_P);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, kc_gunluk_say(kc_out(), (uint16_t)IDA_LOG_IMU_STALE), "init durumu için günlük yok");
+    TEST_ASSERT_TRUE((kc_out()->fc.inhibit_mask & IDA_FCI_IMU_STALE) != 0u);
+    int64_t t = KC_T0 + 2 * KC_P;
+    kc_in_step(&g_in, 1u, t);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_IMU_STALE);
+    TEST_ASSERT_NOT_NULL_MESSAGE(l, "ilk IMU kabulünde IMU_STALE = 0");
+    TEST_ASSERT_EQUAL_INT32(0, l->arg0);
+    /* T_imu_stale = 20 ms (varsayılan): t + 20 ms'de taze, t + 25 ms'de bayat. */
+    for (int64_t k = 1; k <= 4; ++k) {
+        kc_in_izgara(&g_in, t + k * KC_P);
+        TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+        TEST_ASSERT_EQUAL_INT(0, kc_gunluk_say(kc_out(), (uint16_t)IDA_LOG_IMU_STALE));
+    }
+    kc_in_izgara(&g_in, t + 5 * KC_P);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_IMU_STALE);
+    TEST_ASSERT_NOT_NULL_MESSAGE(l, "taze -> bayat geçişinde IMU_STALE = 1");
+    TEST_ASSERT_EQUAL_INT32(1, l->arg0);
+    kc_in_step(&g_in, 2u, t + 6 * KC_P);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_IMU_STALE);
+    TEST_ASSERT_NOT_NULL_MESSAGE(l, "bayat -> taze geçişinde IMU_STALE = 0");
+    TEST_ASSERT_EQUAL_INT32(0, l->arg0);
+}
+
+/* 3.11 (b3) (ii): IMU taze idiyse SESSION_START taze -> bayat geçişidir: IMU_STALE = 1. */
+static void test_A4_3_11_b3_imu_stale_gecisi(void)
+{
+    kc_hazirla(3);
+    kc_in_izgara(&g_in, kc_sonraki_t());
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    const ida_log_t *l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_IMU_STALE);
+    TEST_ASSERT_NOT_NULL_MESSAGE(l, "SESSION_START'ta IMU_STALE = 1 günlüğü");
+    TEST_ASSERT_EQUAL_INT32(1, l->arg0);
+    TEST_ASSERT_TRUE((kc_out()->fc.inhibit_mask & IDA_FCI_IMU_STALE) != 0u);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_adim());
+    l = kc_gunluk_bul(kc_out(), (uint16_t)IDA_LOG_IMU_STALE);
+    TEST_ASSERT_NOT_NULL(l);
+    TEST_ASSERT_EQUAL_INT32(0, l->arg0);
+}
+
+/* 3.11 (b3) (ii), A4-K37: SESSION_START IMU_LAG mandalını çözmez, çözülme sayacını sıfırlar.
+   T_lag_set 20 ms, T_lag_clear 10 ms, N_lag_clear 20 (varsayılanlar). Bir çağrının kendi
+   IMU'sunun lag hesabına girip girmediğinden bağımsız sayılar seçildi. */
+static void lag_adimi(uint32_t seq, int64_t t, int64_t lag)
+{
+    kc_in_step(&g_in, seq, t);
+    g_in.imu.hdr.t_meas.ns = t - lag;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+}
+
+static void test_A4_3_11_b3_imu_lag_mandali_ve_cozulme_sayaci(void)
+{
+    kc_init_bloksuz();
+    int64_t t = KC_T0 + 100 * KC_MS;
+    uint32_t s = 1u;
+    for (int k = 0; k < 3; ++k, ++s, t += KC_P) {
+        lag_adimi(s, t, 25 * KC_MS);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(kc_out()->health.imu_lag, "lag 25 ms: mandal kurulu (A4-K37)");
+    for (int k = 0; k < 10; ++k, ++s, t += KC_P) {
+        lag_adimi(s, t, 0);
+    }
+    TEST_ASSERT_TRUE(kc_out()->health.imu_lag);
+    kc_in_izgara(&g_in, t);
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_TRUE_MESSAGE(kc_out()->health.imu_lag, "SESSION_START mandalı çözmez");
+    t += KC_P;
+    for (int k = 0; k < 19; ++k, ++s, t += KC_P) {
+        lag_adimi(s, t, 0);
+        TEST_ASSERT_TRUE_MESSAGE(kc_out()->health.imu_lag, "çözülme sayacı SESSION_START'ta sıfırlanmalı");
+    }
+    for (int k = 0; k < 2; ++k, ++s, t += KC_P) {
+        lag_adimi(s, t, 0);
+    }
+    TEST_ASSERT_FALSE_MESSAGE(kc_out()->health.imu_lag, "N_lag_clear art arda çağrıdan sonra çözülür");
+}
+
+/* 3.11 (b3) kapalı liste: yineleme penceresi, sonuç bekleyen olaylar, step_miss tabanı,
+   sayaçlar ve etkin emniyet değerleri sıfırlanmaz. */
+static void test_A4_3_11_b3_sifirlanmayanlar(void)
+{
+    kc_hazirla(3);
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 4242u, (uint8_t)IDA_CMD_HEARTBEAT);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    kc_in_oturum_sonu(&g_in, kc_sonraki_t());
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    TEST_ASSERT_EQUAL_UINT8(1u, kc_out()->n_events);
+    uint64_t id = kc_out()->events[0].event_id;
+    uint32_t dup0 = kc_out()->status.cnt.dup_seq;
+    kc_in_izgara(&g_in, kc_sonraki_t());
+    g_in.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_tick(&g_in));
+    kc_in_step(&g_in, kc_sonraki_seq(), kc_sonraki_t());
+    (void)kc_komut_ekle(&g_in, 4242u, (uint8_t)IDA_CMD_HEARTBEAT);
+    g_in.n_evres = 1u;
+    g_in.evres[0].event_id = id;
+    g_in.evres[0].result = (uint8_t)IDA_EVR_APPLIED;
+    g_in.evres[0].t_apply.ns = g_in.tf.t.ns;
+    g_in.plat.cnt_batch_skipped = 3u;
+    TEST_ASSERT_EQUAL_INT(IDA_RC_OK, kc_step(&g_in));
+    const ida_out_t *o = kc_out();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_ACK_DUPLICATE, o->results[0].ack, "yineleme penceresi sıfırlanmaz");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, KC_FARK(evres_ignored), "sonuç bekleyen olay sıfırlanmaz");
+    TEST_ASSERT_EQUAL_UINT8(IDA_EVR_APPLIED, o->fc.last_event_result);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(3u, KC_FARK(step_miss), "step_miss tabanı sıfırlanmaz");
+    TEST_ASSERT_TRUE_MESSAGE(o->status.cnt.dup_seq == dup0, "sayaçlar sıfırlanmaz");
+    TEST_ASSERT_TRUE((o->fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -1110,5 +1401,17 @@ int main(void)
     RUN_TEST(test_A4_K117_bg_3_now_w_araligi);
     RUN_TEST(test_A4_K117_bg_3_is_durumu_degismez);
     RUN_TEST(test_A4_K109_bg_slices_karsilastirmasi);
+    RUN_TEST(test_A4_K10_init_now_w_geri_adim_tabani);
+    RUN_TEST(test_A4_K10_aralik_disi_now_w_geri_adim_sayilmaz);
+    RUN_TEST(test_A4_3_8_bekletilen_gunlugun_t_w);
+    RUN_TEST(test_A4_3_8_init_gunluklerinin_t_w);
+    RUN_TEST(test_A4_K33_window_ns_tur_kurali);
+    RUN_TEST(test_A4_K122_oturum_sonu_cagrisinin_ornek_ve_komutlari);
+    RUN_TEST(test_A4_3_8_step_miss_tabani_out_null_cagrisinda);
+    RUN_TEST(test_A4_K10_aralik_disi_now_w_cagrisinin_t_w);
+    RUN_TEST(test_A4_K39_imu_stale_gunlukleri);
+    RUN_TEST(test_A4_3_11_b3_imu_stale_gecisi);
+    RUN_TEST(test_A4_3_11_b3_imu_lag_mandali_ve_cozulme_sayaci);
+    RUN_TEST(test_A4_3_11_b3_sifirlanmayanlar);
     return UNITY_END();
 }

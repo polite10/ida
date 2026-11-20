@@ -156,6 +156,9 @@ static void test_A4_4_15_param_desc(void)
     uint16_t n = ida_core_param_count();
     TEST_ASSERT_TRUE(n > 0u);
     TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_desc(0u, NULL));
+    /* 4.15 denetim sırası (B5): d NULL ve index ≥ sayı birlikteyse BAD_INPUT. */
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_desc(n, NULL));
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_desc(UINT16_MAX, NULL));
     memset(&d, 0x5E, sizeof d);
     desen = d;
     TEST_ASSERT_EQUAL_INT(IDA_RC_NOT_FOUND, ida_core_param_desc(n, &d));
@@ -236,6 +239,12 @@ static void test_A4_4_15_param_get(void)
     TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_get(NULL, d->id, &v));
     TEST_ASSERT_EQUAL_MEMORY(&desen, &v, sizeof v);
     TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_get(kc_core(0), d->id, NULL));
+    /* 4.15 denetim sırası (B4): NULL → BAD_INPUT; kurulmamış → NOT_INIT; bilinmeyen id →
+       NOT_FOUND; ilk tutan kazanır. */
+    TEST_ASSERT_EQUAL_INT(IDA_RC_NOT_INIT, ida_core_param_get(kc_core(0), bilinmeyen_id(), &v));
+    TEST_ASSERT_EQUAL_MEMORY(&desen, &v, sizeof v);
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_get(kc_core(0), bilinmeyen_id(), NULL));
+    TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_get(NULL, bilinmeyen_id(), &v));
     kc_hazirla(1);
     memcpy(g_kopya, kc_bellek(0), boy);
     TEST_ASSERT_EQUAL_INT(IDA_RC_BAD_INPUT, ida_core_param_get(NULL, d->id, &v));

@@ -420,6 +420,46 @@ static void test_A4_K88_step_miss_taban(void)
     TEST_ASSERT_EQUAL_UINT32(4u, kc_out()->status.cnt.step_miss);
 }
 
+/* A4-K88 (sol bulgu 5): sayaçlar 2^32'de sarar; ortak denetim beklenen artışı mod 2^32
+   farkla ölçer. Bir sayacı port üzerinden 2^32 sınırına getirmek ~4·10^9 çağrı ister (her
+   çağrı en çok birkaç sayaç artırır; init sayaçları 0'dan başlatır, A4'te sayaç değeri veren
+   girdi yok), bu yüzden sarma sınırı denetimin kullandığı yardımcı işlevle sınanır: her üye
+   için önceki 0xFFFFFFFE, yeni 2 → fark 4; önceki 0, yeni 0 → 0; öteki üyeler etkilenmez. */
+static void test_A4_K88_sayac_sarmasi_mod_2_32_fark(void)
+{
+    static const size_t konum[] = {
+        offsetof(ida_core_counters_t, sample_rejected),   offsetof(ida_core_counters_t, sample_future),
+        offsetof(ida_core_counters_t, sample_conflict),   offsetof(ida_core_counters_t, sample_dup_dropped),
+        offsetof(ida_core_counters_t, narrow_from_rejected), offsetof(ida_core_counters_t, bg_bad_input),
+        offsetof(ida_core_counters_t, imu_rejected),      offsetof(ida_core_counters_t, imu_gap),
+        offsetof(ida_core_counters_t, bad_input),         offsetof(ida_core_counters_t, dup_seq),
+        offsetof(ida_core_counters_t, old_seq),           offsetof(ida_core_counters_t, wall_backstep),
+        offsetof(ida_core_counters_t, cmd_rejected),      offsetof(ida_core_counters_t, widen_blocked),
+        offsetof(ida_core_counters_t, evres_ignored),     offsetof(ida_core_counters_t, event_unknown),
+        offsetof(ida_core_counters_t, det_rejected),      offsetof(ida_core_counters_t, ping360_rejected),
+        offsetof(ida_core_counters_t, bg_dropped),        offsetof(ida_core_counters_t, bg_slice_mismatch),
+        offsetof(ida_core_counters_t, log_dropped),       offsetof(ida_core_counters_t, step_miss)};
+    static ida_core_counters_t eski;
+    static ida_core_counters_t yeni;
+    const uint32_t a = 0xFFFFFFFEu;
+    const uint32_t b = 2u;
+    /* Liste bütün üyeleri kapsar (yapıda yalnız uint32_t üyeler var). */
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)sizeof(ida_core_counters_t),
+                             (uint32_t)(sizeof konum / sizeof konum[0] * sizeof(uint32_t)));
+    for (size_t i = 0; i < sizeof konum / sizeof konum[0]; ++i) {
+        memset(&eski, 0, sizeof eski);
+        memset(&yeni, 0, sizeof yeni);
+        memcpy((unsigned char *)&eski + konum[i], &a, sizeof a);
+        memcpy((unsigned char *)&yeni + konum[i], &b, sizeof b);
+        TEST_ASSERT_EQUAL_UINT32(4u, kc_sayac_farki(&yeni, &eski, konum[i]));
+        for (size_t j = 0; j < sizeof konum / sizeof konum[0]; ++j) {
+            if (j != i) {
+                TEST_ASSERT_EQUAL_UINT32(0u, kc_sayac_farki(&yeni, &eski, konum[j]));
+            }
+        }
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -439,5 +479,6 @@ int main(void)
     RUN_TEST(test_A4_K90_ilk_yazilabilir_cagri_hata_donusu);
     RUN_TEST(test_A4_K90_tasma_onem_sirasi);
     RUN_TEST(test_A4_K88_step_miss_taban);
+    RUN_TEST(test_A4_K88_sayac_sarmasi_mod_2_32_fark);
     return UNITY_END();
 }

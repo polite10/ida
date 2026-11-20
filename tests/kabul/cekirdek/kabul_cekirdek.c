@@ -113,14 +113,19 @@ typedef struct {
     uint32_t bg_bad_sayi; /* son yazılabilir çağrıdan beri BAD dönen arka plan çağrısı */
     /* duvar saati (A4-K10) */
     bool now_var;
-    int64_t now_azami;
+    int64_t now_azami;            /* geri adım izi; tabanı init'in now_w'si (A4-K10) */
     int64_t now_ust;              /* init dahil görülen en büyük geçerli now_w */
+    int64_t init_now;             /* RESET_INFO ve PARAM_LOAD'ın t_w'si (3.8) */
     uint32_t geri_adim;           /* son yazılabilir çağrıdan beri geri adım */
     uint32_t geri_adim_cagri;     /* bunların step/tick'te olanları (günlük üretir) */
-    bool geri_adim_belirsiz;      /* aralık dışı now_w taşıyan step/tick (sayım belirsiz) */
-    bool geri_adim_log_belirsiz;  /* arka plan geri adımı ya da aralık dışı now_w (günlük) */
-    /* (b2) bekletilenler */
+    bool geri_adim_belirsiz;      /* kullanılmıyor: aralık dışı now_w geri adım sayılmaz (A4-K10) */
+    bool geri_adim_log_belirsiz;  /* arka plan geri adımı (günlüğün hangi çağrıda çıkacağı açık değil) */
+    /* (b2) bekletilenler; t_w'leri üretildikleri out NULL çağrısının kullanılan now_w'si (3.8) */
+    int64_t out_null_now[32];
+    int n_out_null_now;
     bool bekleyen_kapanma;
+    /* A4-K73: son SESSION_END'den beri SESSION_START gelmedi (yeni kapanma üretilmez) */
+    bool oturum_kapali;
     uint32_t oturum_olayi; /* son yazılabilir çağrıdan beri link_event ≠ NONE çağrı sayısı */
     bool oturum_belirsiz;
     bool out_null_var;
@@ -288,13 +293,17 @@ ida_rc_t kc_init(const ida_init_in_t *ii)
     M.bg_sayim = 0u;
     M.bg_elle = false;
     M.bg_bad_sayi = 0u;
-    M.now_var = false;
-    M.now_azami = 0;
     M.geri_adim = 0u;
     M.geri_adim_cagri = 0u;
     M.geri_adim_belirsiz = false;
     M.geri_adim_log_belirsiz = false;
     M.now_ust = (ii != NULL && ii->now_w.ns >= 0 && ii->now_w.ns <= IDA_TIME_MAX_NS) ? ii->now_w.ns : 0;
+    /* A4-K10: geri adım izinin tabanı init'in now_w'sidir. */
+    M.now_var = M.kurulu;
+    M.now_azami = M.now_ust;
+    M.init_now = M.now_ust;
+    M.n_out_null_now = 0;
+    M.oturum_kapali = false;
     M.bekleyen_kapanma = false;
     M.oturum_olayi = 0u;
     M.oturum_belirsiz = false;
@@ -822,6 +831,7 @@ typedef struct {
     bool uyusmazlik;   /* bg_slices karşılaştırması tutmadı (A4-K109) */
     uint32_t cekirdek_bg;
     bool ilk_yazilabilir;
+    bool oturum_sonu_kapanma; /* bu çağrının SESSION_END'i yeni kapanma üretir (A4-K73) */
 } baglam_t;
 
 static bool olay_sifir(const ida_event_t *e)
@@ -892,6 +902,8 @@ static void sonuclari_denetle(const baglam_t *b, const ida_out_t *o)
                    (unsigned long)r->cmd_id, (unsigned)r->kind, (unsigned long)in->narrow.cmd_id[i]);
         KC_DOGRULA(r->ack == IDA_ACK_ACCEPTED, "mandal biti %u ack %u, ACCEPTED bekleniyordu (A4-K114, K46)", i,
                    (unsigned)r->ack);
+        KC_DOGRULA(r->reason == IDA_REASON_NONE, "mandal biti %u ACCEPTED, reason %u (NONE olmalı; A4-K120)", i,
+                   (unsigned)r->reason);
         KC_DOGRULA(deger_sifir(&r->value) && kayit_sifir(&r->save),
                    "mandal biti sonucunda value/save sıfır değil (A4-K121)");
         ++k;
@@ -906,6 +918,12 @@ static void sonuclari_denetle(const baglam_t *b, const ida_out_t *o)
         KC_DOGRULA(r->ack >= IDA_ACK_ACCEPTED && r->ack <= IDA_ACK_UNSUPPORTED, "ack %u tanımsız",
                    (unsigned)r->ack);
         KC_DOGRULA(r->reason <= IDA_REASON_CORE_LAST, "reason %u > 15 (A4-K120)", (unsigned)r->reason);
+        /* A4-K120: çekirdeğin REJECTED dışındaki her sonucunda (ACCEPTED, DUPLICATE,
+           IN_PROGRESS, UNSUPPORTED) reason = NONE. */
+        if (r->ack != IDA_ACK_REJECTED) {
+            KC_DOGRULA(r->reason == IDA_REASON_NONE, "komut (tür %u) ack %u, reason %u (NONE olmalı; A4-K120, B9)",
+                       (unsigned)c->type, (unsigned)r->ack, (unsigned)r->reason);
+        }
         if (kc_daraltici_komut(c)) {
             KC_DOGRULA(r->ack == IDA_ACK_ACCEPTED,
                        "cmds[]'teki daraltıcı komut (tür %u) ack %u, ACCEPTED bekleniyordu (A4-K46, K114)",
@@ -980,7 +998,6 @@ static void sonuclari_denetle(const baglam_t *b, const ida_out_t *o)
 
 static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
 {
-    const ida_in_t *in = b->in;
     KC_DOGRULA(o->n_events <= IDA_PORT_MAX_EVENTS, "n_events %u", (unsigned)o->n_events);
     if (!M.olay_acik) {
         KC_DOGRULA(o->n_events == 0u, "olay kimliği kullanılamazken %u olay (A4-K61)", (unsigned)o->n_events);
@@ -1027,7 +1044,9 @@ static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
         KC_DOGRULA(olay_sifir(&o->events[i]), "events[%u] (n_events %u) sıfır değil (A4-K121)", i,
                    (unsigned)o->n_events);
     }
-    bool oturum_sonu = in->plat.link_event == IDA_LINKEV_SESSION_END;
+    /* A4-K73: SESSION_END kapanması yalnız son SESSION_END'den beri SESSION_START geldiyse
+       (ya da init'ten beri ilk SESSION_END ise) üretilir. */
+    bool oturum_sonu = b->oturum_sonu_kapanma;
     if (M.olay_acik && (oturum_sonu || M.bekleyen_kapanma)) {
         KC_DOGRULA(o->n_events == 1u && o->events[0].kind == IDA_EVT_SAFETY_CLOSE &&
                        o->events[0].tube == IDA_TUBE_ALL,
@@ -1055,11 +1074,21 @@ static void gunlukleri_denetle(const baglam_t *b, const ida_out_t *o, uint32_t d
                    (unsigned)l->code, (long)l->arg0, (long)l->arg1, (unsigned)l->severity, beklenen_onem(l));
         KC_DOGRULA(l->t_w.ns >= 0 && l->t_w.ns <= M.now_ust, "günlük t_w %lld aralık dışı",
                    (long long)l->t_w.ns);
-        /* RESET_INFO ve PARAM_LOAD'ın t_w'si (init'in mi ilk çağrının mı now_w'si) ve (b2) ile
-           bekletilen kayıtlarınki A4'te iki biçimde okunabilir: belirsiz grup (B2, B3). */
-        if (!M.out_null_var && b->now_gecerli && !M.geri_adim_log_belirsiz && l->code != IDA_LOG_RESET_INFO &&
-            l->code != IDA_LOG_PARAM_LOAD) {
-            KC_DOGRULA(l->t_w.ns == b->kullanilan_now, "günlük %u t_w %lld, kullanılan now_w %lld (3.8)",
+        /* 3.8 t_w: kaydın üretildiği çağrının kullanılan now_w'si; (b2) ile bekletilende o out
+           NULL çağrısınınki; RESET_INFO ve PARAM_LOAD'da init'in now_w'si. */
+        if (l->code == IDA_LOG_RESET_INFO || l->code == IDA_LOG_PARAM_LOAD) {
+            KC_DOGRULA(l->t_w.ns == M.init_now, "günlük %u t_w %lld, init'in now_w'si %lld (3.8)", (unsigned)l->code,
+                       (long long)l->t_w.ns, (long long)M.init_now);
+        } else if (!M.geri_adim_log_belirsiz) {
+            bool uygun = b->now_gecerli ? l->t_w.ns == b->kullanilan_now : l->t_w.ns == M.now_azami;
+            for (int k = 0; k < M.n_out_null_now && !uygun; ++k) {
+                uygun = l->t_w.ns == M.out_null_now[k];
+            }
+            /* Aralık dışı now_w taşıyan çağrıda kullanılan now_w geri adım izinin değeridir
+               (A4-K10; eski belirsiz R2). */
+            KC_DOGRULA(uygun,
+                       "günlük %u t_w %lld: bu çağrının kullanılan now_w'si (%lld) ya da bekletildiği out NULL "
+                       "çağrısınınki değil (3.8)",
                        (unsigned)l->code, (long long)l->t_w.ns, (long long)b->kullanilan_now);
         }
     }
@@ -1145,17 +1174,32 @@ static void gunlukleri_denetle(const baglam_t *b, const ida_out_t *o, uint32_t d
     }
 }
 
+/* Sayaç farkı mod 2^32 (A4-K88: sayaçlar 2^32'de sarar). Üyeye offsetof + bayt işaretçisi +
+   memcpy ile erişilir; yapı dizi gibi dolaşılmaz (sol bulgu 4). */
+uint32_t kc_sayac_farki(const ida_core_counters_t *yeni, const ida_core_counters_t *eski, size_t konum)
+{
+    uint32_t y;
+    uint32_t e;
+    memcpy(&y, (const unsigned char *)yeni + konum, sizeof y);
+    memcpy(&e, (const unsigned char *)eski + konum, sizeof e);
+    return (uint32_t)(y - e);
+}
+
 static void sayaclari_denetle(const baglam_t *b, const ida_out_t *o)
 {
-    const uint32_t *yeni = (const uint32_t *)(const void *)&o->status.cnt;
-    const uint32_t *eski = (const uint32_t *)(const void *)&M.onceki_cnt;
-    size_t n = sizeof(ida_core_counters_t) / sizeof(uint32_t);
-    for (size_t i = 0; i < n; ++i) {
-        KC_DOGRULA(yeni[i] >= eski[i], "sayaç %lu azaldı: %lu -> %lu (A4-K88)", (unsigned long)i,
-                   (unsigned long)eski[i], (unsigned long)yeni[i]);
-    }
+    /* Genel "yeni >= eski" koşulu yok: sarma A4-K88'de izinlidir; beklenen artışlar mod 2^32
+       farkla denetlenir (sol bulgu 5). */
     const ida_core_counters_t *c = &o->status.cnt;
     const ida_core_counters_t *p = &M.onceki_cnt;
+    unsigned n_red = 0;
+    for (unsigned i = 0; i < o->n_results && i < IDA_PORT_MAX_RESULTS; ++i) {
+        if (o->results[i].ack == IDA_ACK_REJECTED) {
+            ++n_red;
+        }
+    }
+    KC_DOGRULA(kc_sayac_farki(c, p, offsetof(ida_core_counters_t, cmd_rejected)) == n_red,
+               "cnt.cmd_rejected farkı %lu, çıktıdaki REJECTED sonuç %u (3.8)",
+               (unsigned long)kc_sayac_farki(c, p, offsetof(ida_core_counters_t, cmd_rejected)), n_red);
     KC_DOGRULA(c->bad_input - p->bad_input == (b->rc == IDA_RC_BAD_INPUT ? 1u : 0u),
                "cnt.bad_input farkı %lu (A4-K88; (b2) saymaz)", (unsigned long)(c->bad_input - p->bad_input));
     KC_DOGRULA(c->dup_seq - p->dup_seq == (b->rc == IDA_RC_DUP_SEQ ? 1u : 0u), "cnt.dup_seq farkı %lu",
@@ -1258,14 +1302,18 @@ static void genel_denetim(const baglam_t *b, const ida_out_t *o)
         KC_DOGRULA(sifir_mi(&o->det_tx[i], sizeof o->det_tx[i]), "det_tx[%u] sıfır değil (A4-K121)", i);
     }
     /* Durum ve sağlık (A4-K88, K89). */
-    KC_DOGRULA(o->status.mode <= IDA_MODE_AUTO, "status.mode %u", (unsigned)o->status.mode);
+    /* A4-K127: yer tutucu çekirdek INIT'ten çıkmaz. */
+    KC_DOGRULA(o->status.mode == IDA_MODE_INIT, "status.mode %u; yer tutucu INIT'ten çıkmaz (A4-K127)",
+               (unsigned)o->status.mode);
     KC_DOGRULA(o->status.mission_state <= IDA_MS_ABORTED, "mission_state %u", (unsigned)o->status.mission_state);
     KC_DOGRULA((o->status.fs_reasons & ~UINT32_C(0x7FFF)) == 0u, "fs_reasons tanımsız bit %lx",
                (unsigned long)o->status.fs_reasons);
-    if (M.boot_ok) {
-        KC_DOGRULA(o->status.boot_count == M.boot_count, "status.boot_count %lu, init'te %lu",
-                   (unsigned long)o->status.boot_count, (unsigned long)M.boot_count);
-    }
+    /* 3.8: boot_count init'te verilen değerdir, boot_count_ok = 0 iken de aynen taşınır. */
+    KC_DOGRULA(o->status.boot_count == M.boot_count, "status.boot_count %lu, init'te %lu (3.8)",
+               (unsigned long)o->status.boot_count, (unsigned long)M.boot_count);
+    /* 3.8 health.input_dropped: plat.input_dropped'un yansıması, hata dönüşleri dahil. */
+    KC_DOGRULA(o->health.input_dropped == b->in->plat.input_dropped, "health.input_dropped %d, plat %d (3.8, A4-K102)",
+               (int)o->health.input_dropped, (int)b->in->plat.input_dropped);
     KC_DOGRULA(o->status.events_ok == M.olay_acik, "status.events_ok %d, beklenen %d (A4-K61)",
                (int)o->status.events_ok, (int)M.olay_acik);
     if (M.init_rc == IDA_RC_OK) {
@@ -1387,6 +1435,12 @@ static ida_rc_t cagri_yurut(kc_islev_t f, ida_in_t *in, bool out_var)
     b.ilk_yazilabilir = !M.yazilabilir_var;
     if (in->plat.link_event == IDA_LINKEV_SESSION_START) {
         M.iz_var = false; /* (b3) */
+        M.oturum_kapali = false;
+    }
+    if (in->plat.link_event == IDA_LINKEV_SESSION_END) {
+        /* A4-K73: arada SESSION_START yoksa yeni kapanma yok (yine daraltıcı girdi). */
+        b.oturum_sonu_kapanma = !M.oturum_kapali;
+        M.oturum_kapali = true;
     }
     if (in->plat.link_event == IDA_LINKEV_SESSION_START || in->plat.link_event == IDA_LINKEV_SESSION_END) {
         M.oturum_olayi++;
@@ -1407,16 +1461,18 @@ static ida_rc_t cagri_yurut(kc_islev_t f, ida_in_t *in, bool out_var)
         }
         b.kullanilan_now = M.now_azami;
     } else {
-        /* Aralık dışı now_w'nin geri adım sayılıp sayılmadığı A4'te açık değil (belirsiz B5). */
-        M.geri_adim_belirsiz = true;
-        M.geri_adim_log_belirsiz = true;
+        /* A4-K10: aralık dışı now_w geri adım sayılmaz; iz, sayaç ve günlük değişmez. */
+        b.kullanilan_now = M.now_azami;
     }
     b.cekirdek_bg = M.bg_sayim;
     M.bg_sayim = 0u;
     if (!out_var) {
         KC_DOGRULA(rc0 == IDA_RC_BAD_INPUT, "out NULL çağrısı %d döndü, BAD_INPUT bekleniyordu (3.11 (b2))", (int)rc0);
-        if (in->plat.link_event == IDA_LINKEV_SESSION_END && M.olay_acik) {
+        if (b.oturum_sonu_kapanma && M.olay_acik) {
             M.bekleyen_kapanma = true;
+        }
+        if (M.n_out_null_now < 32) {
+            M.out_null_now[M.n_out_null_now++] = b.kullanilan_now;
         }
         M.out_null_var = true;
         return rc0;
@@ -1447,6 +1503,7 @@ static ida_rc_t cagri_yurut(kc_islev_t f, ida_in_t *in, bool out_var)
     M.geri_adim_log_belirsiz = false;
     M.bg_bad_sayi = 0u;
     M.out_null_var = false;
+    M.n_out_null_now = 0;
     M.yazilabilir_var = true;
     M.onceki = M.son;
     M.son = g_out[0];
@@ -1547,11 +1604,7 @@ const ida_out_t *kc_onceki_out(void)
 
 uint32_t kc_fark(size_t alan_konumu)
 {
-    uint32_t yeni;
-    uint32_t eski;
-    memcpy(&yeni, (const unsigned char *)&M.son.status.cnt + alan_konumu, sizeof yeni);
-    memcpy(&eski, (const unsigned char *)&M.onceki.status.cnt + alan_konumu, sizeof eski);
-    return yeni - eski;
+    return kc_sayac_farki(&M.son.status.cnt, &M.onceki.status.cnt, alan_konumu);
 }
 
 /* ---- Parametre şeması ve blok ----------------------------------------------------- */
