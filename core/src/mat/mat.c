@@ -163,7 +163,7 @@ ida_m3_t ida_m3_birim_deger(void)
 
 ida_m3_t ida_m3_carp(ida_m3_t lhs, ida_m3_t rhs)
 {
-    ida_m3_t r;
+    ida_m3_t r = {{{0.0f}}}; /* her eleman döngüde yazılır */
     for (uint32_t i = 0u; i < 3u; i++) {
         for (uint32_t j = 0u; j < 3u; j++) {
             r.m[i][j] = (lhs.m[i][0] * rhs.m[0][j]) + (lhs.m[i][1] * rhs.m[1][j]) +
@@ -185,7 +185,7 @@ ida_v3_t ida_m3_v3(ida_m3_t m, ida_v3_t v)
 
 ida_m3_t ida_m3_devrik(ida_m3_t m)
 {
-    ida_m3_t r;
+    ida_m3_t r = {{{0.0f}}}; /* her eleman döngüde yazılır */
     for (uint32_t i = 0u; i < 3u; i++) {
         for (uint32_t j = 0u; j < 3u; j++) {
             r.m[i][j] = m.m[j][i];

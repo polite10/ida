@@ -10,7 +10,7 @@
 
 void ida_emn_kur(ida_emn_t *e)
 {
-    e->kisitli = IDA_EMN_TUMU;
+    e->kisitli = (uint8_t)IDA_EMN_TUMU;
     e->armed = false;
     e->mode = (uint8_t)IDA_MODE_INIT;
     e->inst0_var = false;
@@ -23,7 +23,9 @@ void ida_emn_kur(ida_emn_t *e)
 
 uint8_t ida_emn_kisit_icerigi(const ida_safety_t *s)
 {
-    uint8_t k = 0u;
+    /* Biriktirici uint32_t: bileşik atama dar tipe yapılmaz (MSVC C4244); dönüşte açık
+       daraltma (değer IDA_EMN_TUMU içindedir). */
+    uint32_t k = 0u;
     if (s->estop != 0u) {
         k |= IDA_EMN_ESTOP;
     }
@@ -39,7 +41,7 @@ uint8_t ida_emn_kisit_icerigi(const ida_safety_t *s)
     if ((s->tube[1] & IDA_TUBE_PIN_OUT) == 0u) {
         k |= IDA_EMN_PIM_T1;
     }
-    return k;
+    return (uint8_t)k;
 }
 
 static bool daraltici_hedef(uint8_t hedef)
@@ -113,7 +115,7 @@ static uint8_t ornek_kisitlari(const ida_in_t *in)
         const ida_sample_t *s = &in->samples[i];
         /* Yapısal geçerli: type SAFETY ve inst < 4 (her inst; A4-K116). */
         if ((s->hdr.type == (uint8_t)IDA_SENS_SAFETY) && (s->hdr.inst < IDA_PORT_MAX_INST)) {
-            k |= ida_emn_kisit_icerigi(&s->u.safety);
+            k = (uint8_t)(k | ida_emn_kisit_icerigi(&s->u.safety));
         }
     }
     return k;
@@ -149,7 +151,7 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
     e->cagri_kisit = ornek_kisitlari(in);
     e->kabul_kisit = 0u;
     d.ornek_kapanan = (uint8_t)(e->cagri_kisit & (uint8_t)~onceki);
-    e->kisitli |= e->cagri_kisit;
+    e->kisitli = (uint8_t)(e->kisitli | e->cagri_kisit);
 
     /* Oturum sonu: silahsızlandırma, etkin değerler kısıtlayana, tüpler boş (A4-K73, K116,
        K128). */
@@ -157,7 +159,7 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
         d.herhangi = true;
         d.disarm = true;
         d.oturum_sonu = true;
-        e->kisitli = IDA_EMN_TUMU;
+        e->kisitli = (uint8_t)IDA_EMN_TUMU;
         e->inst0_var = false;
         e->inst0_tube[0] = 0u;
         e->inst0_tube[1] = 0u;
@@ -170,13 +172,13 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
 
     /* SAFETY_CLOSE istekleri; birleştirme A4-K125 (olay modülü). */
     if (d.oturum_sonu || ((d.kapanan & IDA_EMN_ESTOP) != 0u)) {
-        d.kapat |= IDA_KAPAT_ALL;
+        d.kapat = (uint8_t)(d.kapat | IDA_KAPAT_ALL);
     }
     if ((d.kapanan & (IDA_EMN_FIS_T0 | IDA_EMN_PIM_T0)) != 0u) {
-        d.kapat |= IDA_KAPAT_T0;
+        d.kapat = (uint8_t)(d.kapat | IDA_KAPAT_T0);
     }
     if ((d.kapanan & (IDA_EMN_FIS_T1 | IDA_EMN_PIM_T1)) != 0u) {
-        d.kapat |= IDA_KAPAT_T1;
+        d.kapat = (uint8_t)(d.kapat | IDA_KAPAT_T1);
     }
 
     if (d.disarm && e->armed) {
@@ -207,7 +209,7 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
 
 void ida_emn_kabul_kisit(ida_emn_t *e, const ida_safety_t *s)
 {
-    e->kabul_kisit |= ida_emn_kisit_icerigi(s);
+    e->kabul_kisit = (uint8_t)(e->kabul_kisit | ida_emn_kisit_icerigi(s));
 }
 
 bool ida_emn_cagri_sonu(const ida_emn_t *e)

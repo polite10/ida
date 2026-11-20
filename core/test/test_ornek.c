@@ -2,7 +2,6 @@
  * test_ornek.c — örnek kabul kapısı ve IMU zamanlaması (A4-K14, K30, K33, K34, K35, K37,
  * K38, K39, K40, K103, K108, K115, K128, K130).
  */
-#include <math.h>
 #include <string.h>
 
 #include "destek.h"
@@ -97,7 +96,7 @@ static void test_k33_kosullari(void)
     IN.samples[0].hdr.flags = 0u;                 /* VALID yok */
     mag(1u, 1u);
     IN.samples[1].hdr.inst = 1u;
-    IN.samples[1].u.mag.field[1] = NAN;           /* sonlu değil */
+    IN.samples[1].u.mag.field[1] = ds_nan();           /* sonlu değil */
     mag(2u, 1u);
     IN.samples[2].hdr.inst = 2u;
     IN.samples[2].hdr.window_ns = 5000000u;       /* anlık ölçümde window 0 olmalı */
@@ -129,7 +128,7 @@ static void test_k33_kosullari(void)
     TEST_ASSERT_EQUAL_UINT32(6u, OUT.status.cnt.sample_rejected);
     /* SAFETY: tanımsız tüp biti reddedilir */
     ds_emniyet(&IN.samples[0], g_t + (5 * DS_MS), 1u);
-    IN.samples[0].u.safety.tube[0] |= 0x10u;
+    IN.samples[0].u.safety.tube[0] = (uint8_t)(IN.samples[0].u.safety.tube[0] | 0x10u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
     TEST_ASSERT_EQUAL_UINT32(7u, OUT.status.cnt.sample_rejected);
 }
@@ -242,7 +241,7 @@ static void test_k103_imu_reddi(void)
     IN.cmds[0].cmd_id = 5u;
     IN.cmds[0].type = (uint8_t)IDA_CMD_ARM;
     ilerle();
-    IN.imu.imu.accel[1] = NAN;
+    IN.imu.imu.accel[1] = ds_nan();
     TEST_ASSERT_EQUAL(IDA_RC_IMU_REJECTED, ida_core_step(&C, &IN, &OUT));
     ds_cikti_degismezleri(IDA_RC_IMU_REJECTED, &IN, &OUT);
     TEST_ASSERT_FALSE(OUT.nav_valid);

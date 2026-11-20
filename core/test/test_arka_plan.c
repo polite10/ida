@@ -92,6 +92,27 @@ static void test_k10_arka_plan_now_izi(void)
     TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.wall_backstep);
 }
 
+
+/* A4-K117, 3.11 (b2): araya giren out NULL çağrısı bg_bad_input bayrağını silmez. */
+static void test_k117_b2_bayragi_tasir(void)
+{
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 1u, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    const ida_wtime_t kotu = {-1};
+    TEST_ASSERT_EQUAL(IDA_BG_BAD_INPUT, ida_core_background(&C, kotu));
+    ds_girdi(&IN, 2005 * DS_MS, 2u, true);
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL));
+    ds_girdi(&IN, 2010 * DS_MS, 3u, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_TRUE(OUT.health.bg_bad_input);
+    TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.bg_bad_input);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_BG_BAD_INPUT));
+    ds_girdi(&IN, 2015 * DS_MS, 4u, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_FALSE(OUT.health.bg_bad_input);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -99,5 +120,6 @@ int main(void)
     RUN_TEST(test_k117_gecersiz_now_ve_saglik);
     RUN_TEST(test_k109_uyusmazlik);
     RUN_TEST(test_k10_arka_plan_now_izi);
+    RUN_TEST(test_k117_b2_bayragi_tasir);
     return UNITY_END();
 }

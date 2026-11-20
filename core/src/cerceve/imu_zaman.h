@@ -35,8 +35,9 @@ void ida_imz_kur(ida_imz_t *z);
 void ida_imz_imu_kabul(ida_imz_t *z, const ida_imu_sample_t *imu, const ida_imz_baglam_t *b);
 /* tf.present = 1 olan kabul edilen çağrıda A4-K37 mandalı. */
 void ida_imz_lag_guncelle(ida_imz_t *z, const ida_time_frame_t *tf, const ida_imz_baglam_t *b);
-/* A4-K39: now − t_rx(son IMU) > eşik ya da hiç IMU yoksa bayat. */
-bool ida_imz_bayat(const ida_imz_t *z, ida_wtime_t now, uint32_t esik_ns);
+/* A4-K39: now − t_rx(son IMU) > T_imu_stale (ms parametresi, ns'ye int64_t'de çevrilir) ya
+   da hiç IMU yoksa bayat. */
+bool ida_imz_bayat(const ida_imz_t *z, ida_wtime_t now, const ida_param_t *prm);
 /* Kabul edilen çağrıda bayatlık geçişlerini IMU_STALE günlüğüne yazar. */
 void ida_imz_bayat_izle(ida_imz_t *z, bool bayat, const ida_imz_baglam_t *b);
 

@@ -7,6 +7,7 @@
 #include "destek.h"
 #include "param/ozet.h"
 #include "unity.h"
+#include "zaman/zaman.h"
 
 void setUp(void);
 void tearDown(void);
@@ -48,7 +49,7 @@ static void test_sha256_ve_crc(void)
 /* Ondalık yazım (kartta printf ailesi bellek ayırdığı için kullanılmaz). */
 static void ondalik_ekle(ida_sha256_t *s, uint32_t x)
 {
-    uint8_t r[10];
+    uint8_t r[10] = {0u};
     uint32_t n = 0u;
     do {
         r[n] = (uint8_t)((uint8_t)'0' + (uint8_t)(x % 10u));
@@ -115,12 +116,13 @@ static void test_tablo_ve_port_islevleri(void)
     TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_param_desc(0u, NULL));
     uint16_t id = 777u;
     TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_param_find(NULL, &id));
-    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_param_find("IMU_STALE_NS", NULL));
-    TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("IMU_STALE", &id));
-    TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("IMU_STALE_NS_ABCD", &id)); /* 17 */
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_param_find("T_imu_stale", NULL));
+    TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("T_imu_stal", &id));
+    TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("T_imu_stale_ABCD", &id)); /* 16 */
+    TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("FC_APPLY_BY_NS_AB", &id)); /* 17 */
     TEST_ASSERT_EQUAL(IDA_RC_NOT_FOUND, ida_core_param_find("", &id));
     TEST_ASSERT_EQUAL_UINT16(777u, id);
-    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_find("IMU_LAG_SET_NS", &id)); /* 14 karakter */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_find("T_lag_set", &id));
     TEST_ASSERT_EQUAL_UINT16(0x0103u, id);
 
     ida_param_value_t v;
@@ -135,9 +137,66 @@ static void test_tablo_ve_port_islevleri(void)
     TEST_ASSERT_EQUAL_MEMORY(&vk, &v, sizeof(v));
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, 0x0101u, &v));
     TEST_ASSERT_EQUAL_UINT8(IDA_PT_U32, v.type);
-    TEST_ASSERT_EQUAL_UINT32(IDA_IMU_STALE_DEFAULT_NS, v.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(20u, v.v.u32); /* T_imu_stale, ms */
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, 0x0106u, &v));
     TEST_ASSERT_EQUAL_FLOAT(0.1f, v.v.f32);
+}
+
+
+/* ---- A4 §3.9 parametre tablosu: ad, birim, tip, varsayılan, aralık birebir ---------------- */
+
+typedef struct {
+    const char *ad;
+    uint8_t tip;
+    uint32_t en_az;
+    uint32_t en_cok;
+    uint32_t varsayilan;
+} tablo_satiri_t;
+
+static void tablo_satiri(const tablo_satiri_t *t)
+{
+    uint16_t id = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_find(t->ad, &id));
+    ida_param_desc_t d;
+    uint16_t indis = 0u;
+    TEST_ASSERT_TRUE(ida_prm_indis(id, &indis));
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_desc(indis, &d));
+    TEST_ASSERT_EQUAL_STRING(t->ad, d.name);
+    TEST_ASSERT_EQUAL_UINT8(t->tip, d.type);
+    TEST_ASSERT_EQUAL_UINT32(t->en_az, d.min.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(t->en_cok, d.max.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(t->varsayilan, d.def.v.u32);
+}
+
+static void test_39_parametre_tablosu(void)
+{
+    static const tablo_satiri_t SATIRLAR[] = {
+        {"T_lag_set", (uint8_t)IDA_PT_U32, 10u, 50u, 20u},
+        {"T_lag_clear", (uint8_t)IDA_PT_U32, 1u, 50u, 10u},
+        {"N_lag_clear", (uint8_t)IDA_PT_U32, 1u, 200u, 20u},
+        {"T_imu_stale", (uint8_t)IDA_PT_U32, 5u, 30u, 20u},
+        {"T_det_stale", (uint8_t)IDA_PT_U32, 100u, 10000u, 2000u},
+    };
+    for (uint32_t i = 0u; i < (uint32_t)(sizeof(SATIRLAR) / sizeof(SATIRLAR[0])); i++) {
+        tablo_satiri(&SATIRLAR[i]);
+    }
+    /* T_imu_gap_tol: oran, F32, 0,01–1, varsayılan 0,1 */
+    uint16_t id = 0u;
+    uint16_t indis = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_find("T_imu_gap_tol", &id));
+    TEST_ASSERT_TRUE(ida_prm_indis(id, &indis));
+    ida_param_desc_t d;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_desc(indis, &d));
+    TEST_ASSERT_EQUAL_UINT8(IDA_PT_F32, d.type);
+    TEST_ASSERT_EQUAL_FLOAT(0.01f, d.min.v.f32);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, d.max.v.f32);
+    TEST_ASSERT_EQUAL_FLOAT(0.1f, d.def.v.f32);
+    /* port.h'nin ns sabitleri değişmez; ms × 1 000 000 ile tutarlı (3.9). */
+    TEST_ASSERT_TRUE(ida_ms_ns(5u) == (int64_t)IDA_IMU_STALE_MIN_NS);
+    TEST_ASSERT_TRUE(ida_ms_ns(30u) == (int64_t)IDA_IMU_STALE_MAX_NS);
+    TEST_ASSERT_TRUE(ida_ms_ns(20u) == (int64_t)IDA_IMU_STALE_DEFAULT_NS);
+    TEST_ASSERT_TRUE(ida_ms_ns(2000u) == (int64_t)IDA_DET_STALE_DEFAULT_NS);
+    TEST_ASSERT_TRUE(ida_ms_ns(10000u) == 10000000000LL); /* int64_t'de taşmaz */
 }
 
 /* ---- Blok doğrulaması (A4-K80) ---------------------------------------------------------- */
@@ -182,20 +241,20 @@ static void test_blok_denetimleri(void)
     init_beklenen(n, IDA_RC_OK, 0);
     /* (1) magic */
     n = ds_gecerli_blok(BLOK);
-    BLOK[0] ^= 0xFFu;
+    BLOK[0] = (uint8_t)(BLOK[0] ^ 0xFFu);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 1);
     n = ds_gecerli_blok(BLOK);
     init_beklenen(10u, IDA_RC_PARAM_DEFAULTS, 1); /* başlıktan kısa */
     /* (2) şema özeti */
     n = ds_gecerli_blok(BLOK);
-    BLOK[8] ^= 0x01u;
+    BLOK[8] = (uint8_t)(BLOK[8] ^ 0x01u);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 2);
     /* (3) boy */
     n = ds_gecerli_blok(BLOK);
     init_beklenen(n - 8u, IDA_RC_PARAM_DEFAULTS, 3);
     /* (4) CRC */
     n = ds_gecerli_blok(BLOK);
-    BLOK[30] ^= 0x01u;
+    BLOK[30] = (uint8_t)(BLOK[30] ^ 0x01u);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 4);
     /* (5) sıra ve kayıt rsv */
     n = ds_gecerli_blok(BLOK);
@@ -212,27 +271,31 @@ static void test_blok_denetimleri(void)
     BLOK[24u + 2u] = (uint8_t)IDA_PT_F32;
     crc_duzelt(BLOK, n);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 6);
-    /* (7) aralık: T_imu_stale 4 ms ve 31 ms (§7 A4-K39) */
+    /* (7) aralık: T_imu_stale 4 ms ve 31 ms (§7 A4-K39; 3.9 birimi ms) */
     n = ds_gecerli_blok(BLOK);
-    kayit_deger(IDA_PRM_imu_stale_ns, 4000000u);
+    kayit_deger(IDA_PRM_imu_stale_ms, 4u);
     crc_duzelt(BLOK, n);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 7);
     n = ds_gecerli_blok(BLOK);
-    kayit_deger(IDA_PRM_imu_stale_ns, 31000000u);
+    kayit_deger(IDA_PRM_imu_stale_ms, 31u);
     crc_duzelt(BLOK, n);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 7);
     n = ds_gecerli_blok(BLOK);
-    kayit_deger(IDA_PRM_imu_stale_ns, 30000000u); /* sınır içi */
+    kayit_deger(IDA_PRM_imu_stale_ms, 30u); /* sınır içi */
     crc_duzelt(BLOK, n);
     init_beklenen(n, IDA_RC_OK, 0);
-    /* (8) grup: IMU_LAG_CLR_NS > IMU_LAG_SET_NS */
+    /* (8) grup: T_lag_clear (30 ms) > T_lag_set (20 ms) */
     n = ds_gecerli_blok(BLOK);
-    kayit_deger(IDA_PRM_imu_lag_clr_ns, 30000000u);
+    kayit_deger(IDA_PRM_lag_clear_ms, 30u);
     crc_duzelt(BLOK, n);
     init_beklenen(n, IDA_RC_PARAM_DEFAULTS, 8);
     /* param_len > 8000: denetim 3 */
     n = ds_gecerli_blok(BLOK);
     init_beklenen(IDA_PARAM_BLOB_MAX + 1u, IDA_RC_PARAM_DEFAULTS, 3);
+    /* 24 bayttan kısa blok: denetim 1 (A4-K80); param_blob NULL değilken param_len = 0: blok
+       yok, numara 0 (3.15 PARAM_LOAD arg1). */
+    init_beklenen(23u, IDA_RC_PARAM_DEFAULTS, 1);
+    init_beklenen(0u, IDA_RC_PARAM_DEFAULTS, 0);
 }
 
 /* ---- Parametre komutları ---------------------------------------------------------------- */
@@ -278,7 +341,7 @@ static void hazirla(bool gecerli_blok)
     ds_girdi(&IN, g_t, 0u, true);
 }
 
-static const ida_cmd_result_t *s(uint32_t id)
+static const ida_cmd_result_t *sonuc_al(uint32_t id)
 {
     const ida_cmd_result_t *r = ds_sonuc(&OUT, id);
     TEST_ASSERT_NOT_NULL(r);
@@ -289,8 +352,8 @@ static void test_set_get_commit(void)
 {
     hazirla(true);
     param_set(0u, 1u, 0x0999u, 5u);                      /* bilinmeyen */
-    param_set(1u, 2u, 0x0101u, 4000000u);                /* aralık dışı */
-    param_set(2u, 3u, 0x0101u, 25000000u);               /* geçerli */
+    param_set(1u, 2u, 0x0101u, 4u);                      /* aralık dışı (T_imu_stale 5–30 ms) */
+    param_set(2u, 3u, 0x0101u, 25u);                     /* geçerli */
     komut(3u, 4u, (uint8_t)IDA_CMD_PARAM_SET);           /* tür uyuşmuyor */
     IN.cmds[3].u.param.id = 0x0106u;
     IN.cmds[3].u.param.type = (uint8_t)IDA_PT_U32;
@@ -299,68 +362,84 @@ static void test_set_get_commit(void)
     IN.cmds[4].u.param.type = 99u; /* PARAM_GET'te okunmaz (3.14) */
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(1u)->reason);
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(2u)->reason);
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(3u)->ack);
-    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_VALUE, s(3u)->kind);
-    TEST_ASSERT_EQUAL_UINT32(25000000u, s(3u)->value.v.u32);
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(4u)->reason);
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(5u)->ack);
-    TEST_ASSERT_EQUAL_UINT32(IDA_IMU_STALE_DEFAULT_NS, s(5u)->value.v.u32); /* bekletilir */
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(1u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(2u)->reason);
+    /* Reddedilen PARAM_SET: id yankılanır, type ve v 0 (3.14; A4-K43). */
+    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_VALUE, sonuc_al(1u)->kind);
+    TEST_ASSERT_EQUAL_UINT16(0x0999u, sonuc_al(1u)->value.id);
+    TEST_ASSERT_EQUAL_UINT16(0x0101u, sonuc_al(2u)->value.id);
+    TEST_ASSERT_EQUAL_UINT8(0u, sonuc_al(2u)->value.type);
+    TEST_ASSERT_EQUAL_UINT32(0u, sonuc_al(2u)->value.v.u32);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(3u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_VALUE, sonuc_al(3u)->kind);
+    TEST_ASSERT_EQUAL_UINT32(25u, sonuc_al(3u)->value.v.u32);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(4u)->reason);
+    TEST_ASSERT_EQUAL_UINT8(0u, sonuc_al(4u)->value.type);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(5u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(20u, sonuc_al(5u)->value.v.u32); /* bekletilir */
     /* COMMIT: uygulanır (adım sınırında); sonraki GET yeni değeri verir. */
     IN.n_cmds = 0u;
     komut(0u, 6u, (uint8_t)IDA_CMD_PARAM_COMMIT);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(6u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(6u)->ack);
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_COMMIT));
     IN.n_cmds = 0u;
     komut(0u, 7u, (uint8_t)IDA_CMD_PARAM_GET);
     IN.cmds[0].u.param.id = 0x0101u;
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT32(25000000u, s(7u)->value.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(25u, sonuc_al(7u)->value.v.u32);
+    /* Reddedilen PARAM_GET: id yankılanır, type ve v 0. */
+    IN.n_cmds = 0u;
+    komut(0u, 70u, (uint8_t)IDA_CMD_PARAM_GET);
+    IN.cmds[0].u.param.id = 0x0999u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(70u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(0x0999u, sonuc_al(70u)->value.id);
+    TEST_ASSERT_EQUAL_UINT8(0u, sonuc_al(70u)->value.type);
+    TEST_ASSERT_EQUAL_UINT32(0u, sonuc_al(70u)->value.v.u32);
     /* Grup denetimi geçmeyen commit hepsini reddeder. */
     IN.n_cmds = 0u;
-    param_set(0u, 8u, 0x0104u, 40000000u); /* CLR 40 ms > SET 20 ms */
+    param_set(0u, 8u, 0x0104u, 40u); /* T_lag_clear 40 ms > T_lag_set 20 ms */
     komut(1u, 9u, (uint8_t)IDA_CMD_PARAM_COMMIT);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(9u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(9u)->reason);
     ida_param_value_t v;
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, 0x0104u, &v));
-    TEST_ASSERT_EQUAL_UINT32(10000000u, v.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(10u, v.v.u32);
 }
 
 static void test_b_sinifi_ve_arm(void)
 {
     hazirla(true);
     C.emn.armed = true; /* test kancası: silahlı */
-    param_set(0u, 1u, 0x0101u, 25000000u);
+    param_set(0u, 1u, 0x0101u, 25u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, s(1u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, sonuc_al(1u)->reason);
     /* silahsızken bekletilir; ARM ile aynı çağrıdaki commit reddedilir ve bekleyenler atılır */
     C.emn.armed = false;
     IN.n_cmds = 0u;
-    param_set(0u, 2u, 0x0101u, 25000000u);
+    param_set(0u, 2u, 0x0101u, 25u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     IN.n_cmds = 0u;
     komut(0u, 3u, (uint8_t)IDA_CMD_PARAM_COMMIT);
     komut(1u, 4u, (uint8_t)IDA_CMD_ARM);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, s(3u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, sonuc_al(3u)->reason);
     /* ARM önce, COMMIT sonra: aynı sonuç (sırasından bağımsız) */
     IN.n_cmds = 0u;
-    param_set(0u, 5u, 0x0101u, 25000000u);
+    param_set(0u, 5u, 0x0101u, 25u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     IN.n_cmds = 0u;
     komut(0u, 6u, (uint8_t)IDA_CMD_ARM);
     komut(1u, 7u, (uint8_t)IDA_CMD_PARAM_COMMIT);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, s(7u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, sonuc_al(7u)->reason);
     /* bekleyenler atıldı: boş commit etkisiz kabul, değer değişmedi */
     IN.n_cmds = 0u;
     komut(0u, 8u, (uint8_t)IDA_CMD_PARAM_COMMIT);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(8u)->ack);
-    TEST_ASSERT_EQUAL_UINT32(IDA_IMU_STALE_DEFAULT_NS, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ns));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(8u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(20u, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ms));
 }
 
 static void test_save_ve_k78(void)
@@ -369,13 +448,13 @@ static void test_save_ve_k78(void)
     komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_SAVE); /* commit yok */
     komut(1u, 2u, (uint8_t)IDA_CMD_ARM);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, s(1u)->reason);      /* ARM ile aynı çağrı */
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(2u)->reason); /* A4-K78 */
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ARMED, sonuc_al(1u)->reason);      /* ARM ile aynı çağrı */
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(2u)->reason); /* A4-K78 */
     IN.n_cmds = 0u;
     komut(0u, 3u, (uint8_t)IDA_CMD_PARAM_SAVE);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, s(3u)->reason);
-    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_SAVE, s(3u)->kind);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(3u)->reason);
+    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_SAVE, sonuc_al(3u)->kind);
     /* commit (boş, etkisiz) + iki SAVE: ilki kabul, ikincisi ONE_PER_CALL */
     IN.n_cmds = 0u;
     komut(0u, 4u, (uint8_t)IDA_CMD_PARAM_COMMIT);
@@ -384,20 +463,20 @@ static void test_save_ve_k78(void)
     IN.plat.param_gen = 41u;
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
-    const ida_cmd_result_t *r = s(5u);
+    const ida_cmd_result_t *r = sonuc_al(5u);
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r->ack);
     TEST_ASSERT_EQUAL_UINT32(42u, r->save.gen);
     TEST_ASSERT_NOT_NULL(r->save.blob);
     TEST_ASSERT_EQUAL_UINT32(IDA_PRM_BLOB_BOYU, r->save.len);
     ida_prm_kume_t k;
     TEST_ASSERT_EQUAL_UINT8(0u, ida_prm_blok_coz(r->save.blob, r->save.len, &k)); /* A4-K100 */
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ONE_PER_CALL, s(6u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ONE_PER_CALL, sonuc_al(6u)->reason);
     /* Kayıt sürerken (BUSY) PARAM_SAVE: PARAM_BUSY (A4-K82) */
     IN.n_cmds = 0u;
     IN.plat.param_store = (uint8_t)IDA_PSTORE_BUSY;
     komut(0u, 7u, (uint8_t)IDA_CMD_PARAM_SAVE);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_BUSY, s(7u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_BUSY, sonuc_al(7u)->reason);
     /* Kayıt OK ve gen eşleşti: engel kalkar (A4-K78), PARAM_SAVE günlüğü */
     IN.n_cmds = 0u;
     IN.plat.param_store = (uint8_t)IDA_PSTORE_OK;
@@ -406,13 +485,153 @@ static void test_save_ve_k78(void)
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     TEST_ASSERT_TRUE(OUT.status.param_ok);
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NOT_ARMABLE, s(8u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NOT_ARMABLE, sonuc_al(8u)->reason);
     /* BUSY'de ARM PARAM_BUSY (A4-K83) */
     IN.n_cmds = 0u;
     IN.plat.param_store = (uint8_t)IDA_PSTORE_BUSY;
     komut(0u, 9u, (uint8_t)IDA_CMD_ARM);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_BUSY, s(9u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_BUSY, sonuc_al(9u)->reason);
+}
+
+
+/* ---- A4-K81, K82: commit ve save çağrı sonunda, girdideki sıradan bağımsız --------------- */
+
+static void get_komutu(uint32_t i, uint32_t id, uint16_t pid)
+{
+    komut(i, id, (uint8_t)IDA_CMD_PARAM_GET);
+    IN.cmds[i].u.param.id = pid;
+}
+
+static uint32_t blok_degeri(const uint8_t *blok, uint32_t indis)
+{
+    const uint8_t *b = &blok[24u + (8u * indis) + 4u];
+    return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+}
+
+static void test_k81_commit_sirasindan_bagimsiz(void)
+{
+    /* (a) SAVE, COMMIT, GET, sonra SET, GET (aynı çağrı): commit sonraki SET'i de kapsar;
+       GET'ler commit öncesi değeri okur; SAVE commit sonrası kümeyi kaydeder. */
+    hazirla(true);
+    komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    komut(1u, 2u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    get_komutu(2u, 3u, 0x0101u);
+    param_set(3u, 4u, 0x0101u, 25u);
+    get_komutu(4u, 5u, 0x0101u);
+    IN.plat.param_gen = 3u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(2u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(20u, sonuc_al(3u)->value.v.u32);
+    TEST_ASSERT_EQUAL_UINT32(20u, sonuc_al(5u)->value.v.u32); /* commit öncesi uygulanmış */
+    TEST_ASSERT_EQUAL_UINT32(25u, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ms));
+    const ida_cmd_result_t *r = sonuc_al(1u);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r->ack);
+    TEST_ASSERT_EQUAL_UINT32(4u, r->save.gen);
+    TEST_ASSERT_EQUAL_UINT32(25u, blok_degeri(r->save.blob, IDA_PRM_imu_stale_ms));
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_COMMIT));
+    /* (b) Aynı içerik ters sırayla (SET, COMMIT, SAVE) aynı sonucu verir. */
+    hazirla(true);
+    param_set(0u, 4u, 0x0101u, 25u);
+    komut(1u, 2u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    komut(2u, 1u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    IN.plat.param_gen = 3u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(2u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(25u, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ms));
+    TEST_ASSERT_EQUAL_UINT32(4u, sonuc_al(1u)->save.gen);
+    TEST_ASSERT_EQUAL_UINT32(25u, blok_degeri(sonuc_al(1u)->save.blob, IDA_PRM_imu_stale_ms));
+}
+
+static void test_k81_birden_cok_commit(void)
+{
+    /* Birinci commit'ten sonra gelen SET grubu bozar: iki commit de PARAM_INVALID alır, iki
+       PARAM_COMMIT günlüğü üretilir, bekleyenler atılır, cmd_rejected iki artar. */
+    hazirla(true);
+    komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    param_set(1u, 2u, 0x0104u, 40u); /* T_lag_clear 40 ms > T_lag_set 20 ms */
+    param_set(2u, 3u, 0x0101u, 25u);
+    komut(3u, 4u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(1u)->reason);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, sonuc_al(4u)->reason);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, sonuc_al(1u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(2u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_COMMIT));
+    TEST_ASSERT_EQUAL_UINT32(2u, OUT.status.cnt.cmd_rejected);
+    TEST_ASSERT_EQUAL_UINT32(20u, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ms));
+    TEST_ASSERT_EQUAL_UINT32(10u, ida_prm_u32(&C.prm, IDA_PRM_lag_clear_ms));
+    /* Bekleyenler atıldı: sonraki iki boş commit etkisiz kabul. */
+    IN.n_cmds = 0u;
+    komut(0u, 5u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    komut(1u, 6u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(5u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(6u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(2u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_COMMIT));
+    TEST_ASSERT_EQUAL_UINT32(20u, ida_prm_u32(&C.prm, IDA_PRM_imu_stale_ms));
+}
+
+static void test_k78_bos_commit_ve_save_ayni_cagri(void)
+{
+    /* Bloksuz init (param_ok = 0). SAVE girdide commit'ten önce: aynı çağrının ACCEPTED boş
+       commit'i SAVE için uygulanmış commit sayılır; kayıt OK olunca arm engeli kalkar. */
+    hazirla(false);
+    komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    komut(1u, 2u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    IN.plat.param_gen = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(2u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(1u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(1u, sonuc_al(1u)->save.gen);
+    TEST_ASSERT_FALSE(OUT.status.param_ok);
+    IN.n_cmds = 0u;
+    IN.plat.param_store = (uint8_t)IDA_PSTORE_BUSY;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    IN.plat.param_store = (uint8_t)IDA_PSTORE_OK;
+    IN.plat.param_gen = 1u;
+    komut(0u, 3u, (uint8_t)IDA_CMD_ARM);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_TRUE(OUT.status.param_ok);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NOT_ARMABLE, sonuc_al(3u)->reason); /* PARAM_INVALID değil */
+}
+
+static void test_k82_gen_kurali_ve_doyma(void)
+{
+    hazirla(true);
+    /* gen = max(son gen, param_gen) + 1 */
+    komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    IN.plat.param_gen = 41u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(42u, sonuc_al(1u)->save.gen);
+    IN.cmds[0].cmd_id = 2u;
+    IN.plat.param_gen = 10u; /* platformunki daha küçük: çekirdeğin son gen'i taban */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(43u, sonuc_al(2u)->save.gen);
+    /* max(...) = 0xFFFFFFFE: gen 0xFFFFFFFF kabul */
+    IN.cmds[0].cmd_id = 3u;
+    IN.plat.param_gen = 0xFFFFFFFEu;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(3u)->ack);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, sonuc_al(3u)->save.gen);
+    /* max(...) = 0xFFFFFFFF (çekirdeğin son gen'i): OUT_OF_RANGE, blok yok, sarmaz */
+    const uint32_t onceki_ret = OUT.status.cnt.cmd_rejected;
+    IN.cmds[0].cmd_id = 4u;
+    IN.plat.param_gen = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, sonuc_al(4u)->ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_OUT_OF_RANGE, sonuc_al(4u)->reason);
+    TEST_ASSERT_TRUE(sonuc_al(4u)->save.blob == NULL);
+    TEST_ASSERT_EQUAL_UINT32(0u, sonuc_al(4u)->save.gen);
+    TEST_ASSERT_EQUAL_UINT32(onceki_ret + 1u, OUT.status.cnt.cmd_rejected);
+    /* plat.param_gen = 0xFFFFFFFF de aynı */
+    hazirla(true);
+    komut(0u, 5u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    IN.plat.param_gen = 0xFFFFFFFFu;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_OUT_OF_RANGE, sonuc_al(5u)->reason);
 }
 
 int main(void)
@@ -425,5 +644,10 @@ int main(void)
     RUN_TEST(test_set_get_commit);
     RUN_TEST(test_b_sinifi_ve_arm);
     RUN_TEST(test_save_ve_k78);
+    RUN_TEST(test_39_parametre_tablosu);
+    RUN_TEST(test_k81_commit_sirasindan_bagimsiz);
+    RUN_TEST(test_k81_birden_cok_commit);
+    RUN_TEST(test_k78_bos_commit_ve_save_ayni_cagri);
+    RUN_TEST(test_k82_gen_kurali_ve_doyma);
     return UNITY_END();
 }

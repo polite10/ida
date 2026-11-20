@@ -20,9 +20,9 @@ bool ida_cer_kurulu(const ida_core_t *c)
 
 uint8_t ida_cer_param_grup(const ida_prm_kume_t *k)
 {
-    /* A4-K37: T_lag_clear ≤ T_lag_set. */
-    return (k->ham[IDA_PRM_imu_lag_clr_ns] <= k->ham[IDA_PRM_imu_lag_set_ns]) ? (uint8_t)0u
-                                                                            : (uint8_t)1u;
+    /* A4-K37, 3.9: T_lag_clear ≤ T_lag_set (ikisi de ms). */
+    return (k->ham[IDA_PRM_lag_clear_ms] <= k->ham[IDA_PRM_lag_set_ms]) ? (uint8_t)0u
+                                                                        : (uint8_t)1u;
 }
 
 /* A4-K89: 0 tutarlı; 1 koruma sözcüğü, 2 tamamlayıcı kopya, 3 geçersiz durum değeri. */
@@ -34,8 +34,10 @@ static int32_t butunluk(const ida_core_t *c)
     if (c->kurulu_tumleyen != (uint32_t)~c->kurulu) {
         return 2;
     }
+    /* Tanımsız alan biti denetimi uint32_t'de yapılır: tümleyen sabit uint8_t'ye
+       daraltılmaz (MSVC C4310). */
     const bool durum = (c->emn.mode <= (uint8_t)IDA_MODE_AUTO) &&
-                       ((c->emn.kisitli & (uint8_t)~IDA_EMN_TUMU) == 0u) &&
+                       (((uint32_t)c->emn.kisitli & ~(uint32_t)IDA_EMN_TUMU) == 0u) &&
                        ida_kes_tutarli(&c->kes) && ida_gud_tutarli(&c->gud) &&
                        ida_gor_tutarli(&c->gor) && ida_kon_tutarli(&c->kon) &&
                        ida_fc_tutarli(&c->fc) && ida_son_tutarli(&c->son);
@@ -142,7 +144,8 @@ ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)
     ida_son_kur(&c->son);
 
     /* İlk yazılabilir step/tick'te çıkacak açılış kayıtları (3.15; A4-K77). */
-    const uint8_t neden = (in->reset_cause <= (uint8_t)IDA_RESET_SIL_REBOOT) ? in->reset_cause : 0u;
+    const uint8_t neden =
+        (in->reset_cause <= (uint8_t)IDA_RESET_SIL_REBOOT) ? in->reset_cause : (uint8_t)0u;
     const ida_log_t g1 = {.t_w = in->now_w,
                           .code = (uint16_t)IDA_LOG_RESET_INFO,
                           .arg0 = (int32_t)neden,
@@ -176,7 +179,7 @@ static bool kapasite_asimi(const ida_in_t *in)
 
 static bool mandal_gecersiz(const ida_in_t *in)
 {
-    if ((in->narrow.mask & (uint8_t)~IDA_NARROW_DEFINED) != 0u) {
+    if (((uint32_t)in->narrow.mask & ~(uint32_t)IDA_NARROW_DEFINED) != 0u) {
         return true;
     }
     if (((in->narrow.mask & IDA_NARROW_MODE) != 0u) && !daraltici_hedef(in->narrow.mode)) {
@@ -259,13 +262,14 @@ static void cagri_izleri(ida_core_t *c, const ida_in_t *in, ida_cagri_t *cg)
     }
     k->bg_dilim = 0u;
     k->bg_kotu = 0u;
-    /* step_miss: taban init'ten sonraki ilk değerlendirilen çağrının plat değerleridir. */
+    /* step_miss (3.8): taban init'ten sonraki ilk yazılabilir step/tick çağrısının plat
+       değerleridir; taban çağrısında görülen prev_overrun = 1 de sayılmaz. */
     if (k->plat_taban_var) {
         k->cnt.step_miss += (in->plat.cnt_batch_skipped - k->plat_skipped) +
                             (in->plat.cnt_batch_merged - k->plat_merged);
-    }
-    if (in->plat.prev_overrun) {
-        k->cnt.step_miss++;
+        if (in->plat.prev_overrun) {
+            k->cnt.step_miss++;
+        }
     }
     k->plat_taban_var = true;
     k->plat_skipped = in->plat.cnt_batch_skipped;
@@ -297,7 +301,10 @@ static void kabul_edilen_ornekler(ida_core_t *c, const ida_in_t *in, const ida_o
 static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t *cg)
 {
     ida_core_counters_t *cnt = &c->cer.cnt;
-    for (uint32_t i = 0u; i < (uint32_t)in->n_evres; i++) {
+    /* (c) n_evres ≤ 4'ü doğruladı; sınır çözümleyicinin görebilmesi için ayrıca kırpılır. */
+    const uint32_t n =
+        (in->n_evres < IDA_PORT_MAX_EVRES) ? (uint32_t)in->n_evres : IDA_PORT_MAX_EVRES;
+    for (uint32_t i = 0u; i < n; i++) {
         ida_olay_bekleyen_t b;
         if (ida_olay_sonuc(&c->olay, &in->evres[i], &b)) {
             const ida_log_t g = {.t_w = cg->now,
@@ -324,7 +331,8 @@ static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t 
 
 static bool cagrida_arm(const ida_in_t *in)
 {
-    for (uint32_t i = 0u; i < (uint32_t)in->n_cmds; i++) {
+    const uint32_t n = (in->n_cmds < IDA_PORT_MAX_CMDS) ? (uint32_t)in->n_cmds : IDA_PORT_MAX_CMDS;
+    for (uint32_t i = 0u; i < n; i++) {
         if (in->cmds[i].type == (uint8_t)IDA_CMD_ARM) {
             return true;
         }
@@ -380,7 +388,7 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
     /* IMU zamanlaması (A4-K37, K39). */
     ida_imz_lag_guncelle(&c->imz, &in->tf, &zb);
     cg->imu_lag = c->imz.lag;
-    cg->imu_bayat = ida_imz_bayat(&c->imz, cg->now, ida_prm_u32(&c->prm, IDA_PRM_imu_stale_ns));
+    cg->imu_bayat = ida_imz_bayat(&c->imz, cg->now, &c->prm);
     ida_imz_bayat_izle(&c->imz, cg->imu_bayat, &zb);
 
     olay_sonuclari(c, in, cg);
@@ -430,7 +438,12 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
         ida_kon_adim(&c->kon, c);
         ida_son_adim(&c->son, c, out);
     }
-    ida_prm_cagri_sonu(&c->prm); /* commit adım sınırında (A4-K81) */
+    /* PARAM_COMMIT ve PARAM_SAVE çağrı sonunda, komutların girdideki sırasından bağımsız
+       değerlendirilir; commit adım sınırında uygulanır (A4-K81, K82). */
+    ida_prm_komut_baglam_t pb = {
+        .k = NULL, .plat_param_gen = in->plat.param_gen, .gun = &c->gun, .sonuc_indisi = 0u};
+    pb.k = &kb; /* yerel değişkenin adresi küme ilklendiricisine yazılmaz (MSVC C4221) */
+    ida_prm_cagri_sonu(&c->prm, &pb, out, &k->cnt);
     if (ida_emn_cagri_sonu(&c->emn)) {
         k->cnt.narrow_from_rejected++;
     }
@@ -459,18 +472,6 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     cg.step = (src == (uint8_t)IDA_SRC_STEP);
     cg.now = now_guncelle(c, in->now_w);
 
-    /* İç tutarlılık (A4-K89). */
-    const int32_t bozuk = butunluk(c);
-    cg.core_ok = (bozuk == 0);
-    if (!cg.core_ok && k->core_ok) {
-        const ida_log_t g = {.t_w = cg.now,
-                             .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
-                             .arg0 = bozuk,
-                             .arg1 = 0};
-        gunluk(c, &g);
-    }
-    k->core_ok = cg.core_ok;
-
     /* (b) daraltma: geri alınmaz, reddedilen ve out NULL çağrıda da. */
     const ida_emn_baglam_t eb = {.gun = &c->gun, .now = cg.now};
     ida_emn_daralt(&c->emn, in, &eb);
@@ -484,18 +485,9 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
         gunluk(c, &g);
     }
 
-    /* (b2): olay ve günlük bekletilir; çağrı başına izler güncellenir; cnt.bad_input artmaz. */
-    if (out == NULL) {
-        k->bg_dilim = 0u;
-        k->bg_kotu = 0u;
-        if (ida_emn_cagri_sonu(&c->emn)) {
-            k->cnt.narrow_from_rejected++;
-        }
-        return IDA_RC_BAD_INPUT;
-    }
-    (void)memset(out, 0, sizeof(*out)); /* A4-K27, K121 */
-
-    /* (b3) SESSION_START (A4-K72). */
+    /* (b3) SESSION_START (A4-K72): (b) gibi her çağrıda, out NULL olsa da; geri alınmaz.
+       Sensör kabul durumu ve zaman çerçevesi izi burada sıfırlanır; modüllerin yeniden
+       başlaması bir sonraki kabul edilen çağrının (e) adımındadır. */
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
         ida_orn_kur(&c->orn);
         ida_imz_kur(&c->imz);
@@ -507,6 +499,32 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
                              .arg1 = 0};
         gunluk(c, &g);
     }
+
+    /* (b2): (b) ve (b3) uygulanmış kalır; olay ve günlük bekletilir; now_w izi ve
+       wall_backstep yukarıda güncellendi; bg_slices sayımı karşılaştırılmadan sıfırlanır;
+       bg_bad_input bayrağı (bg_kotu) silinmez, ilk yazılabilir çağrıya taşınır (A4-K117);
+       cnt.bad_input artmaz; başka hiçbir şey yapılmaz. Bu çağrının emniyet örnekleri
+       reddedilmiş sayılır (A4-K116). */
+    if (out == NULL) {
+        k->bg_dilim = 0u;
+        if (ida_emn_cagri_sonu(&c->emn)) {
+            k->cnt.narrow_from_rejected++;
+        }
+        return IDA_RC_BAD_INPUT;
+    }
+    (void)memset(out, 0, sizeof(*out)); /* A4-K27, K121 */
+
+    /* İç tutarlılık (A4-K89): yazılabilir her çağrıda. */
+    const int32_t bozuk = butunluk(c);
+    cg.core_ok = (bozuk == 0);
+    if (!cg.core_ok && k->core_ok) {
+        const ida_log_t g = {.t_w = cg.now,
+                             .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
+                             .arg0 = bozuk,
+                             .arg1 = 0};
+        gunluk(c, &g);
+    }
+    k->core_ok = cg.core_ok;
 
     cagri_izleri(c, in, &cg);
 
@@ -529,7 +547,7 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
         }
         cg.rc = rc;
         cg.imu_lag = c->imz.lag;
-        cg.imu_bayat = ida_imz_bayat(&c->imz, cg.now, ida_prm_u32(&c->prm, IDA_PRM_imu_stale_ns));
+        cg.imu_bayat = ida_imz_bayat(&c->imz, cg.now, &c->prm);
         ida_cik_yaz(c, &cg, in, out);
         return rc;
     }

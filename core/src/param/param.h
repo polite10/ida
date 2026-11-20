@@ -4,7 +4,7 @@
  * Tablo X-makrodan kurulur (param/param_listesi.inc): her parametrenin bir indisi
  * (IDA_PRM_<alan>) vardır ve değerler indisle tutulan ham 32 bittir (I32 ikiye tümleyen,
  * U32, F32 binary32 bitleri; blok kaydıyla aynı; A4-K79). Tablo kimliğe göre kesin artandır.
- * Değer okumak: ida_prm_u32(&c->prm, IDA_PRM_imu_stale_ns) gibi.
+ * Değer okumak: ida_prm_u32(&c->prm, IDA_PRM_imu_stale_ms) gibi.
  */
 #ifndef IDA_CORE_PARAM_H
 #define IDA_CORE_PARAM_H
@@ -35,15 +35,19 @@ typedef struct {
     ida_prm_kume_t yururluk;              /* uygulanan değerler                       */
     ida_prm_kume_t bekleyen;              /* PARAM_SET ile bekletilen (A4-K81)       */
     bool bekleyen_var[IDA_PRM_SAYI];
-    ida_prm_kume_t commit_kumesi;         /* kabul edilen commit; çağrı sonunda uygulanır */
-    bool commit_hazir;
     bool param_ok;                        /* A4-K78                                   */
-    bool commit_uygulandi;                /* init'ten beri kabul edilmiş PARAM_COMMIT  */
+    bool commit_uygulandi;                /* init'ten beri ACCEPTED olmuş PARAM_COMMIT */
     bool kayit_bekliyor;                  /* kabul edilmiş PARAM_SAVE'in sonucu bekleniyor */
-    uint32_t kayit_gen;                   /* son kabul edilen PARAM_SAVE'in gen'i      */
+    uint32_t kayit_gen;                   /* son kabul edilen PARAM_SAVE'in gen'i; 0: yok */
     bool son_store_var;
     uint8_t son_store;                    /* PARAM_SAVE günlüğü için plat.param_store izi */
+    /* Çağrı içi (her kabul edilen çağrının başında sıfırlanır): PARAM_COMMIT ve PARAM_SAVE
+       sonuçları çağrı sonunda yazılır (A4-K81, K82); burada sonuç indisleri tutulur. */
     uint8_t cagri_save_sayisi;            /* bu çağrıda (3)'e ulaşan PARAM_SAVE sayısı */
+    uint8_t n_commit;                     /* bu çağrıda (3)'e ulaşan PARAM_COMMIT sayısı */
+    uint8_t commit_indis[IDA_PORT_MAX_CMDS]; /* out->results[] indisleri              */
+    bool save_bekliyor;                   /* ilk PARAM_SAVE ön koşulları geçti, karar sonda */
+    uint8_t save_indis;
     uint8_t blob[IDA_PRM_BLOB_BOYU];      /* son PARAM_SAVE bloğu (A4-K82, A4-K100)  */
 } ida_param_t;
 
@@ -82,14 +86,23 @@ typedef struct {
     const ida_komut_baglam_t *k;
     uint32_t plat_param_gen;
     ida_gunluk_t *gun;
+    uint8_t sonuc_indisi;                 /* komutun out->results[] indisi             */
 } ida_prm_komut_baglam_t;
 
 void ida_prm_cagri_basi(ida_param_t *p);
-/* PARAM_SET, PARAM_GET, PARAM_COMMIT, PARAM_SAVE; r->cmd_id ve r->kind çağıranca yazılmıştır. */
+/* PARAM_SET, PARAM_GET hemen; PARAM_COMMIT ve PARAM_SAVE'in sırasından bağımsız kararı
+   ida_prm_cagri_sonu'dadır (bu işlev yalnız sırayla belirlenen ret nedenlerini — SAVE'de
+   ONE_PER_CALL, ARMED, PARAM_BUSY — yazar, diğerlerini geçici ACCEPTED bırakıp indisini
+   kaydeder). r->cmd_id ve r->kind çağıranca yazılmıştır. */
 void ida_prm_komut(ida_param_t *p, const ida_prm_komut_baglam_t *b, const ida_cmd_t *cmd,
                    ida_cmd_result_t *r);
-/* Kabul edilen commit'i adım sınırında uygular (kabul edilen çağrının sonunda). */
-void ida_prm_cagri_sonu(ida_param_t *p);
+/* Kabul edilen çağrının sonu (adım sınırı; A4-K81, K82): bu çağrının PARAM_COMMIT'lerini tek
+   commit olarak değerlendirir, aynı sonucu hepsine yazar, PARAM_COMMIT günlüklerini üretir ve
+   kabul edilirse uygular; sonra bekleyen PARAM_SAVE'in PARAM_INVALID ve gen doyması
+   koşullarını değerlendirir ve kabul edilirse commit sonrası kümeyi kodlar. Reddedilen her
+   sonuç için cnt->cmd_rejected bir artar. */
+void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
+                        ida_core_counters_t *cnt);
 /* plat.param_store geçişleri: PARAM_SAVE günlüğü ve A4-K78 engelinin kalkması. */
 void ida_prm_depo_izle(ida_param_t *p, const ida_plat_t *plat, ida_gunluk_t *gun, ida_wtime_t now);
 

@@ -3,9 +3,12 @@
  *
  * Tek tampon IDA_PORT_MAX_LOGS (4) kayıtlıktır: init'in kayıtları, `out` NULL çağrının
  * (A4-K113 (b2)) ve arka plan çağrılarının kayıtları burada bekler ve ilk yazılabilir step
- * ya da tick çağrısında, o çağrının kayıtlarından önce çıkar. Tampon doluyken eklenen kayıt
- * atılır ve status.cnt.log_dropped'a sayılır (A4-K90). Önem (severity) 3.15'teki kurala göre
- * koddan ve argümanlardan hesaplanır; çağıranın verdiği değer yok sayılır.
+ * ya da tick çağrısında, o çağrının kayıtlarından önce çıkar (bekletilen kayıtlar o çağrıda
+ * üretilenlerden önce üretilmiş sayılır). Tampon doluyken bir kayıt daha üretilirse A4-K90'a
+ * göre önemi en düşük olan (severity sayısı en büyük), eşit önemdekilerden sonra üretilen
+ * kayıt atılır; kalanlar üretim sırasıyla durur ve atılan her kayıt status.cnt.log_dropped'a
+ * bir eklenir. Önem (severity) 3.15'teki kurala göre koddan ve argümanlardan hesaplanır;
+ * çağıranın verdiği değer yok sayılır.
  */
 #ifndef IDA_CORE_TELEMETRI_H
 #define IDA_CORE_TELEMETRI_H
@@ -21,7 +24,8 @@ typedef struct {
 } ida_gunluk_t;
 
 void ida_gun_kur(ida_gunluk_t *g);
-/* Kaydı ekler (k->severity yok sayılır, 3.15'e göre yazılır); tampon doluysa atar. */
+/* Kaydı ekler (k->severity yok sayılır, 3.15'e göre yazılır); tampon doluysa A4-K90'ın
+   önem sırasına göre bir kaydı (yeniyi ya da tampondakini) atar. */
 void ida_gun_ekle(ida_gunluk_t *g, const ida_log_t *k);
 /* Tamponu out->logs'a yazar, atılanları cnt->log_dropped'a ekler ve tamponu boşaltır. */
 void ida_gun_bosalt(ida_gunluk_t *g, ida_out_t *out, ida_core_counters_t *cnt);

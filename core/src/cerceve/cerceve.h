@@ -4,7 +4,7 @@
  *
  * Port işlevleri (ida_core_info, init, step, tick, background) cerceve.c'dedir; step ve tick
  * ortak gövde ida_cer_cagri'yı çağırır. Değerlendirme sırası 3.11'dekidir:
- * (a1) c/in NULL, (a2) kurulmamış, (b) daraltma, (b2) out NULL, (b3) SESSION_START,
+ * (a1) c/in NULL, (a2) kurulmamış, (b) daraltma, (b3) SESSION_START, (b2) out NULL,
  * (c) yapısal doğrulama, (d) sıra, (e) olağan işleniş. Modül kancalarının sırası
  * core/TASARIM.md §1.4'tedir.
  */
@@ -24,8 +24,9 @@ typedef struct {
     int64_t tf_t_ns;
     bool yeniden_baslat;     /* (b3) sonrası modüllerin yeniden başlaması bekliyor (A4-K72) */
     uint32_t bg_dilim;       /* önceki step/tick'ten beri IDLE/MORE dönen arka plan çağrısı */
-    uint32_t bg_kotu;        /* önceki step/tick'ten beri IDA_BG_BAD_INPUT dönen çağrı      */
-    bool plat_taban_var;     /* step_miss tabanı (3.8)                                     */
+    uint32_t bg_kotu;        /* önceki yazılabilir step/tick'ten beri IDA_BG_BAD_INPUT dönen
+                                çağrı; (b2) silmez (A4-K117)                               */
+    bool plat_taban_var;     /* step_miss tabanı: ilk yazılabilir çağrıda kurulur (3.8)    */
     uint32_t plat_skipped;
     uint32_t plat_merged;
     uint32_t dedup[IDA_PORT_CMD_DEDUP]; /* A4-K48 yineleme penceresi (halka)               */
@@ -56,7 +57,7 @@ typedef struct {
 
 /* Örnek kurulu mu (kurulu işareti ve tümleyeni; A4-K126 için örneğin başka belleği okunmaz). */
 bool ida_cer_kurulu(const ida_core_t *c);
-/* Çerçeve parametrelerinin grup denetimi: IMU_LAG_CLR_NS ≤ IMU_LAG_SET_NS (A4-K37). */
+/* Çerçeve parametrelerinin grup denetimi: T_lag_clear ≤ T_lag_set (A4-K37, 3.9). */
 uint8_t ida_cer_param_grup(const ida_prm_kume_t *k);
 /* step ve tick'in ortak gövdesi. */
 ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_t src);

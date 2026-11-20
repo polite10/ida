@@ -1,19 +1,22 @@
 /*
  * cerceve_param.def — çağrı çerçevesinin, emniyetin ve olayların parametreleri (W2).
- * Kimlik bloğu 0x01xx. Yalnız A4'ün adlandırdığı parametreler; aralıklar ve varsayılanlar
- * A4'ün verdiği değerlerdir (A1 §3.9 varsayılanları: FC_APPLY_BY_NS, FC_HOLD_NS).
+ * Kimlik bloğu 0x01xx. Yalnız A4'ün adlandırdığı parametreler. T_* ve N_* satırlarının adı,
+ * birimi, tipi, varsayılanı ve aralığı A4 §3.9 tablosunun birebir karşılığıdır (süreler ms,
+ * IDA_PT_U32; ns'ye dönüşüm int64_t'de ns = ms × 1 000 000, zaman/zaman.h ida_ms_ns).
+ * VALID_FOR_NS, FC_APPLY_BY_NS ve FC_HOLD_NS A4'te tabloda yoktur; ns biriminde kalır
+ * (A1 §3.9 varsayılanları; 450 ms ve 1 s uint32_t'ye sığar).
  *
  * Satır biçimi (param/param_listesi.inc):
  *   IDA_PARAM(kimlik, AD, TIP, SINIF, en_az, en_cok, varsayilan, alan)
  *   AD: en çok 16 karakterlik ad (tırnaksız; dizgeye çevrilir).
  *   TIP: U32 | I32 | F32; SINIF: A (çalışırken değişebilir) | B (yalnız silahsızken).
  */
-IDA_PARAM(0x0101u, IMU_STALE_NS,   U32, B, 5000000u,  30000000u,   20000000u,  imu_stale_ns)   /* A4-K39 */
+IDA_PARAM(0x0101u, T_imu_stale,    U32, B, 5u,        30u,         20u,        imu_stale_ms)   /* A4-K39, 3.9 */
 IDA_PARAM(0x0102u, VALID_FOR_NS,   U32, B, 60000000u, 450000000u,  100000000u, valid_for_ns)   /* A4-K58 */
-IDA_PARAM(0x0103u, IMU_LAG_SET_NS, U32, B, 10000000u, 50000000u,   20000000u,  imu_lag_set_ns) /* A4-K37 */
-IDA_PARAM(0x0104u, IMU_LAG_CLR_NS, U32, B, 1000000u,  50000000u,   10000000u,  imu_lag_clr_ns) /* A4-K37; ≤ SET (grup) */
-IDA_PARAM(0x0105u, IMU_LAG_CLR_N,  U32, B, 1u,        200u,        20u,        imu_lag_clr_n)  /* A4-K37 */
-IDA_PARAM(0x0106u, IMU_GAP_ORAN,   F32, B, 0.01f,     1.0f,        0.1f,       imu_gap_oran)   /* A4-K38 */
-IDA_PARAM(0x0107u, DET_STALE_MS,   U32, B, 100u,      10000u,      2000u,      det_stale_ms)   /* A4-K118 (W4 kullanır) */
+IDA_PARAM(0x0103u, T_lag_set,      U32, B, 10u,       50u,         20u,        lag_set_ms)     /* A4-K37, 3.9 */
+IDA_PARAM(0x0104u, T_lag_clear,    U32, B, 1u,        50u,         10u,        lag_clear_ms)   /* A4-K37, 3.9; ≤ T_lag_set (grup) */
+IDA_PARAM(0x0105u, N_lag_clear,    U32, B, 1u,        200u,        20u,        lag_clear_n)    /* A4-K37, 3.9 */
+IDA_PARAM(0x0106u, T_imu_gap_tol,  F32, B, 0.01f,     1.0f,        0.1f,       imu_gap_tol)    /* A4-K38, 3.9 (oran) */
+IDA_PARAM(0x0107u, T_det_stale,    U32, B, 100u,      10000u,      2000u,      det_stale_ms)   /* A4-K118, 3.9 (W4 kullanır) */
 IDA_PARAM(0x0108u, FC_APPLY_BY_NS, U32, B, 16000000u, 1000000000u, 20000000u,  fc_apply_by_ns) /* A4-K66 */
 IDA_PARAM(0x0109u, FC_HOLD_NS,     U32, B, 60000000u, 450000000u,  200000000u, fc_hold_ns)     /* A4-K66, K107 */

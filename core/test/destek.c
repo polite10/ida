@@ -97,6 +97,14 @@ void ds_mag(ida_sample_t *s, int64_t t_ns, uint32_t seq)
     s->u.mag.field[0] = 2.0e-5f;
 }
 
+float ds_nan(void)
+{
+    const uint32_t bit = 0x7FC00000u;
+    float f = 0.0f;
+    (void)memcpy(&f, &bit, sizeof(f));
+    return f;
+}
+
 void ds_desen(ida_out_t *out)
 {
     (void)memset(out, 0xA5, sizeof(*out));
@@ -191,7 +199,7 @@ void ds_cikti_degismezleri(ida_rc_t rc, const ida_in_t *in, const ida_out_t *out
     }
     /* A4-K91 */
     TEST_ASSERT_TRUE(out->fc.state <= (uint8_t)IDA_FCS_FAULT_LATCHED);
-    TEST_ASSERT_EQUAL_UINT32(0u, out->fc.inhibit_mask & ~IDA_FCI_DEFINED);
+    TEST_ASSERT_EQUAL_UINT32(0u, out->fc.inhibit_mask & ~(uint32_t)IDA_FCI_DEFINED);
     /* A4-K92 */
     if (!((rc == IDA_RC_OK) && (out->src == (uint8_t)IDA_SRC_STEP))) {
         TEST_ASSERT_EQUAL_UINT8(0u, out->n_det_tx);

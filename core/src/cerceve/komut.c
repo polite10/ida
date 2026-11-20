@@ -129,7 +129,7 @@ static void deger_kimligi(ida_cmd_result_t *r, const ida_cmd_t *cmd)
 static uint32_t mandal_sonuclari(const ida_in_t *in, yanit_t y, ida_out_t *out)
 {
     uint32_t n = 0u;
-    for (uint32_t i = 0u; i < IDA_PORT_N_NARROW; i++) {
+    for (uint32_t i = 0u; (i < IDA_PORT_N_NARROW) && (n < IDA_PORT_MAX_RESULTS); i++) {
         if ((in->narrow.mask & (1u << i)) != 0u) {
             ida_cmd_result_t *r = &out->results[n];
             sonuc_kur(r, in->narrow.cmd_id[i], NULL);
@@ -142,7 +142,7 @@ static uint32_t mandal_sonuclari(const ida_in_t *in, yanit_t y, ida_out_t *out)
 
 /* (3) adımı: komutun sahibi modül (tablo 3.17). */
 static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_baglam_t *b,
-                         const ida_cmd_t *cmd, ida_cmd_result_t *r)
+                         const ida_cmd_t *cmd, ida_cmd_result_t *r, uint8_t indis)
 {
     switch (cmd->type) {
     case IDA_CMD_ARM:
@@ -177,7 +177,7 @@ static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_bagl
     case IDA_CMD_PARAM_COMMIT:
     case IDA_CMD_PARAM_SAVE: {
         const ida_prm_komut_baglam_t pb = {
-            .k = b, .plat_param_gen = in->plat.param_gen, .gun = &c->gun};
+            .k = b, .plat_param_gen = in->plat.param_gen, .gun = &c->gun, .sonuc_indisi = indis};
         ida_prm_komut(&c->prm, &pb, cmd, r);
         break;
     }
@@ -199,8 +199,12 @@ void ida_kom_isle(ida_core_t *c, const ida_in_t *in, const ida_komut_baglam_t *b
 {
     ida_core_counters_t *cnt = &c->cer.cnt;
     uint32_t n = mandal_sonuclari(in, KABUL, out);
-    for (uint32_t j = 0u; j < (uint32_t)in->n_cmds; j++) {
+    /* (c) n_cmds ≤ 8'i doğruladı; sınır çözümleyicinin görebilmesi için ayrıca kırpılır. */
+    const uint32_t n_cmds =
+        (in->n_cmds < IDA_PORT_MAX_CMDS) ? (uint32_t)in->n_cmds : IDA_PORT_MAX_CMDS;
+    for (uint32_t j = 0u; (j < n_cmds) && (n < IDA_PORT_MAX_RESULTS); j++) {
         const ida_cmd_t *cmd = &in->cmds[j];
+        const uint8_t indis = (uint8_t)n;
         ida_cmd_result_t *r = &out->results[n];
         n++;
         sonuc_kur(r, cmd->cmd_id, cmd);
@@ -227,10 +231,10 @@ void ida_kom_isle(ida_core_t *c, const ida_in_t *in, const ida_komut_baglam_t *b
                 ack(r, ret((uint16_t)IDA_REASON_IMU_LAG));
                 cnt->widen_blocked++;
             } else {
-                sahibine_ver(c, in, b, cmd, r);
+                sahibine_ver(c, in, b, cmd, r, indis);
             }
         } else {
-            sahibine_ver(c, in, b, cmd, r);
+            sahibine_ver(c, in, b, cmd, r, indis);
         }
         if (r->ack == (uint8_t)IDA_ACK_REJECTED) {
             deger_kimligi(r, cmd);
@@ -244,7 +248,7 @@ void ida_kom_reddet(const ida_in_t *in, ida_core_counters_t *cnt, ida_out_t *out
 {
     uint32_t n = mandal_sonuclari(in, KABUL, out);
     if (in->n_cmds <= IDA_PORT_MAX_CMDS) {
-        for (uint32_t j = 0u; j < (uint32_t)in->n_cmds; j++) {
+        for (uint32_t j = 0u; (j < (uint32_t)in->n_cmds) && (n < IDA_PORT_MAX_RESULTS); j++) {
             const ida_cmd_t *cmd = &in->cmds[j];
             ida_cmd_result_t *r = &out->results[n];
             n++;
@@ -266,7 +270,7 @@ void ida_kom_kurulmamis(const ida_in_t *in, ida_out_t *out)
     uint32_t n =
         mandal_sonuclari(in, ret((uint16_t)IDA_REASON_NOT_INIT), out);
     if (in->n_cmds <= IDA_PORT_MAX_CMDS) {
-        for (uint32_t j = 0u; j < (uint32_t)in->n_cmds; j++) {
+        for (uint32_t j = 0u; (j < (uint32_t)in->n_cmds) && (n < IDA_PORT_MAX_RESULTS); j++) {
             const ida_cmd_t *cmd = &in->cmds[j];
             ida_cmd_result_t *r = &out->results[n];
             n++;

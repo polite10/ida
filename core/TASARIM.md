@@ -44,13 +44,13 @@ Yetki alanları (`armed`, `mode`) `ida_emn_t`'dedir. Emniyet modülü bunlara ya
 ## 2. Step ve tick'in sırası (`ida_cer_cagri`)
 
 1. (a1) `c`/`in` NULL → `BAD_INPUT`. (a2) kurulu işareti yok → `NOT_INIT` (A4-K126'nın sabit çıktısı; örnek belleği okunmaz).
-2. Kullanılan `now_w` = max(önceki, verilen) (A4-K10); iç tutarlılık (A4-K89).
+2. Kullanılan `now_w` = max(önceki, verilen) (A4-K10; geri adım `wall_backstep` ve günlüğü, (b2) çağrısında da).
 3. (b) `ida_emn_daralt` → `ida_fc_daralt` → `ida_olay_kapat_iste`; SESSION_END günlüğü.
-4. (b2) `out` NULL → çağrı başına izler sıfırlanır, kapanma ve günlük bekler, `BAD_INPUT`.
-5. `out` sıfırlanır (A4-K27, K121). (b3) SESSION_START: örnek ve tf izi, IMU zamanlaması sıfırlanır, modüllerin yeniden başlaması bekler.
-6. Çağrı başına izler: `bg_slices` karşılaştırması, `bg_bad_input`, `step_miss`.
+4. (b3) SESSION_START: örnek ve tf izi, IMU zamanlaması sıfırlanır, modüllerin yeniden başlaması bekler; `out` NULL olsa da (A4-K72, K113; 3.11 sırası (b) → (b3) → (b2)).
+5. (b2) `out` NULL → (b) ve (b3) uygulanmış kalır; kapanma ve günlük bekler; çekirdeğin dilim sayımı karşılaştırılmadan sıfırlanır; `bg_bad_input` bayrağı silinmez, ilk yazılabilir çağrıya taşınır (A4-K117); `cnt.bad_input` artmaz; `BAD_INPUT`.
+6. `out` sıfırlanır (A4-K27, K121); iç tutarlılık (A4-K89); çağrı başına izler: `bg_slices` karşılaştırması, `bg_bad_input`, `step_miss` (taban ilk yazılabilir çağrı; tabanın `prev_overrun`'u sayılmaz, 3.8).
 7. (c) yapısal doğrulama, (d) sıra; hata → sayaç, `ida_kom_reddet`, `ida_cik_yaz`.
-8. (e): modüllerin yeniden başlaması; kayıt deposu izleme; IMU ve örnek kapısı; kabul edilenler sahiplerine (SAFETY → emniyet ve `ida_fc_emniyet_ornegi`; BATT/LEAK → görev; diğerleri → kestirim); Ping360; algılama (`ida_fc_algilama`); tf kabulü; IMU gecikmesi ve bayatlık; olay sonuçları ve zaman aşımı; kestirim; görev; komutlar (3.17); güdüm; step OK'ta atış kontrol, kontrol, sonar; commit uygulaması; `narrow_from_rejected`; `ida_cik_yaz`.
+8. (e): modüllerin yeniden başlaması; kayıt deposu izleme; IMU ve örnek kapısı; kabul edilenler sahiplerine (SAFETY → emniyet ve `ida_fc_emniyet_ornegi`; BATT/LEAK → görev; diğerleri → kestirim); Ping360; algılama (`ida_fc_algilama`); tf kabulü; IMU gecikmesi ve bayatlık; olay sonuçları ve zaman aşımı; kestirim; görev; komutlar (3.17); güdüm; step OK'ta atış kontrol, kontrol, sonar; çağrı sonunda PARAM_COMMIT ve PARAM_SAVE kararı ve commit uygulaması (A4-K81, K82); `narrow_from_rejected`; `ida_cik_yaz`.
 
 ## 3. `ida_core_t` ve boyutlar
 
@@ -58,9 +58,9 @@ Sıra: koruma sözcüğü, kurulu işareti ve tümleyeni, çerçeve, emniyet, ol
 
 | Ölçüm | Değer | Kaynak |
 |---|---|---|
-| `sizeof(ida_core_t)` | 2192 B (Cortex-M33 ve macOS arm64 aynı); hizalama 8 | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2`, Apple Clang) |
-| Çekirdek arşivi, fw-release | text 18 880 B, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
-| Çekirdek arşivi, fw-debug | text 19 724 B, data 0, bss 0 | aynı |
+| `sizeof(ida_core_t)` | 2160 B (Cortex-M33 ve macOS arm64 aynı); hizalama 8 | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2`, Apple Clang) |
+| Çekirdek arşivi, fw-release | text 19 200 B, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
+| Çekirdek arşivi, fw-debug | text 20 244 B, data 0, bss 0 | aynı |
 | En büyük yığın çerçevesi (fw-release) | 344 B (`blok_isle`, SHA-256) | `-fstack-usage` |
 
 `ida_core_info`: port 1.0, `core_size` = `sizeof`, `core_align` = `_Alignof`, `param_schema_hash` her çağrıda hesaplanır (önbellek yok), `core_version` = `0x000100` (0.1.0).
@@ -79,17 +79,19 @@ Satır biçimi: `IDA_PARAM(kimlik, AD, TIP, SINIF, en_az, en_cok, varsayilan, al
 
 | Kimlik | Ad | Tip, sınıf | Aralık | Varsayılan | Kural |
 |---|---|---|---|---|---|
-| 0x0101 | `IMU_STALE_NS` | U32, B | 5–30 ms | 20 ms | K39 |
-| 0x0102 | `VALID_FOR_NS` | U32, B | 60–450 ms | 100 ms | K58 |
-| 0x0103 | `IMU_LAG_SET_NS` | U32, B | 10–50 ms | 20 ms | K37 |
-| 0x0104 | `IMU_LAG_CLR_NS` | U32, B | 1–50 ms; grup: ≤ SET | 10 ms | K37 |
-| 0x0105 | `IMU_LAG_CLR_N` | U32, B | 1–200 | 20 | K37 |
-| 0x0106 | `IMU_GAP_ORAN` | F32, B | 0,01–1 | 0,1 | K38 |
-| 0x0107 | `DET_STALE_MS` | U32, B | 100–10 000 ms | 2000 ms | K118 (ns `uint32_t`'ye sığmadığı için ms) |
-| 0x0108 | `FC_APPLY_BY_NS` | U32, B | 16–1000 ms | 20 ms (A1 §3.9) | K66 |
-| 0x0109 | `FC_HOLD_NS` | U32, B | 60–450 ms | 200 ms (A1 §3.9) | K66 |
+| 0x0101 | `T_imu_stale` | U32 (ms), B | 5–30 | 20 | K39, 3.9 |
+| 0x0102 | `VALID_FOR_NS` | U32 (ns), B | 60–450 ms | 100 ms | K58 |
+| 0x0103 | `T_lag_set` | U32 (ms), B | 10–50 | 20 | K37, 3.9 |
+| 0x0104 | `T_lag_clear` | U32 (ms), B | 1–50; grup: ≤ `T_lag_set` | 10 | K37, 3.9 |
+| 0x0105 | `N_lag_clear` | U32 (zaman çerçeveli çağrı), B | 1–200 | 20 | K37, 3.9 |
+| 0x0106 | `T_imu_gap_tol` | F32 (oran; sınır = oran × `window_ns`), B | 0,01–1 | 0,1 | K38, 3.9 |
+| 0x0107 | `T_det_stale` | U32 (ms), B | 100–10 000 | 2000 | K118, 3.9 |
+| 0x0108 | `FC_APPLY_BY_NS` | U32 (ns), B | 16–1000 ms | 20 ms (A1 §3.9) | K66 |
+| 0x0109 | `FC_HOLD_NS` | U32 (ns), B | 60–450 ms | 200 ms (A1 §3.9) | K66 |
 
-B sınıfı (yalnız silahsızken) seçimi uygulamanındır: zamanlama emniyetine giren değerler silahlıyken değişmez.
+`T_*` ve `N_lag_clear` satırlarının adı, birimi, tipi, varsayılanı ve aralığı A4 §3.9 tablosunun birebir karşılığıdır (`cekirdek.birim.param` `test_39_parametre_tablosu`). ms parametresi kullanılırken ns'ye `int64_t`'de çevrilir (`zaman/zaman.h` `ida_ms_ns`: ns = ms × 1 000 000); `port.h`'nin ns sabitleri (`IDA_IMU_STALE_*_NS`, `IDA_DET_STALE_DEFAULT_NS`) değişmez ve testte ms değerleriyle karşılaştırılır. `VALID_FOR_NS`, `FC_APPLY_BY_NS`, `FC_HOLD_NS` 3.9 tablosunda yoktur; adları ve birimleri bu işin seçimidir (ns, `uint32_t`'ye sığar). B sınıfı (yalnız silahsızken) seçimi uygulamanındır: zamanlama emniyetine giren değerler silahlıyken değişmez.
+
+Parametre komutları (A4-K81, K82, 3.17): PARAM_SET ve PARAM_GET komut anında yanıtlanır (GET çağrı başındaki uygulanmış değeri okur). PARAM_COMMIT ve PARAM_SAVE'in kararı kabul edilen çağrının sonundadır ve girdideki sıradan bağımsızdır: commit o anda bekleyen bütün değerleri (aynı çağrının sonraki PARAM_SET'leri dahil) doğrular; aynı çağrıdaki bütün commit'ler aynı sonucu ve her biri bir PARAM_COMMIT günlüğü alır; bekleyen değer yokken ACCEPTED olan commit uygulanmış sayılır. PARAM_SAVE'in sırayla belirlenen koşulları (ONE_PER_CALL, ARMED, PARAM_BUSY) komut anında, PARAM_INVALID (aynı çağrının kabul edilen commit'i sayılır) ve `gen` doyması çağrı sonunda değerlendirilir; kabulde commit sonrası küme kodlanır. `gen` = max(çekirdeğin son `gen`'i (yoksa 0), `plat.param_gen`) + 1; max(…) = 0xFFFFFFFF ise SAVE `REJECTED` / `OUT_OF_RANGE` alır ve blok üretilmez (ret nedeni A4 3.17 PARAM_SAVE satırından ve A4-K82'den). Çağrı sonunda karara bağlanan sonuçların reddi `cnt.cmd_rejected`'e orada sayılır.
 
 ## 6. Yer tutucu çekirdeğin görünen davranışı
 
@@ -148,7 +150,29 @@ Birinci aşamanın belirsizliklerini kapatan A4 metni:
 | F4 | K37 aralıkları, 3.8 | F9 | K39 ("kesin büyük") |
 | F5 | K80 (5), 3.15 | | |
 
-Uygulamada seçilen okumalar (A4'ün açık bıraktığı, raporda ayrıca bildirilen): `out` NULL çağrısındaki SESSION_START işlenmez ((b2), (b3)'ten önce gelir); `n_cmds` > 8 iken `cmds[]`'teki daraltıcılar için de sonuç yazılmaz (4.14); NOT_INIT'te `out.fs_level` = DISARM; (b2)'de çekirdeğin dilim sayımı karşılaştırılmadan sıfırlanır, geri adım sayılır ve günlüğü bekler; PARAM_SAVE `gen` = max(son kendi gen, `plat.param_gen`) + 1; bekleyen değeri olmayan commit "uygulanmış commit" sayılır; commit kabul edilen çağrının sonunda uygulanır; reddedilen PARAM_VALUE sonucunda `value` = (id, 0, 0); çelişkili ve reddedilen IMU örnekleri `sample_rejected`'e de sayılır, Ping360 reddi yalnız `ping360_rejected`'e; günlük taşmasında üretim sırasında sonradan gelenler atılır.
+İkinci aşamada uygulamanın seçtiği okumalar A4'ün son metniyle (mimar, 2026-11-20) **kapandı**; kod ve testler son metne göredir:
+
+| Konu | Son metin | Durum | Test |
+|---|---|---|---|
+| (b2) ile (b3) sırası | (b) → (b3) → (b2): `out` NULL çağrısındaki SESSION_START işlenir (3.11, A4-K72, K113) | kapandı; kod değişti | `cerceve` `test_b3_out_null_cagride` |
+| (b2)'de `bg_bad_input` | bayrak silinmez, ilk yazılabilir çağrıya taşınır (A4-K117) | kapandı; kod değişti | `arka_plan` `test_k117_b2_bayragi_tasir` |
+| (b2)'de dilim sayımı, geri adım | karşılaştırmadan sıfırlanır; `wall_backstep` sayılır, günlüğü bekler | kapandı; seçilen okuma | `cerceve` `test_b3_out_null_cagride` |
+| `step_miss` tabanı | taban çağrısındaki `prev_overrun` sayılmaz (3.8) | kapandı; kod değişti | `cerceve` `test_step_miss_tabani` |
+| Günlük taşması | önce en düşük önem (büyük `severity`), eşitte sonra üretilen atılır; bekletilenler önce üretilmiş; kalanlar üretim sırasıyla; atılan her biri `log_dropped` (A4-K90) | kapandı; kod değişti | `cerceve` `test_k90_gunluk_tasmasi` |
+| FC_STATE/FC_INHIBIT tabanı | init sonrası ilk yazılabilir çağrının sonu (A4-K90) | kapandı; seçilen okuma | `cerceve` `test_k90_fc_gunluk_tabani` |
+| `n_cmds` > 8 | `cmds[]` için sonuç yok; ≤ 8 reddedilen çağrıda daraltıcılar ACCEPTED, öteki CALL_REJECTED (A4-K114, 4.14) | kapandı; seçilen okuma | `cerceve` `test_k113_k114` |
+| Commit zamanı ve sırası | çağrı sonunda, sıradan bağımsız; birden çok commit tek commit (A4-K81) | kapandı; kod değişti | `param` `test_k81_commit_sirasindan_bagimsiz`, `test_k81_birden_cok_commit` |
+| Boş commit | uygulanmış commit; aynı çağrının SAVE'i için de (A4-K78) | kapandı; kod değişti (aynı çağrı) | `param` `test_k78_bos_commit_ve_save_ayni_cagri` |
+| SAVE `gen` | max(son, `param_gen`) + 1; doyar, 0xFFFFFFFF'te OUT_OF_RANGE (A4-K82, 3.17) | kapandı; doyma eklendi | `param` `test_k82_gen_kurali_ve_doyma` |
+| Reddedilen PARAM_GET/SET `value` | (id, 0, 0) (3.14, A4-K43) | kapandı; seçilen okuma | `param` `test_set_get_commit` |
+| NOT_INIT `out.fs_level` | DISARM; `armed` 0; `src` çağrılan işlevinki (A4-K126) | kapandı; seçilen okuma | `cerceve` `test_k126_kurulmamis_cikti_sabit` |
+| Sayaç örtüşmeleri | gelecek damgalı örnek yalnız `sample_future`; bayt bayt aynı yineleme yalnız `sample_dup_dropped`; Ping360 reddi yalnız `ping360_rejected` (3.8) | kapandı; seçilen okuma | `ornek` testleri |
+| K24 eşitliği | `save.blob` işaretçisi değil içerik (A4 §7) | kapandı; seçilen okuma | `belirlenimcilik` `test_k24_ve_md4` |
+| K80 kısa blok | 24 bayttan kısa blok denetim 1; `param_len` = 0 blok yok (0) | kapandı; seçilen okuma | `param` `test_blok_denetimleri` |
+| Parametre birimleri | 3.9 tablosu (ms, ad ve aralıklar) | kapandı; kod değişti | `param` `test_39_parametre_tablosu` |
+| HEARTBEAT, FAILSAFE_RESET | yer tutucuda (3)'te `UNSUPPORTED` / `NONE`; (1) yineleme ve (2) genişletici önceliği önce (3.17 dipnotu, A4-K124) | kapandı; seçilen okuma | `komut` `test_317_yer_tutucu_satirlari` |
+
+Bu aşamada yapılan ek seçim: iç tutarlılık denetimi (A4-K89) yalnız yazılabilir çağrıda yapılır; (b2) çağrısı (b), (b3) ve 3.11 (b2) satırında sayılanlar dışında iş yapmaz.
 
 ## 8. Kural dağılımı tablosu
 

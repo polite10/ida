@@ -148,7 +148,7 @@ void ida_cik_yaz(ida_core_t *c, const ida_cagri_t *cg, const ida_in_t *in, ida_o
     uint8_t kisitli = 0u;
     for (uint8_t t = 0u; t < IDA_PORT_N_TUBE; t++) {
         if (ida_emn_tup_kisitli(&c->emn, t)) {
-            kisitli |= (uint8_t)(1u << t);
+            kisitli = (uint8_t)(kisitli | (1u << t));
         }
     }
     const ida_olay_kapi_t kapi = {

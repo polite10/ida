@@ -4,7 +4,6 @@
  * SAFETY_OPEN ya da FIRE üretmez): sabit tohumlu sözde rastgele, geçerli ve geçersiz karışık
  * girdi dizileri. Test kancası kullanılmaz; yalnız port işlevleri çağrılır.
  */
-#include <math.h>
 #include <string.h>
 
 #include "destek.h"
@@ -60,7 +59,7 @@ static void ornek_uret(uretec_t *u, ida_sample_t *s)
     s->u.safety.tube[0] = (uint8_t)zar(u, 32u);
     s->u.safety.tube[1] = (uint8_t)zar(u, 32u);
     if (tur == (uint8_t)IDA_SENS_MAG) {
-        s->u.mag.field[0] = (zar(u, 20u) == 0u) ? NAN : 2.0e-5f;
+        s->u.mag.field[0] = (zar(u, 20u) == 0u) ? ds_nan() : 2.0e-5f;
     }
     if (tur == (uint8_t)IDA_SENS_BARO) {
         s->u.baro.p_abs = 101325.0f;
@@ -126,7 +125,7 @@ static uint32_t girdi_uret(uretec_t *u, bool *out_null)
     if (IN.imu_present) {
         ds_imu(&IN.imu, u->t - (int64_t)(zar(u, 4u) * 10000000u), u->seq);
         if (zar(u, 10u) == 0u) {
-            IN.imu.imu.gyro[1] = NAN;
+            IN.imu.imu.gyro[1] = ds_nan();
         }
     }
     IN.n_samples = (uint8_t)((zar(u, 50u) == 0u) ? 17u : zar(u, 4u));

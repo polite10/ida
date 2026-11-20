@@ -56,7 +56,7 @@ static void fc(uint32_t i, uint32_t id, uint8_t op)
     IN.cmds[i].u.fc.op = op;
 }
 
-static const ida_cmd_result_t *s(uint32_t id)
+static const ida_cmd_result_t *sonuc_al(uint32_t id)
 {
     const ida_cmd_result_t *r = ds_sonuc(&OUT, id);
     TEST_ASSERT_NOT_NULL(r);
@@ -65,14 +65,14 @@ static const ida_cmd_result_t *s(uint32_t id)
 
 static void ret_bekle(uint32_t id, uint16_t neden)
 {
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, s(id)->ack);
-    TEST_ASSERT_EQUAL_UINT16(neden, s(id)->reason);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, sonuc_al(id)->ack);
+    TEST_ASSERT_EQUAL_UINT16(neden, sonuc_al(id)->reason);
 }
 
 static void desteksiz_bekle(uint32_t id)
 {
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_UNSUPPORTED, s(id)->ack);
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, s(id)->reason);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_UNSUPPORTED, sonuc_al(id)->ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(id)->reason);
 }
 
 static void test_k43_sira_ve_sayi(void)
@@ -127,7 +127,7 @@ static void test_317_yer_tutucu_satirlari(void)
     IN.n_cmds = 0u;
     komut(0u, 1u, 0u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_DUPLICATE, s(1u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_DUPLICATE, sonuc_al(1u)->ack);
 }
 
 static void test_317_arm_sirasi(void)
@@ -192,7 +192,7 @@ static void test_317_fc(void)
     for (uint32_t id = 1u; id <= 5u; id++) {
         ret_bekle(id, (uint16_t)IDA_REASON_OUT_OF_RANGE);
     }
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(6u)->ack); /* TEST değil: etkisiz */
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(6u)->ack); /* TEST değil: etkisiz */
     /* oturum yok → SESSION (FC_ARM, FC_TEST_ENTER, FC_FIRE, FC_RESET) */
     IN.n_cmds = 0u;
     IN.plat.link_state = (uint8_t)IDA_LINK_NONE;
@@ -244,10 +244,10 @@ static void test_genisletici_onceligi_ve_yineleme(void)
     komut(3u, 8u, (uint8_t)IDA_CMD_PARAM_GET); /* nötr: daraltmadan etkilenmez */
     IN.cmds[3].u.param.id = 0x0101u;
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_DUPLICATE, s(5u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_DUPLICATE, sonuc_al(5u)->ack);
     ret_bekle(6u, (uint16_t)IDA_REASON_NARROWED);
     ret_bekle(7u, (uint16_t)IDA_REASON_NARROWED);
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, s(8u)->ack);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(8u)->ack);
     TEST_ASSERT_EQUAL_UINT32(2u, OUT.status.cnt.widen_blocked);
     /* NARROWED > IMU_REJECTED */
     IN.n_cmds = 0u;
@@ -293,7 +293,7 @@ static void test_reddedilen_cagri_pencereye_girmez(void)
     komut(0u, 10u, (uint8_t)IDA_CMD_PARAM_GET);
     IN.n_samples = 17u;
     TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, step());
-    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_VALUE, s(10u)->kind);
+    TEST_ASSERT_EQUAL_UINT8(IDA_RES_PARAM_VALUE, sonuc_al(10u)->kind);
     ret_bekle(10u, (uint16_t)IDA_REASON_CALL_REJECTED);
 }
 

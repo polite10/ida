@@ -25,7 +25,7 @@ bool ida_olay_kullanilabilir(const ida_olay_t *o)
 
 void ida_olay_kapat_iste(ida_olay_t *o, uint8_t kapat)
 {
-    o->kapat |= kapat;
+    o->kapat = (uint8_t)(o->kapat | kapat);
 }
 
 static bool izin_olayi(uint8_t kind)
@@ -39,7 +39,7 @@ uint8_t ida_olay_bekleyen_tupler(const ida_olay_t *o)
     for (uint32_t i = 0u; i < IDA_OLAY_BEKLEYEN_MAX; i++) {
         const ida_olay_bekleyen_t *b = &o->bekleyen[i];
         if (b->dolu && izin_olayi(b->kind) && (b->tube < IDA_PORT_N_TUBE)) {
-            t |= (uint8_t)(1u << b->tube);
+            t = (uint8_t)(t | (1u << b->tube));
         }
     }
     return t;
@@ -138,21 +138,19 @@ static void yuvaya_al(ida_olay_bekleyen_t *y, const ida_event_t *e, ida_wtime_t 
 }
 
 /* Olay out->events[]'in sıradaki (sıfırlanmış) yuvasına alan alan yazılır; dolgu baytları
-   çıktının sıfırlamasından kalır (A4-K24: bayt düzeyinde belirlenimci). */
-static ida_event_t *olay_yuvasi(ida_out_t *out)
-{
-    ida_event_t *e = &out->events[out->n_events];
-    out->n_events++;
-    return e;
-}
-
+   çıktının sıfırlamasından kalır (A4-K24: bayt düzeyinde belirlenimci). Yuva denetimi kimlik
+   ayrılmadan önce yapılır: yuva yoksa kimlik tüketilmez. */
 static bool kapat_cikar(ida_olay_t *o, const ida_olay_kapi_t *k, uint8_t tube, ida_out_t *out)
 {
     uint64_t kimlik = 0u;
+    if (out->n_events >= IDA_PORT_MAX_EVENTS) {
+        return false;
+    }
     if (!kimlik_ayir(o, true, &kimlik)) {
         return false; /* olay kimliği yok: hiç olay üretilmez (A4-K61, K62) */
     }
-    ida_event_t *e = olay_yuvasi(out);
+    ida_event_t *e = &out->events[out->n_events];
+    out->n_events++;
     e->event_id = kimlik;
     e->kind = (uint8_t)IDA_EVT_SAFETY_CLOSE;
     e->tube = tube;
@@ -217,7 +215,9 @@ void ida_olay_yaz(ida_olay_t *o, const ida_olay_kapi_t *k, ida_out_t *out)
 
     /* Genişletici adaylar: kalan yuvalara, kapıdan geçenler (A4-K125: sığmayan üretilmez,
        sayaç tüketilmez). */
-    for (uint32_t i = 0u; i < (uint32_t)o->n_aday; i++) {
+    const uint32_t n_aday =
+        (o->n_aday < IDA_PORT_MAX_EVENTS) ? (uint32_t)o->n_aday : IDA_PORT_MAX_EVENTS;
+    for (uint32_t i = 0u; i < n_aday; i++) {
         if (out->n_events >= IDA_PORT_MAX_EVENTS) {
             break;
         }
@@ -229,7 +229,8 @@ void ida_olay_yaz(ida_olay_t *o, const ida_olay_kapi_t *k, ida_out_t *out)
         if (!kimlik_ayir(o, false, &kimlik)) {
             continue;
         }
-        ida_event_t *e = olay_yuvasi(out);
+        ida_event_t *e = &out->events[out->n_events];
+        out->n_events++;
         e->event_id = kimlik;
         e->kind = a->kind;
         e->tube = a->tube;

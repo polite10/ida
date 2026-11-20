@@ -65,6 +65,12 @@ static inline int32_t ida_ns_us_doyur(int64_t ns)
     return (int32_t)us;
 }
 
+/* ms biriminde süre parametresi → ns (A4 §3.9: ns = ms × 1 000 000, int64_t'de; taşmaz). */
+static inline int64_t ida_ms_ns(uint32_t ms)
+{
+    return (int64_t)ms * 1000000;
+}
+
 static inline int64_t ida_mutlak_i64(int64_t x)
 {
     return (x < 0) ? -x : x; /* girdiler 2^62 ile sınırlı; INT64_MIN oluşmaz */

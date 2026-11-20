@@ -148,7 +148,7 @@ float ida_prm_f32(const ida_param_t *p, enum ida_prm_indis indis)
 
 static void ozet_ondalik(ida_sha256_t *s, uint32_t x)
 {
-    uint8_t rakam[10];
+    uint8_t rakam[10] = {0u};
     uint32_t n = 0u;
     uint32_t kalan = x;
     do {
@@ -297,6 +297,7 @@ uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, ida_prm_kume_t *
     }
     /* (7) aralık */
     ida_prm_kume_t aday;
+    ida_prm_varsayilan(&aday); /* her eleman aşağıda yazılır; ilk değer derleyici için */
     for (uint32_t r = 0u; r < kayit_sayisi; r++) {
         const uint8_t *kay = &blok[IDA_PBLOB_HDR_SIZE + (r * IDA_PBLOB_REC_SIZE)];
         aday.ham[r] = oku32(&kay[4]);

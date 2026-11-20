@@ -281,8 +281,10 @@ static orn_aday_t aday_kur(const ida_sample_t *s)
 
 static void kabul_ekle(ida_orn_sonuc_t *s, uint8_t indis)
 {
-    s->sira[s->n] = indis;
-    s->n++;
+    if (s->n < IDA_PORT_MAX_SAMPLES) { /* en çok min(n_samples, 16) kabul; sınır açık */
+        s->sira[s->n] = indis;
+        s->n++;
+    }
 }
 
 /* Aynı anahtarlı bir koşunun (sırada ardışık) işlenmesi (A4-K115, K130). */
@@ -290,7 +292,7 @@ static void kosu_isle(ida_ornek_t *o, const ida_in_t *in, const uint8_t *kosu, u
                       const ida_orn_baglam_t *b, ida_orn_sonuc_t *s)
 {
     /* VALID = 0 örnekler eşit anahtar karşılaştırmasına girmez; tek tek reddedilir. */
-    uint8_t grup[IDA_PORT_MAX_SAMPLES];
+    uint8_t grup[IDA_PORT_MAX_SAMPLES] = {0u};
     uint32_t g = 0u;
     for (uint32_t i = 0u; i < n; i++) {
         const ida_sample_t *x = &in->samples[kosu[i]];
@@ -339,7 +341,7 @@ void ida_orn_degerlendir(ida_ornek_t *o, const ida_in_t *in, const ida_orn_bagla
     const uint32_t n = (in->n_samples < IDA_PORT_MAX_SAMPLES) ? (uint32_t)in->n_samples
                                                               : IDA_PORT_MAX_SAMPLES;
     /* A4-K30: tür ya da inst geçersiz örnekler reddedilir; gövdeleri okunmaz. */
-    uint8_t sira[IDA_PORT_MAX_SAMPLES];
+    uint8_t sira[IDA_PORT_MAX_SAMPLES] = {0u};
     uint32_t m = 0u;
     for (uint32_t i = 0u; i < n; i++) {
         const ida_hdr_t *h = &in->samples[i].hdr;

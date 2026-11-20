@@ -3,7 +3,6 @@
  * tablosu, 4.14 satırları, 4.15 NULL satırları, A4-K10, K15, K17, K25, K27, K31, K57, K72
  * (b3), K113, K114, K122, K126.
  */
-#include <math.h>
 #include <string.h>
 
 #include "destek.h"
@@ -138,6 +137,7 @@ static void kurulmamis_icerik(const ida_out_t *o, uint8_t src)
     TEST_ASSERT_FALSE(o->thr_valid);
     TEST_ASSERT_TRUE(o->is_safe);
     TEST_ASSERT_FALSE(o->armed);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, o->fs_level); /* A4-K126 */
     TEST_ASSERT_EQUAL_UINT8(src, o->src);
     TEST_ASSERT_EQUAL_UINT32(0u, o->seq);
     TEST_ASSERT_TRUE((0) == (o->t_ref.ns));
@@ -219,7 +219,7 @@ static void girdi_old(void)
 
 static void imu_bozuk(void)
 {
-    IN.imu.imu.gyro[0] = NAN;
+    IN.imu.imu.gyro[0] = ds_nan();
 }
 
 static void test_oncelik_tablosu(void)
@@ -537,12 +537,18 @@ static void test_k113_k114(void)
     ds_girdi(&IN, 2010 * DS_MS, 41u, true);
     IN.n_samples = 17u;
     TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, &OUT));
-    /* (3) n_cmds = 9: komutlar için sonuç yok, mandal sonuçları var */
+    /* (3) n_cmds = 9: komutlar için sonuç yok, mandal sonuçları var, ilk 8 girdideki
+       daraltıcı SET_MODE uygulanmış (kip INIT değilken; A4-K127). */
+    C.emn.mode = (uint8_t)IDA_MODE_GUIDED; /* test kancası */
     ds_girdi(&IN, 2010 * DS_MS, 42u, true);
     IN.narrow.mask = (uint8_t)(IDA_NARROW_DISARM | IDA_NARROW_FC_DISARM);
     IN.n_cmds = 9u;
+    IN.cmds[3].cmd_id = 80u;
+    IN.cmds[3].type = (uint8_t)IDA_CMD_SET_MODE;
+    IN.cmds[3].u.set_mode.mode = (uint8_t)IDA_MODE_STATION_KEEP;
     TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, &OUT));
     TEST_ASSERT_EQUAL_UINT8(2u, OUT.n_results);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_STATION_KEEP, OUT.status.mode);
     ds_cikti_degismezleri(IDA_RC_BAD_INPUT, &IN, &OUT);
     /* (4) tanımsız mandal biti + DISARM: BAD_INPUT, armed = 0 */
     C.emn.armed = true;
@@ -609,18 +615,120 @@ static void test_k66_numarasiz_kapanma(void)
     TEST_ASSERT_EQUAL_UINT32(IDA_APPLY_BY_MIN_NS + 4000000u, OUT.events[0].apply_by_ns);
 }
 
+static void gunluk_ekle(uint16_t kod, int32_t arg0)
+{
+    const ida_log_t g = {.t_w = {1}, .code = kod, .arg0 = arg0, .arg1 = 0};
+    ida_gun_ekle(&C.gun, &g); /* test kancası: üretim sırasıyla bekletilen kayıt */
+}
+
+/* A4-K90 taşması: önce önemi en düşük (severity sayısı en büyük), eşitlerde sonra üretilen
+   atılır; bekletilenler bu çağrınınkilerden önce üretilmiş sayılır; kalanlar üretim
+   sırasıyla; atılan her kayıt log_dropped'a bir. */
 static void test_k90_gunluk_tasmasi(void)
 {
-    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C)); /* 2 açılış kaydı bekliyor */
-    const ida_log_t g = {.t_w = {1}, .code = (uint16_t)IDA_LOG_SESSION, .arg0 = 1, .arg1 = 0};
-    for (uint32_t i = 0u; i < 3u; i++) {
-        ida_gun_ekle(&C.gun, &g); /* test kancası: 5. kayıt atılır */
-    }
-    ds_girdi(&IN, 2000 * DS_MS, 1u, true);
-    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
-    TEST_ASSERT_EQUAL_UINT8(4u, OUT.n_logs);
-    TEST_ASSERT_TRUE(OUT.status.cnt.log_dropped >= 1u);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C)); /* RESET_INFO (NOTICE), PARAM_LOAD (INFO) */
+    gunluk_ekle((uint16_t)IDA_LOG_FC_INHIBIT, 1);    /* DEBUG                         */
+    gunluk_ekle((uint16_t)IDA_LOG_SESSION, 1);       /* NOTICE: tampon dolu           */
+    gunluk_ekle((uint16_t)IDA_LOG_WALL_BACKSTEP, 0); /* ERROR: FC_INHIBIT atılır      */
+    gunluk_ekle((uint16_t)IDA_LOG_FC_INHIBIT, 2);    /* DEBUG: kendisi atılır         */
+    gunluk_ekle((uint16_t)IDA_LOG_SESSION, 2);       /* NOTICE: PARAM_LOAD atılır     */
+    gunluk_ekle((uint16_t)IDA_LOG_SESSION, 3);       /* NOTICE, eşitlerin en sonu: atılır */
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
     ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
+    TEST_ASSERT_EQUAL_UINT8(4u, OUT.n_logs);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_RESET_INFO, OUT.logs[0].code);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_SESSION, OUT.logs[1].code);
+    TEST_ASSERT_EQUAL_INT32(1, OUT.logs[1].arg0);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_WALL_BACKSTEP, OUT.logs[2].code);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_SESSION, OUT.logs[3].code);
+    TEST_ASSERT_EQUAL_INT32(2, OUT.logs[3].arg0);
+    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.log_dropped);
+    /* Bu çağrının daha önemli kaydı bekletilen daha önemsizini atar. */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    gunluk_ekle((uint16_t)IDA_LOG_FC_INHIBIT, 1); /* DEBUG */
+    gunluk_ekle((uint16_t)IDA_LOG_FC_INHIBIT, 2); /* DEBUG */
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START; /* SESSION (NOTICE) üretir */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT8(4u, OUT.n_logs);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_RESET_INFO, OUT.logs[0].code);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_PARAM_LOAD, OUT.logs[1].code);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_FC_INHIBIT, OUT.logs[2].code);
+    TEST_ASSERT_EQUAL_INT32(1, OUT.logs[2].arg0);
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_SESSION, OUT.logs[3].code);
+    TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.log_dropped);
+}
+
+/* (7) out NULL + SESSION_START (3.11: (b3) (b2)'den önce). */
+static void test_b3_out_null_cagride(void)
+{
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 500u, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    /* Arka plan dilimi say, sonra out NULL + SESSION_START + yanlış bg_slices + geri giden
+       now_w. */
+    const ida_wtime_t w = {2001 * DS_MS};
+    TEST_ASSERT_EQUAL(IDA_BG_IDLE, ida_core_background(&C, w));
+    ds_girdi(&IN, 1990 * DS_MS, 501u, true);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    IN.bg_slices = 7u;
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL));
+    TEST_ASSERT_FALSE(C.cer.tf_var); /* zaman çerçevesi izi sıfırlandı */
+    /* Eski tf.seq artık DUP_SEQ vermez; bg_slices karşılaştırılmadı ve sayım sıfırlandı;
+       wall_backstep sayıldı, WALL_BACKSTEP ve SESSION kayıtları bu çağrıda verilir. */
+    ds_girdi(&IN, 2010 * DS_MS, 500u, true);
+    IN.bg_slices = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    ds_cikti_degismezleri(IDA_RC_OK, &IN, &OUT);
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.bg_slice_mismatch);
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_BG_SLICE_MISMATCH));
+    TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.wall_backstep);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_WALL_BACKSTEP));
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_SESSION));
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.bad_input);
+    TEST_ASSERT_EQUAL_UINT32(500u, OUT.seq);
+}
+
+/* 3.8 step_miss: taban çağrısındaki prev_overrun ve birikmiş sayılar sayılmaz. */
+static void test_step_miss_tabani(void)
+{
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 1u, true);
+    IN.plat.prev_overrun = true;
+    IN.plat.cnt_batch_skipped = 5u;
+    IN.plat.cnt_batch_merged = 2u;
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL)); /* (b2): taban değil */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));       /* taban çağrısı */
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.step_miss);
+    ds_girdi(&IN, 2005 * DS_MS, 2u, true);
+    IN.plat.prev_overrun = true;
+    IN.plat.cnt_batch_skipped = 7u;
+    IN.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.step_miss); /* 1 + 2 + 1 */
+    ds_girdi(&IN, 2010 * DS_MS, 3u, true);
+    IN.plat.cnt_batch_skipped = 7u;
+    IN.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.step_miss);
+}
+
+/* A4-K90: init sonrası ilk yazılabilir çağrıda FC_STATE/FC_INHIBIT yok; sonra değişimde var. */
+static void test_k90_fc_gunluk_tabani(void)
+{
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_FC_STATE));
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_FC_INHIBIT));
+    const uint32_t onceki = OUT.fc.inhibit_mask;
+    ds_girdi(&IN, 2005 * DS_MS, 2u, false);
+    IN.plat.link_state = (uint8_t)IDA_LINK_NONE; /* SESSION engeli kurulur */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_FC_INHIBIT));
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_FC_STATE));
+    TEST_ASSERT_EQUAL_UINT32(onceki | IDA_FCI_SESSION, OUT.fc.inhibit_mask);
 }
 
 int main(void)
@@ -645,5 +753,8 @@ int main(void)
     RUN_TEST(test_b3_reddedilen_cagride_oturum_basi);
     RUN_TEST(test_k122_oturum_sonu_cagrisi);
     RUN_TEST(test_k113_k114);
+    RUN_TEST(test_b3_out_null_cagride);
+    RUN_TEST(test_step_miss_tabani);
+    RUN_TEST(test_k90_fc_gunluk_tabani);
     return UNITY_END();
 }

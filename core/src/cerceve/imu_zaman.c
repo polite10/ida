@@ -21,7 +21,7 @@ void ida_imz_imu_kabul(ida_imz_t *z, const ida_imu_sample_t *imu, const ida_imz_
         /* boşluk = (t_meas − window) − t_meas(önceki); sınır = oran × window (A4-K38) */
         const int64_t bosluk =
             (imu->hdr.t_meas.ns - (int64_t)imu->hdr.window_ns) - z->t_meas_ns;
-        const float oran = ida_prm_f32(b->prm, IDA_PRM_imu_gap_oran);
+        const float oran = ida_prm_f32(b->prm, IDA_PRM_imu_gap_tol); /* T_imu_gap_tol */
         const int64_t sinir = (int64_t)(oran * (float)imu->hdr.window_ns);
         if (ida_mutlak_i64(bosluk) > sinir) {
             b->cnt->imu_gap++;
@@ -43,9 +43,9 @@ void ida_imz_lag_guncelle(ida_imz_t *z, const ida_time_frame_t *tf, const ida_im
         return;
     }
     const int64_t lag = tf->t.ns - z->t_meas_ns;
-    const int64_t kur = (int64_t)ida_prm_u32(b->prm, IDA_PRM_imu_lag_set_ns);
-    const int64_t coz = (int64_t)ida_prm_u32(b->prm, IDA_PRM_imu_lag_clr_ns);
-    const uint32_t n_coz = ida_prm_u32(b->prm, IDA_PRM_imu_lag_clr_n);
+    const int64_t kur = ida_ms_ns(ida_prm_u32(b->prm, IDA_PRM_lag_set_ms));   /* T_lag_set   */
+    const int64_t coz = ida_ms_ns(ida_prm_u32(b->prm, IDA_PRM_lag_clear_ms)); /* T_lag_clear */
+    const uint32_t n_coz = ida_prm_u32(b->prm, IDA_PRM_lag_clear_n);         /* N_lag_clear */
     if (!z->lag) {
         if (lag > kur) {
             z->lag = true;
@@ -74,12 +74,13 @@ void ida_imz_lag_guncelle(ida_imz_t *z, const ida_time_frame_t *tf, const ida_im
     }
 }
 
-bool ida_imz_bayat(const ida_imz_t *z, ida_wtime_t now, uint32_t esik_ns)
+bool ida_imz_bayat(const ida_imz_t *z, ida_wtime_t now, const ida_param_t *prm)
 {
     if (!z->var) {
         return true;
     }
-    return (now.ns - z->t_rx_ns) > (int64_t)esik_ns;
+    const int64_t esik = ida_ms_ns(ida_prm_u32(prm, IDA_PRM_imu_stale_ms)); /* T_imu_stale */
+    return (now.ns - z->t_rx_ns) > esik;
 }
 
 void ida_imz_bayat_izle(ida_imz_t *z, bool bayat, const ida_imz_baglam_t *b)

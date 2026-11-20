@@ -23,7 +23,7 @@ static uint32_t sag_dondur(uint32_t x, uint32_t n)
 
 static void blok_isle(ida_sha256_t *s)
 {
-    uint32_t w[64];
+    uint32_t w[64] = {0u}; /* her eleman aşağıda yazılır */
     for (uint32_t t = 0u; t < 16u; t++) {
         const uint32_t i = 4u * t;
         w[t] = ((uint32_t)s->blok[i] << 24) | ((uint32_t)s->blok[i + 1u] << 16) |
