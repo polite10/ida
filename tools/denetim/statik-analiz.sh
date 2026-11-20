@@ -29,7 +29,7 @@ rapor=${1-}
 clang_tidy=${CLANG_TIDY:-clang-tidy}
 cppcheck=${CPPCHECK:-cppcheck}
 for arac in "$clang_tidy" "$cppcheck"; do
-    if ! command -v "$arac" >/dev/null 2>&1; then
+    if [ ! -f "$arac" ] && ! command -v "$arac" >/dev/null 2>&1; then
         printf 'statik-analiz: araç bulunamadı: %s\n' "$arac" >&2
         exit 70
     fi
@@ -57,7 +57,7 @@ trap 'rm -rf "$gecici"' EXIT
 zaman() { date +%s; }
 
 # ---- clang-tidy ----------------------------------------------------------------------
-ct_surum=$("$clang_tidy" --version 2>&1 | grep -m1 -i 'version' | sed 's/^ *//')
+ct_surum=$("$clang_tidy" --version 2>&1 | tr -d '\r' | grep -m1 -i 'version' | sed 's/^ *//')
 t0=$(zaman)
 "$clang_tidy" --quiet \
     --checks='-*,bugprone-*,cert-*,clang-analyzer-*' \
@@ -69,7 +69,7 @@ t1=$(zaman)
 ct_bulgu=$(grep -c -E '(warning|error): ' "$gecici/clang-tidy.txt")
 
 # ---- cppcheck ------------------------------------------------------------------------
-cc_surum=$("$cppcheck" --version 2>&1)
+cc_surum=$("$cppcheck" --version 2>&1 | tr -d '\r')
 t2=$(zaman)
 "$cppcheck" --quiet --std=c11 --language=c \
     --enable=warning,style,performance,portability \

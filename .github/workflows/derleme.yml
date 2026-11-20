@@ -66,66 +66,108 @@ jobs:
 
       - name: Önbellek yolları
         run: |
+          t=$RUNNER_TEMP
           {
-            echo "IDA_ARACLAR=$RUNNER_TEMP/ida-araclar"
-            echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-ikili"
-            echo "CPM_SOURCE_CACHE=$RUNNER_TEMP/cpm"
+            echo "IDA_ARACLAR=$t/ida-araclar"
+            echo "VCPKG_DEFAULT_BINARY_CACHE=$t/vcpkg-ikili"
+            echo "CPM_SOURCE_CACHE=$t/cpm"
           } >>"$GITHUB_ENV"
+          mkdir -p "$t/ida-araclar" "$t/vcpkg-ikili" "$t/cpm"
 
-      - name: Araç önbelleği (Arm GNU 14.3.rel1, cppcheck)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Önbellekler ayrı geri yüklenip ayrı kaydedilir: sonraki bir adım başarısız olsa da
+      # kurulan araçlar önbelleğe girer (her CI denemesi kotadan yer).
+      - name: Araç önbelleğini geri yükle (Arm GNU 14.3.rel1, cppcheck)
+        id: araclar_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.IDA_ARACLAR }}
           key: araclar-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/arm-gnu-kur.sh', 'tools/ci/cppcheck-kur.sh') }}
 
-      - name: vcpkg ikili önbelleği
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: vcpkg ikili önbelleğini geri yükle
+        id: vcpkg_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
 
-      - name: Araçları kur
+      - name: Arm GNU Toolchain 14.3.rel1
+        id: arm
+        run: tools/ci/arm-gnu-kur.sh "$IDA_ARACLAR"
+
+      - name: cppcheck 2.22.0
+        id: cppcheck
+        if: ${{ !cancelled() }}
+        run: tools/ci/cppcheck-kur.sh "$IDA_ARACLAR"
+
+      - name: Araç önbelleğini kaydet
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' && steps.cppcheck.outcome == 'success' && steps.araclar_onbellek.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IDA_ARACLAR }}
+          key: ${{ steps.araclar_onbellek.outputs.cache-primary-key }}
+
+      - name: clang-tidy 21.1.6 (pip, özet sabit)
+        id: clangtidy
+        if: ${{ !cancelled() }}
         run: |
-          mkdir -p "$IDA_ARACLAR" "$VCPKG_DEFAULT_BINARY_CACHE" "$CPM_SOURCE_CACHE"
-          tools/ci/arm-gnu-kur.sh "$IDA_ARACLAR"
-          tools/ci/cppcheck-kur.sh "$IDA_ARACLAR"
           python -m pip install --disable-pip-version-check --require-hashes \
             --only-binary=:all: -r tools/ci/gereksinimler-analiz.txt
-          tools/ci/vcpkg-hazirla.sh
+          command -v clang-tidy
+
+      - name: vcpkg hazırlığı (baseline)
+        id: vcpkg
+        if: ${{ !cancelled() }}
+        run: tools/ci/vcpkg-hazirla.sh
 
       - name: Sürümler
+        if: ${{ !cancelled() }}
         run: tools/ci/surumler.sh
 
+      # Derleme adımları birbirinden bağımsız koşar: biri başarısız olsa da ötekiler sonuç verir.
       - name: host-debug (derleme, birim testi, sözleşme başlıkları, bellek ve sınır denetimi)
+        id: host_debug
+        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-debug -DIDA_BAGIMLILIK_ZORUNLU=ON
           cmake --build --preset host-debug
           ctest --preset host-debug
 
+      - name: vcpkg ikili önbelleğini kaydet
+        if: ${{ !cancelled() && steps.host_debug.outcome == 'success' && steps.vcpkg_onbellek.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ steps.vcpkg_onbellek.outputs.cache-primary-key }}
+
       - name: host-asan (ASan + UBSan)
+        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-asan -DIDA_BAGIMLILIK_ZORUNLU=ON
           cmake --build --preset host-asan
           ctest --preset host-asan
 
       - name: fw-debug (kartsız; GCC -fanalyzer)
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-debug
           cmake --build --preset fw-debug
           ctest --preset fw-debug
 
       - name: fw-release (kartsız)
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-release
           cmake --build --preset fw-release
           ctest --preset fw-release
 
       - name: Statik analiz (clang-tidy, cppcheck; core/)
+        if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: |
           mkdir -p build/rapor
           tools/denetim/statik-analiz.sh build/rapor/statik-analiz.txt
 
       - name: Bellek ayırma betiğinin kendi testi
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
         run: PATH="$ARM_GCC_BIN:$PATH" tools/denetim/test/test.sh
 
       - name: Raporları topla
@@ -177,56 +219,96 @@ jobs:
             echo "VCPKG_DEFAULT_BINARY_CACHE=$t/vcpkg-ikili"
             echo "CPM_SOURCE_CACHE=$t/cpm"
           } >>"$GITHUB_ENV"
+          mkdir -p "$t/ida-araclar" "$t/vcpkg-ikili" "$t/cpm"
 
-      - name: Araç önbelleği (Arm GNU 14.3.rel1, cppcheck)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Önbellekler ayrı geri yüklenip ayrı kaydedilir: sonraki bir adım başarısız olsa da
+      # kurulan araçlar önbelleğe girer (her CI denemesi kotadan yer).
+      - name: Araç önbelleğini geri yükle (Arm GNU 14.3.rel1, cppcheck)
+        id: araclar_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.IDA_ARACLAR }}
           key: araclar-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/arm-gnu-kur.sh', 'tools/ci/cppcheck-kur.sh') }}
 
-      - name: vcpkg ikili önbelleği
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: vcpkg ikili önbelleğini geri yükle
+        id: vcpkg_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
 
-      - name: Araçları kur
+      - name: Arm GNU Toolchain 14.3.rel1
+        id: arm
+        run: tools/ci/arm-gnu-kur.sh "$IDA_ARACLAR"
+
+      - name: cppcheck 2.22.0
+        id: cppcheck
+        if: ${{ !cancelled() }}
+        run: tools/ci/cppcheck-kur.sh "$IDA_ARACLAR"
+
+      - name: Araç önbelleğini kaydet
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' && steps.cppcheck.outcome == 'success' && steps.araclar_onbellek.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IDA_ARACLAR }}
+          key: ${{ steps.araclar_onbellek.outputs.cache-primary-key }}
+
+      - name: clang-tidy 21.1.6 (pip, özet sabit)
+        id: clangtidy
+        if: ${{ !cancelled() }}
         run: |
-          mkdir -p "$IDA_ARACLAR" "$VCPKG_DEFAULT_BINARY_CACHE" "$CPM_SOURCE_CACHE"
-          tools/ci/arm-gnu-kur.sh "$IDA_ARACLAR"
-          tools/ci/cppcheck-kur.sh "$IDA_ARACLAR"
           python -m pip install --disable-pip-version-check --require-hashes \
             --only-binary=:all: -r tools/ci/gereksinimler-analiz.txt
-          tools/ci/vcpkg-hazirla.sh
+          command -v clang-tidy
+
+      - name: vcpkg hazırlığı (baseline)
+        id: vcpkg
+        if: ${{ !cancelled() }}
+        run: tools/ci/vcpkg-hazirla.sh
 
       - name: Sürümler
+        if: ${{ !cancelled() }}
         run: tools/ci/surumler.sh
 
-      - name: host-debug (derleme, birim testi, sözleşme başlıkları, bellek ve sınır denetimi; MSVC /analyze)
+      # Derleme adımları birbirinden bağımsız koşar: biri başarısız olsa da ötekiler sonuç verir.
+      - name: host-debug (derleme, birim testi, sözleşme başlıkları, sınır denetimi; MSVC /analyze)
+        id: host_debug
+        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-debug -DIDA_BAGIMLILIK_ZORUNLU=ON -DIDA_MSVC_ANALYZE=ON
           cmake --build --preset host-debug
           ctest --preset host-debug
 
+      - name: vcpkg ikili önbelleğini kaydet
+        if: ${{ !cancelled() && steps.host_debug.outcome == 'success' && steps.vcpkg_onbellek.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ steps.vcpkg_onbellek.outputs.cache-primary-key }}
+
       - name: host-asan (ASan)
+        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-asan -DIDA_BAGIMLILIK_ZORUNLU=ON
           cmake --build --preset host-asan
           ctest --preset host-asan
 
       - name: fw-debug (kartsız; GCC -fanalyzer)
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-debug
           cmake --build --preset fw-debug
           ctest --preset fw-debug
 
       - name: fw-release (kartsız)
+        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-release
           cmake --build --preset fw-release
           ctest --preset fw-release
 
       - name: Statik analiz (clang-tidy, cppcheck; core/)
+        if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: |
           mkdir -p build/rapor
           tools/denetim/statik-analiz.sh build/rapor/statik-analiz.txt
