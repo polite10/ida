@@ -224,7 +224,10 @@ static void test_A1_K08_f_ilk_cerceve_bosluk_degil(void)
 {
     static const uint8_t ILK[] = {0u, 1u, 77u, 128u, 200u, 255u};
     for (size_t i = 0; i < sizeof ILK; ++i) {
-        uint8_t seq[3] = {ILK[i], (uint8_t)(ILK[i] + 1u), (uint8_t)(ILK[i] + 2u)};
+        uint8_t seq[3];
+        seq[0] = ILK[i];
+        seq[1] = (uint8_t)(ILK[i] + 1u);
+        seq[2] = (uint8_t)(ILK[i] + 2u);
         seq_dene(seq, 3, NULL, 0u, "ilk çerçeve");
         seq_dene(seq, 1, NULL, 0u, "tek çerçeve");
     }

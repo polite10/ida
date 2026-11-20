@@ -60,7 +60,7 @@ static size_t bozuk_kur(uint8_t *c, kabul_rng_t *r, ida_link_rol_t rol, uint32_t
                         m->yuk_azami, 1, NULL);
     size_t len = n - 12u;
     for (;;) {
-        uint8_t *hedef;
+        uint8_t *hedef = NULL;
         switch (b) {
         case BOZ_YUK: hedef = &c[10u + kabul_rng_aralik(r, (uint32_t)len)]; break;
         case BOZ_CRC_DUSUK: hedef = &c[10u + len]; break;
@@ -71,7 +71,7 @@ static size_t bozuk_kur(uint8_t *c, kabul_rng_t *r, ida_link_rol_t rol, uint32_t
         default:
             for (size_t i = 0; i < len; ++i) {
                 uint8_t v = (uint8_t)(c[10u + i] ^ (1u << (i % 8u)));
-                c[10u + i] = (v == 0xFDu || v == 0xFEu) ? (uint8_t)(c[10u + i] ^ 0x40u) : v;
+                c[10u + i] = (uint8_t)((v == 0xFDu || v == 0xFEu) ? (c[10u + i] ^ 0x40u) : v);
             }
             return n;
         }

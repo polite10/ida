@@ -169,7 +169,8 @@ static void test_A1_K02_d_compat_yok_sayilir(void)
 static size_t mav1_kur(uint8_t *c, kabul_rng_t *r, uint8_t len, uint8_t msgid, uint8_t crc_extra,
                        uint8_t sysid, uint8_t compid)
 {
-    for (int deneme = 0; deneme < 4096; ++deneme) {
+    int temiz = 0;
+    for (int deneme = 0; deneme < 4096 && !temiz; ++deneme) {
         c[0] = 0xFEu;
         c[1] = len;
         c[2] = 3u;
@@ -183,18 +184,15 @@ static size_t mav1_kur(uint8_t *c, kabul_rng_t *r, uint8_t len, uint8_t msgid, u
         crc = kabul_crc_bayt(crc, crc_extra);
         c[6u + len] = (uint8_t)(crc & 0xFFu);
         c[7u + len] = (uint8_t)(crc >> 8);
-        int temiz = 1;
+        temiz = 1;
         for (size_t i = 1; i < 8u + (size_t)len; ++i) {
             if (c[i] == 0xFDu || c[i] == 0xFEu) {
                 temiz = 0;
             }
         }
-        if (temiz) {
-            return 8u + (size_t)len;
-        }
     }
-    TEST_FAIL_MESSAGE("MAVLink 1 çerçevesi kurulamadı");
-    return 0u;
+    TEST_ASSERT_TRUE_MESSAGE(temiz, "MAVLink 1 çerçevesi kurulamadı");
+    return 8u + (size_t)len;
 }
 
 /* (e): 0xFE ile başlayan MAVLink 1 çerçeveleri (HEARTBEAT 0/9 B, ATTITUDE 30/28 B; karşı

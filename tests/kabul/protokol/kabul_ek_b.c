@@ -216,7 +216,7 @@ static void test_A1_EkB_6_parcali_besleme(void)
         const kabul_altin_t *a = &kabul_altin[i];
         kabul_besle_yeni(alici_rolu(a), a->bayt, a->n, &sonuc);
         for (size_t k = 0; k <= a->n; ++k) {
-            kabul_parcalayici_t p = {KABUL_PARCA_IKI, k, {0u}};
+            kabul_parcalayici_t p = kabul_parcalayici(KABUL_PARCA_IKI, k, 0u);
             TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_alici_kur(&al, alici_rolu(a)));
             kabul_sonuc_sifirla(&sonuc2);
             kabul_besle(&al, a->bayt, a->n, &p, &sonuc2);
