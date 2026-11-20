@@ -20,8 +20,8 @@
 
 include_guard(GLOBAL)
 
-set(IDA_CEKIRDEK_YASAK_DESEN "(stm32|cmsis|core_cm[0-9]|freertos|threadx|tx_api|zephyr|rtos)")
-set(IDA_CEKIRDEK_IZINLI_BAGLANTI "")
+# Sabitler işlevin içindedir (modül düzeyindeki değişkenler include_guard yüzünden yalnız
+# modülü ilk içeren dizinde görünür; denetim kök dizinin sonunda koşar).
 
 function(_ida_cekirdek_ihlal hedef ayrinti)
   message(FATAL_ERROR
@@ -39,6 +39,8 @@ function(_ida_yollari_denetle hedef kaynak_adi yollar)
 endfunction()
 
 function(ida_cekirdek_sinirini_denetle hedef)
+  set(IDA_CEKIRDEK_YASAK_DESEN "(stm32|cmsis|core_cm[0-9]|freertos|threadx|tx_api|zephyr|rtos)")
+  set(IDA_CEKIRDEK_IZINLI_BAGLANTI "")
   get_target_property(_kaynak_dizini ${hedef} SOURCE_DIR)
 
   foreach(_ozellik INCLUDE_DIRECTORIES INTERFACE_INCLUDE_DIRECTORIES

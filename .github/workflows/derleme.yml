@@ -160,7 +160,7 @@ jobs:
           cmake --build --preset fw-release
           ctest --preset fw-release
 
-      - name: Statik analiz (clang-tidy, cppcheck; core/)
+      - name: Statik analiz (clang-tidy, cppcheck; core/, protocol/ida_link/)
         if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: |
           mkdir -p build/rapor
@@ -307,7 +307,7 @@ jobs:
           cmake --build --preset fw-release
           ctest --preset fw-release
 
-      - name: Statik analiz (clang-tidy, cppcheck; core/)
+      - name: Statik analiz (clang-tidy, cppcheck; core/, protocol/ida_link/)
         if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: |
           mkdir -p build/rapor
