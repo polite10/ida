@@ -8,7 +8,6 @@ ida_unity_kur()
 add_executable(ida_link_test_tel test_tel.c)
 target_link_libraries(ida_link_test_tel PRIVATE
   ida_link ida_link_altin_veri ida_mavlink_uretilen ida_unity)
-add_dependencies(ida_link_test_tel ida_link_uret)
 ida_ayar_uygula(ida_link_test_tel CEKIRDEK)
 
 if(CMAKE_CROSSCOMPILING)

@@ -11,16 +11,17 @@
 #   protocol/ida.xml + A1 Tablo 3.3 -> mesaj tablosu ve ida_link/dialect.h
 #   protocol/ayna.json (+ ida.xml, A1-K03, port.h) -> ayna eşitlik başlığı
 #   veri/altin.json (+ A1 Ek B ile her derlemede karşılaştırma) -> altın test verisi
-# Üretilen dosyalar <ikili-dizin>/protocol/ida_link/uretilen/ altındadır; depoya girmez.
+# Kitaplığın kendi derlemesine giren üretilmiş başlıklar (ida_link/dialect.h,
+# ida_link/ozel/tablo_uretilen.h) üretilmiş MAVLink başlıklarıyla aynı köktedir
+# (<ikili-dizin>/protocol/uretilen/; tools/denetim/statik-analiz.sh'nin IDA_URETILEN'i);
+# test ve denetim girdileri <ikili-dizin>/protocol/ida_link/uretilen/ altındadır. Hiçbiri
+# depoya girmez.
 
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 include(IdaMavlink)
 include(IdaDenetim)
-# Üretilmiş MAVLink başlıkları sözleşme başlıkları denetimiyle paylaşılır (aynı çıktıya iki
-# üretim kuralı yazılamaz); o denetim kapalıysa burada kurulur.
-if(NOT TARGET ida_mavlink_uretilen)
-  ida_mavlink_uret(ida_mavlink_uretilen)
-endif()
+# Üretilmiş MAVLink başlıkları (paylaşılan üretim; IdaMavlink.cmake yinelenen çağrıya dayanıklı).
+ida_mavlink_uret(ida_mavlink_uretilen)
 
 set(IDA_LINK_ARAC "${CMAKE_CURRENT_SOURCE_DIR}/araclar/ida_link_arac.py")
 set(IDA_LINK_XML "${PROJECT_SOURCE_DIR}/protocol/ida.xml")
@@ -31,14 +32,15 @@ set(IDA_LINK_ALTIN "${CMAKE_CURRENT_SOURCE_DIR}/veri/altin.json")
 set(IDA_LINK_BEKLENEN "${CMAKE_CURRENT_SOURCE_DIR}/veri/dialect_beklenen.json")
 set(IDA_LINK_URETILEN "${CMAKE_CURRENT_BINARY_DIR}/uretilen")
 set(_u "${IDA_LINK_URETILEN}")
+set(_k "${CMAKE_BINARY_DIR}/protocol/uretilen/ida_link")
 set(_py "${Python3_EXECUTABLE}" -I "${IDA_LINK_ARAC}")
 
 # ---- Üretim ----------------------------------------------------------------------------
 add_custom_command(
-  OUTPUT "${_u}/ozel/ida_link_tablo_uretilen.h" "${_u}/acik/ida_link/dialect.h"
+  OUTPUT "${_k}/ozel/tablo_uretilen.h" "${_k}/dialect.h"
   COMMAND ${_py} tablo --xml "${IDA_LINK_XML}" --sozlesme "${IDA_LINK_SOZLESME}"
-          --cikti-tablo "${_u}/ozel/ida_link_tablo_uretilen.h"
-          --cikti-dialect "${_u}/acik/ida_link/dialect.h"
+          --cikti-tablo "${_k}/ozel/tablo_uretilen.h"
+          --cikti-dialect "${_k}/dialect.h"
   DEPENDS "${IDA_LINK_ARAC}" "${IDA_LINK_XML}" "${IDA_LINK_SOZLESME}"
   COMMENT "ida_link: mesaj tablosu ve dialect_hash (protocol/ida.xml, A1 Tablo 3.3)"
   VERBATIM)
@@ -82,19 +84,22 @@ add_custom_command(
   VERBATIM)
 
 add_custom_target(ida_link_uret ALL
-  DEPENDS "${_u}/ozel/ida_link_tablo_uretilen.h" "${_u}/acik/ida_link/dialect.h"
+  DEPENDS "${_k}/ozel/tablo_uretilen.h" "${_k}/dialect.h"
           "${_u}/ozel/ida_link_ayna_esitlik.h"
           "${_u}/ozel/ida_link_altin_veri.c" "${_u}/ozel/ida_link_altin_veri.h"
           "${_u}/deneme/A1-ek-b-bozuk.md" "${_u}/deneme/ida-alan-bozuk.xml"
           "${_u}/deneme/port/ida/port.h")
 
+# Üretilmiş başlıkların arayüzü: include yolu (sistem başlığı, MAVLink'le aynı kök) ve üretim
+# bağımlılığı; bağımlılık bu hedefi kullanan her hedefe geçer (CMake 3.19+).
+add_library(ida_link_uretilen_basliklar INTERFACE)
+target_link_libraries(ida_link_uretilen_basliklar INTERFACE ida_mavlink_uretilen)
+add_dependencies(ida_link_uretilen_basliklar ida_link_uret)
+
 # ---- Kitaplık --------------------------------------------------------------------------
 add_library(ida_link STATIC src/tel.c)
-target_include_directories(ida_link
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${_u}/acik"
-  PRIVATE "${_u}/ozel")
-target_link_libraries(ida_link PRIVATE ida_mavlink_uretilen)
-add_dependencies(ida_link ida_link_uret)
+target_include_directories(ida_link PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(ida_link PUBLIC ida_link_uretilen_basliklar)
 ida_ayar_uygula(ida_link CEKIRDEK)
 if(CMAKE_CROSSCOMPILING)
   target_compile_options(ida_link PRIVATE -fstack-usage)
@@ -103,7 +108,7 @@ endif()
 # Altın çerçeve verisi (test ve ölçüm; ürüne girmez).
 add_library(ida_link_altin_veri STATIC "${_u}/ozel/ida_link_altin_veri.c")
 target_include_directories(ida_link_altin_veri PUBLIC "${_u}/ozel")
-add_dependencies(ida_link_altin_veri ida_link_uret)
+target_link_libraries(ida_link_altin_veri PUBLIC ida_link_uretilen_basliklar)
 ida_ayar_uygula(ida_link_altin_veri CEKIRDEK)
 
 # ---- A1-K03: ayna eşitlikleri derleme zamanında ------------------------------------------
@@ -115,26 +120,22 @@ if(NOT IDA_HEDEF STREQUAL "fw")
 endif()
 add_library(ida_link_ayna_denetimi OBJECT ${_ayna_kaynak})
 target_include_directories(ida_link_ayna_denetimi PRIVATE
-  "${PROJECT_SOURCE_DIR}/core/include" "${_u}/ozel" "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  "${_u}/acik")
-target_link_libraries(ida_link_ayna_denetimi PRIVATE ida_mavlink_uretilen)
-add_dependencies(ida_link_ayna_denetimi ida_link_uret)
+  "${PROJECT_SOURCE_DIR}/core/include" "${_u}/ozel" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(ida_link_ayna_denetimi PRIVATE ida_link_uretilen_basliklar)
 ida_ayar_uygula(ida_link_ayna_denetimi CEKIRDEK)
 
 # Deneme (kabul md. 4): port.h'nin bir değeri değiştirilmiş kopyasıyla aynı birim derlenmez.
 add_library(ida_link_deneme_ayna_bozuk OBJECT EXCLUDE_FROM_ALL ${_ayna_kaynak})
 target_include_directories(ida_link_deneme_ayna_bozuk BEFORE PRIVATE "${_u}/deneme/port")
 target_include_directories(ida_link_deneme_ayna_bozuk PRIVATE
-  "${PROJECT_SOURCE_DIR}/core/include" "${_u}/ozel" "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  "${_u}/acik")
-target_link_libraries(ida_link_deneme_ayna_bozuk PRIVATE ida_mavlink_uretilen)
-add_dependencies(ida_link_deneme_ayna_bozuk ida_link_uret)
+  "${PROJECT_SOURCE_DIR}/core/include" "${_u}/ozel" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(ida_link_deneme_ayna_bozuk PRIVATE ida_link_uretilen_basliklar)
 ida_ayar_uygula(ida_link_deneme_ayna_bozuk CEKIRDEK)
 
 # ---- Sözleşme değerlerinin denetimleri (CTest) ------------------------------------------
 add_test(NAME protokol.dialect.beklenen
   COMMAND ${_py} dialect-denetle --xml "${IDA_LINK_XML}" --beklenen "${IDA_LINK_BEKLENEN}"
-          --baslik "${_u}/acik/ida_link/dialect.h")
+          --baslik "${_k}/dialect.h")
 add_test(NAME protokol.dialect.deneme_alan_adi
   COMMAND ${_py} dialect-denetle --xml "${_u}/deneme/ida-alan-bozuk.xml"
           --beklenen "${IDA_LINK_BEKLENEN}")
@@ -154,12 +155,6 @@ set_tests_properties(protokol.ayna.deneme_port_degeri PROPERTIES
   PASS_REGULAR_EXPRESSION "ayna_esitsizligi")
 
 # Bellek ayırma (tools/denetim/bellek-ayirma.sh; MSVC'de atlanır, IdaDenetim.cmake).
-# IdaDenetim.cmake'in betik yolu değişkeni include_guard(GLOBAL) yüzünden yalnız onu ilk
-# içeren dizinde tanımlıdır; bu dizinde yoksa aynı değerle kurulur (işlev çağıranın
-# kapsamını görür).
-if(NOT IDA_BELLEK_DENETIMI)
-  set(IDA_BELLEK_DENETIMI "${PROJECT_SOURCE_DIR}/tools/denetim/bellek-ayirma.sh")
-endif()
 ida_bellek_denetimi_ekle(protokol.bellek.ida_link ida_link)
 
 # Simge tablosu: değişebilir genel durum yok, kanal işlevi ya da dizisi yok, yalnız izinli

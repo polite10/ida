@@ -9,16 +9,21 @@
 
 include_guard(GLOBAL)
 
-# 09 §2.8'deki küme (malloc/calloc/realloc/free/_malloc_r) + newlib'in öteki yeniden
-# girilebilir karşılıkları ve hizalı ayırma.
-set(IDA_FW_YASAK_AYIRMA
-  malloc calloc realloc free memalign aligned_alloc posix_memalign valloc
-  _malloc_r _calloc_r _realloc_r _free_r _memalign_r)
-
-set(IDA_FW_BAGLAYICI_BETIGI "${PROJECT_SOURCE_DIR}/firmware/yer_tutucu/stm32u5a9_yer_tutucu.ld"
+# Not: işlevler modül düzeyindeki normal değişkenlere dayanmaz (include_guard yüzünden
+# yalnız modülü ilk içeren dizinde görünürler); sabitler işlevin içinde, yollar işlevin
+# kendi dosyasının yerinden (CMAKE_CURRENT_FUNCTION_LIST_DIR) çözülür. Önbellek
+# değişkenleri her dizinde görünür.
+get_filename_component(_ida_ld_varsayilan
+  "${CMAKE_CURRENT_LIST_DIR}/../firmware/yer_tutucu/stm32u5a9_yer_tutucu.ld" ABSOLUTE)
+set(IDA_FW_BAGLAYICI_BETIGI "${_ida_ld_varsayilan}"
   CACHE FILEPATH "Firmware bağlayıcı betiği (W3'te firmware/bsp/ altındaki betik gelir)")
 
 function(ida_fw_elf_kur hedef)
+  # 09 §2.8'deki küme (malloc/calloc/realloc/free/_malloc_r) + newlib'in öteki yeniden
+  # girilebilir karşılıkları ve hizalı ayırma.
+  set(IDA_FW_YASAK_AYIRMA
+    malloc calloc realloc free memalign aligned_alloc posix_memalign valloc
+    _malloc_r _calloc_r _realloc_r _free_r _memalign_r)
   set_target_properties(${hedef} PROPERTIES SUFFIX ".elf")
   target_link_libraries(${hedef} PRIVATE ida_fw_baslangic)
   set(_harita "$<TARGET_FILE_DIR:${hedef}>/${hedef}.map")
@@ -38,7 +43,7 @@ function(ida_fw_elf_kur hedef)
             "-DSIZE=${CMAKE_SIZE}"
             "-DELF=$<TARGET_FILE:${hedef}>"
             "-DCIKTI=$<TARGET_FILE_DIR:${hedef}>/${hedef}.boyut.txt"
-            -P "${PROJECT_SOURCE_DIR}/cmake/boyut_raporu.cmake"
+            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boyut_raporu.cmake"
     COMMENT "Boyut raporu: ${hedef}.boyut.txt"
     VERBATIM)
 endfunction()

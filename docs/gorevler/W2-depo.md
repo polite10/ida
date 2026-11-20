@@ -1,6 +1,6 @@
 # W2-depo — Depo iskeleti, derleme sistemi ve otomatik derleme
 
-Tarih: 2026-11-20 (taslak; W1 sözleşmeleri dondurulup `main`'e birleştikten sonra başlatılır). Yazan: `ida-uygulayici` (Opus; K18). İnceleyen: sol. Dal: `is/w2-depo`. Kayıt: `ida-kayit`.
+Tarih: 2026-11-20. **Başlatıldı (2026-11-20):** dondurma sol doğrulama incelemesini beklerken iş bütünleştirme dalı (`sozlesme/w1-butunlesme`) üzerinde başlatıldı; sözleşme başlıklarında çıkan derleme sorunu dondurmadan önce düzeltilebilsin diye. Dondurmadan sonra dal `main`'e göre yeniden tabanlanır. Yazan: `ida-uygulayici` (Opus; K18). İnceleyen: sol. Dal: `is/w2-depo`. Kayıt: `ida-kayit`.
 
 Bu iş W2'nin ilk işidir ve ürün kodu yazmaz: sonraki bütün işlerin içine yerleşeceği dizinleri, derleme ön ayarlarını, bağımlılık düzenini ve her pull request'te koşan denetimleri kurar. Başvuru: `docs/mimari/00-iskelet.md` §7 (depo düzeni), `docs/mimari/09-test-ve-is-akisi.md` §2.6–§2.8 (araç zinciri, dal, otomatik derleme). 09 ile bu belge çelişirse bu belge geçerlidir; aşağıdaki "09'dan farklar" bölümü bilinen farkları sayar.
 
@@ -11,6 +11,8 @@ Bu iş W2'nin ilk işidir ve ürün kodu yazmaz: sonraki bütün işlerin içine
 - **Kontrol hızı 200 Hz**, 400 Hz değil (iskelet 0.8+); bu iş hız sabiti tanımlamaz, yalnız bilgi.
 - **Eşzamanlı agent sınırı yok**; 09 §2.5'teki "en fazla iki" artık geçerli değil.
 - **Kod yazımı Opus'ta (K18).** 09 §2.9 tablosundaki yazar atamaları geçersiz; inceleme sol'da.
+- **Kota düzeni (mimar kararı, 2026-11-20; işin kota ölçümünden sonra).** Hesap GitHub Free planındadır (aylık dahil kullanım 12 USD; macOS dakikası Windows'un altı katı; dal koruma bu planda yok, mimar denetimi tek kapıdır). Bu yüzden: Windows işi her PR gönderiminde koşar; macOS işi yalnız PR'a `ci-mac` etiketi eklendiğinde ya da elle tetiklenince koşar (her iş zaten Mac'te yerelde derlenip test edilir; kayıt agent'ı birleştirmeden önce etiketi bir kez ekler); belge ve depo denetimi Linux koşucusunda koşar. Linux koşucusu yalnız Python betiği koşturur: ürün derlemesi değildir, iskelet §7'deki "ek bir Linux işi kurulmaz" cümlesi ürün derlemesi içindir (iskelette açıkça yazılacak). Aşağıdaki §5 ve kabul md.5 bu düzenle okunur.
+- **İnceleme kayıtları değiştirilemez kayıttır (mimar kararı, 2026-11-20).** `docs/**/inceleme/` altındaki dosyalardaki çözülmeyen bağlantılar belge denetiminde bulgu değil uyarıdır (`docs/research/dogrulama/` ile aynı); kişisel yol denetimi bu dosyalarda da geçerlidir.
 
 ## Kapsam
 

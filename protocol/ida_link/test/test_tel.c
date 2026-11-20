@@ -303,8 +303,9 @@ static void test_k02_mavlink1_atilir(void)
     const uint8_t v1[17] = {0xFEu, 0x09u, 0x00u, 0xFAu, 0x19u, 0x00u, 0x00u, 0x00u, 0x00u,
                             0x00u, 0x02u, 0x03u, 0x51u, 0x04u, 0x03u, 0x1Cu, 0x7Fu};
     const ida_link_sayaclar_t s = hata_sonra_gecerli(v1, sizeof v1);
+    /* A1-K02: 0xFE hem rx_mav1'e hem rx_resync_bytes'a girer; len'e göre atlama yok. */
     TEST_ASSERT_EQUAL_UINT32(1u, s.rx_mav1);
-    TEST_ASSERT_EQUAL_UINT32(16u, s.rx_resync_bytes);
+    TEST_ASSERT_EQUAL_UINT32(17u, s.rx_resync_bytes);
     TEST_ASSERT_EQUAL_UINT32(0u, s.rx_crc_err);
 }
 

@@ -9953,6 +9953,39 @@
        "ayar",
        "etkin",
        "saat_kaymasi_ppm"
+      ],
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "etkin": {
+           "const": true
+          }
+         },
+         "required": [
+          "etkin"
+         ]
+        },
+        "then": {
+         "properties": {
+          "ayar": {
+           "required": [
+            "bozulma",
+            "bozulma_modeli",
+            "ic_sade",
+            "ic_tam",
+            "kalibrasyon_surumu",
+            "l_alg_ns",
+            "l_sonrasi_ns",
+            "nominal_montaj",
+            "pozlama_ns",
+            "uzak_m",
+            "yakin_m"
+           ]
+          }
+         }
+        }
+       }
       ]
      }
     },

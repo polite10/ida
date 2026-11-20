@@ -7,7 +7,6 @@ target_include_directories(ida_link_olcum_cekirdek PUBLIC "${CMAKE_CURRENT_SOURC
 target_link_libraries(ida_link_olcum_cekirdek
   PUBLIC ida_link ida_link_altin_veri
   PRIVATE ida_mavlink_uretilen)
-add_dependencies(ida_link_olcum_cekirdek ida_link_uret)
 ida_ayar_uygula(ida_link_olcum_cekirdek CEKIRDEK)
 
 if(NOT CMAKE_CROSSCOMPILING)

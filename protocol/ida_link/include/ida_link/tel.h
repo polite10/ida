@@ -1,8 +1,8 @@
 /*
  * ida_link/tel.h — A1 tel katmanı: MAVLink 2 çerçeveleme, kodlama ve alıcı sayaçları
  *
- * Sözleşme: docs/sozlesmeler/A1-kart-baglantisi.md (1.0 adayı) §3.1, §3.2, §3.3, §3.11,
- * §4.1 (A1-K02, K04–K08), A1-K101; makinece okunur tanım protocol/ida.xml.
+ * Sözleşme: docs/sozlesmeler/A1-kart-baglantisi.md (doğrulama turu sonrası metin) §3.1,
+ * §3.2, §3.3, §3.11, §4.1 (A1-K02, K04–K08), A1-K101; makinece okunur tanım protocol/ida.xml.
  * Görev: docs/gorevler/W2-protokol.md. Bu başlık ida_link modülünün alt katmanıdır;
  * A1 <-> A4 dönüştürücüsü (oturum, parti, alan eşlemesi) bunun üzerine kurulur.
  *
@@ -88,9 +88,11 @@ typedef enum {
 } ida_link_rc_t;
 
 /* Alıcı sayaçları. Adlar ve anlamlar A1 Tablo 3.11a/3.11b'dekilerdir; her biri 32 bittir
-   ve 2^32'de sarar (A1 §3.11: kart sayaçları). Sim tarafı 64 bitlik birikimi ardışık
-   okumaların farkıyla kurar ((uint32_t)(yeni - eski) her zaman doğru artıştır, iki okuma
-   arasında 2^32'den az artış olduğu sürece). Çağıran okur; sıfırlamak serbesttir
+   ve 2^32'de sarar (A1 §3.11: tel katmanı sayaçları dahil kart sayaçları). Sim tarafı
+   64 bitlik birikimi ardışık iki okumanın farkıyla ((uint32_t)(yeni - eski)) kurar; iki
+   okuma arasında 2^32'den az artış varsayılır (§3.11). A4'ün plat.cnt_rx_error değeri bu
+   katmanda tutulmaz; platform onu §3.11'deki toplamla kurar: rx_crc_err + rx_iflag +
+   rx_bad_len + rx_overflow + rx_unknown_msgid. Çağıran okur; sıfırlamak serbesttir
    (kitaplık yalnız artırır). */
 typedef struct {
     uint32_t rx_bytes;          /* ida_link_al'a verilip tüketilen her bayt                     */
@@ -100,10 +102,10 @@ typedef struct {
     uint32_t rx_iflag;          /* incompat_flags != 0 (A1-K02)                                 */
     uint32_t rx_bad_len;        /* len = 0 ya da mesajın en büyük yükünden büyük (A1-K05)       */
     uint32_t rx_wrong_sys;      /* sysid/compid karşı tarafınki değil (A1-K04)                  */
-    uint32_t rx_mav1;           /* boşta görülen MAVLink 1 başlangıç baytı 0xFE (A1-K02)        */
+    uint32_t rx_mav1;           /* aday dışında görülen 0xFE baytı; rx_resync_bytes'a da girer (A1-K02) */
     uint32_t rx_overflow;       /* ida_link_alici_tasma ile bildirilen alım taşması (A1-K09)    */
-    uint32_t rx_resync_bytes;   /* hiçbir aday çerçeveye ait olmayan bayt (A1-K07)              */
-    uint32_t rx_seq_gap;        /* ardışık iki kabul edilen çerçeve arasındaki seq boşluğu (A1-K08) */
+    uint32_t rx_resync_bytes;   /* aday başlatmayan ve bir çerçeveye ait olmayan bayt (A1-K07)  */
+    uint32_t rx_seq_gap;        /* kabul edilen çerçevede seq != önceki kabul + 1 olayı (A1-K08) */
 } ida_link_sayaclar_t;
 
 /* Teslim edilen çerçeve. */
@@ -179,10 +181,11 @@ ida_link_rc_t ida_link_alici_kur(ida_link_alici_t *a, ida_link_rol_t rol);
  * hiçbir şey yazılmaz ve bayt tüketilmez. veri ile *cerceve ve *a örtüşmemelidir.
  *
  * Ayrıştırma kuralları (her ret bir sayacı tam bir artırır; tüketilen her bayt rx_bytes'ı):
- *  1. Boşta: 0xFD aday çerçeve başlatır. 0xFE rx_mav1'i artırır ve yalnız o bayt tüketilir
- *     (MAVLink 1 çerçevesinin geri kalanı doğrulanamaz, rx_resync_bytes'a sayılarak taranır;
- *     A1-K02). Başka her bayt rx_resync_bytes'ı artırır (A1-K07).
- *  2. Başlık (ilk 10 bayt) tamamlanınca sırayla: incompat_flags != 0 -> rx_iflag (A1-K02);
+ *  1. Boşta: 0xFD aday çerçeve başlatır. Başka her bayt rx_resync_bytes'ı artırır (A1-K07);
+ *     bunlardan 0xFE ayrıca rx_mav1'i de artırır (A1-K02: MAVLink 1 çerçevesi doğrulanamaz,
+ *     len'e göre atlanmaz; ardından gelen baytlar olağan taramaya girer).
+ *  2. Başlık (ilk 10 bayt) tamamlanınca sırayla (A1-K07'nin denetim sırası):
+ *     incompat_flags != 0 -> rx_iflag (A1-K02);
  *     msgid dialect'te yok -> rx_unknown_msgid (A1-K06); len = 0 ya da len > mesajın en
  *     büyük yükü -> rx_bad_len (A1-K05). compat_flags yok sayılır. Bu üç retten sonra aday
  *     yalnız 0xFD baytıyla tüketilmiş sayılır ve sonraki 9 bayt baştan (kural 1'den) yeniden
@@ -202,8 +205,10 @@ ida_link_rc_t ida_link_alici_kur(ida_link_alici_t *a, ida_link_rol_t rol);
  *
  * Bayt sınıflaması (sınamaya yardımcı değişmez): verilen her bayt tam olarak şunlardan
  * birindedir — kabul edilen çerçeve; sağlaması tutmayan ya da kural 3'te reddedilen aday;
- * kural 2'de reddedilen adayın 0xFD'si; rx_mav1'e sayılan 0xFE; rx_resync_bytes'a sayılan
- * bayt; henüz tamamlanmamış adayda bekleyen bayt.
+ * kural 2'de reddedilen adayın 0xFD'si; rx_resync_bytes'a sayılan bayt (0xFE'ler dahil;
+ * rx_mav1 bunların alt kümesidir); henüz tamamlanmamış adayda bekleyen bayt.
+ * Her reddedilen aday rx_crc_err, rx_iflag, rx_bad_len, rx_unknown_msgid ve rx_wrong_sys
+ * sayaçlarından tam birine girer (tek ret nedeni; A1-K07, §3.11).
  *
  * Dönüş: IDA_LINK_CERCEVE, IDA_LINK_BEKLE; a, tuketilen ya da cerceve NULL ise ya da
  * (veri NULL ve n > 0) ise IDA_LINK_HATA_ARGUMAN; örnek kurulmamışsa IDA_LINK_HATA_ROL.

@@ -43,15 +43,6 @@ if(IDA_HEDEF STREQUAL "fw")
   include(IdaFirmware)
 endif()
 
-# Bellek ayırma denetimi (tools/denetim/bellek-ayirma.sh; W0-SOL1). Windows'ta Git Bash
-# aranır; System32'deki bash (WSL) kullanılmaz.
-if(CMAKE_HOST_WIN32)
-  file(TO_CMAKE_PATH "$ENV{ProgramFiles}" _ida_pf)
-  file(TO_CMAKE_PATH "$ENV{ProgramW6432}" _ida_pf64)
-  find_program(IDA_BASH bash HINTS "${_ida_pf}/Git/bin" "${_ida_pf64}/Git/bin" NO_DEFAULT_PATH)
-endif()
-find_program(IDA_BASH bash)
-
 enable_testing()
 
 add_subdirectory(core)

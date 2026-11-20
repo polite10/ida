@@ -32,7 +32,7 @@ extern mavlink_message_t m_mavlink_buffer[MAVLINK_COMM_NUM_BUFFERS];
 
 #include <string.h>
 
-#include "ida_link_tablo_uretilen.h"
+#include "ida_link/ozel/tablo_uretilen.h"
 
 /* Tel yükü = yapının ilk baytları varsayımı yalnız küçük uçlu hedefte geçerlidir. */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
@@ -118,7 +118,8 @@ static uint8_t gonderilen_yon(uint8_t rol)
                                              : (uint8_t)IDA_LINK_YON_SIM_KART;
 }
 
-static uint16_t crc_hesapla(const uint8_t *p, size_t n, uint8_t crc_extra)
+/* CRC_EXTRA ilk argümandır: boy ile yan yana karışabilecek iki tamsayı olmasın. */
+static uint16_t crc_hesapla(uint8_t crc_extra, const uint8_t *p, size_t n)
 {
     uint16_t crc;
     crc_init(&crc);
@@ -154,10 +155,12 @@ static void bosta_bayt(ida_link_alici_t *a, uint8_t b)
         a->ozel_durum = DURUM_ADAY;
         a->ozel_tampon[0] = b;
         a->ozel_dolu = 1u;
-    } else if (b == IDA_LINK_MAGIC_V1) {
-        a->sayac.rx_mav1++;
     } else {
+        /* A1-K02, K07: aday başlatmayan bayt; 0xFE ayrıca rx_mav1'e sayılır. */
         a->sayac.rx_resync_bytes++;
+        if (b == IDA_LINK_MAGIC_V1) {
+            a->sayac.rx_mav1++;
+        }
     }
 }
 
@@ -218,7 +221,7 @@ static int cerceve_bitir(ida_link_alici_t *a, ida_link_cerceve_t *c)
     const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)len;
     const uint16_t gelen = (uint16_t)((uint16_t)t[govde] | (uint16_t)((uint16_t)t[govde + 1u] << 8));
 
-    if (crc_hesapla(&t[1], govde - 1u, s->crc_extra) != gelen) {
+    if (crc_hesapla(s->crc_extra, &t[1], govde - 1u) != gelen) {
         a->sayac.rx_crc_err++;
         return 0;
     }
@@ -383,7 +386,7 @@ ida_link_rc_t ida_link_gonder(ida_link_gonderici_t *g, uint32_t msgid,
     cikis[9] = (uint8_t)((msgid >> 16) & 0xFFu);
     memcpy(&cikis[IDA_LINK_BASLIK_BOYU], yuk, len);
     const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)len;
-    const uint16_t crc = crc_hesapla(&cikis[1], govde - 1u, s->crc_extra);
+    const uint16_t crc = crc_hesapla(s->crc_extra, &cikis[1], govde - 1u);
     cikis[govde] = (uint8_t)(crc & 0xFFu);
     cikis[govde + 1u] = (uint8_t)(crc >> 8);
 

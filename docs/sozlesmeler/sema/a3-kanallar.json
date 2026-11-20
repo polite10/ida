@@ -647,6 +647,12 @@
         "anlam": "emülatörden çıkışta revizyonu değişmiş olduğu için atilan genişletici yer istasyonu komutu (A3-K101)"
       },
       {
+        "ad": "komut_bayat_yetki",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A1 gönderim kuyruğunda, tele yazılmadan önce revizyonu değişmiş olduğu için gönderilmeyen genişletici komut (A1 Tablo 3.11a; A1-K129)"
+      },
+      {
         "ad": "a3_halka_tasma",
         "tip": "u64",
         "birim": "-",
@@ -1097,7 +1103,7 @@
         "tip": "u8",
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son bildirdiği geri okuma (A1 `IDA_SAFETY.estop`); bilinmiyorsa 255"
+        "anlam": "kartın bildirdiği etkin değer: A1 `IDA_FC_STATUS.inhibit_mask` bit 4 `ESTOP` (A4 §3.16; 1 = basili); `IDA_FC_STATUS` alınmadıysa 255"
       },
       {
         "ad": "kart_silahlandirma_fisi",
@@ -1105,7 +1111,7 @@
         "adet": 2,
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son geri okuması (`IDA_SAFETY.tube[i]` `PLUG_IN` biti); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); bilinmiyorsa 255"
+        "anlam": "kartın bildirdiği etkin değer: `inhibit_mask` bit 5+i `PLUG_T<i>` kuruluysa 0 (cikarilmis), değilse 1 (takili) (A4 §3.16); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); `IDA_FC_STATUS` alınmadıysa 255"
       },
       {
         "ad": "kart_emniyet_pimi",
@@ -1113,13 +1119,13 @@
         "adet": 2,
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son geri okuması (`IDA_SAFETY.tube[i]` `PIN_OUT` bitinin tersi: 1 = takili); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); bilinmiyorsa 255"
+        "anlam": "kartın bildirdiği etkin değer: `inhibit_mask` bit 7+i `PIN_T<i>` kuruluysa 1 (takili), değilse 0 (cikarilmis) (A4 §3.16); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); `IDA_FC_STATUS` alınmadıysa 255"
       },
       {
         "ad": "geri_okuma_farki",
         "tip": "u8",
         "birim": "-",
-        "anlam": "anlık fark bitleri: bit0 acil, bit1 fiş f1, bit2 fiş f2, bit3 pim f1, bit4 pim f2; kartın okuması bilinmiyorsa bit 0"
+        "anlam": "yetkili durum ile kartın bildirdiği etkin değer arasındaki anlık fark bitleri: bit0 acil, bit1 fiş f1, bit2 fiş f2, bit3 pim f1, bit4 pim f2; kartın değeri bilinmiyorsa bit 0"
       },
       {
         "ad": "emniyet_rev",
@@ -2370,7 +2376,7 @@
         "ad": "batch_seq",
         "tip": "u32",
         "birim": "-",
-        "anlam": "kaydın ait olduğu partinin `batch_seq`'i (kamerada `kare_seq`; A8-K16)"
+        "anlam": "kaydın ait olduğu partinin `batch_seq`'i (kamerada `kare_sirasi`; A8-K16, K62)"
       },
       {
         "ad": "run_gen",
@@ -2441,7 +2447,7 @@
         "ad": "batch_seq",
         "tip": "u32",
         "birim": "-",
-        "anlam": "A8 `batch_seq` (kamerada `kare_seq`); `NO_FRAME`'de 0"
+        "anlam": "A8 `batch_seq` (kamerada `kare_sirasi`; A8-K16, K62); `NO_FRAME`'de 0"
       },
       {
         "ad": "run_gen",
@@ -3328,7 +3334,7 @@
         "ad": "kopma",
         "tip": "u64",
         "birim": "-",
-        "anlam": "A2 kopma sayısı; neden `surec_durumu` olayında"
+        "anlam": "A2 kopma sayısı; A2 oturum kapanış nedeni `surec_durumu.a2_veda_nedeni`'nde"
       },
       {
         "ad": "istek_hazir_adet",
@@ -6840,14 +6846,31 @@
         "neden": {
           "type": "string",
           "enum": [
-            "yanit_gec",
-            "sim_adimi_gec"
-          ]
+            "parti_kacirildi",
+            "son_tarih_kacirildi",
+            "sim_gecikmesi",
+            "cagri_cakismasi",
+            "bariyer_bekleme",
+            "olay_gec",
+            "esz_guvenli_uygulanan",
+            "yanit_ret_gec",
+            "pencere_tasma",
+            "planlanmamis_oturum_sonu",
+            "beklenmeyen_sifirlama",
+            "hil_duraklatma"
+          ],
+          "description": "geçersizliği ilk kuran A1-K79 nedeni; adlar ve bitler A3 Tablo 4.8 (0-11)"
+        },
+        "neden_biti": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
         }
       },
       "additionalProperties": false,
       "required": [
-        "neden"
+        "neden",
+        "neden_biti"
       ]
     },
     "olay_parti_kacirildi_ozeti": {
@@ -7042,6 +7065,11 @@
         "yon",
         "uygulama_adimi",
         "emniyet_rev"
+      ],
+      "allOf": [
+        {
+          "$ref": "#/$defs/girdi_secimi"
+        }
       ]
     },
     "olay_atis_olayi_sonucu": {
@@ -7435,6 +7463,18 @@
             "durduruldu"
           ]
         },
+        "a2_veda_nedeni": {
+          "type": "string",
+          "enum": [
+            "olagan",
+            "protokol_hatasi",
+            "tampon_tasti",
+            "nabiz_zaman_asimi",
+            "sim_kapaniyor",
+            "yeni_calistirma"
+          ],
+          "description": "A2 oturumu `veda` ile kapandıysa A2 `VedaNedeni` (0-5; `yeni_calistirma` = 5, A2-K96); kapalı liste"
+        },
         "neden": {
           "type": "string",
           "maxLength": 256,
@@ -7523,7 +7563,7 @@
       "properties": {
         "olay_kimligi": {
           "type": "string",
-          "pattern": "^[a-z0-9_]{1,64}$"
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$"
         },
         "tur": {
           "type": "string",
@@ -7628,10 +7668,29 @@
         },
         "alan": {
           "type": "string",
-          "pattern": "^[a-z0-9_.]{1,64}$"
+          "pattern": "^[A-Za-z0-9_.]{1,128}$"
+        },
+        "celiski_kimligi": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "parca_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "parca_sayisi": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "son_parca": {
+          "type": "boolean"
         },
         "degerler": {
           "type": "array",
+          "minItems": 1,
           "maxItems": 8,
           "items": {
             "type": "string",
@@ -7642,10 +7701,11 @@
         },
         "olay_kimlikleri": {
           "type": "array",
+          "minItems": 1,
           "maxItems": 8,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_]{1,64}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$"
           }
         },
         "uygulanan_deger": {
@@ -7659,6 +7719,10 @@
       "required": [
         "t_ns",
         "alan",
+        "celiski_kimligi",
+        "parca_no",
+        "parca_sayisi",
+        "son_parca",
         "degerler",
         "olay_kimlikleri",
         "uygulanan_deger"
@@ -7674,11 +7738,11 @@
         },
         "olay_kimligi": {
           "type": "string",
-          "pattern": "^[a-z0-9_]{1,64}$"
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$"
         },
         "alan": {
           "type": "string",
-          "pattern": "^[a-z0-9_.]{1,64}$"
+          "pattern": "^[A-Za-z0-9_.]{1,128}$"
         },
         "istenen_deger": {
           "type": "string",
@@ -7717,11 +7781,11 @@
         },
         "olay_kimligi": {
           "type": "string",
-          "pattern": "^[a-z0-9_]{1,64}$"
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$"
         },
         "sensor": {
           "type": "string",
-          "pattern": "^[a-z0-9_]{1,64}$"
+          "pattern": "^[A-Za-z0-9_]{1,64}$"
         },
         "sayac": {
           "type": "integer",
