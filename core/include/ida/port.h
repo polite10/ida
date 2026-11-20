@@ -1,7 +1,7 @@
 /*
  * İDA — ortak çekirdek <-> çevresi: port arayüzü (A4)
  *
- * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (çapraz uyum turu, W1-uyum).
+ * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (dondurma öncesi son tur).
  * Bu dosya sözleşmenin makinece okunur parçasıdır; belgeyle çelişemez.
  * Yalnız tip tanımları, sabitler ve işlev bildirimleri içerir (A4-K01).
  * Her bildirimin üstündeki yorum, ilgili kural numarasını verir.
@@ -386,7 +386,8 @@ typedef struct {
 #define IDA_PT_U32  2u
 #define IDA_PT_F32  3u
 
-/* A4-K81, A4-K85, A4-K121: birlik v'nin seçicisi type: I32->i32, U32->u32, F32->f32. */
+/* A4-K81, A4-K85, A4-K121: birlik v'nin seçicisi type: I32->i32, U32->u32, F32->f32.
+   Üç üye aynı 32 biti paylaşır; kayıtta v her zaman 32 bitlik ham değerdir (belge 3.14). */
 typedef struct {
     uint16_t id;
     uint8_t  type;         /* IDA_PT_*                                            */
@@ -419,7 +420,8 @@ typedef struct {
 /* A4-K43, A4-K121: daraltıcı olmayan komut (daraltıcılar ida_narrow_t ile gelir).
    Birlik u'nun seçicisi type: SET_MODE->set_mode, MANUAL->manual, GUIDED_SP->guided,
    MISSION_BEGIN->mission_begin, MISSION_ITEM->mission_item, MISSION_CTL->mission_ctl,
-   PARAM_SET ve PARAM_GET->param, FC->fc; HEARTBEAT, ARM, MISSION_END, PARAM_COMMIT,
+   PARAM_SET->param (id, type, v), PARAM_GET->yalnız param.id (type ve v okunmaz),
+   FC->fc; HEARTBEAT, ARM, MISSION_END, PARAM_COMMIT,
    PARAM_SAVE ve FAILSAFE_RESET'te etkin üye yoktur. */
 typedef struct {
     uint32_t cmd_id;       /* sonuç aynı kimlikle (A4-K43, A4-K48)               */
@@ -605,11 +607,11 @@ typedef struct {
 #define IDA_REASON_NONE          0u
 #define IDA_REASON_CALL_REJECTED 1u  /* çağrı hata döndü (A4-K26)                 */
 #define IDA_REASON_ARMED         2u  /* silahlıyken ya da aynı çağrıda ARM varken  */
-#define IDA_REASON_NOT_ARMABLE   3u  /* arm ön koşulu tutmuyor                    */
+#define IDA_REASON_NOT_ARMABLE   3u  /* genişletmenin durum ön koşulu tutmuyor (arm dahil; belge 3.17) */
 #define IDA_REASON_PARAM_BUSY    4u  /* parametre kaydı sürüyor (A4-K83)          */
 #define IDA_REASON_PARAM_INVALID 5u
 #define IDA_REASON_OUT_OF_RANGE  6u
-#define IDA_REASON_BAD_MODE      7u
+#define IDA_REASON_BAD_MODE      7u  /* kip, görev ya da atış kontrol durumu uygun değil (3.17) */
 #define IDA_REASON_EVENTS_OFF    8u  /* olay kimliği kullanılamaz (A4-K61, K62)    */
 #define IDA_REASON_SESSION       9u  /* oturum yok                                */
 #define IDA_REASON_NARROWED     10u  /* aynı çağrıda daraltma var (A4-K45)         */
@@ -721,7 +723,7 @@ typedef struct {
     uint32_t bg_dropped;          /* A4-K94                                       */
     uint32_t bg_slice_mismatch;   /* A4-K109                                      */
     uint32_t log_dropped;         /* A4-K90                                       */
-    uint32_t step_miss;           /* prev_overrun ve atlanan parti toplamı        */
+    uint32_t step_miss;           /* prev_overrun, atlanan ve birleştirilen parti toplamı; taban ilk çağrı */
 } ida_core_counters_t;
 
 /* A4-K88: durum. */
@@ -823,7 +825,7 @@ typedef struct {
 #define IDA_FCI_IMU_LAG          0x00001000u /* A4-K108                             */
 #define IDA_FCI_IMU_STALE        0x00002000u /* A4-K39                              */
 #define IDA_FCI_SESSION          0x00004000u /* A1 oturumu yok                      */
-#define IDA_FCI_RESULT_PENDING   0x00008000u /* sonucu beklenen olay var (A4-K106)  */
+#define IDA_FCI_RESULT_PENDING   0x00008000u /* sonucu beklenen olay var (A4-K123)  */
 #define IDA_FCI_FAULT_LATCHED    0x00010000u /* FC mandallı arıza                   */
 #define IDA_FCI_DET_STALE        0x00020000u /* kamera algılama akışı bayat (K118)  */
 #define IDA_FCI_DEFINED          0x0003FFFFu
@@ -966,8 +968,9 @@ ida_rc_t ida_core_step(ida_core_t *c, const ida_in_t *in, ida_out_t *out);
 ida_rc_t ida_core_tick(ida_core_t *c, const ida_in_t *in, ida_out_t *out);
 
 /* A4-K93 … A4-K96, A4-K109, A4-K110, A4-K117: arka plan işinin bir dilimi.
-   c NULL ya da now_w aralık dışıysa IDA_BG_BAD_INPUT; örnek kurulmamışsa
-   IDA_BG_IDLE döner; ikisinde de iş yapılmaz. */
+   Sıra (belge 3.11): c NULL ise IDA_BG_BAD_INPUT; örnek kurulmamışsa IDA_BG_IDLE
+   (hiçbir şey yazılmaz); now_w aralık dışıysa IDA_BG_BAD_INPUT. İlk ikisinde ve
+   üçüncüsünde iş yapılmaz. */
 ida_bg_rc_t ida_core_background(ida_core_t *c, ida_wtime_t now_w);
 
 /* A4-K85: parametre tablosu (örneksiz, salt okunur). */
