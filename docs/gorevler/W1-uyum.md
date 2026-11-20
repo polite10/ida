@@ -115,6 +115,43 @@ U2, U3 (A3-K95; A6 atıf), U4a, U6, U10 (tekrar ve `sil_n_bg`), U16, U17 (üst v
 
 P1 ve P2 ile P3 ve P4'ün iskelet notları 0.10'a işlendi: emniyet revizyonunun kapalı listesi ve sırası (§3.2), saat alanları ve bariyer kipinin tanımı (§4), atış kontrolün kapsam ifadeleri (§2, §5, §9), kamera karesinin gösterdiği an (§8), yeniden kurma girişi (§3), bant hesabı (%85,5).
 
+## Doğrulama turu (2026-11-20)
+
+sol'un dört parçalı doğrulama incelemesi (`docs/sozlesmeler/inceleme/W1-dogrulama-sol-{1..4}.md`, bütünleştirme dalında) dört parçada da "dondurulamaz" dedi: çapraz incelemenin bulgularının çoğu kapanmış, 19 kritik ve 20 dolayında önemli bulgu kalmıştı (parçalar arasında yinelenenler var). Aynı gün W2'nin ilk işleri sözleşmeleri uygulama gözüyle okudu: çekirdek tasarım notu A4'te 35, tel katmanı uygulayıcısı A1'de 7 belirsizlik bildirdi. Hepsi aşağıdaki mimar kararlarıyla yazarlara verildi; iskelet 0.11 oldu. Kararlar kullanıcı kararı değildir.
+
+**Emniyet zinciri**
+
+- **D-1 Yolda bekleyen genişleticinin üçüncü bekleme noktası.** Sim, A1 gönderim kuyruğunda bekleyen genişletici komutu tele yazmadan hemen önce kabul revizyonuyla yeniden denetler; değiştiyse göndermez (`bayat_yetki`). U4 üç noktalıdır: emülatör çıkışı (A3-K101), sim gönderim kuyruğu (A1-K129), kart erteleme tamponu (A1-K63).
+- **D-2 Taşınan emniyet örneği gevşetemez.** Reddedilen (`DUP`/`OLD`) ya da birleştirilen (en yeni dışındaki) partiden sonraki çağrıya taşınan `IDA_SAFETY` örneği `VALID = 0` ile teslim edilir; çekirdek yalnız kısıtlayıcı içeriğini uygular (A4-K130, A1-K31/K124). Gevşetme, periyodik yeniden gönderimle kabul edilen bir partiden gelir.
+- **D-3 İzin yenileme güvencesi koşulludur.** Sonuç beklenirken yeni izin olayı yasağı (U12c, A4-K123) korunur; `hold/2` yenileme güvencesi önceki sonucun zamanında alınmasına bağlıdır; gecikirse izin alıcıda süresi dolunca düşer (A4-K107, A1 E9).
+- **D-4 `SAFETY_CLOSE` birleştirme.** Bir çekirdek çağrısının kapanmaları birleştirilir: iki tüpü kapsayan neden varsa tek olay, yoksa tüp başına en çok bir (A4-K125); `SAFETY_CLOSE` hiçbir koşulda düşmez.
+- **D-5 Hata yanıtı ve olay.** Hata dönüşünde çıkan olay son kabul edilen zaman çerçevesinin numarasını taşır (yoksa 0); sim'de yanıt yuvası olay beklemeden tamamlanır ve olay kendi numarasıyla uygulanır (A4-K57/§4.14, A1-K73/K84).
+- **D-6 Emniyet örneği kapasitesi.** En küçük tel boyları kırpmayla hesaplanır: emniyet taşıyan en küçük pencere 54 B, sıkışmada sınır 2,70 ms (A1 E20); güvence koşulludur, aşılırsa oturum kapanır; koşullar W3/W4'te ölçülür.
+
+**Çekirdek çağrı çerçevesi (A4; çekirdek tasarım notu `core/TASARIM.md` üzerine)**
+
+- **D-7** Kurulmamış çekirdeğin çıktısı sabittir (A4-K126); komut başına ret nedenleri kapalı tablodur, yeni neden kodu eklenmedi (A4-K124, §3.17); kip ile `armed` bağımsızdır (A4-K127); ilk kabulden önce IMU bayat, tüp boş, izin kapalı sayılır (A4-K128); çekirdeğin bekleyen olay kümesi 7 + 1'dir (A4-K129).
+- **D-8** `cmds[]`'teki daraltıcı komut reddedilen çağrıda da uygulanır; `SESSION_START` reddedilen çağrıda da sıra izini sıfırlar; etkin emniyet değerleri `SESSION_END`'de kısıtlayana döner; `out` NULL çağrısında oluşan kapanma olayı ve günlük sonraki yazılabilir çağrıda verilir; emniyet girdisinin tek gevşeten kaynağı `inst = 0`'dır.
+
+**Bağlantı (A1; tel katmanı uygulaması üzerine)**
+
+- **D-9** Denetim sırası: başlıkta `incompat_flags` → kimlik → `len`; CRC'den sonra kimlik çifti → yön. Başlıkta reddedilen adayda tarama `0xFD`'den sonraki bayttan sürer; CRC hatasında aday bütünüyle tüketilir. `rx_seq_gap` olay sayar. `cnt_rx_error` toplamı `rx_unknown_msgid`'i içerir. A1-K101 işlev adı vermez: durum yalnız örneğin kendi yapısındadır (uygulama kendi ayrıştırıcısını kullanır).
+- **D-10** Komut kimliği uzlaştırması doğrudan `last_cmd_id` penceresiyle yapılır (A1-K66). Oturum sonu çağrısının izi en iyi çabayla gönderilir; yeniden kurma ona dayanmaz. Ayna numaralandırma eşlemesi `protocol/ayna.json` dosyasındadır (ad kuralı mekanik değildir).
+
+**Kayıt, tekrar, panel (A3, A6)**
+
+- **D-11** Geçersiz girdi bozuk dosya değildir: tanımsız seçicili girdi başlığıyla kaydedilir, gövdesi kaydedilmez (A6-K52; A4 gövdeyi okumaz). `PARAM_GET` yalnız kimlik taşır; parametre değeri kayıtta ham 32 bittir.
+- **D-12** Zaman çerçevesi yazım zamanları yalnız `telemetri` ve `tam` kademelerinde kayda girer; `olaylar` kademesindeki kayıt zamanlamanın yeniden kurulmasına yetmez (A1-K43, A6-K28). Sim bu zamanları her kademede ölçer ve kullanır.
+- **D-13** Çelişen atamalar 8 öğelik parçalarla kayıpsız taşınır (A3-K125, A6-K61); A5'e sınır eklenmez. Kart geri okuması yalnız kartın bildirdiği engel maskesinden türetilir; sim'in gönderdiği emniyet değeri kart okuması diye sunulmaz.
+
+**Görsel taraf ve senaryo (A2, A5, A8)**
+
+- **D-14** Çalıştırma nesli yeni çalıştırmada da artar (A2-K80); sim kabul kapısının zaman durumu nesil değişiminde sıfırlanır (A8). Bütün kapanış yollarında eşleme, süren okumalar bittikten sonra kaldırılır (A8).
+- **D-15** Kamera kademesi açıkken tam bir etkin kamera ve eksiksiz yapılandırma A5'te yükleme hatasıdır; kamera montajının kuaterniyon kabul kuralı A2'ninkidir; taban derinliği denetimi statik poz uygulanmış geometriyle yapılır.
+- **D-16 (P2-15'in kapanışı).** Kamera algılama bileşeninin iç sayaçları dışa açılmaz; ayrıntılı ret, durum ve geç yanıt sayaçları sim kabul kapısında tutulur ve A3/A6'da yayımlanır; çekirdekte tek toplam sayaç vardır. Uyum turundaki ilk ifadeden bilinçli daraltmadır.
+
+**Süreç.** Bu turun değişiklikleri doğrulama incelemesinden sonra yapıldı; dondurmadan önce sol, bütünleştirme dalının doğrulama anındaki hâli (`40b8d63`) ile son hâli arasındaki farkı inceler (fark incelemesi).
+
 ## Sonraki adım
 
 Altı dal bütünleştirme dalına yeniden birleştirilir; sol **doğrulama incelemesi** yalnız bu belgenin maddelerinin kapanışını ve turun yeni çelişki üretip üretmediğini denetler. Kritik bulgu kalmazsa dondurma: sürüm 1.0, etiketler `sozlesme-A<n>-v1`, PR.
