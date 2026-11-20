@@ -33,7 +33,7 @@ sure_ns = 60_000_000_000      # 60 s
 [ortam]
 tur = "havuz"
 sahne = "havuz_ornek"         # A7 `statik` varlığı: 25 m × 12,5 m, düz taban [MV]
-derinlik = 3.0                # m [MV]; A7 manifestinin `taban_derinligi_m` alanıyla eşit olmalı (A5-K36)
+derinlik = 3.0                # m [MV]; = sahne_poz.konum[2] (varsayılan 0) + A7 `taban_derinligi_m` (3,0), ±1 mm (A5-K36)
 manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]   # B_n (NED), T [MV]; WMM'den doğrulanmadı
 
 [ortam.orijin]                # [MV] 41,0° K, 29,0° D, 0 m (IMU dünya dönüşü için zorunlu, A5-K45)

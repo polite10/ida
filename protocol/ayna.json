@@ -1,0 +1,678 @@
+{
+  "surum": "1.0",
+  "aciklama": "A1-K03: protocol/ida.xml ayna numaralandirmalarinin her girdisi port.h'teki karsilik IDA_ sabitiyle ayni degerdedir. Esleme bu dosyadadir; ad kurali mekanik degildir. IDAW_REASON yalniz 0-15. Bu dosya dialect_hash'e girmez.",
+  "numaralandirmalar": [
+    "IDAW_CMD_TYPE",
+    "IDAW_MODE",
+    "IDAW_FC_OP",
+    "IDAW_FC_STATE",
+    "IDAW_EVENT_KIND",
+    "IDAW_EVENT_RESULT_CODE",
+    "IDAW_ACK",
+    "IDAW_REASON",
+    "IDAW_CORE_RC",
+    "IDAW_SAMPLE_FLAGS",
+    "IDAW_DVL_FLAGS",
+    "IDAW_TUBE_FLAGS",
+    "IDAW_SP_MASK",
+    "IDAW_MI_TYPE",
+    "IDAW_MI_FRAME",
+    "IDAW_MCTL",
+    "IDAW_PARAM_TYPE",
+    "IDAW_RES_KIND",
+    "IDAW_FS_LEVEL",
+    "IDAW_GNSS_FIX",
+    "IDAW_SEVERITY"
+  ],
+  "gruplar": [
+    {
+      "numaralandirma": "IDAW_CMD_TYPE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_CMD_TYPE_HEARTBEAT",
+          "ida": "IDA_CMD_HEARTBEAT"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_ARM",
+          "ida": "IDA_CMD_ARM"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_DISARM",
+          "ida": "IDA_CMD_DISARM"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_SET_MODE",
+          "ida": "IDA_CMD_SET_MODE"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_MANUAL",
+          "ida": "IDA_CMD_MANUAL"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_GUIDED_SP",
+          "ida": "IDA_CMD_GUIDED_SP"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_MISSION_BEGIN",
+          "ida": "IDA_CMD_MISSION_BEGIN"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_MISSION_ITEM",
+          "ida": "IDA_CMD_MISSION_ITEM"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_MISSION_END",
+          "ida": "IDA_CMD_MISSION_END"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_MISSION_CTL",
+          "ida": "IDA_CMD_MISSION_CTL"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_PARAM_SET",
+          "ida": "IDA_CMD_PARAM_SET"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_PARAM_GET",
+          "ida": "IDA_CMD_PARAM_GET"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_PARAM_COMMIT",
+          "ida": "IDA_CMD_PARAM_COMMIT"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_PARAM_SAVE",
+          "ida": "IDA_CMD_PARAM_SAVE"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_FAILSAFE_RESET",
+          "ida": "IDA_CMD_FAILSAFE_RESET"
+        },
+        {
+          "idaw": "IDAW_CMD_TYPE_FC",
+          "ida": "IDA_CMD_FC"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_MODE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_MODE_INIT",
+          "ida": "IDA_MODE_INIT"
+        },
+        {
+          "idaw": "IDAW_MODE_DISARMED",
+          "ida": "IDA_MODE_DISARMED"
+        },
+        {
+          "idaw": "IDAW_MODE_MANUAL",
+          "ida": "IDA_MODE_MANUAL"
+        },
+        {
+          "idaw": "IDAW_MODE_STABILIZE",
+          "ida": "IDA_MODE_STABILIZE"
+        },
+        {
+          "idaw": "IDAW_MODE_DEPTH_HOLD",
+          "ida": "IDA_MODE_DEPTH_HOLD"
+        },
+        {
+          "idaw": "IDAW_MODE_STATION_KEEP",
+          "ida": "IDA_MODE_STATION_KEEP"
+        },
+        {
+          "idaw": "IDAW_MODE_GUIDED",
+          "ida": "IDA_MODE_GUIDED"
+        },
+        {
+          "idaw": "IDAW_MODE_AUTO",
+          "ida": "IDA_MODE_AUTO"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_FC_OP",
+      "girdiler": [
+        {
+          "idaw": "IDAW_FC_OP_ARM",
+          "ida": "IDA_FC_ARM"
+        },
+        {
+          "idaw": "IDAW_FC_OP_DISARM",
+          "ida": "IDA_FC_DISARM"
+        },
+        {
+          "idaw": "IDAW_FC_OP_ABORT",
+          "ida": "IDA_FC_ABORT"
+        },
+        {
+          "idaw": "IDAW_FC_OP_FIRE",
+          "ida": "IDA_FC_FIRE"
+        },
+        {
+          "idaw": "IDAW_FC_OP_RESET",
+          "ida": "IDA_FC_RESET"
+        },
+        {
+          "idaw": "IDAW_FC_OP_TEST_ENTER",
+          "ida": "IDA_FC_TEST_ENTER"
+        },
+        {
+          "idaw": "IDAW_FC_OP_TEST_EXIT",
+          "ida": "IDA_FC_TEST_EXIT"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_FC_STATE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_FC_STATE_SAFE",
+          "ida": "IDA_FCS_SAFE"
+        },
+        {
+          "idaw": "IDAW_FC_STATE_ARMED",
+          "ida": "IDA_FCS_ARMED"
+        },
+        {
+          "idaw": "IDAW_FC_STATE_PERMIT_OPEN",
+          "ida": "IDA_FCS_PERMIT_OPEN"
+        },
+        {
+          "idaw": "IDAW_FC_STATE_FIRE_PENDING",
+          "ida": "IDA_FCS_FIRE_PENDING"
+        },
+        {
+          "idaw": "IDAW_FC_STATE_TEST",
+          "ida": "IDA_FCS_TEST"
+        },
+        {
+          "idaw": "IDAW_FC_STATE_FAULT_LATCHED",
+          "ida": "IDA_FCS_FAULT_LATCHED"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_EVENT_KIND",
+      "girdiler": [
+        {
+          "idaw": "IDAW_EVENT_KIND_SAFETY_OPEN",
+          "ida": "IDA_EVT_SAFETY_OPEN"
+        },
+        {
+          "idaw": "IDAW_EVENT_KIND_SAFETY_CLOSE",
+          "ida": "IDA_EVT_SAFETY_CLOSE"
+        },
+        {
+          "idaw": "IDAW_EVENT_KIND_FIRE",
+          "ida": "IDA_EVT_FIRE"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_EVENT_RESULT_CODE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_APPLIED",
+          "ida": "IDA_EVR_APPLIED"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_DUPLICATE",
+          "ida": "IDA_EVR_DUPLICATE"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_REJ_EXPIRED",
+          "ida": "IDA_EVR_REJ_EXPIRED"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_REJ_SAFE",
+          "ida": "IDA_EVR_REJ_SAFE"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_REJ_TUBE_EMPTY",
+          "ida": "IDA_EVR_REJ_TUBE_EMPTY"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_REJ_SESSION",
+          "ida": "IDA_EVR_REJ_SESSION"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_DROPPED_GATE",
+          "ida": "IDA_EVR_DROPPED_GATE"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_DROPPED_NO_SLOT",
+          "ida": "IDA_EVR_DROPPED_NO_SLOT"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_EXPIRED_NO_ACK",
+          "ida": "IDA_EVR_EXPIRED_NO_ACK"
+        },
+        {
+          "idaw": "IDAW_EVENT_RESULT_CODE_SESSION_END",
+          "ida": "IDA_EVR_SESSION_END"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_ACK",
+      "girdiler": [
+        {
+          "idaw": "IDAW_ACK_ACCEPTED",
+          "ida": "IDA_ACK_ACCEPTED"
+        },
+        {
+          "idaw": "IDAW_ACK_REJECTED",
+          "ida": "IDA_ACK_REJECTED"
+        },
+        {
+          "idaw": "IDAW_ACK_IN_PROGRESS",
+          "ida": "IDA_ACK_IN_PROGRESS"
+        },
+        {
+          "idaw": "IDAW_ACK_DUPLICATE",
+          "ida": "IDA_ACK_DUPLICATE"
+        },
+        {
+          "idaw": "IDAW_ACK_UNSUPPORTED",
+          "ida": "IDA_ACK_UNSUPPORTED"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_REASON",
+      "girdiler": [
+        {
+          "idaw": "IDAW_REASON_NONE",
+          "ida": "IDA_REASON_NONE"
+        },
+        {
+          "idaw": "IDAW_REASON_CALL_REJECTED",
+          "ida": "IDA_REASON_CALL_REJECTED"
+        },
+        {
+          "idaw": "IDAW_REASON_ARMED",
+          "ida": "IDA_REASON_ARMED"
+        },
+        {
+          "idaw": "IDAW_REASON_NOT_ARMABLE",
+          "ida": "IDA_REASON_NOT_ARMABLE"
+        },
+        {
+          "idaw": "IDAW_REASON_PARAM_BUSY",
+          "ida": "IDA_REASON_PARAM_BUSY"
+        },
+        {
+          "idaw": "IDAW_REASON_PARAM_INVALID",
+          "ida": "IDA_REASON_PARAM_INVALID"
+        },
+        {
+          "idaw": "IDAW_REASON_OUT_OF_RANGE",
+          "ida": "IDA_REASON_OUT_OF_RANGE"
+        },
+        {
+          "idaw": "IDAW_REASON_BAD_MODE",
+          "ida": "IDA_REASON_BAD_MODE"
+        },
+        {
+          "idaw": "IDAW_REASON_EVENTS_OFF",
+          "ida": "IDA_REASON_EVENTS_OFF"
+        },
+        {
+          "idaw": "IDAW_REASON_SESSION",
+          "ida": "IDA_REASON_SESSION"
+        },
+        {
+          "idaw": "IDAW_REASON_NARROWED",
+          "ida": "IDA_REASON_NARROWED"
+        },
+        {
+          "idaw": "IDAW_REASON_IMU_LAG",
+          "ida": "IDA_REASON_IMU_LAG"
+        },
+        {
+          "idaw": "IDAW_REASON_IMU_REJECTED",
+          "ida": "IDA_REASON_IMU_REJECTED"
+        },
+        {
+          "idaw": "IDAW_REASON_ONE_PER_CALL",
+          "ida": "IDA_REASON_ONE_PER_CALL"
+        },
+        {
+          "idaw": "IDAW_REASON_NOT_INIT",
+          "ida": "IDA_REASON_NOT_INIT"
+        },
+        {
+          "idaw": "IDAW_REASON_COALESCED",
+          "ida": "IDA_REASON_COALESCED"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_CORE_RC",
+      "girdiler": [
+        {
+          "idaw": "IDAW_CORE_RC_OK",
+          "ida": "IDA_RC_OK"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_DUP_SEQ",
+          "ida": "IDA_RC_DUP_SEQ"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_OLD_SEQ",
+          "ida": "IDA_RC_OLD_SEQ"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_BAD_INPUT",
+          "ida": "IDA_RC_BAD_INPUT"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_NOT_INIT",
+          "ida": "IDA_RC_NOT_INIT"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_PARAM_DEFAULTS",
+          "ida": "IDA_RC_PARAM_DEFAULTS"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_VERSION",
+          "ida": "IDA_RC_VERSION"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_NOT_FOUND",
+          "ida": "IDA_RC_NOT_FOUND"
+        },
+        {
+          "idaw": "IDAW_CORE_RC_IMU_REJECTED",
+          "ida": "IDA_RC_IMU_REJECTED"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_SAMPLE_FLAGS",
+      "girdiler": [
+        {
+          "idaw": "IDAW_SAMPLE_FLAGS_VALID",
+          "ida": "IDA_HF_VALID"
+        },
+        {
+          "idaw": "IDAW_SAMPLE_FLAGS_SATURATED",
+          "ida": "IDA_HF_SATURATED"
+        },
+        {
+          "idaw": "IDAW_SAMPLE_FLAGS_SENSOR_FAULT",
+          "ida": "IDA_HF_SENSOR_FAULT"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_DVL_FLAGS",
+      "girdiler": [
+        {
+          "idaw": "IDAW_DVL_FLAGS_VEL_VALID",
+          "ida": "IDA_DVL_VEL_VALID"
+        },
+        {
+          "idaw": "IDAW_DVL_FLAGS_COV_PRESENT",
+          "ida": "IDA_DVL_COV_PRESENT"
+        },
+        {
+          "idaw": "IDAW_DVL_FLAGS_TRACK_BOTTOM",
+          "ida": "IDA_DVL_TRACK_BOTTOM"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_TUBE_FLAGS",
+      "girdiler": [
+        {
+          "idaw": "IDAW_TUBE_FLAGS_LOADED",
+          "ida": "IDA_TUBE_LOADED"
+        },
+        {
+          "idaw": "IDAW_TUBE_FLAGS_PLUG_IN",
+          "ida": "IDA_TUBE_PLUG_IN"
+        },
+        {
+          "idaw": "IDAW_TUBE_FLAGS_PIN_OUT",
+          "ida": "IDA_TUBE_PIN_OUT"
+        },
+        {
+          "idaw": "IDAW_TUBE_FLAGS_PERMIT_OPEN",
+          "ida": "IDA_TUBE_PERMIT_OPEN"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_SP_MASK",
+      "girdiler": [
+        {
+          "idaw": "IDAW_SP_MASK_POS_NE",
+          "ida": "IDA_SP_POS_NE"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_DEPTH",
+          "ida": "IDA_SP_DEPTH"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_ALTITUDE",
+          "ida": "IDA_SP_ALTITUDE"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_VEL_NE",
+          "ida": "IDA_SP_VEL_NE"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_VEL_D",
+          "ida": "IDA_SP_VEL_D"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_YAW",
+          "ida": "IDA_SP_YAW"
+        },
+        {
+          "idaw": "IDAW_SP_MASK_YAW_RATE",
+          "ida": "IDA_SP_YAW_RATE"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_MI_TYPE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_MI_TYPE_WAYPOINT",
+          "ida": "IDA_MI_WAYPOINT"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_DIVE_TO",
+          "ida": "IDA_MI_DIVE_TO"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_SURFACE",
+          "ida": "IDA_MI_SURFACE"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_HOLD",
+          "ida": "IDA_MI_HOLD"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_SCAN_LINES",
+          "ida": "IDA_MI_SCAN_LINES"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_SCAN_POINT",
+          "ida": "IDA_MI_SCAN_POINT"
+        },
+        {
+          "idaw": "IDAW_MI_TYPE_WAIT_GNSS",
+          "ida": "IDA_MI_WAIT_GNSS"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_MI_FRAME",
+      "girdiler": [
+        {
+          "idaw": "IDAW_MI_FRAME_NONE",
+          "ida": "IDA_MI_FRAME_NONE"
+        },
+        {
+          "idaw": "IDAW_MI_FRAME_LOCAL",
+          "ida": "IDA_MI_FRAME_LOCAL"
+        },
+        {
+          "idaw": "IDAW_MI_FRAME_GLOBAL",
+          "ida": "IDA_MI_FRAME_GLOBAL"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_MCTL",
+      "girdiler": [
+        {
+          "idaw": "IDAW_MCTL_START",
+          "ida": "IDA_MCTL_START"
+        },
+        {
+          "idaw": "IDAW_MCTL_PAUSE",
+          "ida": "IDA_MCTL_PAUSE"
+        },
+        {
+          "idaw": "IDAW_MCTL_RESUME",
+          "ida": "IDA_MCTL_RESUME"
+        },
+        {
+          "idaw": "IDAW_MCTL_ABORT",
+          "ida": "IDA_MCTL_ABORT"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_PARAM_TYPE",
+      "girdiler": [
+        {
+          "idaw": "IDAW_PARAM_TYPE_I32",
+          "ida": "IDA_PT_I32"
+        },
+        {
+          "idaw": "IDAW_PARAM_TYPE_U32",
+          "ida": "IDA_PT_U32"
+        },
+        {
+          "idaw": "IDAW_PARAM_TYPE_F32",
+          "ida": "IDA_PT_F32"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_RES_KIND",
+      "girdiler": [
+        {
+          "idaw": "IDAW_RES_KIND_ACK",
+          "ida": "IDA_RES_ACK"
+        },
+        {
+          "idaw": "IDAW_RES_KIND_PARAM_VALUE",
+          "ida": "IDA_RES_PARAM_VALUE"
+        },
+        {
+          "idaw": "IDAW_RES_KIND_PARAM_SAVE",
+          "ida": "IDA_RES_PARAM_SAVE"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_FS_LEVEL",
+      "girdiler": [
+        {
+          "idaw": "IDAW_FS_LEVEL_NONE",
+          "ida": "IDA_FS_NONE"
+        },
+        {
+          "idaw": "IDAW_FS_LEVEL_WARN",
+          "ida": "IDA_FS_WARN"
+        },
+        {
+          "idaw": "IDAW_FS_LEVEL_HOLD",
+          "ida": "IDA_FS_HOLD"
+        },
+        {
+          "idaw": "IDAW_FS_LEVEL_SURFACE",
+          "ida": "IDA_FS_SURFACE"
+        },
+        {
+          "idaw": "IDAW_FS_LEVEL_PASSIVE_SURFACE",
+          "ida": "IDA_FS_PASSIVE_SURFACE"
+        },
+        {
+          "idaw": "IDAW_FS_LEVEL_DISARM",
+          "ida": "IDA_FS_DISARM"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_GNSS_FIX",
+      "girdiler": [
+        {
+          "idaw": "IDAW_GNSS_FIX_NONE",
+          "ida": "IDA_GNSS_FIX_NONE"
+        },
+        {
+          "idaw": "IDAW_GNSS_FIX_2D",
+          "ida": "IDA_GNSS_FIX_2D"
+        },
+        {
+          "idaw": "IDAW_GNSS_FIX_3D",
+          "ida": "IDA_GNSS_FIX_3D"
+        },
+        {
+          "idaw": "IDAW_GNSS_FIX_DGPS",
+          "ida": "IDA_GNSS_FIX_DGPS"
+        },
+        {
+          "idaw": "IDAW_GNSS_FIX_RTK",
+          "ida": "IDA_GNSS_FIX_RTK"
+        }
+      ]
+    },
+    {
+      "numaralandirma": "IDAW_SEVERITY",
+      "girdiler": [
+        {
+          "idaw": "IDAW_SEVERITY_EMERGENCY",
+          "ida": "IDA_SEV_EMERGENCY"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_ALERT",
+          "ida": "IDA_SEV_ALERT"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_CRITICAL",
+          "ida": "IDA_SEV_CRITICAL"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_ERROR",
+          "ida": "IDA_SEV_ERROR"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_WARNING",
+          "ida": "IDA_SEV_WARNING"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_NOTICE",
+          "ida": "IDA_SEV_NOTICE"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_INFO",
+          "ida": "IDA_SEV_INFO"
+        },
+        {
+          "idaw": "IDAW_SEVERITY_DEBUG",
+          "ida": "IDA_SEV_DEBUG"
+        }
+      ]
+    }
+  ]
+}

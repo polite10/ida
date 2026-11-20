@@ -343,13 +343,15 @@
           },
           "depth": {
             "type": "number",
-            "minimum": -3.4028234663852886e+38,
-            "maximum": 3.4028234663852886e+38
+            "minimum": 0,
+            "maximum": 3.4028234663852886e+38,
+            "description": "m, asagi pozitif; A4 3.4: sonlu, >= 0"
           },
           "altitude": {
             "type": "number",
-            "minimum": -3.4028234663852886e+38,
-            "maximum": 3.4028234663852886e+38
+            "minimum": 0,
+            "maximum": 3.4028234663852886e+38,
+            "description": "m, dipten yukari; A4 3.4: sonlu, >= 0"
           },
           "vel_ned": {
             "type": "array",
