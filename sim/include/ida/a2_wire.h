@@ -51,6 +51,13 @@ inline constexpr std::uint16_t kKameraAzamiGenislik = 640;    // iskelet §10 md
 inline constexpr std::uint16_t kKameraAzamiYukseklik = 480;   // iskelet §10 md.25
 inline constexpr std::uint16_t kKameraAsgariBoyut = 16;       // mimari seçimi
 inline constexpr std::uint32_t kKameraAzamiHizHz = 30;        // iskelet §10 md.25
+inline constexpr std::int64_t kKameraAzamiPozlamaNs = 1'000'000'000;  // A2 §3.6 (U13; A8 ile aynı)
+inline constexpr double kKameraAzamiMontajKonumuM = 10.0;    // A2 §3.6 (U13); mimari seçimi (tahmin)
+inline constexpr double kKameraKuaterniyonToleransi = 1e-5;   // A2 §3.6 (U13); binary64'te w,x,y,z sırasıyla
+
+// S (sensör) çerçevesinden optik çerçeveye sabit dönüşüm (A2 §3.6, U13): v_S = R_SO · v_O.
+// S: x ileri (optik eksen), y sağ, z aşağı. Optik: x sağ, y aşağı, z ileri. det = +1.
+inline constexpr double kR_SO[3][3] = {{0.0, 0.0, 1.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}};
 
 // Kamera kademe değerleri (sözleşme §6). Tam: üst sınır. Sade: tahmin; Windows ölçümüyle (MP8) sabitlenecek.
 inline constexpr std::uint16_t kTamGenislik = 640;
@@ -78,7 +85,7 @@ inline constexpr std::int64_t kNabizZamanAsimiNs = 3'000'000'000;       // karş
 inline constexpr std::int64_t kYenidenBaglanmaAraligiNs = 1'000'000'000;
 inline constexpr std::int64_t kBirakmaZamanAsimiNs = 1'000'000'000;     // aşılırsa halka emekliye ayrılır
 inline constexpr std::uint32_t kTuketiciBasinaAzamiEmekliHalka = 2;    // A2-K89; tahmin
-inline constexpr std::int64_t kOperatorGecikmesiNs = 33'333'333;        // D_op varsayılanı
+inline constexpr std::int64_t kOperatorGecikmesiNs = 33'333'000;        // D_op varsayılanı (A2-K93: 33 333 µs)
 inline constexpr std::int64_t kOperatorGecmisNs = 500'000'000;          // görselleştiricinin tuttuğu geçmiş
 inline constexpr std::uint32_t kDurumHizPay = 60;                       // DURUM takvimi 60/1 Hz
 inline constexpr std::uint32_t kDurumHizPayda = 1;
@@ -323,14 +330,15 @@ struct KameraYapilandirmasi {        // 184 B
   std::uint32_t hiz_pay;             // hız = pay / payda Hz
   std::uint32_t hiz_payda;
   std::uint32_t yapilandirma_surumu;
-  std::uint32_t kalibrasyon_surumu;
+  std::uint16_t kalibrasyon_surumu;  // 1…65535 (A8 calib_ver ile aynı genişlik; U13)
+  std::uint16_t ayrilmis_kal;        // 0
   double fx, fy, cx, cy;             // piksel; OpenCV kabulü (sözleşme §3.6)
   std::uint32_t bozulma_modeli;      // BozulmaModeli
   std::uint32_t montaj_govde_kimligi;
   double bozulma[5];                 // k1 k2 p1 p2 k3
   double montaj_l_b[3];              // m, gövde çerçevesi, O_b'ye göre
-  double montaj_q_bs[4];             // kamera -> gövde dönüşü (w x y z)
-  std::int64_t pozlama_ns;           // nominal pozlama süresi
+  double montaj_q_bs[4];             // S çerçevesinden gövdeye dönüş (w x y z); fizik gerçeği montajı
+  std::int64_t pozlama_ns;           // nominal pozlama süresi; > 0, çift, ≤ kKameraAzamiPozlamaNs
   double yakin_m, uzak_m;            // kırpma uzaklıkları
 };
 
@@ -492,7 +500,7 @@ struct KameraIstegi {                // 96 B; ardından govde_sayisi × GovdeDur
   std::uint32_t yapilandirma_surumu;
   std::int64_t t_cizim_ns;           // pozlama ortası; fizik adımı sınırı
   std::int64_t t_olcum_ns;           // pozlama sonu = t_cizim + pozlama/2
-  std::int64_t pozlama_ns;           // çift sayı
+  std::int64_t pozlama_ns;           // > 0, çift, ≤ kKameraAzamiPozlamaNs
   std::int64_t t_teslim_ns;          // modellenmiş alım anı (05)
   std::uint64_t adim_no;             // t_cizim anının adım numarası
   std::uint64_t gurultu_tohumu;
@@ -561,7 +569,8 @@ struct YuvaBasligi {                 // 256 B; pikseller yuva başından kYuvaBa
   std::uint32_t satir_adimi;
   std::uint32_t bayraklar;           // kKare*
   std::uint32_t yapilandirma_surumu;
-  std::uint32_t kalibrasyon_surumu;
+  std::uint16_t kalibrasyon_surumu;  // 1…65535
+  std::uint16_t ayrilmis_kal;        // 0
   std::uint32_t dalga_kumesi_surumu;
   std::uint32_t ortam_surumu;
   std::int64_t t_cizim_ns;
@@ -632,6 +641,8 @@ static_assert(offsetof(KareHazir, yazim_sayaci) == 20);
 static_assert(offsetof(KareHazir, hazir_duvar_ns) == 24);
 static_assert(offsetof(KareHazir, calisma_nesli) == 32);
 static_assert(offsetof(KareDustu, calisma_nesli) == 20);
+static_assert(offsetof(KameraYapilandirmasi, kalibrasyon_surumu) == 20);
+static_assert(offsetof(KameraYapilandirmasi, ayrilmis_kal) == 22);
 static_assert(offsetof(KameraYapilandirmasi, fx) == 24);
 static_assert(offsetof(KameraYapilandirmasi, bozulma) == 64);
 static_assert(offsetof(KameraYapilandirmasi, montaj_l_b) == 104);
@@ -665,6 +676,9 @@ static_assert(offsetof(YuvaBasligi, calisma_nesli) == 4);
 static_assert(offsetof(YuvaBasligi, istek_kimligi) == 8);
 static_assert(offsetof(YuvaBasligi, satir_adimi) == 32);
 static_assert(offsetof(YuvaBasligi, bayraklar) == 36);
+static_assert(offsetof(YuvaBasligi, kalibrasyon_surumu) == 44);
+static_assert(offsetof(YuvaBasligi, ayrilmis_kal) == 46);
+static_assert(offsetof(YuvaBasligi, dalga_kumesi_surumu) == 48);
 static_assert(offsetof(YuvaBasligi, t_cizim_ns) == 56);
 static_assert(offsetof(YuvaBasligi, t_teslim_ns) == 80);
 static_assert(offsetof(YuvaBasligi, hazir_duvar_ns) == 104);

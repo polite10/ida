@@ -4,9 +4,9 @@
 |---|---|
 | Sürüm | 1.0-aday (2026-11-19) |
 | Görev | `docs/gorevler/W1-A2A7.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
-| Makinece okunur tanım | `assets/manifest.schema.json` (JSON Schema 2020-12); en küçük örnek `assets/ornek/manifest.json` |
+| Makinece okunur tanım | `assets/manifest.schema.json` (JSON Schema 2020-12); uygunluk örneği `assets/ornek/manifest.json` (A5 örneklerinin atıf verdiği dört varlık; ikili `.glb` dosyaları yoktur, §3.7) |
 | İlgili sözleşmeler | A2 (`docs/sozlesmeler/A2-gorsellestirici.md`), A5 (senaryo; malzeme geçersiz kılma), A6 (kayıt) |
-| Dayanak | İskelet 0.8 §3 (A7 satırı), §3.1, §5, §7; glTF 2.0 belirtimi (Khronos); 00 belgesi 12.16; bölüm 04 §2.2, §2.4, §2.9; 05 §2.4.1; 07 §2.8 (taslak; gerekçe için) |
+| Dayanak | İskelet 0.10 §3 (A7 satırı), §3.1, §5, §7; glTF 2.0 belirtimi (Khronos); 00 belgesi 12.16; bölüm 04 §2.2, §2.4, §2.9; 05 §2.4.1; 07 §2.8 (taslak; gerekçe için) |
 
 Atıf biçimi: `A7-Knn` bu belgenin kuralı; `A2-Knn` A2 sözleşmesinin kuralı; `04 §n`, `05 §n`, `07 §n` taslak mimari bölüm başlığı (bağlayıcı değildir); `AB-nnn` açık bulgu; `12.n` 00 belgesindeki düzeltme satırı.
 
@@ -96,6 +96,7 @@ Biçim: JSON (RFC 8259), UTF-8, bayt sırası işareti yok, satır sonu yalnız 
 | `akustik[]` | dizi | — | hayır | `{dugum, ad: SON_*}`; boşsa akustik ağ çarpışma kaynağından alınır | A7-K27 |
 | `baglanti_noktalari[]` | dizi | — | hayır | `{dugum, ad: MNT_<ad> \| THR_<1–8> \| TUBE_<1–2>, tur: montaj \| itici \| tup, konum_govde_m, q_govde}` | A7-K29 |
 | `isabet_bolgeleri[]` | dizi | — | hayır | `{dugum, ad: HIT_*}` | A7-K24 |
+| `taban_derinligi_m` | sayı | m | yalnız `statik`te, isteğe bağlı | `REF` noktasından gövde +z (aşağı) yönünde taban üst yüzeyine düşey uzaklık; `REF` ortalama su yüzeyindeyse ve statik poz yataysa bu, su derinliğidir | 0 < x ≤ 11 000; A7-K56; başka türde bulunursa `SEMA` |
 
 **`kosul`:** `her_zaman`, `tup_1_dolu`, `tup_2_dolu`. Koşullu bir düğüm yalnız aracın o tüpü doluyken etkindir: görsel düğüm çizilir (A2 `dolu_tupler`), yüzerlik ağı deplasmana katılır (04 §2.4: kütle durumu değişince ağ kümesi değişir).
 
@@ -125,7 +126,12 @@ Akustik alanların varsayılanı yoktur: her malzeme dört değeri de taşır. B
 
 ### 3.6 Hata kodları
 
-`SEMA` şema ihlali · `BIRIM` birim ya da ölçek hatası · `EKSEN` eksen kabulü uyuşmuyor · `MANIFEST_BICIM` CR, BOM ya da geçersiz UTF-8 · `EKSIK_VARLIK` dosya yok · `OZET_UYUSMAZ` dosya özeti ya da boyutu tutmuyor · `GLTF` glTF/GLB kuralı ihlali · `UZANTI` izinsiz glTF uzantısı · `DUGUM` düğüm tablosu ihlali · `MALZEME` malzeme ataması eksik ya da bilinmeyen kimlik · `KAPALI_DEGIL` yüzerlik ağı kapalı ve manifold değil · `HACIM` hacim, merkez ya da kenar manifestle tutmuyor · `DISBUKEY_DEGIL` `yok` ayrıştırmalı çarpışma ağı dışbükey değil · `ARAC` türetme aracı sürümü uyuşmuyor · `TURETILMIS_EKSIK` türetilmiş dosya yok · `TURETILMIS_OZET` kanonik özet tutmuyor ya da platform için yok · `ORTU` türetilmiş parçalar kaynağı örtmüyor · `A5_TUTARSIZ` A5 değerleriyle tutarsızlık · `TUR` varlık türünün gerektirdiği rol eksik · `ERISILEMEZ` rol düğümü seçili sahneden erişilemiyor ya da Godot'da sahne düğümü üretilmedi.
+`SEMA` şema ihlali · `BIRIM` birim ya da ölçek hatası · `EKSEN` eksen kabulü uyuşmuyor · `MANIFEST_BICIM` CR, BOM ya da geçersiz UTF-8 · `EKSIK_VARLIK` dosya yok · `OZET_UYUSMAZ` dosya özeti ya da boyutu tutmuyor · `GLTF` glTF/GLB kuralı ihlali · `UZANTI` izinsiz glTF uzantısı · `DUGUM` düğüm tablosu ihlali · `MALZEME` malzeme ataması eksik ya da bilinmeyen kimlik · `KAPALI_DEGIL` yüzerlik ağı kapalı ve manifold değil · `HACIM` hacim, merkez ya da kenar manifestle tutmuyor · `DISBUKEY_DEGIL` `yok` ayrıştırmalı çarpışma ağı dışbükey değil · `ARAC` türetme aracı sürümü uyuşmuyor · `TURETILMIS_EKSIK` türetilmiş dosya yok · `TURETILMIS_OZET` kanonik özet tutmuyor ya da platform için yok · `ORTU` türetilmiş parçalar kaynağı örtmüyor · `A5_TUTARSIZ` A5 değerleriyle tutarsızlık · `TUR` varlık türünün gerektirdiği rol eksik · `TABAN` beyan edilen taban derinliği geometriyle tutmuyor · `ERISILEMEZ` rol düğümü seçili sahneden erişilemiyor ya da Godot'da sahne düğümü üretilmedi.
+
+
+### 3.7 Uygunluk örneği
+
+`assets/ornek/manifest.json` bir **uygunluk örneğidir**: A5 örnek senaryolarının atıf verdiği bütün varlıkları içerir (araç `ida0`, torpido `torpido_ida0`, hedef `hedef_ornek`, statik havuz `havuz_ornek`; üç malzeme). **İkili dosyalar yoktur:** atıf verilen `.glb` dosyaları depoda bulunmaz; `sha256` ve `bayt` alanları yer tutucudur; bu küme çalışma zamanında yüklenemez (A7-K06, K51). Örnek şema doğrulaması, düğüm ve malzeme tablolarının iç tutarlılığı, A5 ile çapraz tutarlılık (A7-K29, K52, K56) ve kimlik eşlemesi için kullanılır (A7-U19). Geometri değerleri 04'ün yer tutucu ağlarındandır; akustik değerler tahmindir. Örneğin ham bayt özeti (A7-K05) bu sürümde `29063c2d7f89a80e452dfbb66504e9470d5c928d0fcf7dd295497e2b22a22ca4`'tür; A5 örneği beklenen küme özeti olarak bunu kullanabilir, dosya her değiştiğinde özet de değişir.
 
 ---
 
@@ -192,12 +198,14 @@ Akustik alanların varsayılanı yoktur: her malzeme dört değeri de taşır. B
 
 ### 4.6 Çalışma zamanında doğrulama
 
-- **A7-K50.** Sim, çalıştırma başında A5'in gösterdiği kümenin manifestini **bir kez** okur, A7-K04–K06, K10–K14, K19–K29, K45 denetimlerini yapar ve manifest özetini hesaplar. Fizik (yüzerlik ve çarpışma), sonar (akustik ağlar ve malzemeler) ve hedef/torpido şekilleri bu tek yüklemeden kurulur; hiçbir modül kümeyi kendi başına yeniden okumaz. Her modül kurulduğu manifest özetini kaydeder; çalıştırma başlamadan önce sim bu özetlerin hepsinin aynı olduğunu denetler.
+- **A7-K50.** Sim, çalıştırma başında A5'in gösterdiği kümenin manifestini **bir kez** okur, A7-K04–K06, K10–K14, K19–K29, K45, K56 denetimlerini yapar ve manifest özetini hesaplar. Fizik (yüzerlik ve çarpışma), sonar (akustik ağlar ve malzemeler) ve hedef/torpido şekilleri bu tek yüklemeden kurulur; hiçbir modül kümeyi kendi başına yeniden okumaz. Her modül kurulduğu manifest özetini kaydeder; çalıştırma başlamadan önce sim bu özetlerin hepsinin aynı olduğunu denetler.
 - **A7-K51.** Sim'in herhangi bir A7 denetimi başarısızsa çalıştırma başlamaz; sim hata kodunu, kümeyi, varlığı ve düğümü A3'e bildirir. Sonar bu durumda etkinleşmez (05 §4) ve hiçbir tüketici yarım yüklenmiş kümeyle çalışmaz.
 - **A7-K52.** Sim, A5'teki kütle durumlarının deplasmanını ve yüzerlik merkezini manifestteki yüzerlik ağlarıyla karşılaştırır: her kütle durumu için `her_zaman` ağları ile o durumda dolu olan tüplerin `tup_k_dolu` ağlarının toplam hacmi ve hacimle ağırlıklı merkezi, A5 değerinden hacimde %1'den, merkezde 2 mm'den (04 §4; mimari seçimi) fazla saparsa çalıştırma `A5_TUTARSIZ` ile reddedilir.
 - **A7-K53.** Görselleştirici A2 el sıkışmasında aldığı manifest yolundaki dosyayı kendisi okur, özetini A2 `hazir` iletisiyle bildirir (A2-K13, A2-K14), her `.glb`'yi A7-K06 ile doğrular ve A7-K04, K10–K14, K19–K23, K28 denetimlerini yapar. Sim ile görselleştirici aynı manifest özetini bildirmedikçe görselleştirici sahne kurmaz ve kamera kullanılmaz.
 - **A7-K54.** Görselleştirici yalnız görsel düğümleri ve glTF ışıklarını operatör ve kamera görünümünde çizer; yüzerlik, çarpışma, akustik ve isabet düğümlerini yalnız hata ayıklama katmanında ve kamera karesine girmeyecek biçimde (A2-K37) gösterir.
 - **A7-K55.** A6 kaydı kullanılan kümenin manifest özetini, `kume_kimligi` ve `kume_surumu`yla, her türetilmiş düğümün kullanılan kanonik özetini ve etkin malzeme değerlerini taşır (A6'dan beklenen).
+- **A7-K56.** **Taban derinliği.** Statik varlıkta `taban_derinligi_m` verilmişse sim, yüklemede `REF` noktasından gövde +z (aşağı) yönünde varlığın çarpışma kaynak ağlarına bir ışın atar; ilk kesişimin uzaklığı `taban_derinligi_m`'den en çok 1 mm (mimari seçimi) farklıdır, değilse `TABAN` ile reddedilir; ışın hiçbir ağa çarpmazsa da `TABAN`. Alan yalnız beyan ve denetim içindir: fizik ve sonar tabanı geometriden alır. A5 `ortam.derinlik` denetimini bu alana göre yapar; alan yoksa A5 uyarı verir (A5'in kuralı; W1-uyum P3-11).
+- **A7-K57.** **Malzeme alanlarının kaynağı.** Malzeme özelliklerinin alan adları (`geri_sacilim_mu`, `gelis_yasasi`, `ayna_yansima_rs`, `puruzluluk_gamma_p`; optikte glTF metalik-pürüzlülük çarpanları), enum değerleri (`lambert_cos2`, `cos1`) ve geçerli aralıkları (§3.4; `geri_sacilim_mu` > 0) A7'dedir. A5'in geçersiz kılmaları bunları **aynen** kullanır: başka ad, başka enum değeri ya da daha geniş aralık bir uyumsuzluktur ve geçersiz kılma reddedilir (W1-uyum P3-12; A7-K30).
 
 ---
 
@@ -221,6 +229,7 @@ Akustik alanların varsayılanı yoktur: her malzeme dört değeri de taşır. B
 | Türetilmiş özet yok ya da farklı | A7-K43, K45 | `TURETILMIS_EKSIK` / `TURETILMIS_OZET` | — | `TURETILMIS_OZET` |
 | Örtü ölçütü aşıldı (eksik ya da taşma) | A7-K44 | — | — | `ORTU` (hangi ölçüt, en büyük uzaklık, yer) |
 | A5 ile tutarsızlık | A7-K29, K52 | `A5_TUTARSIZ` | — | — |
+| Taban derinliği geometriyle tutmuyor | A7-K56 | `TABAN` | — | — |
 | Sim ile görselleştirici farklı manifest | A2-K14 | `ret(manifest)`; kamera yok | sahne kurulmaz | — |
 
 Bütün hata iletileri kod, küme kimliği, varlık kimliği, düğüm indeksi ve adı ile beklenen/bulunan değeri içerir.
@@ -262,6 +271,8 @@ Tür: **B** birim, **D** derleme/depo denetimi, **S** sözleşme, **SIL** karts�
 | A7-U15 | A7-K30 | SIL | A5 akustik geçersiz kılması sonar profilini değiştirir, manifest özetini değiştirmez, A6'ya yazılır; bilinmeyen kimliğe geçersiz kılma A5 doğrulamasında reddedilir |
 | A7-U16 | A7-K53 | S | Görselleştiriciye farklı bir manifest verilince A2 `ret(manifest)` ve sahne kurulmaz |
 | A7-U17 | A7-K07, K08 | D | Değişen kümede `kume_surumu` artmadıysa depo denetimi reddeder; `assets/` altında türetilmiş dosya yok |
+| A7-U18 | A7-K56 | B | `taban_derinligi_m` = 3,0 m ve tabanı 3,0 m'de olan havuz kabul; 3,002 m'de olan `TABAN`; tabansız statik varlık `TABAN`; araçta alan `SEMA` |
+| A7-U19 | A7-K57, §3.7 | D | Uygunluk örneği (`assets/ornek/manifest.json`): şemaya uyar; A5 örnek senaryolarının atıf verdiği her varlık kimliği (`ida0`, `torpido_ida0`, `hedef_ornek`, `havuz_ornek`) örnekte vardır ve türü A5'teki rolüyle aynıdır; A7-K52 hacim/merkez karşılaştırması A5'in üç kütle durumuyla geçer; bağlantı noktaları A5 montaj ve tüp konumlarıyla aynıdır; A5 malzeme geçersiz kılmalarının adları ve enumları §3.4'teki adlarla aynıdır |
 
 ---
 
@@ -276,7 +287,7 @@ Tür: **B** birim, **D** derleme/depo denetimi, **S** sözleşme, **SIL** karts�
 | A7-A05 | 750 kHz akustik malzeme değerleri | tahmin | Açık veri kümesiyle uydurma (05 §7; M14'ün daraltılmış kapsamı); değerler A5 geçersiz kılmasıyla girer |
 | A7-A06 | Büyük ikili dosyaların depoda tutulma biçimi (doğrudan git ya da Git LFS) | açık | W2 depo iskeleti; bu sözleşme yalnız boyut üst sınırını koyar |
 
-**A5'ten beklenen:** kullanılan kümenin yolu (`assets/` altındaki `kume_kimligi`) ve beklenen `kume_surumu`; araç, torpido, hedef ve statik sahne için varlık kimlikleri; kütle durumlarının ∇ ve `r_b` değerleri (A7-K52); sensör montajı, itici ve tüp konumları (A7-K29); malzeme geçersiz kılmalarının sözdizimi ve A7-K30'daki koşulların doğrulanması.
+**A5'ten beklenen:** varlık kümesinin seçimi: küme yolu (`assets/` altındaki `kume_kimligi`) ve **beklenen küme özeti** (A7-K05'teki manifest özeti; isteğe bağlı olarak `kume_surumu`); araç, torpido, hedef ve statik sahne için varlık kimlikleri (uygunluk örneğinde `ida0`, `torpido_ida0`, `hedef_ornek`, `havuz_ornek`; örnek senaryolar bu kimliklerle tutar); `ortam.sahne`'nin A7'nin `statik` türüne eşlenmesi ve statik sahnenin pozu; `ortam.derinlik` denetiminin A7-K56'daki `taban_derinligi_m`'ye göre yapılması (alan yoksa uyarı); kütle durumlarının ∇ ve `r_b` değerleri (A7-K52); sensör montajı, itici ve tüp konumları (A7-K29; tüp `f<k>` ↔ `TUBE_<k>`); malzeme geçersiz kılmalarında A7-K57'deki adların, enumların ve aralıkların aynen kullanılması.
 
 **A6'dan beklenen:** A7-K55'teki alanlar.
 

@@ -184,7 +184,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["kimlik", "tur", "dosya", "sha256", "bayt", "referans", "sinir_kutusu_govde_m", "malzeme_atamasi", "gorsel", "carpisma"],
+      "allOf": [
+        {
+          "if": { "properties": { "tur": { "not": { "const": "statik" } } } },
+          "then": { "not": { "required": ["taban_derinligi_m"] } }
+        }
+      ],
       "properties": {
+        "taban_derinligi_m": {
+          "description": "Yalnız statik varlıkta, isteğe bağlı: REF noktasından gövde +z (aşağı) yönünde taban üst yüzeyine düşey uzaklık, m (A7-K56).",
+          "type": "number", "exclusiveMinimum": 0, "maximum": 11000
+        },
         "kimlik": { "$ref": "#/$defs/kimlik" },
         "tur": { "enum": ["arac", "torpido", "hedef", "statik"] },
         "dosya": { "type": "string", "pattern": "^[a-z0-9_]{1,48}\\.glb$" },
