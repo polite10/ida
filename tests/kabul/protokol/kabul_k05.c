@@ -141,8 +141,8 @@ static void test_A1_K05_cde_kirpilmis_ve_kirpilmamis_kabul(void)
             boylar[2] = m->yuk_azami / 2u;
             boylar[3] = m->yuk_azami - 1u;
             boylar[4] = m->yuk_azami;
-            for (size_t b = 0; b < 5; ++b) {
-                size_t dolu = boylar[b] == 0u ? 1u : boylar[b];
+            for (size_t bi = 0; bi < 5; ++bi) {
+                size_t dolu = boylar[bi] == 0u ? 1u : boylar[bi];
                 if (dolu > m->yuk_azami) {
                     continue;
                 }

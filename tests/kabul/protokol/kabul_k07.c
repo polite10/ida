@@ -98,15 +98,15 @@ static void test_A1_K07_a_sagmasi_tutmayan_atilir(void)
     kabul_rng_kur(&r, 0x4B30370001ull);
     for (size_t ri = 0; ri < 2; ++ri) {
         ida_link_rol_t rol = ROLLER[ri];
-        for (int b = 0; b < (int)BOZ_SAYISI; ++b) {
+        for (int bt = 0; bt < (int)BOZ_SAYISI; ++bt) {
             for (size_t mi = 0; mi < 6; ++mi) {
                 char ileti[128];
                 uint32_t id = ornek_mesaj(rol, mi);
-                size_t n = bozuk_kur(akis, &r, rol, id, 70u, (bozma_t)b);
+                size_t n = bozuk_kur(akis, &r, rol, id, 70u, (bozma_t)bt);
                 n += kabul_temiz_kur(&akis[n], &r, ornek_mesaj(rol, mi + 1u), 71u,
                                      kabul_karsi_sysid(rol), kabul_karsi_compid(rol), 5u, 1, NULL);
                 kabul_besle_yeni(rol, akis, n, &sonuc);
-                snprintf(ileti, sizeof ileti, "rol %d, %s, msgid %lu", (int)rol, BOZMA_AD[b],
+                snprintf(ileti, sizeof ileti, "rol %d, %s, msgid %lu", (int)rol, BOZMA_AD[bt],
                          (unsigned long)id);
                 ida_link_sayaclar_t b = kabul_sayac_sifir();
                 b.rx_bytes = (uint32_t)n;
