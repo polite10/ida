@@ -243,6 +243,7 @@ def uret(xml, t33, cerceveler, cikti_c, cikti_h):
     hs.append("/* Üretildi: tests/kabul/protokol/ek_b_cikar.py (elle düzenlenmez). */")
     hs.append("#ifndef KABUL_EK_B_H\n#define KABUL_EK_B_H\n")
     hs.append("#include <stddef.h>\n#include <stdint.h>\n")
+    hs.append('#include "mavlink/ida/mavlink.h"\n')
     hs.append("#define KABUL_MESAJ_SAYISI %du" % len(t33))
     hs.append("#define KABUL_ALTIN_SAYISI %du\n" % len(cerceveler))
     hs.append("""/* Yön (A1 Tablo 3.3): bit maskesi. */
@@ -284,8 +285,17 @@ typedef struct {
     uint16_t       alan_sayisi;
     /* Çözülmüş tipli yapının (mavlink_ida_<ad>_t) adlı alanlarını Ek B değerleriyle
        karşılaştırır (Unity iddialarıyla). */
-    void (*yapi_denetle)(const void *yapi);
+    void (*yapi_denetle)(const void *yapi);  /* yapi: en az sizeof(o yapı) bayt; memcpy ile okunur */
 } kabul_altin_t;
+
+/* Gönderici ve çözücüye verilen mesaj nesnesi: üretilmiş 37 yapının birleşimi. Kitaplık
+   void * üzerinden kendi yapı tipiyle okur/yazar; nesne o tipte bir üyeyi gerçekten içerir
+   (yalnız bir bayt tamponu verilmez; tür erişimi kuralı). b[] bayt düzeyinde doldurma ve
+   karşılaştırma içindir (unsigned char erişimi her nesnede geçerlidir). */
+typedef union {
+@@BIRLESIM@@
+    uint8_t b[512];
+} kabul_yapi_t;
 
 extern const kabul_mesaj_t kabul_mesajlar[KABUL_MESAJ_SAYISI];
 extern const kabul_altin_t kabul_altin[KABUL_ALTIN_SAYISI];
@@ -296,7 +306,7 @@ extern const char *const kabul_ek_b_uyumsuzluk[];
 
     cs = []
     cs.append("/* Üretildi: tests/kabul/protokol/ek_b_cikar.py (elle düzenlenmez). */")
-    cs.append('#include "kabul_ek_b.h"\n#include "kabul_ortak.h"\n')
+    cs.append('#include "kabul_ek_b.h"\n#include "kabul_ortak.h"\n\n#include <string.h>\n')
     cs.append('#include "mavlink/ida/mavlink.h"\n')
 
     ekb_crc = {}
@@ -366,17 +376,18 @@ extern const char *const kabul_ek_b_uyumsuzluk[];
                     continue
                 ham.append('    {%s, %du, %du, UINT64_C(0x%x)},' % (c_dize(gorunen), ofset, boy, hb))
                 if a["tip"] == "float":
-                    denet.append("    kabul_esit_f32(%s, %s, m->%s);" % (c_dize(gorunen), c_deger("float", v), uye))
+                    denet.append("    kabul_esit_f32(%s, %s, m.%s);" % (c_dize(gorunen), c_deger("float", v), uye))
                 elif a["tip"].startswith("u"):
-                    denet.append("    kabul_esit_u64(%s, %s, (uint64_t)m->%s);" % (c_dize(gorunen), c_deger(a["tip"], v), uye))
+                    denet.append("    kabul_esit_u64(%s, %s, (uint64_t)m.%s);" % (c_dize(gorunen), c_deger(a["tip"], v), uye))
                 else:
-                    denet.append("    kabul_esit_i64(%s, %s, (int64_t)m->%s);" % (c_dize(gorunen), c_deger(a["tip"], v), uye))
+                    denet.append("    kabul_esit_i64(%s, %s, (int64_t)m.%s);" % (c_dize(gorunen), c_deger(a["tip"], v), uye))
         alan_sayilari.append(len(ham))
         cs.append("static const kabul_alan_t altin_alan_%d[%d] = {" % (i, max(1, len(ham))))
         cs.extend(ham if ham else ['    {"", 0u, 0u, UINT64_C(0)},'])
         cs.append("};")
         cs.append("static void altin_yapi_%d(const void *p)\n{" % i)
-        cs.append("    const %s *m = (const %s *)p;" % (yapi, yapi))
+        cs.append("    %s m;" % yapi)
+        cs.append("    memcpy(&m, p, sizeof m);")
         cs.extend(denet)
         cs.append("}\n")
 
@@ -393,8 +404,9 @@ extern const char *const kabul_ek_b_uyumsuzluk[];
         cs.append("    %s," % c_dize(u))
     cs.append("    NULL\n};")
 
+    birlesim = "\n".join("    mavlink_%s_t m%d;" % (t33[k]["ad"].lower(), k) for k in sorted(t33))
     with open(cikti_h, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(hs) + "\n")
+        f.write("\n".join(hs).replace("@@BIRLESIM@@", birlesim) + "\n")
     with open(cikti_c, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(cs) + "\n")
 

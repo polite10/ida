@@ -1,8 +1,11 @@
 /*
  * A1-K08 kabul testleri (sözleşme §4.1, §7.1 K08 satırı):
  *   "Her gönderen çerçeve başlığındaki seq'i oturumdan bağımsız olarak her çerçevede bir
- *    artırır (mod 256); alıcı ardışık iki geçerli çerçeve arasındaki boşlukları rx_seq_gap'e
- *    sayar ve bu sayaca hiçbir davranış bağlamaz."
+ *    artırır (mod 256); alıcı seq geçmişini yalnız kabul ettiği çerçevelerle günceller ve kabul
+ *    ettiği her çerçevede seq bir önceki kabul edilenin seq'i + 1 (mod 256) değilse
+ *    rx_seq_gap'i bir artırır (sayaç kayıp çerçeve sayısını değil olay sayısını sayar; aynı
+ *    seq'in yinelenmesi de bir olaydır; ilk kabul edilen çerçevede karşılaştırma yapılmaz);
+ *    bu sayaca hiçbir davranış bağlanmaz."
  * Öğeler:
  *   (a) gönderen her çerçevede seq'i bir artırır, mod 256 (600 çerçeve, iki rol)
  *   (b) oturumdan bağımsız: farklı sess taşıyan çerçeveler arasında seq sürer
@@ -12,9 +15,9 @@
  *   (f) ilk geçerli çerçevenin seq'i ne olursa olsun boşluk sayılmaz (öncesi yok)
  *   (g) sağlaması tutmayan (geçerli olmayan) ara çerçeve boşluk yaratır
  *   (h) davranış değişmez: boşluklu akışta da bütün çerçeveler aynı yükle teslim edilir
- * Birden çok çerçevelik boşluk (olay mı kayıp çerçeve mi sayılır), yinelenen ve geri giden
- * seq, ve kimlik ya da yön yüzünden reddedilen ara çerçevenin "geçerli" sayılıp sayılmadığı
- * A1'de açık değildir: kabul_belirsiz.c.
+ *   (i) birden çok çerçevelik boşluk, yineleme ve geri gitme her biri tek olay
+ *   (j) reddedilen çerçeve (sağlama, kimlik, yön, başlık) seq geçmişine girmez
+ * Alıcı vakalarında teslimler ve bütün sayaçlar beklenenle ve referans modelle tam eşit.
  */
 #include <stdio.h>
 #include <string.h>
@@ -37,7 +40,7 @@ static size_t gonder(ida_link_gonderici_t *g, const kabul_mesaj_t *m, const uint
     kabul_yapi_t y;
     kabul_yapi_hazirla(&y, m, yuk);
     size_t yazilan = 77u;
-    ida_link_rc_t rc = ida_link_gonder(g, m->msgid, y.b, m->yapi_boyu, cikis, kapasite, &yazilan);
+    ida_link_rc_t rc = ida_link_gonder(g, m->msgid, &y, m->yapi_boyu, cikis, kapasite, &yazilan);
     TEST_ASSERT_EQUAL_INT_MESSAGE(beklenen, rc, m->ad);
     return rc == IDA_LINK_TAMAM ? yazilan : 0u;
 }
@@ -90,7 +93,7 @@ static void test_A1_K08_baslik_kurulumda_sifir_ve_yazilabilir(void)
     ida_link_gonderici_t g;
     TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonderici_kur(&g, IDA_LINK_ROL_SIM));
     TEST_ASSERT_EQUAL_UINT8(0u, g.seq);
-    const kabul_mesaj_t *m = kabul_mesaj_bul(46003u);
+    const kabul_mesaj_t *m = kabul_mesaj_al(46003u);
     uint8_t yuk[3] = {1u, 0u, 2u};
     uint8_t cikis[IDA_LINK_CERCEVE_AZAMI];
     size_t n = gonder(&g, m, yuk, cikis, sizeof cikis, IDA_LINK_TAMAM);
@@ -111,7 +114,7 @@ static void test_A1_K08_c_hatali_gonderim_seq_tuketmez(void)
 {
     ida_link_gonderici_t g;
     TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonderici_kur(&g, IDA_LINK_ROL_KART));
-    const kabul_mesaj_t *m = kabul_mesaj_bul(46063u); /* IDA_NAV, kart -> sim */
+    const kabul_mesaj_t *m = kabul_mesaj_al(46063u); /* IDA_NAV, kart -> sim */
     uint8_t yuk[IDA_LINK_YUK_AZAMI];
     memset(yuk, 0x11, sizeof yuk);
     uint8_t cikis[IDA_LINK_CERCEVE_AZAMI + 8u];
@@ -126,7 +129,7 @@ static void test_A1_K08_c_hatali_gonderim_seq_tuketmez(void)
     gonder(&g, m, yuk, cikis, 0u, IDA_LINK_HATA_TAMPON);
     TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(bekci, cikis, sizeof cikis, "hatalı gönderim tampona yazdı");
     /* Kartın göndermediği sim -> kart mesajı. */
-    gonder(&g, kabul_mesaj_bul(46020u), yuk, cikis, sizeof cikis, IDA_LINK_HATA_YON);
+    gonder(&g, kabul_mesaj_al(46020u), yuk, cikis, sizeof cikis, IDA_LINK_HATA_YON);
     TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(bekci, cikis, sizeof cikis, "HATA_YON tampona yazdı");
     /* Dialect dışı kimlik (yapı boyu olarak NAV'ınki verilir). */
     {
@@ -134,10 +137,10 @@ static void test_A1_K08_c_hatali_gonderim_seq_tuketmez(void)
         kabul_yapi_hazirla(&y, m, yuk);
         size_t yazilan = 5u;
         TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_KIMLIK,
-                              ida_link_gonder(&g, 46005u, y.b, m->yapi_boyu, cikis, sizeof cikis, &yazilan));
+                              ida_link_gonder(&g, 46005u, &y, m->yapi_boyu, cikis, sizeof cikis, &yazilan));
         TEST_ASSERT_EQUAL_UINT32(0u, (uint32_t)yazilan);
         TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_BOY,
-                              ida_link_gonder(&g, m->msgid, y.b, m->yapi_boyu + 1u, cikis, sizeof cikis, &yazilan));
+                              ida_link_gonder(&g, m->msgid, &y, m->yapi_boyu + 1u, cikis, sizeof cikis, &yazilan));
         TEST_ASSERT_EQUAL_UINT32(0u, (uint32_t)yazilan);
     }
     TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(bekci, cikis, sizeof cikis, "hatalı gönderim tampona yazdı");
@@ -185,7 +188,111 @@ static void seq_dene(const uint8_t *seq, size_t sayi, const uint8_t *bozuk, uint
             gecerli += (bozuk == NULL || !bozuk[i]) ? 1u : 0u;
         }
         TEST_ASSERT_EQUAL_UINT32_MESSAGE((uint32_t)gecerli, (uint32_t)sonuc.sayi, ad);
-        TEST_ASSERT_EQUAL_UINT32_MESSAGE(beklenen_bosluk, sonuc.sayac.rx_seq_gap, ad);
+        ida_link_sayaclar_t b = kabul_sayac_sifir();
+        b.rx_bytes = (uint32_t)n;
+        b.rx_frames = (uint32_t)gecerli;
+        b.rx_crc_err = (uint32_t)(sayi - gecerli);
+        b.rx_seq_gap = beklenen_bosluk;
+        kabul_sayac_esit(&b, &sonuc.sayac, ad);
+        kabul_modelle_esit(rol, akis, n, &sonuc, ad);
+    }
+}
+
+/* (i): birden çok çerçevelik boşluk, yinelenen ve geri giden seq: her biri tek olaydır
+   (A1-K08: sayaç kayıp çerçeve sayısını değil olay sayısını sayar; yineleme de olaydır;
+   geçmiş her kabulde güncellenir). sol incelemesinin ayırıcı girdisi: 1, 5, 6 -> 1 (3 değil). */
+static void test_A1_K08_i_olay_sayisi(void)
+{
+    static const uint8_t A[] = {1u, 5u, 6u};
+    seq_dene(A, sizeof A, NULL, 1u, "1, 5, 6");
+    static const uint8_t B[] = {10u, 11u, 11u, 12u};
+    seq_dene(B, sizeof B, NULL, 1u, "yinelenen 11, 11");
+    static const uint8_t C[] = {10u, 11u, 9u, 10u};
+    seq_dene(C, sizeof C, NULL, 1u, "geri giden 11 -> 9");
+    static const uint8_t D[] = {0u, 128u};
+    seq_dene(D, sizeof D, NULL, 1u, "0 -> 128");
+    static const uint8_t E[] = {7u, 7u, 7u, 7u};
+    seq_dene(E, sizeof E, NULL, 3u, "üç yineleme");
+    static const uint8_t F[] = {200u, 3u, 4u, 100u, 101u, 101u};
+    seq_dene(F, sizeof F, NULL, 3u, "karışık");
+}
+
+/* (j): reddedilen çerçeve seq geçmişine girmez (A1-K08: "seq geçmişini yalnız kabul ettiği
+   çerçevelerle günceller"). Ayırıcı diziler: 1, [2 reddedilir], 2 -> boşluk yok (geçmiş 1);
+   1, [2 reddedilir], 3 -> bir boşluk. Ret türleri: sağlama, yabancı kimlik, yönü yanlış,
+   başlıkta incompat. */
+typedef enum { RET_CRC, RET_KIMLIK, RET_YON, RET_IFLAG, RET_SAYISI } ret_turu_t;
+
+static const char *const RET_AD[RET_SAYISI] = {"sağlama", "yabancı kimlik", "yönü yanlış", "incompat"};
+
+static void test_A1_K08_j_reddedilen_cerceve_gecmise_girmez(void)
+{
+    kabul_rng_t r;
+    kabul_rng_kur(&r, 0x4B30380030ull);
+    for (size_t ri = 0; ri < 2; ++ri) {
+        ida_link_rol_t rol = ROLLER[ri];
+        uint32_t id = rol == IDA_LINK_ROL_KART ? 46026u : 46065u;
+        uint32_t ters = rol == IDA_LINK_ROL_KART ? 46065u : 46026u; /* rolün almadığı */
+        const kabul_mesaj_t *m = kabul_mesaj_al(id);
+        for (int t = 0; t < (int)RET_SAYISI; ++t) {
+            for (int son = 2; son <= 3; ++son) {
+                char ad[96];
+                snprintf(ad, sizeof ad, "rol %d, 1, [2: %s], %d", (int)rol, RET_AD[t], son);
+                size_t n = kabul_temiz_kur(akis, &r, id, 1u, kabul_karsi_sysid(rol), kabul_karsi_compid(rol),
+                                           6u, 1, NULL);
+                size_t aday = 0;
+                switch ((ret_turu_t)t) {
+                case RET_CRC:
+                    aday = kabul_temiz_kur(&akis[n], &r, id, 2u, kabul_karsi_sysid(rol),
+                                           kabul_karsi_compid(rol), 6u, 1, NULL);
+                    akis[n + 10u] = (uint8_t)(akis[n + 10u] == 0x01u ? 0x02u : 0x01u);
+                    break;
+                case RET_KIMLIK:
+                    aday = kabul_temiz_kur(&akis[n], &r, id, 2u, kabul_kendi_sysid(rol),
+                                           kabul_kendi_compid(rol), 6u, 1, NULL);
+                    break;
+                case RET_YON:
+                    aday = kabul_temiz_kur(&akis[n], &r, ters, 2u, kabul_karsi_sysid(rol),
+                                           kabul_karsi_compid(rol), 6u, 1, NULL);
+                    break;
+                case RET_IFLAG:
+                case RET_SAYISI:
+                default:
+                    aday = kabul_temiz_ham(&akis[n], &r, m->yuk_azami, 0x01u, 0u, 2u, kabul_karsi_sysid(rol),
+                                           kabul_karsi_compid(rol), id, m->crc_extra, 0u);
+                    break;
+                }
+                n += aday;
+                n += kabul_temiz_kur(&akis[n], &r, id, (uint8_t)son, kabul_karsi_sysid(rol),
+                                     kabul_karsi_compid(rol), 6u, 1, NULL);
+                kabul_besle_yeni(rol, akis, n, &sonuc);
+                ida_link_sayaclar_t b = kabul_sayac_sifir();
+                b.rx_bytes = (uint32_t)n;
+                b.rx_frames = 2u;
+                b.rx_seq_gap = son == 2 ? 0u : 1u;
+                switch ((ret_turu_t)t) {
+                case RET_CRC:
+                    b.rx_crc_err = 1u;
+                    break;
+                case RET_KIMLIK:
+                    b.rx_wrong_sys = 1u;
+                    break;
+                case RET_YON:
+                    b.rx_unknown_msgid = 1u;
+                    break;
+                case RET_IFLAG:
+                case RET_SAYISI:
+                default:
+                    b.rx_iflag = 1u;
+                    b.rx_resync_bytes = (uint32_t)(aday - 1u);
+                    break;
+                }
+                kabul_sayac_esit(&b, &sonuc.sayac, ad);
+                TEST_ASSERT_EQUAL_UINT32_MESSAGE(2u, (uint32_t)sonuc.sayi, ad);
+                TEST_ASSERT_EQUAL_UINT8_MESSAGE((uint8_t)son, sonuc.t[1].seq, ad);
+                kabul_modelle_esit(rol, akis, n, &sonuc, ad);
+            }
+        }
     }
 }
 
@@ -200,8 +307,7 @@ static void test_A1_K08_d_ardisik_seq_bosluk_yok(void)
 }
 
 /* (e): tek çerçevelik boşluklar: 0,1,3 (2 yok); 254 -> 0 (255 yok); 255 -> 1 (0 yok);
-   ve 10 ayrı tek boşluk. Her biri tam bir artış (olay ve kayıp çerçeve okuması aynı sonucu
-   verir). */
+   ve dokuz ayrı tek boşluk. Her biri tam bir artış. */
 static void test_A1_K08_e_tek_bosluk_bir_artis(void)
 {
     static const uint8_t A[] = {0u, 1u, 3u, 4u};
@@ -288,5 +394,7 @@ int main(void)
     RUN_TEST(test_A1_K08_f_ilk_cerceve_bosluk_degil);
     RUN_TEST(test_A1_K08_g_bozuk_ara_cerceve_bosluk_yaratir);
     RUN_TEST(test_A1_K08_h_bosluk_davranisi_degistirmez);
+    RUN_TEST(test_A1_K08_i_olay_sayisi);
+    RUN_TEST(test_A1_K08_j_reddedilen_cerceve_gecmise_girmez);
     return UNITY_END();
 }

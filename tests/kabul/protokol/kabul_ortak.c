@@ -82,6 +82,18 @@ const kabul_mesaj_t *kabul_mesaj_bul(uint32_t msgid)
     return NULL;
 }
 
+const kabul_mesaj_t *kabul_mesaj_al(uint32_t msgid)
+{
+    const kabul_mesaj_t *m = kabul_mesaj_bul(msgid);
+    if (m == NULL) {
+        char ileti[96];
+        snprintf(ileti, sizeof ileti, "msgid %lu sözleşme tablosunda yok", (unsigned long)msgid);
+        TEST_FAIL_MESSAGE(ileti);
+    }
+    /* TEST_FAIL_MESSAGE dönmez; yine de dönüş hiçbir yolda NULL değildir (statik analiz). */
+    return m != NULL ? m : &kabul_mesajlar[0];
+}
+
 uint8_t kabul_rol_alir_yon(ida_link_rol_t rol)
 {
     return (uint8_t)(rol == IDA_LINK_ROL_KART ? KABUL_YON_SIM_KART : KABUL_YON_KART_SIM);
@@ -209,8 +221,7 @@ size_t kabul_temiz_ham(uint8_t *cikis, kabul_rng_t *r, uint8_t len, uint8_t inco
 size_t kabul_temiz_kur(uint8_t *cikis, kabul_rng_t *r, uint32_t msgid, uint8_t seq,
                        uint8_t sysid, uint8_t compid, size_t dolu, int kirp, uint8_t *yuk_cikis)
 {
-    const kabul_mesaj_t *m = kabul_mesaj_bul(msgid);
-    TEST_ASSERT_NOT_NULL_MESSAGE(m, "kabul_temiz_kur: msgid tabloda yok");
+    const kabul_mesaj_t *m = kabul_mesaj_al(msgid);
     if (dolu > m->yuk_azami) {
         dolu = m->yuk_azami;
     }
@@ -288,9 +299,7 @@ static void teslim_kaydet(const ida_link_cerceve_t *c, kabul_sonuc_t *out)
     char ileti[160];
     TEST_ASSERT_LESS_THAN_UINT32_MESSAGE(KABUL_TESLIM_AZAMI, (uint32_t)out->sayi,
                                          "kabul_besle: teslim kapasitesi doldu");
-    const kabul_mesaj_t *m = kabul_mesaj_bul(c->msgid);
-    snprintf(ileti, sizeof ileti, "teslim edilen msgid %lu dialect'te yok", (unsigned long)c->msgid);
-    TEST_ASSERT_NOT_NULL_MESSAGE(m, ileti);
+    const kabul_mesaj_t *m = kabul_mesaj_al(c->msgid); /* teslim edilen kimlik dialect'te olmalı */
     /* A1-K05: 1 <= len <= en büyük yük; eksik kısım sıfır (başlık: yuk[len, 255) sıfır). */
     snprintf(ileti, sizeof ileti, "msgid %lu: len %u geçersiz (azami %u)",
              (unsigned long)c->msgid, (unsigned)c->len, (unsigned)m->yuk_azami);
@@ -440,11 +449,9 @@ uint32_t kabul_ret_toplami(const ida_link_sayaclar_t *s)
 }
 
 /* ---- Model -------------------------------------------------------------------------------- */
-void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t *s, size_t n,
-                          kabul_model_t *m)
+void kabul_model_ayristir(ida_link_rol_t rol, const uint8_t *s, size_t n, kabul_model_t *m)
 {
     kabul_sonuc_sifirla(&m->sonuc);
-    m->seq_gap_kayip = 0u;
     ida_link_sayaclar_t *c = &m->sonuc.sayac;
     c->rx_bytes = (uint32_t)n;
     int onceki_var = 0;
@@ -453,19 +460,11 @@ void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t
     while (i < n) {
         uint8_t b = s[i];
         if (b == 0xFEu) {
+            /* A1-K02: aday dışındaki her 0xFE rx_mav1'e ve (aday başlatmadığı için)
+               rx_resync_bytes'a sayılır; len'e göre atlama yoktur. */
             c->rx_mav1++;
-            if (okuma.mav1_okuma == 0) {
-                i += 1u;
-                continue;
-            }
-            if (n - i < 2u) {
-                break;
-            }
-            size_t boy = 8u + (size_t)s[i + 1u];
-            if (n - i < boy) {
-                break;
-            }
-            i += boy;
+            c->rx_resync_bytes++;
+            i += 1u;
             continue;
         }
         if (b != 0xFDu) {
@@ -479,35 +478,31 @@ void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t
         uint8_t len = s[i + 1u];
         uint32_t id = (uint32_t)s[i + 7u] | ((uint32_t)s[i + 8u] << 8) | ((uint32_t)s[i + 9u] << 16);
         const kabul_mesaj_t *mm = kabul_mesaj_bul(id);
-        int bas_ret = 1;
+        /* A1-K07: başlıkta incompat_flags -> kimlik -> len; ilk tutmayan tek neden; tarama
+           0xFD'den sonraki bayttan sürer. */
         if (s[i + 2u] != 0u) {
             c->rx_iflag++;
-        } else if (mm == NULL) {
-            c->rx_unknown_msgid++;
-        } else if (len == 0u || len > mm->yuk_azami) {
-            c->rx_bad_len++;
-        } else {
-            bas_ret = 0;
-        }
-        size_t boy = 12u + (size_t)len;
-        if (bas_ret) {
-            if (okuma.bas_okuma == 0) {
-                i += 1u;
-                continue;
-            }
-            if (n - i < boy) {
-                break;
-            }
-            i += boy;
+            i += 1u;
             continue;
         }
+        if (mm == NULL) {
+            c->rx_unknown_msgid++;
+            i += 1u;
+            continue;
+        }
+        if (len == 0u || len > mm->yuk_azami) {
+            c->rx_bad_len++;
+            i += 1u;
+            continue;
+        }
+        size_t boy = 12u + (size_t)len;
         if (n - i < boy) {
             break; /* bekleyen aday */
         }
         uint16_t crc = kabul_crc(&s[i + 1u], 9u + (size_t)len, 0xFFFFu);
         crc = kabul_crc_bayt(crc, mm->crc_extra);
         if (s[i + 10u + len] != (uint8_t)(crc & 0xFFu) || s[i + 11u + len] != (uint8_t)(crc >> 8)) {
-            c->rx_crc_err++;
+            c->rx_crc_err++; /* aday bütünüyle tüketilir */
             i += boy;
             continue;
         }
@@ -523,12 +518,8 @@ void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t
         }
         c->rx_frames++;
         uint8_t seq = s[i + 4u];
-        if (onceki_var) {
-            uint8_t fark = (uint8_t)(seq - onceki - 1u);
-            if (fark != 0u) {
-                c->rx_seq_gap++;
-                m->seq_gap_kayip += fark;
-            }
+        if (onceki_var && seq != (uint8_t)(onceki + 1u)) {
+            c->rx_seq_gap++;
         }
         onceki = seq;
         onceki_var = 1;
@@ -544,6 +535,32 @@ void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t
         memcpy(t->yuk, &s[i + 10u], len);
         i += boy;
     }
+}
+
+size_t kabul_temiz_kuyruk(uint8_t *s, size_t n, size_t kapasite, uint64_t tohum)
+{
+    kabul_rng_t r;
+    kabul_rng_kur(&r, tohum);
+    TEST_ASSERT_TRUE_MESSAGE(kapasite - n >= KABUL_KUYRUK, "kabul_temiz_kuyruk: yer yok");
+    for (size_t k = 0; k < KABUL_KUYRUK; ++k) {
+        s[n + k] = kabul_rng_temiz_bayt(&r);
+    }
+    return n + KABUL_KUYRUK;
+}
+
+void kabul_modelle_esit(ida_link_rol_t rol, const uint8_t *s, size_t n, const kabul_sonuc_t *gercek,
+                        const char *baglam)
+{
+    static kabul_model_t model;
+    kabul_model_ayristir(rol, s, n, &model);
+    kabul_sonuc_esit(&model.sonuc, gercek, baglam);
+}
+
+ida_link_sayaclar_t kabul_sayac_sifir(void)
+{
+    ida_link_sayaclar_t z;
+    memset(&z, 0, sizeof z);
+    return z;
 }
 
 /* ---- Karşılaştırma ------------------------------------------------------------------------ */

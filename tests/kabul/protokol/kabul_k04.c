@@ -6,10 +6,12 @@
  *   (a) sim gönderir 250/25                       -> test_A1_K04_a_sim_gonderir_250_25
  *   (b) kart (ve SIL koşucusu) gönderir 1/1       -> test_A1_K04_b_kart_gonderir_1_1
  *   (c) alıcı karşı tarafın kimliğini kabul eder  -> test_A1_K04_c_karsi_kimlik_kabul
- *   (d) alıcı başka kimliği atar, rx_wrong_sys; ardından gelen geçerli çerçeve kabul
- *       (sysid ya da compid'den biri yanlış, ikisi yanlış, kendi kimliği) -> test_A1_K04_d_*
+ *   (d) alıcı başka kimliği atar, yalnız rx_wrong_sys; çerçeve bütünüyle tüketilir (resync
+ *       yok); ardından gelen geçerli çerçeve kabul (sysid ya da compid'den biri yanlış, ikisi
+ *       yanlış, kendi kimliği) -> test_A1_K04_d_*
  * Çerçeveler sağlaması doğru ve yönü doğru kurulur: yalnız kimlik koşulu sınanır. Kimlik ile
- * başka bir hatanın birlikte olduğu vakalar (denetim sırası) kabul_belirsiz.c'dedir.
+ * başka bir hatanın birlikte olduğu vakalar (A1-K07 denetim sırası) kabul_k07.c'dedir.
+ * Bütün sayaçlar beklenenle ve referans modelle tam eşitlikle karşılaştırılır.
  */
 #include <stdio.h>
 #include <string.h>
@@ -45,7 +47,7 @@ static void gonderen_kimligi(ida_link_rol_t rol, uint8_t sysid, uint8_t compid)
             uint8_t cikis[IDA_LINK_CERCEVE_AZAMI];
             size_t yazilan = 0;
             TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM,
-                ida_link_gonder(&g, m->msgid, y.b, m->yapi_boyu, cikis, sizeof cikis, &yazilan), m->ad);
+                ida_link_gonder(&g, m->msgid, &y, m->yapi_boyu, cikis, sizeof cikis, &yazilan), m->ad);
             kabul_cozulen_t c;
             TEST_ASSERT_EQUAL_INT_MESSAGE(0, kabul_cerceve_dogrula(cikis, yazilan, &c), m->ad);
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(sysid, c.sysid, m->ad);
@@ -88,8 +90,11 @@ static void test_A1_K04_c_karsi_kimlik_kabul(void)
         }
         kabul_besle_yeni(rol, akis, n, &sonuc);
         TEST_ASSERT_EQUAL_UINT32((uint32_t)beklenen, (uint32_t)sonuc.sayi);
-        TEST_ASSERT_EQUAL_UINT32(0u, sonuc.sayac.rx_wrong_sys);
-        TEST_ASSERT_EQUAL_UINT32(0u, kabul_ret_toplami(&sonuc.sayac));
+        ida_link_sayaclar_t b = kabul_sayac_sifir();
+        b.rx_bytes = (uint32_t)n;
+        b.rx_frames = (uint32_t)beklenen;
+        kabul_sayac_esit(&b, &sonuc.sayac, "karşı kimlik");
+        kabul_modelle_esit(rol, akis, n, &sonuc, "karşı kimlik");
         for (size_t k = 0; k < sonuc.sayi; ++k) {
             TEST_ASSERT_EQUAL_UINT8(kabul_karsi_sysid(rol), sonuc.t[k].sysid);
             TEST_ASSERT_EQUAL_UINT8(kabul_karsi_compid(rol), sonuc.t[k].compid);
@@ -112,7 +117,7 @@ static void yanlis_kimlikler(ida_link_rol_t rol, const kimlik_t *k, size_t sayi,
     mesaj[1] = 46003u;
     for (size_t mi = 0; mi < 2; ++mi) {
         for (size_t i = 0; i < sayi; ++i) {
-            const kabul_mesaj_t *m = kabul_mesaj_bul(mesaj[mi]);
+            const kabul_mesaj_t *m = kabul_mesaj_al(mesaj[mi]);
             size_t n = kabul_temiz_ham(akis, &r, m->yuk_azami, 0u, 0u, 40u, k[i].sysid, k[i].compid,
                                        m->msgid, m->crc_extra, 0u);
             n += kabul_temiz_kur(&akis[n], &r, m->msgid, 41u, kabul_karsi_sysid(rol),
@@ -121,11 +126,16 @@ static void yanlis_kimlikler(ida_link_rol_t rol, const kimlik_t *k, size_t sayi,
             char ileti[96];
             snprintf(ileti, sizeof ileti, "%s, sysid %u compid %u", m->ad, (unsigned)k[i].sysid,
                      (unsigned)k[i].compid);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, sonuc.sayac.rx_wrong_sys, ileti);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, kabul_ret_toplami(&sonuc.sayac), ileti);
+            /* Sağlaması tutan çerçeve kimlik yüzünden reddedilince bütünüyle tüketilir: yalnız
+               rx_wrong_sys; resync yok. */
+            ida_link_sayaclar_t b = kabul_sayac_sifir();
+            b.rx_bytes = (uint32_t)n;
+            b.rx_frames = 1u;
+            b.rx_wrong_sys = 1u;
+            kabul_sayac_esit(&b, &sonuc.sayac, ileti);
             TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, (uint32_t)sonuc.sayi, ileti);
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(41u, sonuc.t[0].seq, ileti);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, sonuc.sayac.rx_frames, ileti);
+            kabul_modelle_esit(rol, akis, n, &sonuc, ileti);
         }
     }
 }
@@ -164,7 +174,7 @@ static void test_A1_K04_d_karisik_akis(void)
     uint32_t yanlis = 0;
     uint32_t dogru = 0;
     for (uint8_t s = 0; s < 60u; ++s) {
-        const kabul_mesaj_t *m = kabul_mesaj_bul(46022u);
+        const kabul_mesaj_t *m = kabul_mesaj_al(46022u);
         if (kabul_rng_aralik(&r, 3u) == 0u) {
             n += kabul_temiz_ham(&akis[n], &r, m->yuk_azami, 0u, 0u, s, 1u, 1u, m->msgid,
                                  m->crc_extra, 0u);
@@ -175,10 +185,11 @@ static void test_A1_K04_d_karisik_akis(void)
         }
     }
     kabul_besle_yeni(IDA_LINK_ROL_KART, akis, n, &sonuc);
-    TEST_ASSERT_EQUAL_UINT32(yanlis, sonuc.sayac.rx_wrong_sys);
     TEST_ASSERT_EQUAL_UINT32(dogru, (uint32_t)sonuc.sayi);
+    kabul_modelle_esit(IDA_LINK_ROL_KART, akis, n, &sonuc, "karışık kimlik");
+    TEST_ASSERT_EQUAL_UINT32(yanlis, sonuc.sayac.rx_wrong_sys);
     TEST_ASSERT_EQUAL_UINT32(dogru, sonuc.sayac.rx_frames);
-    TEST_ASSERT_EQUAL_UINT32(yanlis, kabul_ret_toplami(&sonuc.sayac));
+    TEST_ASSERT_EQUAL_UINT32(0u, sonuc.sayac.rx_resync_bytes);
 }
 
 int main(void)

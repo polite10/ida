@@ -11,12 +11,13 @@
  *       (incompat_flags = 0, CRC tutar; K02, K07); rx_frames teslim sayısıdır; rx_bytes akış
  *       boyudur;
  *   (c) gömülü çerçeve: önündeki 267 baytta 0xFD ve 0xFE bulunmayan her gömülü geçerli
- *       çerçeve (ayrıştırıcı hangi okumayla çalışırsa çalışsın o noktada boştadır) teslim
+ *       çerçeve (o noktaya uzanan bir aday olamayacağından ayrıştırıcı boştadır) teslim
  *       edilir; teslim edilenler gömülü çerçevelerin sıralı bir alt dizisidir;
- *   (d) K07 §7.1: temiz çerçeveli, yükü/CRC'si bozuk ya da sonu kesik akışlarda (başlıkta
- *       reddedilen aday yok, 0xFE yok) teslim dizisi, rx_crc_err ve diğer ret sayaçları
- *       A1-K07'nin "adayın son baytından sonra sürdür" kuralıyla kurulan referans modelle
- *       aynıdır (modelin iki okuması bu akışlarda aynı sonucu verir; ayrıca denetlenir).
+ *   (d) her akışta (düz rastgele, 0xFD yoğun, gömülü, temiz + bozuk/kesik, karışık; sonuna
+ *       temiz kuyruk eklenerek her aday akış içinde biter) teslimler ve BÜTÜN sayaçlar A1'in
+ *       güncel K02/K04–K08 metninden yazılmış referans modelle (kabul_model_ayristir) tam
+ *       eşittir; temiz + bozuk akışlarda bu, K07 §7.1'in "bozulan adayın kapladığı bölgeden
+ *       sonraki ilk geçerli çerçevenin yakalanması" sınamasıdır.
  */
 #include <stdio.h>
 #include <string.h>
@@ -33,8 +34,6 @@ static uint8_t akis[AKIS_AZAMI];
 static kabul_gomulu_t gomulu[KABUL_GOMULU_AZAMI];
 static kabul_sonuc_t tek;
 static kabul_sonuc_t diger;
-static kabul_model_t model0;
-static kabul_model_t model1;
 static ida_link_alici_t alici;
 
 static const ida_link_rol_t ROLLER[2] = {IDA_LINK_ROL_KART, IDA_LINK_ROL_SIM};
@@ -57,9 +56,8 @@ static void teslimler_gecerli(ida_link_rol_t rol, const uint8_t *s, size_t n, co
     size_t ara = 0; /* teslimler akış sırasındadır: arama bir öncekinin sonrasından sürer */
     for (size_t i = 0; i < o->sayi; ++i) {
         const kabul_teslim_t *t = &o->t[i];
-        const kabul_mesaj_t *m = kabul_mesaj_bul(t->msgid);
+        const kabul_mesaj_t *m = kabul_mesaj_al(t->msgid);
         snprintf(ileti, sizeof ileti, "%s: %u. teslim msgid %lu", baglam, (unsigned)i, (unsigned long)t->msgid);
-        TEST_ASSERT_NOT_NULL_MESSAGE(m, ileti);
         TEST_ASSERT_TRUE_MESSAGE((m->yon & kabul_rol_alir_yon(rol)) != 0u, ileti);
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(kabul_karsi_sysid(rol), t->sysid, ileti);
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(kabul_karsi_compid(rol), t->compid, ileti);
@@ -117,9 +115,11 @@ static void akis_dene(kabul_akis_turu_t tur, uint64_t tohum, size_t boy, int her
         char baglam[96];
         size_t gs = 0;
         size_t n = kabul_akis_uret(tur, ROLLER[ri], tohum, akis, sizeof akis, boy, gomulu, &gs);
+        n = kabul_temiz_kuyruk(akis, n, sizeof akis, tohum);
         snprintf(baglam, sizeof baglam, "%s akış (rol %d, tohum %llx, %u B)", KABUL_AKIS_AD[tur],
                  (int)ROLLER[ri], (unsigned long long)tohum, (unsigned)n);
         parcalama_degismez(ROLLER[ri], akis, n, baglam, her_bolme);
+        kabul_modelle_esit(ROLLER[ri], akis, n, &tek, baglam);
     }
 }
 
@@ -157,8 +157,10 @@ static void test_A1_K07_saglamlik_c_rastgeleye_gomulu(void)
             size_t gs = 0;
             size_t n = kabul_akis_uret(KABUL_AKIS_GOMULU_RASTGELE, rol, 0x6E00ull + t, akis, sizeof akis,
                                        16000u, gomulu, &gs);
+            n = kabul_temiz_kuyruk(akis, n, sizeof akis, t);
             snprintf(baglam, sizeof baglam, "gömülü (rol %d, tohum %u)", (int)rol, (unsigned)t);
             parcalama_degismez(rol, akis, n, baglam, t == 0u);
+            kabul_modelle_esit(rol, akis, n, &tek, baglam);
             /* tek: tek çağrılı besleme sonucu. Teslimler gömülülerin sıralı alt dizisidir. */
             static uint8_t teslim_edildi[KABUL_GOMULU_AZAMI];
             memset(teslim_edildi, 0, sizeof teslim_edildi);
@@ -209,8 +211,6 @@ static void test_A1_K07_saglamlik_c_rastgeleye_gomulu(void)
 /* (d) */
 static void test_A1_K07_saglamlik_d_temiz_bozuk_modelle_ayni(void)
 {
-    const kabul_okuma_t o0 = {0, 0};
-    const kabul_okuma_t o1 = {1, 1};
     uint32_t toplam_bozuk = 0;
     for (uint64_t t = 0; t < 12u; ++t) {
         for (size_t ri = 0; ri < 2; ++ri) {
@@ -219,30 +219,12 @@ static void test_A1_K07_saglamlik_d_temiz_bozuk_modelle_ayni(void)
             size_t gs = 0;
             size_t n = kabul_akis_uret(KABUL_AKIS_TEMIZ_BOZUK, rol, 0x7E00ull + t, akis, sizeof akis, 16000u,
                                        gomulu, &gs);
+            n = kabul_temiz_kuyruk(akis, n, sizeof akis, t);
             snprintf(baglam, sizeof baglam, "temiz + bozuk (rol %d, tohum %u, %u B)", (int)rol, (unsigned)t,
                      (unsigned)n);
-            kabul_model_ayristir(rol, o0, akis, n, &model0);
-            kabul_model_ayristir(rol, o1, akis, n, &model1);
-            /* Kurgu denetimi: bu akışlarda modelin okumaları ayrışmaz. */
-            kabul_sonuc_esit(&model0.sonuc, &model1.sonuc, "model okumaları (kurgu hatası)");
-            TEST_ASSERT_EQUAL_UINT32(0u, model0.sonuc.sayac.rx_iflag + model0.sonuc.sayac.rx_bad_len +
-                                             model0.sonuc.sayac.rx_unknown_msgid + model0.sonuc.sayac.rx_mav1 +
-                                             model0.sonuc.sayac.rx_wrong_sys);
-            toplam_bozuk += model0.sonuc.sayac.rx_crc_err;
             parcalama_degismez(rol, akis, n, baglam, t == 0u);
-            /* Teslimler ve K07 sayaçları modelle aynı (rx_resync_bytes ve rx_seq_gap
-               kabul_belirsiz.c'de). */
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE((uint32_t)model0.sonuc.sayi, (uint32_t)tek.sayi, baglam);
-            for (size_t i = 0; i < tek.sayi; ++i) {
-                char ileti[128];
-                snprintf(ileti, sizeof ileti, "%s: %u. teslim", baglam, (unsigned)i);
-                TEST_ASSERT_EQUAL_UINT32_MESSAGE(model0.sonuc.t[i].msgid, tek.t[i].msgid, ileti);
-                TEST_ASSERT_EQUAL_UINT8_MESSAGE(model0.sonuc.t[i].seq, tek.t[i].seq, ileti);
-                TEST_ASSERT_EQUAL_UINT8_MESSAGE(model0.sonuc.t[i].len, tek.t[i].len, ileti);
-                TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(model0.sonuc.t[i].yuk, tek.t[i].yuk, IDA_LINK_YUK_AZAMI, ileti);
-            }
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(model0.sonuc.sayac.rx_crc_err, tek.sayac.rx_crc_err, baglam);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(model0.sonuc.sayac.rx_crc_err, kabul_ret_toplami(&tek.sayac), baglam);
+            kabul_modelle_esit(rol, akis, n, &tek, baglam);
+            toplam_bozuk += tek.sayac.rx_crc_err;
         }
     }
     TEST_ASSERT_TRUE_MESSAGE(toplam_bozuk > 50u, "kurgu: yeterince bozuk aday üretilmedi");
@@ -256,7 +238,10 @@ static void test_A1_K07_saglamlik_tum_tek_bayt_ve_baslik_birlesimleri(void)
     for (size_t ri = 0; ri < 2; ++ri) {
         for (unsigned b = 0; b < 256u; ++b) {
             akis[0] = (uint8_t)b;
+            size_t n1 = kabul_temiz_kuyruk(akis, 1u, sizeof akis, b);
             parcalama_degismez(ROLLER[ri], akis, 1u, "tek bayt", 0);
+            parcalama_degismez(ROLLER[ri], akis, n1, "tek bayt + kuyruk", 0);
+            kabul_modelle_esit(ROLLER[ri], akis, n1, &tek, "tek bayt + kuyruk");
         }
         kabul_rng_t r;
         kabul_rng_kur(&r, 0xBA51ull);
@@ -278,6 +263,9 @@ static void test_A1_K07_saglamlik_tum_tek_bayt_ve_baslik_birlesimleri(void)
                     akis[n++] = kabul_rng_bayt(&r);
                 }
                 parcalama_degismez(ROLLER[ri], akis, n, "başlık birleşimi", 0);
+                n = kabul_temiz_kuyruk(akis, n, sizeof akis, len * 256u + inc);
+                parcalama_degismez(ROLLER[ri], akis, n, "başlık birleşimi + kuyruk", 0);
+                kabul_modelle_esit(ROLLER[ri], akis, n, &tek, "başlık birleşimi + kuyruk");
             }
         }
     }

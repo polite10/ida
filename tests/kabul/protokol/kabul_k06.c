@@ -1,12 +1,13 @@
 /*
  * A1-K06 kabul testleri (sözleşme §4.1, Tablo 3.3 "Yön"):
- *   "Alıcı, dialect'te olmayan ya da kendi yönünde alınmaması gereken (Tablo 3.3 "Yön"
- *    sütunu) mesaj kimliğini taşıyan çerçeveyi atar (rx_unknown_msgid)."
+ *   "Alıcı dialect'te olmayan mesaj kimliğini taşıyan adayı başlık denetiminde atar ve yalnız
+ *    rx_unknown_msgid'e sayar (... rx_crc_err'e girmez ...); dialect'te olan ama kendi
+ *    yönünde alınmaması gereken (Tablo 3.3 "Yön" sütunu) kimliği taşıyan çerçeveyi sağlaması
+ *    ve sysid/compid denetiminden sonra atar ve yine rx_unknown_msgid'e sayar."
  * Öğeler:
- *   (a) dialect'te olmayan kimlik atılır; ardından gelen geçerli çerçeve kabul edilir
- *       (sayaç: K06 rx_unknown_msgid der, Tablo 3.11b rx_crc_err için "bilinmeyen kimlik
- *       dahil" der; hangisinin arttığı kabul_belirsiz.c'de gözlenir, burada yalnız atılma ve
- *       toplam denetlenir)
+ *   (a) dialect'te olmayan kimlik başlıkta atılır ve YALNIZ rx_unknown_msgid'e sayılır
+ *       (rx_crc_err'e girmez); tarama 0xFD'den sonra sürer; ardından gelen geçerli çerçeve
+ *       kabul edilir
  *   (b) yönü yanlış kimlik atılır, rx_unknown_msgid (Tablo 3.11b de aynı sayacı verir)
  *   (c) Tablo 3.3'ün her satırı, iki rol: yalnız rolün yönündeki ve iki yönlü mesajlar kabul
  *   (d) iki yönlü mesajlar (46003, 46004, 46036) iki rolde de kabul
@@ -33,20 +34,24 @@ static void bilinmeyen(uint32_t id, uint8_t len, uint8_t crc_extra, kabul_rng_t 
     for (size_t ri = 0; ri < 2; ++ri) {
         ida_link_rol_t rol = ROLLER[ri];
         uint32_t gecerli = rol == IDA_LINK_ROL_KART ? 46010u : 46064u;
-        size_t n = kabul_temiz_ham(akis, r, len, 0u, 0u, 50u, kabul_karsi_sysid(rol),
-                                   kabul_karsi_compid(rol), id, crc_extra, 0u);
+        size_t aday = kabul_temiz_ham(akis, r, len, 0u, 0u, 50u, kabul_karsi_sysid(rol),
+                                      kabul_karsi_compid(rol), id, crc_extra, 0u);
+        size_t n = aday;
         n += kabul_temiz_kur(&akis[n], r, gecerli, 51u, kabul_karsi_sysid(rol), kabul_karsi_compid(rol),
                              4u, 1, NULL);
         kabul_besle_yeni(rol, akis, n, &sonuc);
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, (uint32_t)sonuc.sayi, ileti);
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(gecerli, sonuc.t[0].msgid, ileti);
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(51u, sonuc.t[0].seq, ileti);
-        TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, sonuc.sayac.rx_frames, ileti);
-        /* Atılma bir ret sayacına girer: rx_unknown_msgid (K06) ya da rx_crc_err (Tablo 3.11b);
-           başka bir ret sayacı artmaz. */
-        TEST_ASSERT_TRUE_MESSAGE(sonuc.sayac.rx_unknown_msgid + sonuc.sayac.rx_crc_err >= 1u, ileti);
-        TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, sonuc.sayac.rx_iflag + sonuc.sayac.rx_bad_len +
-                                             sonuc.sayac.rx_wrong_sys + sonuc.sayac.rx_mav1, ileti);
+        /* A1-K06: başlıkta atılır, yalnız rx_unknown_msgid (rx_crc_err'e girmez); A1-K07:
+           tarama 0xFD'den sonra sürer, adayın temiz baytları resync'e girer. */
+        ida_link_sayaclar_t b = kabul_sayac_sifir();
+        b.rx_bytes = (uint32_t)n;
+        b.rx_frames = 1u;
+        b.rx_unknown_msgid = 1u;
+        b.rx_resync_bytes = (uint32_t)(aday - 1u);
+        kabul_sayac_esit(&b, &sonuc.sayac, ileti);
+        kabul_modelle_esit(rol, akis, n, &sonuc, ileti);
     }
 }
 
@@ -70,10 +75,10 @@ static void test_A1_K06_e_kimligin_ust_bayti(void)
 {
     kabul_rng_t r;
     kabul_rng_kur(&r, 0x4B30360002ull);
-    bilinmeyen(46000u + 0x10000u, 22u, kabul_mesaj_bul(46000u)->crc_extra, &r);
-    bilinmeyen(46020u + 0x10000u, 47u, kabul_mesaj_bul(46020u)->crc_extra, &r);
-    bilinmeyen(46060u + 0x20000u, 38u, kabul_mesaj_bul(46060u)->crc_extra, &r);
-    bilinmeyen(46063u + 0x800000u, 118u, kabul_mesaj_bul(46063u)->crc_extra, &r);
+    bilinmeyen(46000u + 0x10000u, 22u, kabul_mesaj_al(46000u)->crc_extra, &r);
+    bilinmeyen(46020u + 0x10000u, 47u, kabul_mesaj_al(46020u)->crc_extra, &r);
+    bilinmeyen(46060u + 0x20000u, 38u, kabul_mesaj_al(46060u)->crc_extra, &r);
+    bilinmeyen(46063u + 0x800000u, 118u, kabul_mesaj_al(46063u)->crc_extra, &r);
 }
 
 /* (b): yönü yanlış mesaj (sağlaması, kimliği ve len'i doğru) atılır, rx_unknown_msgid tam bir
@@ -96,8 +101,13 @@ static void test_A1_K06_b_yonu_yanlis_kimlik_atilir(void)
             n += kabul_temiz_kur(&akis[n], &r, gecerli, 61u, kabul_karsi_sysid(rol),
                                  kabul_karsi_compid(rol), 7u, 1, NULL);
             kabul_besle_yeni(rol, akis, n, &sonuc);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, sonuc.sayac.rx_unknown_msgid, m->ad);
-            TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, kabul_ret_toplami(&sonuc.sayac), m->ad);
+            /* Sağlama ve kimlikten sonra yön: yalnız rx_unknown_msgid; çerçeve bütünüyle tüketilir. */
+            ida_link_sayaclar_t b = kabul_sayac_sifir();
+            b.rx_bytes = (uint32_t)n;
+            b.rx_frames = 1u;
+            b.rx_unknown_msgid = 1u;
+            kabul_sayac_esit(&b, &sonuc.sayac, m->ad);
+            kabul_modelle_esit(rol, akis, n, &sonuc, m->ad);
             TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, (uint32_t)sonuc.sayi, m->ad);
             TEST_ASSERT_EQUAL_UINT32_MESSAGE(gecerli, sonuc.t[0].msgid, m->ad);
             ++sayi;
@@ -136,8 +146,10 @@ static void test_A1_K06_cd_tablo_3_3_her_satir(void)
         TEST_ASSERT_EQUAL_UINT32(3u, iki_yon);
         kabul_besle_yeni(rol, akis, n, &sonuc);
         TEST_ASSERT_EQUAL_UINT32(kabul, (uint32_t)sonuc.sayi);
+        kabul_modelle_esit(rol, akis, n, &sonuc, "Tablo 3.3");
         TEST_ASSERT_EQUAL_UINT32(ret, sonuc.sayac.rx_unknown_msgid);
         TEST_ASSERT_EQUAL_UINT32(ret, kabul_ret_toplami(&sonuc.sayac));
+        TEST_ASSERT_EQUAL_UINT32(0u, sonuc.sayac.rx_resync_bytes);
         size_t k = 0;
         for (size_t i = 0; i < KABUL_MESAJ_SAYISI; ++i) {
             const kabul_mesaj_t *m = &kabul_mesajlar[i];

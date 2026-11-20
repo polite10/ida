@@ -7,8 +7,9 @@
 # Tablo 3.3 ve ida.xml'in alan tipleri derleme sırasında bu dizindeki betikle çıkarılır.
 #
 # CTest adları kural numarasını taşır: kabul.protokol.A1-K02 … A1-K08, A1-EkB, A1-K101,
-# A1-3.11 (sayaç genişliği), A1-K07.saglamlik (sözde rastgele akışlar), belirsiz (A1'in iki
-# biçimde okunabildiği vakalar: gözlenen davranış iletiyle yazılır, test kırmızı olmaz).
+# A1-3.11 (sayaç genişliği), A1-K07.saglamlik (sözde rastgele akışlar). Her vaka A1'in
+# güncel metnindeki tek beklenen davranışı iddia eder; teslimler ve bütün sayaçlar tam
+# eşitlikle karşılaştırılır.
 #
 # Yalnız PC kökünde derlenir (tests/ yalnız host'ta eklenir).
 
@@ -56,4 +57,3 @@ kabul_protokol_testi(A1-3.11           kabul_sayac)
 kabul_protokol_testi(A1-EkB            kabul_ek_b)
 kabul_protokol_testi(A1-K07.saglamlik  kabul_saglamlik)
 kabul_protokol_testi(A1-K101           kabul_k101)
-kabul_protokol_testi(belirsiz          kabul_belirsiz)

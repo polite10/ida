@@ -34,7 +34,10 @@ uint16_t kabul_crc_bayt(uint16_t crc, uint8_t b);
 uint16_t kabul_crc(const uint8_t *p, size_t n, uint16_t crc);
 
 /* ---- Sözleşme tablosu --------------------------------------------------------------------- */
-const kabul_mesaj_t *kabul_mesaj_bul(uint32_t msgid);
+const kabul_mesaj_t *kabul_mesaj_bul(uint32_t msgid);  /* yoksa NULL */
+/* Tabloda olması gereken kimlik için: yoksa Unity hatası; dönüş hiçbir yolda NULL değildir
+   (çağıran NULL denetimi yapmadan kullanabilir; MSVC /analyze C6011). */
+const kabul_mesaj_t *kabul_mesaj_al(uint32_t msgid);
 /* Rolün alabileceği yön (A1 Tablo 3.3 ve A1-K06): kart sim -> kart'ı, sim kart -> sim'i alır. */
 uint8_t kabul_rol_alir_yon(ida_link_rol_t rol);
 uint8_t kabul_rol_gonderir_yon(ida_link_rol_t rol);
@@ -74,14 +77,9 @@ size_t kabul_temiz_ham(uint8_t *cikis, kabul_rng_t *r, uint8_t len, uint8_t inco
 size_t kabul_temiz_kur(uint8_t *cikis, kabul_rng_t *r, uint32_t msgid, uint8_t seq,
                        uint8_t sysid, uint8_t compid, size_t dolu, int kirp, uint8_t *yuk_cikis);
 
-/* Gönderici yardımcısı: mesaj yapısı için hizalı tampon. Tel yükü, yapının ilk yuk_azami
-   baytıdır (açık başlık); yapının kalan (dolgu) baytları 0xA5 ile doldurulur: tele çıkmamalıdır. */
-typedef union {
-    long double hiza_ld;
-    uint64_t    hiza_u64;
-    void       *hiza_p;
-    uint8_t     b[512];
-} kabul_yapi_t;
+/* Gönderici yardımcısı: mesaj nesnesi (kabul_yapi_t, kabul_ek_b.h: üretilmiş yapıların
+   birleşimi). Tel yükü, yapının ilk yuk_azami baytıdır (açık başlık); yapının kalan (dolgu)
+   baytları 0xA5 ile doldurulur: tele çıkmamalıdır. */
 void kabul_yapi_hazirla(kabul_yapi_t *y, const kabul_mesaj_t *m, const uint8_t *yuk);
 
 /* Kırpılmış yük boyu (A1-K05): son sıfır olmayan baytın sırası + 1, en az 1. */
@@ -149,29 +147,38 @@ void kabul_sayac_esit(const ida_link_sayaclar_t *beklenen, const ida_link_sayacl
    rx_mav1, rx_overflow) toplamı. */
 uint32_t kabul_ret_toplami(const ida_link_sayaclar_t *s);
 
-/* ---- Referans ayrıştırıcı modeli (sözleşme okumalarıyla) -------------------------------- */
-/* A1 metninin açık bıraktığı iki nokta parametredir (raporda "sözleşme belirsiz"):
-   bas_okuma: başlıkta reddedilen aday (incompat_flags, bilinmeyen msgid, len) sonrası
-     0 = yalnız 0xFD tüketilir, tarama sonraki bayttan sürer;
-     1 = adayın len'e göre bütün baytları (12 + len) atlanır.
-   mav1_okuma: 0xFE görülünce
-     0 = yalnız 0xFE tüketilir (sayılır), geri kalan baytlar taranır;
-     1 = MAVLink 1 çerçevesinin bütünü (8 + len) atlanır, bir kez sayılır.
-   Sağlaması tutan ama kimlik (K04) ya da yön (K06) yüzünden reddedilen çerçeve bütünüyle
-   tüketilir; CRC hatasında aday bütünüyle tüketilir (A1-K07). Bilinmeyen kimlik
-   rx_unknown_msgid'e sayılır (A1-K06). */
+/* ---- Referans ayrıştırıcı modeli (A1 güncel metni, tek okuma) ---------------------------- */
+/* A1-K02, K04–K08 ve Tablo 3.11b'nin doğrudan kodlanmışı (kitaplık kaynağı okunmadan):
+   - Aday dışında 0xFE: rx_mav1 +1 ve rx_resync_bytes +1; yalnız o bayt tüketilir (K02).
+   - Aday dışında 0xFD ve 0xFE dışı bayt: rx_resync_bytes +1 (K07).
+   - 0xFD aday başlatır; başlık tamamlanınca sırayla incompat_flags (rx_iflag) → kimlik
+     dialect'te mi (rx_unknown_msgid) → len (rx_bad_len); ilk tutmayan tek ret nedenidir ve
+     tarama 0xFD'den sonraki bayttan sürer (K07); 0xFD'nin kendisi resync'e girmez.
+   - Aday tamamlanınca CRC (rx_crc_err): tutmazsa aday bütünüyle tüketilir, baytları resync'e
+     girmez. Tutarsa sysid/compid (rx_wrong_sys) → yön (rx_unknown_msgid); bu retlerde de
+     çerçeve bütünüyle tüketilir.
+   - Kabulde rx_frames +1; seq geçmişi yalnız kabulde güncellenir; ilk kabul dışında
+     seq ≠ önceki + 1 (mod 256) ise rx_seq_gap +1 (olay; yineleme de olay) (K08).
+   - Akış sonunda tamamlanmamış aday hiçbir sayaca girmez (yalnız rx_bytes). Bunun A1'de
+     açıkça yazılmadığı için modelle karşılaştırılan akışların sonuna kabul_temiz_kuyruk ile
+     temiz baytlar eklenir: her aday akış içinde tamamlanır. */
 typedef struct {
-    int bas_okuma;
-    int mav1_okuma;
-} kabul_okuma_t;
-
-typedef struct {
-    kabul_sonuc_t sonuc;          /* teslimler ve sayaçlar; rx_seq_gap olay sayısıdır */
-    uint32_t      seq_gap_kayip;  /* aynı akışta kayıp çerçeve sayısı okuması */
+    kabul_sonuc_t sonuc;
 } kabul_model_t;
 
-void kabul_model_ayristir(ida_link_rol_t rol, kabul_okuma_t okuma, const uint8_t *s, size_t n,
-                          kabul_model_t *m);
+void kabul_model_ayristir(ida_link_rol_t rol, const uint8_t *s, size_t n, kabul_model_t *m);
+
+/* Akışın sonuna 0xFD/0xFE içermeyen `KABUL_KUYRUK` bayt ekler (açık kalan her aday biter);
+   yeni boyu döndürür. */
+#define KABUL_KUYRUK 300u
+size_t kabul_temiz_kuyruk(uint8_t *s, size_t n, size_t kapasite, uint64_t tohum);
+
+/* Kitaplığın sonucu (teslimler ve bütün sayaçlar) modelinkine tam eşit mi (Unity iddiası). */
+void kabul_modelle_esit(ida_link_rol_t rol, const uint8_t *s, size_t n, const kabul_sonuc_t *gercek,
+                        const char *baglam);
+
+/* Sayaç beklentisi: hepsi sıfır, sonra çağıran alanları yazar. */
+ida_link_sayaclar_t kabul_sayac_sifir(void);
 
 /* ---- Sözde rastgele akış üreteçleri (sabit tohum) -------------------------------------- */
 typedef enum {

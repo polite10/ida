@@ -53,8 +53,7 @@ static void test_A1_EkB_1_sozlesme_ic_tutarlilik(void)
     uint8_t goruldu[KABUL_MESAJ_SAYISI] = {0};
     for (size_t i = 0; i < KABUL_ALTIN_SAYISI; ++i) {
         const kabul_altin_t *a = &kabul_altin[i];
-        const kabul_mesaj_t *m = kabul_mesaj_bul(a->msgid);
-        TEST_ASSERT_NOT_NULL_MESSAGE(m, a->baslik);
+        const kabul_mesaj_t *m = kabul_mesaj_al(a->msgid);
         goruldu[m - kabul_mesajlar] = 1u;
         TEST_ASSERT_EQUAL_UINT8_MESSAGE((uint8_t)i, a->seq, a->baslik);
         TEST_ASSERT_EQUAL_UINT16_MESSAGE(a->cerceve_bu, a->n, a->baslik);
@@ -131,7 +130,7 @@ static void test_A1_EkB_2_3_4_kabul_cozum_ve_yeniden_kodlama(void)
 {
     for (size_t i = 0; i < KABUL_ALTIN_SAYISI; ++i) {
         const kabul_altin_t *a = &kabul_altin[i];
-        const kabul_mesaj_t *m = kabul_mesaj_bul(a->msgid);
+        const kabul_mesaj_t *m = kabul_mesaj_al(a->msgid);
         /* (2) */
         kabul_besle_yeni(alici_rolu(a), a->bayt, a->n, &sonuc);
         tek_teslim_denetle(a, &sonuc, a->yuk_bu);
@@ -143,8 +142,8 @@ static void test_A1_EkB_2_3_4_kabul_cozum_ve_yeniden_kodlama(void)
         cerceve_doldur(&c, &sonuc.t[0]);
         kabul_yapi_t y;
         memset(y.b, 0x5C, sizeof y.b);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM, ida_link_coz(&c, a->msgid, y.b, m->yapi_boyu), a->baslik);
-        a->yapi_denetle(y.b);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM, ida_link_coz(&c, a->msgid, &y, m->yapi_boyu), a->baslik);
+        a->yapi_denetle(&y);
         uint8_t yuk[IDA_LINK_YUK_AZAMI];
         yuk_al(a, yuk);
         TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(yuk, y.b, m->yuk_azami, a->baslik);
@@ -155,7 +154,7 @@ static void test_A1_EkB_2_3_4_kabul_cozum_ve_yeniden_kodlama(void)
         uint8_t cikis[IDA_LINK_CERCEVE_AZAMI];
         size_t yazilan = 0;
         TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM,
-            ida_link_gonder(&g, a->msgid, y.b, m->yapi_boyu, cikis, sizeof cikis, &yazilan), a->baslik);
+            ida_link_gonder(&g, a->msgid, &y, m->yapi_boyu, cikis, sizeof cikis, &yazilan), a->baslik);
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(a->n, (uint32_t)yazilan, a->baslik);
         TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(a->bayt, cikis, a->n, a->baslik);
         /* (4b) referansın kurduğu yapıdan (yük = yapının ilk yuk_azami baytı; dolgu 0xA5). */
@@ -164,7 +163,7 @@ static void test_A1_EkB_2_3_4_kabul_cozum_ve_yeniden_kodlama(void)
         g.seq = a->seq;
         memset(cikis, 0, sizeof cikis);
         TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM,
-            ida_link_gonder(&g, a->msgid, y2.b, m->yapi_boyu, cikis, sizeof cikis, &yazilan), a->baslik);
+            ida_link_gonder(&g, a->msgid, &y2, m->yapi_boyu, cikis, sizeof cikis, &yazilan), a->baslik);
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(a->n, (uint32_t)yazilan, a->baslik);
         TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(a->bayt, cikis, a->n, a->baslik);
     }
@@ -175,7 +174,7 @@ static void test_A1_EkB_5_kirpilmamis_bicim_ve_iki_yon(void)
 {
     for (size_t i = 0; i < KABUL_ALTIN_SAYISI; ++i) {
         const kabul_altin_t *a = &kabul_altin[i];
-        const kabul_mesaj_t *m = kabul_mesaj_bul(a->msgid);
+        const kabul_mesaj_t *m = kabul_mesaj_al(a->msgid);
         uint8_t yuk[IDA_LINK_YUK_AZAMI];
         yuk_al(a, yuk);
         size_t n = kabul_cerceve_kur(akis, a->msgid, a->seq, a->sysid, a->compid, yuk, sizeof yuk, 0);
@@ -193,10 +192,10 @@ static void test_A1_EkB_5_kirpilmamis_bicim_ve_iki_yon(void)
         kabul_yapi_t y2;
         memset(y1.b, 0x11, sizeof y1.b);
         memset(y2.b, 0x22, sizeof y2.b);
-        TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_coz(&c1, a->msgid, y1.b, m->yapi_boyu));
-        TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_coz(&c2, a->msgid, y2.b, m->yapi_boyu));
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_coz(&c1, a->msgid, &y1, m->yapi_boyu));
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_coz(&c2, a->msgid, &y2, m->yapi_boyu));
         TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(y2.b, y1.b, m->yapi_boyu, a->baslik);
-        a->yapi_denetle(y1.b);
+        a->yapi_denetle(&y1);
         /* İki yönlü mesaj: diğer rol, kendi karşı tarafının kimliğiyle kurulan aynı yükü kabul eder. */
         if (m->yon == (KABUL_YON_SIM_KART | KABUL_YON_KART_SIM)) {
             ida_link_rol_t diger = alici_rolu(a) == IDA_LINK_ROL_KART ? IDA_LINK_ROL_SIM : IDA_LINK_ROL_KART;

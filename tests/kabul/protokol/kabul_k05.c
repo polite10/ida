@@ -12,7 +12,9 @@
  *       artık kalmaz)
  *   (f) len = 0 atılır, rx_bad_len
  *   (g) len > azami atılır, rx_bad_len (azami + 1 ve 255; her mesaj, iki rol)
- * Sınır değerler: len = 1 ve len = azami kabul, len = 0 ve azami + 1 ret.
+ * Sınır değerler: len = 1 ve len = azami kabul, len = 0 ve azami + 1 ret. Kötü len başlıkta
+ * reddedilir (A1-K07): yalnız rx_bad_len artar ve tarama 0xFD'den sonraki bayttan sürer.
+ * Bütün sayaçlar beklenenle ve referans modelle tam eşitlikle karşılaştırılır.
  */
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +44,7 @@ static void gonder_ve_karsilastir(ida_link_gonderici_t *g, ida_link_rol_t rol,
     uint8_t ref[IDA_LINK_CERCEVE_AZAMI];
     size_t yazilan = 0;
     TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM,
-        ida_link_gonder(g, m->msgid, y.b, m->yapi_boyu, cikis, sizeof cikis, &yazilan), m->ad);
+        ida_link_gonder(g, m->msgid, &y, m->yapi_boyu, cikis, sizeof cikis, &yazilan), m->ad);
     size_t rn = kabul_cerceve_kur(ref, m->msgid, seq, kabul_kendi_sysid(rol), kabul_kendi_compid(rol),
                                   yuk, m->yuk_azami, 1);
     snprintf(ileti, sizeof ileti, "%s: len (beklenen %u)", m->ad, (unsigned)beklenen_len);
@@ -112,7 +114,7 @@ static void coz_ve_karsilastir(const kabul_teslim_t *t, const kabul_mesaj_t *m, 
     memcpy(c.yuk, t->yuk, sizeof c.yuk);
     kabul_yapi_t y;
     memset(y.b, 0xA5, sizeof y.b);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM, ida_link_coz(&c, m->msgid, y.b, m->yapi_boyu), m->ad);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(IDA_LINK_TAMAM, ida_link_coz(&c, m->msgid, &y, m->yapi_boyu), m->ad);
     TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(beklenen, y.b, m->yuk_azami, m->ad);
     for (size_t k = m->yuk_azami; k < m->yapi_boyu; ++k) {
         TEST_ASSERT_EQUAL_HEX8_MESSAGE(0u, y.b[k], "ida_link_coz: yapının dolgu baytı sıfırlanmadı");
@@ -163,8 +165,12 @@ static void test_A1_K05_cde_kirpilmis_ve_kirpilmamis_kabul(void)
                 TEST_ASSERT_EQUAL_UINT8(m->yuk_azami, sonuc2.t[0].len);
                 TEST_ASSERT_EQUAL_HEX8_ARRAY_MESSAGE(sonuc.t[0].yuk, sonuc2.t[0].yuk,
                                                      IDA_LINK_YUK_AZAMI, m->ad);
-                TEST_ASSERT_EQUAL_UINT32(0u, kabul_ret_toplami(&sonuc.sayac));
-                TEST_ASSERT_EQUAL_UINT32(0u, kabul_ret_toplami(&sonuc2.sayac));
+                ida_link_sayaclar_t b = kabul_sayac_sifir();
+                b.rx_bytes = (uint32_t)n1;
+                b.rx_frames = 1u;
+                kabul_sayac_esit(&b, &sonuc.sayac, m->ad);
+                b.rx_bytes = (uint32_t)n2;
+                kabul_sayac_esit(&b, &sonuc2.sayac, m->ad);
             }
         }
     }
@@ -176,12 +182,14 @@ static void test_A1_K05_c_kismen_kirpilmis_kabul(void)
 {
     kabul_rng_t r;
     kabul_rng_kur(&r, 0x4B30350003ull);
-    const kabul_mesaj_t *m = kabul_mesaj_bul(46024u); /* IDA_DVL, 77 B */
+    const kabul_mesaj_t *m = kabul_mesaj_al(46024u); /* IDA_DVL, 77 B */
     for (uint8_t len = 2u; len < m->yuk_azami; len = (uint8_t)(len + 7u)) {
         size_t n = kabul_temiz_ham(akis, &r, len, 0u, 0u, 3u, 250u, 25u, m->msgid, m->crc_extra, 1u);
         TEST_ASSERT_EQUAL_HEX8(0u, akis[10u + len - 1u]);
         kabul_besle_yeni(IDA_LINK_ROL_KART, akis, n, &sonuc);
         TEST_ASSERT_EQUAL_UINT32(1u, (uint32_t)sonuc.sayi);
+        kabul_modelle_esit(IDA_LINK_ROL_KART, akis, n, &sonuc, "kısmen kırpılmış");
+        TEST_ASSERT_EQUAL_UINT32(0u, kabul_ret_toplami(&sonuc.sayac));
         TEST_ASSERT_EQUAL_UINT8(len, sonuc.t[0].len);
         TEST_ASSERT_EQUAL_HEX8_ARRAY(&akis[10], sonuc.t[0].yuk, len);
     }
@@ -201,6 +209,7 @@ static void test_A1_K05_e_onceki_cerceveden_artik_kalmaz(void)
     n += kabul_temiz_kur(&akis[n], &r, 46030u, 2u, 250u, 25u, 0u, 1, NULL);
     kabul_besle_yeni(IDA_LINK_ROL_KART, akis, n, &sonuc);
     TEST_ASSERT_EQUAL_UINT32(3u, (uint32_t)sonuc.sayi);
+    kabul_modelle_esit(IDA_LINK_ROL_KART, akis, n, &sonuc, "artık kalmaz");
     TEST_ASSERT_EQUAL_HEX8_ARRAY(y1, sonuc.t[0].yuk, IDA_LINK_YUK_AZAMI);
     TEST_ASSERT_EQUAL_HEX8_ARRAY(y2, sonuc.t[1].yuk, IDA_LINK_YUK_AZAMI);
     TEST_ASSERT_EQUAL_UINT8(1u, sonuc.t[2].len);
@@ -213,16 +222,24 @@ static void test_A1_K05_e_onceki_cerceveden_artik_kalmaz(void)
 static void kotu_len(ida_link_rol_t rol, const kabul_mesaj_t *m, uint8_t len, kabul_rng_t *r)
 {
     char ileti[96];
-    size_t n = kabul_temiz_ham(akis, r, len, 0u, 0u, 20u, kabul_karsi_sysid(rol),
-                               kabul_karsi_compid(rol), m->msgid, m->crc_extra, 0u);
+    size_t aday = kabul_temiz_ham(akis, r, len, 0u, 0u, 20u, kabul_karsi_sysid(rol),
+                                  kabul_karsi_compid(rol), m->msgid, m->crc_extra, 0u);
+    size_t n = aday;
     n += kabul_temiz_kur(&akis[n], r, m->msgid, 21u, kabul_karsi_sysid(rol), kabul_karsi_compid(rol),
                          1u, 1, NULL);
     kabul_besle_yeni(rol, akis, n, &sonuc);
     snprintf(ileti, sizeof ileti, "%s len %u (azami %u)", m->ad, (unsigned)len, (unsigned)m->yuk_azami);
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, sonuc.sayac.rx_bad_len, ileti);
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, kabul_ret_toplami(&sonuc.sayac), ileti);
+    /* Başlıkta ret (A1-K07): yalnız rx_bad_len; tarama 0xFD'den sonra sürer, adayın temiz
+       baytları aday başlatmaz ve resync'e girer. */
+    ida_link_sayaclar_t b = kabul_sayac_sifir();
+    b.rx_bytes = (uint32_t)n;
+    b.rx_frames = 1u;
+    b.rx_bad_len = 1u;
+    b.rx_resync_bytes = (uint32_t)(aday - 1u);
+    kabul_sayac_esit(&b, &sonuc.sayac, ileti);
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, (uint32_t)sonuc.sayi, ileti);
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(21u, sonuc.t[0].seq, ileti);
+    kabul_modelle_esit(rol, akis, n, &sonuc, ileti);
 }
 
 /* (f): len = 0, rolün alabileceği her mesaj. */
@@ -264,17 +281,24 @@ static void test_A1_K05_g_sinir_azami_ve_bir_fazlasi(void)
 {
     kabul_rng_t r;
     kabul_rng_kur(&r, 0x4B30350007ull);
-    const kabul_mesaj_t *m = kabul_mesaj_bul(46030u);
+    const kabul_mesaj_t *m = kabul_mesaj_al(46030u);
     size_t n = kabul_temiz_ham(akis, &r, m->yuk_azami, 0u, 0u, 0u, 250u, 25u, m->msgid, m->crc_extra, 0u);
-    n += kabul_temiz_ham(&akis[n], &r, (uint8_t)(m->yuk_azami + 1u), 0u, 0u, 1u, 250u, 25u, m->msgid,
-                         m->crc_extra, 0u);
+    size_t kotu = kabul_temiz_ham(&akis[n], &r, (uint8_t)(m->yuk_azami + 1u), 0u, 0u, 1u, 250u, 25u,
+                                  m->msgid, m->crc_extra, 0u);
+    n += kotu;
     n += kabul_temiz_ham(&akis[n], &r, 1u, 0u, 0u, 2u, 250u, 25u, m->msgid, m->crc_extra, 0u);
     kabul_besle_yeni(IDA_LINK_ROL_KART, akis, n, &sonuc);
     TEST_ASSERT_EQUAL_UINT32(2u, (uint32_t)sonuc.sayi);
     TEST_ASSERT_EQUAL_UINT8(m->yuk_azami, sonuc.t[0].len);
     TEST_ASSERT_EQUAL_UINT8(1u, sonuc.t[1].len);
-    TEST_ASSERT_EQUAL_UINT32(1u, sonuc.sayac.rx_bad_len);
-    TEST_ASSERT_EQUAL_UINT32(1u, kabul_ret_toplami(&sonuc.sayac));
+    ida_link_sayaclar_t b = kabul_sayac_sifir();
+    b.rx_bytes = (uint32_t)n;
+    b.rx_frames = 2u;
+    b.rx_bad_len = 1u;
+    b.rx_resync_bytes = (uint32_t)(kotu - 1u);
+    b.rx_seq_gap = 1u; /* 0 -> 2 */
+    kabul_sayac_esit(&b, &sonuc.sayac, "azami ve azami + 1");
+    kabul_modelle_esit(IDA_LINK_ROL_KART, akis, n, &sonuc, "azami ve azami + 1");
 }
 
 /* Sözleşme tablosu ile kitaplığın dialect bilgisi (en büyük yük boyu, CRC_EXTRA, yön) aynıdır:

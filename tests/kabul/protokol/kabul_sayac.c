@@ -77,7 +77,7 @@ static void test_A1_3_11_c_kart_sayaclari_sarar(void)
     kabul_rng_t r;
     kabul_rng_kur(&r, 0x4B333131ull);
     kabul_parcalayici_t p = {KABUL_PARCA_TUMU, 0u, {0u}};
-    const kabul_mesaj_t *imu = kabul_mesaj_bul(46020u);
+    const kabul_mesaj_t *imu = kabul_mesaj_al(46020u);
     size_t n;
 
     /* rx_frames ve rx_seq_gap: 0, 2 seq'li iki geçerli çerçeve (bir tek boşluk). */

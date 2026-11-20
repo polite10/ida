@@ -164,7 +164,7 @@ static void test_A1_K101_bc_gondericiler_ve_alici_ic_ice(void)
             uint8_t *hedef = tur == 0 ? tek_cikis[i] : ic_cikis[i];
             size_t *hn = tur == 0 ? &tek_n[i] : &ic_n[i];
             size_t yazilan = 0;
-            TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonder(&g[i], m->msgid, y.b, m->yapi_boyu, &hedef[*hn],
+            TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonder(&g[i], m->msgid, &y, m->yapi_boyu, &hedef[*hn],
                                                                   AKIS_AZAMI - *hn, &yazilan));
             if (tur == 1) {
                 /* (c) Aynı süreçte bir kart alıcısı, örnek 0'ın ürettiği çerçeveyi hemen alır. */
