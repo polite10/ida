@@ -64,3 +64,4 @@ endif()
 
 # Sözleşme başlıkları denetimi iki kökte de derlenir (fw: arm-none-eabi-gcc ile C17).
 add_subdirectory(tests/sozlesme-basliklari)
+add_subdirectory(protocol/ida_link)  # A1 tel katmanı (W2-protokol); üretilmiş MAVLink'i paylaşır

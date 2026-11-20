@@ -1,0 +1,10 @@
+# protocol/ida_link — A1 tel katmanı
+
+`ida_link` modülünün alt katmanı (görev: `docs/gorevler/W2-protokol.md`; sözleşme: `docs/sozlesmeler/A1-kart-baglantisi.md`). Bayt akışından doğrulanmış MAVLink 2 çerçevesi çıkaran alıcı, tipli mesaj yapısından çerçeve yazan gönderici ve alıcı sayaçları. A1 ↔ A4 dönüştürücüsü (oturum, parti, alan eşlemesi) sonraki işlerde bu katmanın üzerine eklenir.
+
+- Açık arayüz: `include/ida_link/tel.h` (her işlevin önkoşulu, dönüşü ve hata halinde ne yazıldığı başlıktadır). Uygulama: `src/tel.c`. ISO C17, bellek ayırma, işletim sistemi, saat, dosya ve stdio yok; bütün durum çağıranın örnek yapısındadır (A1-K101). Başlık C++20'den de içerilir.
+- Üretim (derleme sırasında, `araclar/ida_link_arac.py`, yalnız Python standart kitaplığı): `protocol/ida.xml` ve A1 Tablo 3.3'ten mesaj tablosu (yön dahil) ve `ida_link/dialect.h` (`IDA_LINK_DIALECT_HASH`, A1 §3.2); `protocol/ayna.json`'dan A1-K03 eşitlik başlığı; `veri/altin.json`'dan altın test verisi. Üretilenler derleme dizinindedir, depoya girmez.
+- Veri: `veri/dialect_beklenen.json` (sözleşmedeki `dialect_hash` ve satır sayıları; XML bilerek değişince sözleşmeyle birlikte güncellenir), `veri/altin.json` (A1 Ek B'den `altin-cikar` ile çıkarılır, elle değiştirilmez; her derlemede Ek B ile karşılaştırılır).
+- Denetimler (CTest, `protokol.*`): `dialect.beklenen`, `altin.ek_b_esit`, `bellek.ida_link`, `simge.ida_link` (yazılabilir veri, kanal simgesi ve izinsiz dış başvuru yok) ve her birinin bilerek bozulmuş girdiyle denemesi (`dialect.deneme_alan_adi`, `altin.deneme_ek_b_bayt`, `ayna.deneme_port_degeri`, `simge.deneme_durumlu`). Ayna eşitlikleri ayrıca `ida_link_ayna_denetimi` hedefinin derlenmesiyle (ALL) denetlenir.
+- Birim testleri: `test/test_tel.c` (Unity). Bağımsız kabul testleri `tests/kabul/protokol/` altında ayrı iştir.
+- Ölçüm: `olcum/` — çekirdek döngü (`olcum_cekirdek.c`, kartta da derlenir) ve PC sürücüsü `ida_link_olcum [yineleme]`. PC sonuçları kart maliyeti yerine kullanılmaz (A1 §8.1 O2).
