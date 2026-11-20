@@ -37,7 +37,7 @@ Windows hedef bilgisayarı düşük donanımlıdır (8 GB bellek, dahili ekran k
 ## Belgeleri okuma sırası
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
-2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15). Güncel sürüm 0.11 (2026-11-20): W0 ölçüm sonuçları, K17 ve W1 sözleşme incelemelerinden (çapraz uyum ve doğrulama incelemeleri dahil) çıkan iskelet düzeyindeki kararlar işlendi; bölümler (01–09) ile çelişirse iskelet geçerlidir.
+2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15). Güncel sürüm 0.12 (2026-11-20): W0 ölçüm sonuçları, K17 ve W1 sözleşme incelemelerinden (çapraz uyum, doğrulama ve fark incelemeleri dahil) çıkan iskelet düzeyindeki kararlar işlendi; bölümler (01–09) ile çelişirse iskelet geçerlidir.
 3. **`docs/mimari/acik-bulgular.md`** — mimari bölümlerinin incelemelerinde kapanmamış bulgular; her biri kapatılacağı sözleşme ya da uygulama işiyle etiketli.
 4. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
 5. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
