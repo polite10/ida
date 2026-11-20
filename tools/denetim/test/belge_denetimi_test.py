@@ -24,6 +24,9 @@ WIN_EV = "C:" + "\\" + "Users" + "\\" + "ornekkisi" + "\\proje"
 CARGO = "Car" + "go.toml"
 ARDIL = "-mcpu=" + "cortex-m" + "7"
 ARDIL_AILE = "STM32" + "H743"
+ARDIL_U5_KART = "STM32" + "U5G9J-DK1"
+ARDIL_U5_MCU = "STM32" + "U585AI"
+ARDIL_NUCLEO = "NUCLEO" + "-U575ZI-Q"
 
 
 def calistir(argumanlar, kok):
@@ -155,9 +158,24 @@ class BelgeDenetimiTesti(unittest.TestCase):
         self.yaz("firmware/x.c", "/* " + ARDIL_AILE + " */\n")
         self.bulgu_bekle("rust-ardil", "firmware/x.c:1")
 
+    def test_ayni_aileden_ardil_kart_reddedilir(self):
+        self.yaz("cmake/kart.cmake", "set(IDA_KART " + ARDIL_U5_KART + ")\n")
+        self.bulgu_bekle("rust-ardil", "cmake/kart.cmake:1")
+
+    def test_ayni_aileden_ardil_mcu_reddedilir(self):
+        self.yaz("firmware/z.c", "#define IDA_MCU " + ARDIL_U5_MCU + "\n")
+        self.bulgu_bekle("rust-ardil", "firmware/z.c:1")
+
+    def test_baska_st_gelistirme_karti_reddedilir(self):
+        self.yaz("tools/kart.sh", "KART=" + ARDIL_NUCLEO + "\n")
+        self.bulgu_bekle("rust-ardil", "tools/kart.sh:1")
+
     def test_hedef_kart_ve_st_araclari_gecer(self):
-        self.yaz("firmware/y.c", "/* STM32U5A9J-DK, STM32CubeIDE, STM32_Programmer_CLI, "
-                                 "cortex-m33 */\n")
+        self.yaz("firmware/y.c", "/* STM32U5A9J-DK, STM32U5A9NJ, STM32U5A9xx, STM32CubeIDE, "
+                                 "STM32_Programmer_CLI, cortex-m33, STM32U59x/5Ax hattı */\n"
+                                 "#include \"stm32u5xx.h\"\n"
+                                 "#include \"stm32u5xx_hal.h\"\n"
+                                 "#include \"stm32u5x9j_discovery.h\"\n")
         self.assertEqual(self.denetle().returncode, 0)
 
     def test_belgede_ardil_kart_anilabilir(self):
