@@ -54,6 +54,8 @@ typedef struct {
     uint8_t cagri_kisit;  /* bu çağrıda yapısal geçerli bir örnekte kısıtlayıcı içerik görülen
                              alanlar (W4'ün gevşetmesi bu alanları gevşetemez)             */
     uint8_t kabul_kisit;  /* bunlardan kabul edilen bir örnekte de görülenler              */
+    bool oturum_kapali;   /* SESSION_END işlendi, henüz SESSION_START gelmedi: sonraki
+                             SESSION_END yeni kapanma olayı üretmez (A4-K73)               */
     ida_daralt_t d;       /* bu çağrının daraltma kaydı                                    */
 } ida_emn_t;
 
@@ -64,6 +66,9 @@ typedef struct {
 
 /* Init: bütün alanlar kısıtlayan, armed 0, mode INIT (A4-K77, K116, K128). */
 void ida_emn_kur(ida_emn_t *e);
+/* SESSION_START (3.11 (b3)): yalnız A4-K73'ün "arada SESSION_START" izini siler; etkin
+   emniyet değerlerine, armed'a ve kipe dokunmaz. */
+void ida_emn_oturum_basi(ida_emn_t *e);
 
 /* (b) adımı (A4-K113): in->narrow'un tanımlı bitleri; cmds[]'in ilk min(n_cmds, 8)
    girdisindeki daraltıcı komutlar; SESSION_END; samples[]'in ilk min(n_samples, 16)

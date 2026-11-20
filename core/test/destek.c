@@ -105,6 +105,14 @@ float ds_nan(void)
     return f;
 }
 
+float ds_sonsuz(void)
+{
+    const uint32_t bit = 0x7F800000u;
+    float f = 0.0f;
+    (void)memcpy(&f, &bit, sizeof(f));
+    return f;
+}
+
 void ds_desen(ida_out_t *out)
 {
     (void)memset(out, 0xA5, sizeof(*out));

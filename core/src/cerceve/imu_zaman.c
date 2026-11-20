@@ -15,6 +15,20 @@ void ida_imz_kur(ida_imz_t *z)
     z->bayat_izi = true; /* ilk kabulden önce bayat (A4-K128); günlük taban durumu */
 }
 
+void ida_imz_oturum_basi(ida_imz_t *z, ida_gunluk_t *gun, ida_wtime_t now)
+{
+    /* 3.11 (b3) (ii): IMU bayat sayılır; taze idiyse taze → bayat geçişidir (A4-K39). */
+    if (!z->bayat_izi) {
+        const ida_log_t k = {.t_w = now, .code = (uint16_t)IDA_LOG_IMU_STALE, .arg0 = 1, .arg1 = 0};
+        ida_gun_ekle(gun, &k);
+        z->bayat_izi = true;
+    }
+    z->var = false;
+    z->t_meas_ns = 0;
+    z->t_rx_ns = 0;
+    z->temiz = 0u; /* çözülme sayacı; IMU_LAG mandalı (z->lag) yalnız A4-K37 ile çözülür */
+}
+
 void ida_imz_imu_kabul(ida_imz_t *z, const ida_imu_sample_t *imu, const ida_imz_baglam_t *b)
 {
     if (z->var) {

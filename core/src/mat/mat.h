@@ -5,6 +5,11 @@
  * (NED) dönüşü temsil eder; v_dunya = q ⊗ v_govde ⊗ q*. Bütün değerler float.
  * Küçük matrisler satır öncelikli düz dizilerdir ve tamponları çağıranındır (bellek ayırma
  * yok; A4-K97). Boyut sınırı IDA_MAT_EN_BUYUK'tur.
+ *
+ * Başarı bildiren (bool dönen) işlevler sonlu olmayan girdide ya da sonlu olmayan ara/son
+ * sonuçta true dönmez. Değer dönen işlevler (topla, çıkar, iç/dış çarpım, kuaterniyon çarpımı,
+ * döndürme, DCM, 3×3 işlemleri) denetim yapmaz: sonlu olmayan girdi ve float taşması sonuca
+ * olduğu gibi yayılır; denetim çağıranındır.
  */
 #ifndef IDA_CORE_MAT_H
 #define IDA_CORE_MAT_H
@@ -41,21 +46,27 @@ ida_v3_t ida_v3_cikar(ida_v3_t lhs, ida_v3_t rhs);
 ida_v3_t ida_v3_olcekle(ida_v3_t v, float k);
 float ida_v3_ic(ida_v3_t lhs, ida_v3_t rhs);
 ida_v3_t ida_v3_dis(ida_v3_t lhs, ida_v3_t rhs);
+/* Ölçeklenmiş (kare alma taşması olmayan) norm; gerçek norm FLT_MAX'ı aşarsa +inf. */
 float ida_v3_norm(ida_v3_t v);
-/* Birim vektör; norm 1e-12'den küçükse sıfır vektör ve false döner. */
+/* Birim vektör (ölçeklenmiş norm). Bileşen sonlu değilse, norm 1e-12'den küçükse ya da
+   sonuç sonlu değilse sıfır vektör ve false döner. */
 bool ida_v3_birim(ida_v3_t v, ida_v3_t *sonuc);
 
 /* ---- Kuaterniyon ----------------------------------------------------------------------- */
 ida_q_t ida_q_birim_deger(void); /* (1, 0, 0, 0) */
 ida_q_t ida_q_carp(ida_q_t lhs, ida_q_t rhs); /* Hamilton: lhs ⊗ rhs */
 ida_q_t ida_q_eslenik(ida_q_t q);
-/* Birimleme; norm 1e-12'den küçükse (1,0,0,0) ve false döner. */
+/* Birimleme (ölçeklenmiş norm). Bileşen sonlu değilse, norm 1e-12'den küçükse ya da sonuç
+   sonlu değilse (1,0,0,0) ve false döner. */
 bool ida_q_birimle(ida_q_t q, ida_q_t *sonuc);
 ida_v3_t ida_q_dondur(ida_q_t q, ida_v3_t v); /* q ⊗ v ⊗ q* */
-/* Dönme vektöründen (eksen × açı, rad) birim kuaterniyon. */
-ida_q_t ida_q_donme_vektorunden(ida_v3_t rv);
+/* Dönme vektöründen (eksen × açı, rad) birim kuaterniyon. rv sonlu değilse ya da normu
+   taşarsa (1,0,0,0) ve false. */
+bool ida_q_donme_vektorunden(ida_v3_t rv, ida_q_t *sonuc);
 ida_m3_t ida_q_dcm(ida_q_t q);       /* gövde → NED dönüşüm matrisi */
-ida_euler_t ida_q_euler(ida_q_t q);  /* ZYX sırası (yaw, pitch, roll) */
+/* ZYX sırası (yaw, pitch, roll); q birimlenerek kullanılır. q birimlenemiyorsa (sonlu
+   değil ya da sıfır) açılar 0 ve false. */
+bool ida_q_euler(ida_q_t q, ida_euler_t *sonuc);
 
 /* ---- 3×3 matris ------------------------------------------------------------------------ */
 ida_m3_t ida_m3_birim_deger(void);
@@ -82,7 +93,9 @@ typedef struct {
     ida_mat_boyut_t boyut;
 } ida_mat_yaz_t;
 
-/* sonuc = lhs · rhs. Boyutlar uyuşmazsa ya da sınırı aşarsa hiçbir şey yazmaz, false döner. */
+/* sonuc = lhs · rhs. Boyutlar uyuşmazsa ya da sınırı aşarsa hiçbir şey yazmaz, false döner.
+   Aşağıdaki dört işlev sonuçta sonlu olmayan bir eleman varsa da false döner (sonuç
+   yazılmıştır, kullanılmamalıdır). */
 bool ida_mat_carp(ida_mat_oku_t lhs, ida_mat_oku_t rhs, const ida_mat_yaz_t *sonuc);
 /* sonuc = lhs + rhs. */
 bool ida_mat_topla(ida_mat_oku_t lhs, ida_mat_oku_t rhs, const ida_mat_yaz_t *sonuc);

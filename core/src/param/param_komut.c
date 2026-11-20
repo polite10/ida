@@ -40,7 +40,7 @@ static void param_set(ida_param_t *p, const ida_prm_komut_baglam_t *b, const ida
         ret(r, (uint16_t)IDA_REASON_PARAM_INVALID);
         return;
     }
-    if ((d->cls == (uint8_t)IDA_PCLS_B) && b->k->armed) {
+    if ((d->cls == (uint8_t)IDA_PCLS_B) && b->armed) {
         ret(r, (uint16_t)IDA_REASON_ARMED);
         return;
     }
@@ -87,6 +87,9 @@ static void param_commit(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cm
 {
     r->ack = (uint8_t)IDA_ACK_ACCEPTED; /* geçici; ida_prm_cagri_sonu yazar */
     r->reason = (uint16_t)IDA_REASON_NONE;
+    if (b->armed) {
+        p->commit_armed = true; /* A4-K81: komutun işlendiği andaki armed */
+    }
     if (p->n_commit < IDA_PORT_MAX_CMDS) {
         p->commit_indis[p->n_commit] = b->sonuc_indisi;
         p->n_commit++;
@@ -105,7 +108,7 @@ static void param_save(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd_
         ret(r, (uint16_t)IDA_REASON_ONE_PER_CALL);
         return;
     }
-    if (b->k->armed || b->k->cagrida_arm) {
+    if (b->armed || b->k->cagrida_arm) {
         ret(r, (uint16_t)IDA_REASON_ARMED);
         return;
     }
@@ -123,6 +126,7 @@ void ida_prm_cagri_basi(ida_param_t *p)
 {
     p->cagri_save_sayisi = 0u;
     p->n_commit = 0u;
+    p->commit_armed = false;
     p->save_bekliyor = false;
     p->save_indis = 0u;
 }
@@ -166,7 +170,7 @@ static uint16_t commit_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b)
         }
     }
     bekleyenleri_at(p);
-    if (b_sinifi && (b->k->armed || b->k->cagrida_arm)) {
+    if (b_sinifi && (p->commit_armed || b->k->cagrida_arm)) {
         return (uint16_t)IDA_REASON_ARMED;
     }
     if (ida_prm_grup(&aday) != 0u) {
@@ -228,6 +232,7 @@ void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out
         save_karari(p, b, &out->results[p->save_indis], cnt);
     }
     p->n_commit = 0u;
+    p->commit_armed = false;
     p->save_bekliyor = false;
 }
 
@@ -235,19 +240,26 @@ void ida_prm_depo_izle(ida_param_t *p, const ida_plat_t *plat, ida_gunluk_t *gun
 {
     const uint8_t store = plat->param_store;
     const bool sonuc = (store == (uint8_t)IDA_PSTORE_OK) || (store == (uint8_t)IDA_PSTORE_FAIL);
-    if (p->son_store_var && (store != p->son_store) && sonuc) {
+    const bool gecis = p->son_store_var && (store != p->son_store) && sonuc;
+    /* Bekleyen kaydın tamamlanması (OK ya da FAIL) beklenen gen ile eşleştirilir: param_gen,
+       param_store'un bildirdiği son tamamlanan kayıt denemesinin kuşağıdır (OK'te kalıcı
+       bloğun, FAIL'de başarısız denemenin). Durum kodunun değişmesi (aradaki BUSY'nin
+       görülmesi) gerekmez; art arda iki FAIL ayrı ayrı saptanır (A4-K83; sol bulgu 2). */
+    const bool tamam = p->kayit_bekliyor && sonuc && (plat->param_gen == p->kayit_gen);
+    if (gecis || tamam) {
         const ida_log_t k = {.t_w = now,
                              .code = (uint16_t)IDA_LOG_PARAM_SAVE,
                              .arg0 = (int32_t)plat->param_gen,
                              .arg1 = (int32_t)store};
-        ida_gun_ekle(gun, &k);
-        if (p->kayit_bekliyor) {
-            if ((store == (uint8_t)IDA_PSTORE_OK) && (plat->param_gen == p->kayit_gen)) {
-                p->param_ok = true; /* A4-K78: geçerli küme commit edildi ve kaydedildi */
-            }
-            p->kayit_bekliyor = false;
-        }
+        ida_gun_ekle(gun, &k); /* geçiş ve tamamlanma aynı çağrıdaysa tek kayıt */
     }
+    if (tamam) {
+        if (store == (uint8_t)IDA_PSTORE_OK) {
+            p->param_ok = true; /* A4-K78: geçerli küme commit edildi ve kaydedildi */
+        }
+        p->kayit_bekliyor = false; /* FAIL'de gen tabanı yükselmiş kalır (A4-K82) */
+    }
+    /* Aksi halde sonuç henüz yok ya da başka bir kuşağın sonucu: bekleme sürer. */
     p->son_store = store;
     p->son_store_var = true;
 }

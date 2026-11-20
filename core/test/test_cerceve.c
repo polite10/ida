@@ -599,6 +599,67 @@ static void test_k89_ic_tutarlilik(void)
     TEST_ASSERT_FALSE(OUT.health.core_ok);
 }
 
+
+/* sol W2-cekirdek bulgu 1: (b)'nin koşulsuz üzerine yazdığı bozuk durum (FC durumu, kip)
+   kanıtını kaybettirmez; core_ok init'e kadar 0 kalır; out NULL çağrısındaki bilgi sonraki
+   yazılabilir çağrıya taşınır (A4-K89, 3.11 (b2)). */
+static void test_k89_ustune_yazilan_bozulma(void)
+{
+    /* (1) fc.durum = 255 + daraltıcısız olağan tick */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_TRUE(OUT.health.core_ok);
+    C.fc.durum = 255u; /* hata enjeksiyonu */
+    ds_girdi(&IN, 2005 * DS_MS, 2u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_FALSE(OUT.health.core_ok);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_CORE_INTEGRITY));
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state); /* daraltma yine uygulandı */
+    ds_girdi(&IN, 2010 * DS_MS, 3u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_FALSE(OUT.health.core_ok); /* mandallı; günlük bir kez */
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_CORE_INTEGRITY));
+    /* (2) out NULL çağrısında üzerine yazılan bozulma sonraki yazılabilir çağrıda */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    C.fc.durum = 200u;
+    ds_girdi(&IN, 2005 * DS_MS, 2u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_tick(&C, &IN, NULL));
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, C.fc.durum);
+    ds_girdi(&IN, 2010 * DS_MS, 3u, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_FALSE(OUT.health.core_ok);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_CORE_INTEGRITY));
+    /* (3) geçersiz kip + NARROW_MODE mandalı (daraltma kipi üzerine yazar) */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    C.emn.mode = 9u;
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    IN.narrow.mask = IDA_NARROW_MODE;
+    IN.narrow.mode = (uint8_t)IDA_MODE_MANUAL;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_MANUAL, C.emn.mode);
+    TEST_ASSERT_FALSE(OUT.health.core_ok);
+    /* (4) SESSION_END etkin değerleri koşulsuz kısıtlayana yazar: tanımsız bit kanıtı */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    C.emn.kisitli = 0xE0u;
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_FALSE(OUT.health.core_ok);
+    /* (5) inst0 tüp bitlerinde tanımsız bit + SESSION_END (oturum sonu 0 yazar). armed'ın
+       ham bayt denetimi ayrıca vardır; 0/1 dışı bool'u çekirdeğe okutmak UBSan'da tanımsız
+       davranış olduğu için burada enjekte edilmez. */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    C.emn.inst0_tube[0] = 0x80u;
+    ds_girdi(&IN, 2000 * DS_MS, 1u, false);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT8(0u, C.emn.inst0_tube[0]);
+    TEST_ASSERT_FALSE(OUT.health.core_ok);
+}
+
 /* A4-K66, K57: son geçerli zaman çerçevesi yokken hata dönüşünde çıkan SAFETY_CLOSE numarasızdır. */
 static void test_k66_numarasiz_kapanma(void)
 {
@@ -698,20 +759,27 @@ static void test_step_miss_tabani(void)
     IN.plat.prev_overrun = true;
     IN.plat.cnt_batch_skipped = 5u;
     IN.plat.cnt_batch_merged = 2u;
-    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL)); /* (b2): taban değil */
-    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));       /* taban çağrısı */
+    /* Init'ten sonraki ilk çağrı out NULL olsa da tabandır (3.8, 3.11 (b2)); tabanın
+       prev_overrun'u sayılmaz. */
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL));
+    IN.plat.prev_overrun = false;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
     TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.step_miss);
     ds_girdi(&IN, 2005 * DS_MS, 2u, true);
     IN.plat.prev_overrun = true;
     IN.plat.cnt_batch_skipped = 7u;
     IN.plat.cnt_batch_merged = 3u;
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
-    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.step_miss); /* 1 + 2 + 1 */
+    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.step_miss); /* 2 + 1 + 1 */
+    /* Sonraki out NULL çağrısı sayım yapmaz, artışlar tabana göre sonra sayılır. */
     ds_girdi(&IN, 2010 * DS_MS, 3u, true);
-    IN.plat.cnt_batch_skipped = 7u;
+    IN.plat.prev_overrun = true;
+    IN.plat.cnt_batch_skipped = 9u;
     IN.plat.cnt_batch_merged = 3u;
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL));
+    IN.plat.prev_overrun = false;
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
-    TEST_ASSERT_EQUAL_UINT32(4u, OUT.status.cnt.step_miss);
+    TEST_ASSERT_EQUAL_UINT32(6u, OUT.status.cnt.step_miss);
 }
 
 /* A4-K90: init sonrası ilk yazılabilir çağrıda FC_STATE/FC_INHIBIT yok; sonra değişimde var. */
@@ -735,6 +803,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_k89_ic_tutarlilik);
+    RUN_TEST(test_k89_ustune_yazilan_bozulma);
     RUN_TEST(test_k90_gunluk_tasmasi);
     RUN_TEST(test_k66_numarasiz_kapanma);
     RUN_TEST(test_info);

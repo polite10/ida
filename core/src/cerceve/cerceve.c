@@ -25,6 +25,18 @@ uint8_t ida_cer_param_grup(const ida_prm_kume_t *k)
                                                                         : (uint8_t)1u;
 }
 
+_Static_assert(sizeof(bool) == 1u, "bool tek bayt");
+
+/* bool nesnesinin ham baytı 0 ya da 1 mi (bozuk bellekteki bool değer olarak okunmaz). */
+static bool bool_bayti_gecerli(const bool *b)
+{
+    uint8_t v = 0u;
+    (void)memcpy(&v, b, sizeof(v));
+    return v <= 1u;
+}
+
+static int32_t ustune_yazilacak_bozuk(const ida_core_t *c);
+
 /* A4-K89: 0 tutarlı; 1 koruma sözcüğü, 2 tamamlayıcı kopya, 3 geçersiz durum değeri. */
 static int32_t butunluk(const ida_core_t *c)
 {
@@ -34,14 +46,30 @@ static int32_t butunluk(const ida_core_t *c)
     if (c->kurulu_tumleyen != (uint32_t)~c->kurulu) {
         return 2;
     }
-    /* Tanımsız alan biti denetimi uint32_t'de yapılır: tümleyen sabit uint8_t'ye
-       daraltılmaz (MSVC C4310). */
-    const bool durum = (c->emn.mode <= (uint8_t)IDA_MODE_AUTO) &&
-                       (((uint32_t)c->emn.kisitli & ~(uint32_t)IDA_EMN_TUMU) == 0u) &&
-                       ida_kes_tutarli(&c->kes) && ida_gud_tutarli(&c->gud) &&
-                       ida_gor_tutarli(&c->gor) && ida_kon_tutarli(&c->kon) &&
-                       ida_fc_tutarli(&c->fc) && ida_son_tutarli(&c->son);
+    /* Emniyet/FC alanları (b)'den önceki denetimle aynı; ardından modüllerin kendi
+       denetimleri. Tanımsız bit denetimleri uint32_t'dedir (tümleyen sabit daraltılmaz,
+       MSVC C4310). */
+    const bool durum = (ustune_yazilacak_bozuk(c) == 0) && ida_kes_tutarli(&c->kes) &&
+                       ida_gud_tutarli(&c->gud) && ida_gor_tutarli(&c->gor) &&
+                       ida_kon_tutarli(&c->kon) && ida_son_tutarli(&c->son);
     return durum ? 0 : 3;
+}
+
+/* (b) ve (b3)'ün koşulsuz üzerine yazabildiği durum alanları (kip, etkin emniyet değerleri,
+   atış kontrol durumu): yazımdan önce geçerlilikleri denetlenir ki bozulmanın kanıtı
+   kaybolmasın (A4-K89; sol W2-cekirdek bulgu 1). Yalnız okur; 3 ya da 0 döner. */
+static int32_t ustune_yazilacak_bozuk(const ida_core_t *c)
+{
+    const uint32_t tup_tanimli = IDA_TUBE_LOADED | IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT |
+                                 IDA_TUBE_PERMIT_OPEN;
+    const bool gecerli = (c->emn.mode <= (uint8_t)IDA_MODE_AUTO) &&
+                         (((uint32_t)c->emn.kisitli & ~(uint32_t)IDA_EMN_TUMU) == 0u) &&
+                         bool_bayti_gecerli(&c->emn.armed) &&
+                         bool_bayti_gecerli(&c->emn.inst0_var) &&
+                         (((uint32_t)c->emn.inst0_tube[0] & ~tup_tanimli) == 0u) &&
+                         (((uint32_t)c->emn.inst0_tube[1] & ~tup_tanimli) == 0u) &&
+                         ida_fc_tutarli(&c->fc);
+    return gecerli ? 0 : 3;
 }
 
 static void gunluk(ida_core_t *c, const ida_log_t *k)
@@ -240,6 +268,16 @@ static ida_rc_t sira(const ida_cerceve_t *k, const ida_time_frame_t *tf)
 
 /* ---- Çağrı başına izler (A4-K109, K117; 3.8 step_miss) ----------------------------------- */
 
+/* (b2) çağrısında yalnız taban kurulur (init'ten sonraki ilk çağrıysa); sayım yapılmaz. */
+static void step_miss_tabani(ida_cerceve_t *k, const ida_in_t *in)
+{
+    if (!k->plat_taban_var) {
+        k->plat_taban_var = true;
+        k->plat_skipped = in->plat.cnt_batch_skipped;
+        k->plat_merged = in->plat.cnt_batch_merged;
+    }
+}
+
 static void cagri_izleri(ida_core_t *c, const ida_in_t *in, ida_cagri_t *cg)
 {
     ida_cerceve_t *k = &c->cer;
@@ -262,8 +300,8 @@ static void cagri_izleri(ida_core_t *c, const ida_in_t *in, ida_cagri_t *cg)
     }
     k->bg_dilim = 0u;
     k->bg_kotu = 0u;
-    /* step_miss (3.8): taban init'ten sonraki ilk yazılabilir step/tick çağrısının plat
-       değerleridir; taban çağrısında görülen prev_overrun = 1 de sayılmaz. */
+    /* step_miss (3.8): taban init'ten sonraki ilk step/tick çağrısının (out NULL olsa da)
+       plat değerleridir; taban çağrısında görülen prev_overrun = 1 de sayılmaz. */
     if (k->plat_taban_var) {
         k->cnt.step_miss += (in->plat.cnt_batch_skipped - k->plat_skipped) +
                             (in->plat.cnt_batch_merged - k->plat_merged);
@@ -441,7 +479,11 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
     /* PARAM_COMMIT ve PARAM_SAVE çağrı sonunda, komutların girdideki sırasından bağımsız
        değerlendirilir; commit adım sınırında uygulanır (A4-K81, K82). */
     ida_prm_komut_baglam_t pb = {
-        .k = NULL, .plat_param_gen = in->plat.param_gen, .gun = &c->gun, .sonuc_indisi = 0u};
+        .k = NULL,
+        .plat_param_gen = in->plat.param_gen,
+        .gun = &c->gun,
+        .sonuc_indisi = 0u,
+        .armed = c->emn.armed};
     pb.k = &kb; /* yerel değişkenin adresi küme ilklendiricisine yazılmaz (MSVC C4221) */
     ida_prm_cagri_sonu(&c->prm, &pb, out, &k->cnt);
     if (ida_emn_cagri_sonu(&c->emn)) {
@@ -472,6 +514,14 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     cg.step = (src == (uint8_t)IDA_SRC_STEP);
     cg.now = now_guncelle(c, in->now_w);
 
+    /* (b) ve (b3)'ün üzerine yazacağı alanların bozulması yazımdan önce kaydedilir; kayıt
+       sonraki yazılabilir çağrının iç tutarlılık sonucuna taşınır (A4-K89). Daraltma bu
+       sonuçtan bağımsız olarak her koşulda uygulanır. */
+    const int32_t on_bozuk = ustune_yazilacak_bozuk(c);
+    if ((on_bozuk != 0) && (k->bozuk_izi == 0)) {
+        k->bozuk_izi = on_bozuk;
+    }
+
     /* (b) daraltma: geri alınmaz, reddedilen ve out NULL çağrıda da. */
     const ida_emn_baglam_t eb = {.gun = &c->gun, .now = cg.now};
     ida_emn_daralt(&c->emn, in, &eb);
@@ -485,12 +535,17 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
         gunluk(c, &g);
     }
 
-    /* (b3) SESSION_START (A4-K72): (b) gibi her çağrıda, out NULL olsa da; geri alınmaz.
-       Sensör kabul durumu ve zaman çerçevesi izi burada sıfırlanır; modüllerin yeniden
-       başlaması bir sonraki kabul edilen çağrının (e) adımındadır. */
+    /* (b3) SESSION_START (A4-K72; 3.11 (b3)'ün kapalı listesi): (b) gibi her çağrıda, out
+       NULL olsa da; geri alınmaz. Sıfırlananlar: her (type, inst) için son kabul edilen
+       örneğin izi (IMU ve Ping360 dahil), IMU izi (IMU bayat sayılır, taze idiyse
+       IMU_STALE = 1; IMU_LAG'ın çözülme sayacı; mandal çözülmez), zaman çerçevesi izi.
+       A4-K118'in süre başlangıcı atış kontrol işinindir (yer tutucuda DET_STALE hep kurulu).
+       Başka hiçbir durum sıfırlanmaz; modüllerin yeniden başlaması bir sonraki kabul edilen
+       çağrının (e) adımındadır. */
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
         ida_orn_kur(&c->orn);
-        ida_imz_kur(&c->imz);
+        ida_imz_oturum_basi(&c->imz, &c->gun, cg.now);
+        ida_emn_oturum_basi(&c->emn);
         k->tf_var = false;
         k->yeniden_baslat = true;
         const ida_log_t g = {.t_w = cg.now,
@@ -503,10 +558,12 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     /* (b2): (b) ve (b3) uygulanmış kalır; olay ve günlük bekletilir; now_w izi ve
        wall_backstep yukarıda güncellendi; bg_slices sayımı karşılaştırılmadan sıfırlanır;
        bg_bad_input bayrağı (bg_kotu) silinmez, ilk yazılabilir çağrıya taşınır (A4-K117);
-       cnt.bad_input artmaz; başka hiçbir şey yapılmaz. Bu çağrının emniyet örnekleri
-       reddedilmiş sayılır (A4-K116). */
+       init'ten sonraki ilk çağrıysa step_miss tabanı kurulur (3.8); cnt.bad_input artmaz;
+       iç tutarlılık denetimi sonraki yazılabilir çağrıdadır; başka hiçbir şey yapılmaz. Bu
+       çağrının emniyet örnekleri reddedilmiş sayılır (A4-K116). */
     if (out == NULL) {
         k->bg_dilim = 0u;
+        step_miss_tabani(k, in);
         if (ida_emn_cagri_sonu(&c->emn)) {
             k->cnt.narrow_from_rejected++;
         }
@@ -514,10 +571,15 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     }
     (void)memset(out, 0, sizeof(*out)); /* A4-K27, K121 */
 
-    /* İç tutarlılık (A4-K89): yazılabilir her çağrıda. */
-    const int32_t bozuk = butunluk(c);
-    cg.core_ok = (bozuk == 0);
-    if (!cg.core_ok && k->core_ok) {
+    /* İç tutarlılık (A4-K89): yazılabilir her çağrıda; üzerine yazılmadan önce kaydedilmiş
+       bozulma önce gelir. Saptanan bozulma init'e kadar sürer (core_ok mandallı). */
+    int32_t bozuk = k->bozuk_izi;
+    k->bozuk_izi = 0;
+    if (bozuk == 0) {
+        bozuk = butunluk(c);
+    }
+    cg.core_ok = (bozuk == 0) && k->core_ok;
+    if ((bozuk != 0) && k->core_ok) {
         const ida_log_t g = {.t_w = cg.now,
                              .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
                              .arg0 = bozuk,

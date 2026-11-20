@@ -18,7 +18,13 @@ void ida_emn_kur(ida_emn_t *e)
     e->inst0_tube[1] = 0u;
     e->cagri_kisit = 0u;
     e->kabul_kisit = 0u;
+    e->oturum_kapali = false;
     (void)memset(&e->d, 0, sizeof(e->d));
+}
+
+void ida_emn_oturum_basi(ida_emn_t *e)
+{
+    e->oturum_kapali = false;
 }
 
 uint8_t ida_emn_kisit_icerigi(const ida_safety_t *s)
@@ -155,7 +161,10 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
 
     /* Oturum sonu: silahsızlandırma, etkin değerler kısıtlayana, tüpler boş (A4-K73, K116,
        K128). */
+    bool ilk_oturum_sonu = false;
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_END) {
+        ilk_oturum_sonu = !e->oturum_kapali;
+        e->oturum_kapali = true;
         d.herhangi = true;
         d.disarm = true;
         d.oturum_sonu = true;
@@ -170,8 +179,11 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
         d.herhangi = true; /* emniyet girdisinin kapanması (A4-K111) */
     }
 
-    /* SAFETY_CLOSE istekleri; birleştirme A4-K125 (olay modülü). */
-    if (d.oturum_sonu || ((d.kapanan & IDA_EMN_ESTOP) != 0u)) {
+    /* SAFETY_CLOSE istekleri; birleştirme A4-K125 (olay modülü). Arada SESSION_START
+       olmadan gelen sonraki SESSION_END, bir alan yeniden kapanmadıkça yeni olay üretmez
+       (A4-K73); yine daraltıcı girdidir. */
+    if ((d.oturum_sonu && (ilk_oturum_sonu || (d.kapanan != 0u))) ||
+        ((d.kapanan & IDA_EMN_ESTOP) != 0u)) {
         d.kapat = (uint8_t)(d.kapat | IDA_KAPAT_ALL);
     }
     if ((d.kapanan & (IDA_EMN_FIS_T0 | IDA_EMN_PIM_T0)) != 0u) {

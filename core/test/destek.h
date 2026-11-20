@@ -38,6 +38,8 @@ void ds_mag(ida_sample_t *s, int64_t t_ns, uint32_t seq);
 /* Sessiz NaN (bit deseni 0x7FC00000). <math.h>'in NAN makrosu yerine: MSVC'nin UCRT'sinde
    NAN sabit taşmalı bir ifadedir ve /W4 /WX ile derlenmez. */
 float ds_nan(void);
+/* +sonsuz (bit deseni 0x7F800000); aynı gerekçeyle INFINITY makrosu yerine. */
+float ds_sonsuz(void);
 
 /* Çıktıyı bilinen desenle doldurur (A4-K27 sınaması). */
 void ds_desen(ida_out_t *out);

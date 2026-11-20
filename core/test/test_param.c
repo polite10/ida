@@ -634,6 +634,65 @@ static void test_k82_gen_kurali_ve_doyma(void)
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_OUT_OF_RANGE, sonuc_al(5u)->reason);
 }
 
+/* sol W2-cekirdek bulgu 2: kaydın tamamlanması durum kodu değişmeden (aradaki BUSY
+   görülmeden) beklenen gen ile eşleştirilir; günlük bir kez. */
+static void test_k83_ayni_durum_koduyla_tamamlanma(void)
+{
+    hazirla(false); /* bloksuz: param_ok = 0 */
+    IN.plat.param_store = (uint8_t)IDA_PSTORE_OK;
+    IN.plat.param_gen = 41u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    komut(0u, 1u, (uint8_t)IDA_CMD_PARAM_COMMIT);
+    komut(1u, 2u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(42u, sonuc_al(2u)->save.gen);
+    TEST_ASSERT_FALSE(OUT.status.param_ok);
+    /* platform kaydı iki çağrı arasında bitirdi: OK/42 (BUSY hiç görülmedi) */
+    IN.n_cmds = 0u;
+    IN.plat.param_gen = 42u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_TRUE(OUT.status.param_ok);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    TEST_ASSERT_EQUAL_INT32(42, OUT.logs[0].arg0);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE)); /* yineleme yok */
+    /* FAIL de kuşak taşır: eski kuşağın FAIL'i beklemeyi bitirmez (yalnız geçiş günlüğü). */
+    komut(0u, 3u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(43u, sonuc_al(3u)->save.gen);
+    IN.n_cmds = 0u;
+    IN.plat.param_store = (uint8_t)IDA_PSTORE_FAIL; /* param_gen hâlâ 42 */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    TEST_ASSERT_TRUE(C.prm.kayit_bekliyor);
+    /* FAIL/43: durum kodu değişmeden başarısız tamamlanma saptanır, günlük bir kez. */
+    IN.plat.param_gen = 43u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    TEST_ASSERT_EQUAL_INT32(43, OUT.logs[0].arg0);
+    TEST_ASSERT_EQUAL_INT32((int32_t)IDA_PSTORE_FAIL, OUT.logs[0].arg1);
+    TEST_ASSERT_FALSE(C.prm.kayit_bekliyor);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    /* Art arda ikinci FAIL: FAIL/43 → SAVE (44) → FAIL/43 sürerken bekleme bitmez → FAIL/44. */
+    komut(0u, 4u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(44u, sonuc_al(4u)->save.gen); /* FAIL'li 43 yeniden kullanılmaz */
+    IN.n_cmds = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    TEST_ASSERT_TRUE(C.prm.kayit_bekliyor);
+    IN.plat.param_gen = 44u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_PARAM_SAVE));
+    TEST_ASSERT_FALSE(C.prm.kayit_bekliyor);
+    TEST_ASSERT_TRUE(OUT.status.param_ok); /* önceki OK/42 kaydı geçerli kalır */
+    komut(0u, 5u, (uint8_t)IDA_CMD_PARAM_SAVE);
+    IN.plat.param_gen = 10u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(45u, sonuc_al(5u)->save.gen); /* taban yükseldi */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -649,5 +708,6 @@ int main(void)
     RUN_TEST(test_k81_birden_cok_commit);
     RUN_TEST(test_k78_bos_commit_ve_save_ayni_cagri);
     RUN_TEST(test_k82_gen_kurali_ve_doyma);
+    RUN_TEST(test_k83_ayni_durum_koduyla_tamamlanma);
     return UNITY_END();
 }

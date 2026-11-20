@@ -29,8 +29,11 @@ typedef struct {
     ida_core_counters_t *cnt;
 } ida_imz_baglam_t;
 
-/* Init ve SESSION_START: IMU yok (bayat), mandal çözük (A4-K128). */
+/* Init: IMU yok (bayat), mandal çözük (A4-K128). */
 void ida_imz_kur(ida_imz_t *z);
+/* SESSION_START (3.11 (b3) (ii)): IMU izi sıfırlanır, IMU bayat sayılır (taze idiyse
+   IMU_STALE = 1 günlüğü), IMU_LAG çözülme sayacı sıfırlanır; mandal çözülmez (A4-K37). */
+void ida_imz_oturum_basi(ida_imz_t *z, ida_gunluk_t *gun, ida_wtime_t now);
 /* Kabul edilen IMU: A4-K38 boşluk denetimi ve iz güncellemesi. */
 void ida_imz_imu_kabul(ida_imz_t *z, const ida_imu_sample_t *imu, const ida_imz_baglam_t *b);
 /* tf.present = 1 olan kabul edilen çağrıda A4-K37 mandalı. */

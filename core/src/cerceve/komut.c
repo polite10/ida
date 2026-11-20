@@ -177,7 +177,11 @@ static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_bagl
     case IDA_CMD_PARAM_COMMIT:
     case IDA_CMD_PARAM_SAVE: {
         const ida_prm_komut_baglam_t pb = {
-            .k = b, .plat_param_gen = in->plat.param_gen, .gun = &c->gun, .sonuc_indisi = indis};
+            .k = b,
+            .plat_param_gen = in->plat.param_gen,
+            .gun = &c->gun,
+            .sonuc_indisi = indis,
+            .armed = c->emn.armed}; /* komutun işlendiği andaki armed (A4-K81, K82) */
         ida_prm_komut(&c->prm, &pb, cmd, r);
         break;
     }

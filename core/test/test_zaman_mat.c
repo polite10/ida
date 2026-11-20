@@ -4,6 +4,7 @@
  */
 #include "mat/ida_math.h"
 #include "mat/mat.h"
+#include "destek.h"
 #include "unity.h"
 #include "zaman/zaman.h"
 
@@ -69,12 +70,14 @@ static void test_kuaterniyon(void)
 {
     /* z ekseni etrafında +90°: gövde x ekseni NED'de doğuyu (y) gösterir. */
     const ida_v3_t rv = {0.0f, 0.0f, 0.5f * IDA_PI_F};
-    const ida_q_t q = ida_q_donme_vektorunden(rv);
+    ida_q_t q;
+    TEST_ASSERT_TRUE(ida_q_donme_vektorunden(rv, &q));
     const ida_v3_t x = {1.0f, 0.0f, 0.0f};
     const ida_v3_t d = ida_q_dondur(q, x);
     TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, d.x);
     TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f, d.y);
-    const ida_euler_t e = ida_q_euler(q);
+    ida_euler_t e;
+    TEST_ASSERT_TRUE(ida_q_euler(q, &e));
     TEST_ASSERT_FLOAT_WITHIN(TOL, 0.5f * IDA_PI_F, e.yaw);
     TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, e.roll);
     /* DCM ile döndürme aynı sonucu verir. */
@@ -95,7 +98,10 @@ static void test_kuaterniyon(void)
 
 static void test_matris(void)
 {
-    const ida_m3_t r = ida_q_dcm(ida_q_donme_vektorunden((ida_v3_t){0.1f, -0.2f, 0.3f}));
+    ida_q_t q;
+    const ida_v3_t rv = {0.1f, -0.2f, 0.3f};
+    TEST_ASSERT_TRUE(ida_q_donme_vektorunden(rv, &q));
+    const ida_m3_t r = ida_q_dcm(q);
     const ida_m3_t rrt = ida_m3_carp(r, ida_m3_devrik(r)); /* dikgen: R Rᵀ = I */
     const ida_m3_t i = ida_m3_birim_deger();
     for (uint32_t a = 0u; a < 3u; a++) {
@@ -170,6 +176,104 @@ static void test_aci_ve_kirpma(void)
     TEST_ASSERT_TRUE(ida_sonlu(1.0f));
 }
 
+
+/* sol W2-cekirdek bulgu 3: büyük sonlu değerler, sonsuzluk ve NaN'da birimleme. */
+static void test_birimleme_sinirlari(void)
+{
+    const float buyuk = 1e20f; /* karesi binary32'de taşar */
+    const float inf = ds_sonsuz();
+    const float nan = ds_nan();
+    ida_v3_t b;
+    const ida_v3_t v1 = {buyuk, 0.0f, 0.0f};
+    TEST_ASSERT_TRUE(ida_v3_birim(v1, &b));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f, b.x);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.0f, b.y);
+    const ida_v3_t v2 = {-3e38f, 3e38f, 3e38f}; /* gerçek norm FLT_MAX'ı aşar */
+    TEST_ASSERT_TRUE(ida_v3_birim(v2, &b));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, -0.57735027f, b.x);
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.57735027f, b.z);
+    TEST_ASSERT_FLOAT_WITHIN(1e15f, buyuk, ida_v3_norm(v1));
+    TEST_ASSERT_TRUE(ida_v3_norm(v2) > 3.4e38f); /* +inf */
+    const ida_v3_t v3 = {inf, 0.0f, 0.0f};
+    TEST_ASSERT_FALSE(ida_v3_birim(v3, &b));
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, b.x);
+    const ida_v3_t v4 = {1.0f, nan, 0.0f};
+    TEST_ASSERT_FALSE(ida_v3_birim(v4, &b));
+    const ida_v3_t v5 = {1e-30f, 0.0f, 0.0f}; /* norm eşiğin altında */
+    TEST_ASSERT_FALSE(ida_v3_birim(v5, &b));
+    const ida_v3_t v6 = {3e-6f, 4e-6f, 0.0f}; /* karesi küçük, ölçekli norm doğru */
+    TEST_ASSERT_TRUE(ida_v3_birim(v6, &b));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.6f, b.x);
+
+    ida_q_t q;
+    const ida_q_t q1 = {buyuk, 0.0f, 0.0f, 0.0f};
+    TEST_ASSERT_TRUE(ida_q_birimle(q1, &q));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f, q.w);
+    const ida_q_t q2 = {buyuk, buyuk, buyuk, buyuk};
+    TEST_ASSERT_TRUE(ida_q_birimle(q2, &q));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 0.5f, q.x);
+    const ida_q_t q3 = {inf, 0.0f, 0.0f, 0.0f};
+    TEST_ASSERT_FALSE(ida_q_birimle(q3, &q));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, q.w);
+    const ida_q_t q4 = {1.0f, 0.0f, nan, 0.0f};
+    TEST_ASSERT_FALSE(ida_q_birimle(q4, &q));
+
+    /* Dönme vektörü ve Euler: sonlu olmayan girdi başarı dönmez. */
+    const ida_v3_t rv_nan = {nan, 0.0f, 0.0f};
+    TEST_ASSERT_FALSE(ida_q_donme_vektorunden(rv_nan, &q));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, q.w);
+    const ida_v3_t rv_inf = {0.0f, inf, 0.0f};
+    TEST_ASSERT_FALSE(ida_q_donme_vektorunden(rv_inf, &q));
+    const ida_v3_t rv_buyuk = {3e38f, 3e38f, 0.0f}; /* norm taşar */
+    TEST_ASSERT_FALSE(ida_q_donme_vektorunden(rv_buyuk, &q));
+    const ida_v3_t rv_iyi = {buyuk, 0.0f, 0.0f}; /* norm sonlu: birim kuaterniyon */
+    TEST_ASSERT_TRUE(ida_q_donme_vektorunden(rv_iyi, &q));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 1.0f,
+                             (q.w * q.w) + (q.x * q.x) + (q.y * q.y) + (q.z * q.z));
+    ida_euler_t e;
+    TEST_ASSERT_FALSE(ida_q_euler(q4, &e));
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, e.pitch);
+    TEST_ASSERT_TRUE(ida_q_euler(q2, &e)); /* büyük ama sonlu: birimlenerek */
+
+    /* Küçük matrisler: taşan ya da sonlu olmayan sonuç başarı dönmez. */
+    const float a[4] = {buyuk, 0.0f, 0.0f, 1.0f};
+    float s4[4] = {0.0f};
+    ida_mat_oku_t ao;
+    ao.veri = a;
+    ao.boyut.satir = 2u;
+    ao.boyut.sutun = 2u;
+    ida_mat_yaz_t sw;
+    sw.veri = s4;
+    sw.boyut.satir = 2u;
+    sw.boyut.sutun = 2u;
+    TEST_ASSERT_FALSE(ida_mat_carp(ao, ao, &sw)); /* 1e40 taşar */
+    const float c[4] = {3e38f, 0.0f, 0.0f, 1.0f};
+    ida_mat_oku_t co;
+    co.veri = c;
+    co.boyut.satir = 2u;
+    co.boyut.sutun = 2u;
+    TEST_ASSERT_FALSE(ida_mat_topla(co, co, &sw));
+    const float n[4] = {nan, 0.0f, 0.0f, 1.0f};
+    ida_mat_oku_t no;
+    no.veri = n;
+    no.boyut.satir = 2u;
+    no.boyut.sutun = 2u;
+    TEST_ASSERT_FALSE(ida_mat_devrik(no, &sw));
+    float ara[4] = {0.0f};
+    ida_mat_yaz_t araw;
+    araw.veri = ara;
+    araw.boyut.satir = 2u;
+    araw.boyut.sutun = 2u;
+    TEST_ASSERT_FALSE(ida_mat_apat(ao, ao, &araw, &sw));
+    const float iyi[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    ida_mat_oku_t io;
+    io.veri = iyi;
+    io.boyut.satir = 2u;
+    io.boyut.sutun = 2u;
+    TEST_ASSERT_TRUE(ida_mat_carp(io, io, &sw));
+    TEST_ASSERT_FLOAT_WITHIN(TOL, 7.0f, s4[0]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -179,5 +283,6 @@ int main(void)
     RUN_TEST(test_kuaterniyon);
     RUN_TEST(test_matris);
     RUN_TEST(test_aci_ve_kirpma);
+    RUN_TEST(test_birimleme_sinirlari);
     return UNITY_END();
 }

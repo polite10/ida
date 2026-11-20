@@ -56,8 +56,18 @@ uint32_t ida_olay_bekleyen_izin_sayisi(const ida_olay_t *o)
     return n;
 }
 
+/* 3.5'in tanımlı sonuç kodları: 1–6 alıcı, 16–19 platform. */
+static bool sonuc_kodu_tanimli(uint8_t kod)
+{
+    return ((kod >= (uint8_t)IDA_EVR_APPLIED) && (kod <= (uint8_t)IDA_EVR_REJ_SESSION)) ||
+           ((kod >= (uint8_t)IDA_EVR_DROPPED_GATE) && (kod <= (uint8_t)IDA_EVR_SESSION_END));
+}
+
 bool ida_olay_sonuc(ida_olay_t *o, const ida_event_result_t *r, ida_olay_bekleyen_t *bulunan)
 {
+    if (!sonuc_kodu_tanimli(r->result)) {
+        return false; /* A4-K69: tanımsız kod yok sayılır; olay beklemeyi sürdürür */
+    }
     for (uint32_t i = 0u; i < IDA_OLAY_BEKLEYEN_MAX; i++) {
         ida_olay_bekleyen_t *b = &o->bekleyen[i];
         if (b->dolu && (b->event_id == r->event_id)) {

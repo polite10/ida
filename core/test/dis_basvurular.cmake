@@ -6,12 +6,13 @@
 #
 # İzinli: bellek doldurma/kopyalama (derleyicinin de ürettiği), float aşkın işlevler (libm),
 # derleyici yardımcıları (__aeabi_*), yığın koruması (Apple Clang'ın _chk ve stack_chk'i).
+# bzero: Apple Clang -O2 sıfır ilklendirmeyi (memset(…, 0, …)) bzero çağrısına çevirir (yalnız host; firmware arşivinde geçmez).
 
 if(NOT NM OR NOT ARSIV OR NOT BICIM)
   message(FATAL_ERROR "NM, ARSIV ve BICIM verilmeli")
 endif()
 # Adlar baştaki alt çizgiler atılarak karşılaştırılır (Mach-O öneki ve __aeabi_ / __*_chk).
-set(_izinli "^(memset|memcpy|memmove|memset_chk|memcpy_chk|stack_chk_fail|stack_chk_guard|sqrtf|sinf|cosf|asinf|atan2f|fmodf|aeabi_[a-z0-9_]+)$")
+set(_izinli "^(memset|bzero|memcpy|memmove|memset_chk|memcpy_chk|stack_chk_fail|stack_chk_guard|sqrtf|sinf|cosf|asinf|atan2f|fmodf|aeabi_[a-z0-9_]+)$")
 
 if(BICIM STREQUAL "macho")
   execute_process(COMMAND "${NM}" -m "${ARSIV}" OUTPUT_VARIABLE _cikti RESULT_VARIABLE _rc)

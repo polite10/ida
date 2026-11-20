@@ -47,6 +47,11 @@ static ida_rc_t cagri(bool step)
 
 static void oturum_sonu(void)
 {
+    if (C.emn.oturum_kapali) {
+        /* A4-K73: arada SESSION_START olmadan ikinci SESSION_END olay üretmez. */
+        IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+        (void)cagri(false);
+    }
     IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
     (void)cagri(false);
     IN.plat.link_event = (uint8_t)IDA_LINKEV_NONE;
@@ -128,6 +133,35 @@ static void test_k69_sonuc_ve_k70_zaman_asimi(void)
     (void)cagri(true);
     TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.event_unknown);
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_EVENT_UNKNOWN));
+}
+
+
+/* A4-K69 (B20): bekleyen olayın kimliğiyle tanımsız sonuç kodu yok sayılır; olay beklemede
+   kalır, last_event_result değişmez. */
+static void test_k69_tanimsiz_sonuc_kodu(void)
+{
+    hazirla();
+    oturum_sonu();
+    const uint64_t id = OUT.events[0].event_id;
+    IN.n_evres = 1u;
+    IN.evres[0].event_id = id;
+    IN.evres[0].result = 198u;
+    (void)cagri(true);
+    TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.evres_ignored);
+    TEST_ASSERT_EQUAL_UINT8(0u, OUT.fc.last_event_result);
+    TEST_ASSERT_EQUAL_UINT32(0u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_EVENT_RESULT));
+    const uint8_t tanimsiz[] = {0u, 7u, 15u, 20u, 255u};
+    for (uint32_t i = 0u; i < (uint32_t)sizeof(tanimsiz); i++) {
+        IN.evres[0].result = tanimsiz[i];
+        (void)cagri(true);
+    }
+    TEST_ASSERT_EQUAL_UINT32(6u, OUT.status.cnt.evres_ignored);
+    /* olay hâlâ bekliyor: tanımlı sonuç kabul edilir */
+    IN.evres[0].result = (uint8_t)IDA_EVR_SESSION_END;
+    (void)cagri(true);
+    TEST_ASSERT_EQUAL_UINT32(6u, OUT.status.cnt.evres_ignored);
+    TEST_ASSERT_EQUAL_UINT8(IDA_EVR_SESSION_END, OUT.fc.last_event_result);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_EVENT_RESULT));
 }
 
 static void test_k129_bekleyen_kumesi(void)
@@ -231,6 +265,7 @@ int main(void)
     RUN_TEST(test_k61_olaysiz_calisma);
     RUN_TEST(test_k62_sayac_siniri);
     RUN_TEST(test_k69_sonuc_ve_k70_zaman_asimi);
+    RUN_TEST(test_k69_tanimsiz_sonuc_kodu);
     RUN_TEST(test_k129_bekleyen_kumesi);
     RUN_TEST(test_kapi);
     return UNITY_END();

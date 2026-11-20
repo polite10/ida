@@ -167,6 +167,19 @@ static void test_oturum_sonu(void)
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_SAFETY_INPUT));
     TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.narrow_from_rejected);
     TEST_ASSERT_EQUAL_UINT8(0x1Fu, C.emn.kisitli); /* etkin değerler kısıtlayana döndü */
+    /* A4-K73: arada SESSION_START olmadan ikinci SESSION_END yeni olay üretmez, dönüş
+       kodunu değiştirmez ve yine daraltıcı girdidir. */
+    IN.n_cmds = 0u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, step());
+    TEST_ASSERT_EQUAL_UINT8(0u, OUT.n_events);
+    TEST_ASSERT_TRUE(OUT.health.narrowed);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_SESSION));
+    /* Yeni oturum (SESSION_START) sonrası SESSION_END yine kapanma üretir. */
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, step());
+    TEST_ASSERT_EQUAL_UINT8(0u, OUT.n_events);
+    TEST_ASSERT_EQUAL_UINT8(0x1Fu, C.emn.kisitli); /* SESSION_START gevşetmez (A4-K116) */
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
     /* Reddedilen çağrıda SESSION_END: SAFETY_CLOSE son geçerli seq/t ile (A4-K57, K63). */
     const uint32_t son_seq = OUT.seq;
     const int64_t son_t = OUT.t_ref.ns;

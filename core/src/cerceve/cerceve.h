@@ -36,7 +36,9 @@ typedef struct {
     bool fc_onceki_var;      /* FC_STATE / FC_INHIBIT günlüklerinin tabanı                 */
     uint8_t fc_onceki_durum;
     uint32_t fc_onceki_engel;
-    bool core_ok;            /* son değerlendirilen iç tutarlılık (CORE_INTEGRITY geçişi)  */
+    bool core_ok;            /* iç tutarlılık; bozulma saptanınca init'e kadar 0 kalır     */
+    int32_t bozuk_izi;       /* (b)/(b3) üzerine yazmadan önce görülen bozulmanın kodu
+                                (A4-K89); sonraki yazılabilir çağrının sonucuna taşınır     */
     ida_core_counters_t cnt; /* status.cnt                                                 */
 } ida_cerceve_t;
 

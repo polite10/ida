@@ -45,6 +45,7 @@ typedef struct {
        sonuçları çağrı sonunda yazılır (A4-K81, K82); burada sonuç indisleri tutulur. */
     uint8_t cagri_save_sayisi;            /* bu çağrıda (3)'e ulaşan PARAM_SAVE sayısı */
     uint8_t n_commit;                     /* bu çağrıda (3)'e ulaşan PARAM_COMMIT sayısı */
+    bool commit_armed;                    /* bunlardan biri işlendiği anda araç silahlıydı */
     uint8_t commit_indis[IDA_PORT_MAX_CMDS]; /* out->results[] indisleri              */
     bool save_bekliyor;                   /* ilk PARAM_SAVE ön koşulları geçti, karar sonda */
     uint8_t save_indis;
@@ -87,6 +88,8 @@ typedef struct {
     uint32_t plat_param_gen;
     ida_gunluk_t *gun;
     uint8_t sonuc_indisi;                 /* komutun out->results[] indisi             */
+    bool armed;                           /* komutun cmds[] sırasında işlendiği andaki
+                                             armed (A4-K81, K82)                        */
 } ida_prm_komut_baglam_t;
 
 void ida_prm_cagri_basi(ida_param_t *p);
@@ -103,7 +106,9 @@ void ida_prm_komut(ida_param_t *p, const ida_prm_komut_baglam_t *b, const ida_cm
    sonuç için cnt->cmd_rejected bir artar. */
 void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
                         ida_core_counters_t *cnt);
-/* plat.param_store geçişleri: PARAM_SAVE günlüğü ve A4-K78 engelinin kalkması. */
+/* plat.param_store: PARAM_SAVE günlüğü ve A4-K78 engelinin kalkması. Bekleyen kaydın
+   tamamlanması (OK ya da FAIL) durum kodu değişiminden bağımsız olarak beklenen gen ile
+   eşleştirilir (param_gen = beklenen gen; aradaki BUSY görülmese de); günlük bir kez. */
 void ida_prm_depo_izle(ida_param_t *p, const ida_plat_t *plat, ida_gunluk_t *gun, ida_wtime_t now);
 
 #endif /* IDA_CORE_PARAM_H */

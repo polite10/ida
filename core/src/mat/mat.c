@@ -40,20 +40,86 @@ ida_v3_t ida_v3_dis(ida_v3_t lhs, ida_v3_t rhs)
     return s;
 }
 
+static float mutlak(float x)
+{
+    return (x < 0.0f) ? -x : x;
+}
+
+static bool hepsi_sonlu(const float *d, uint32_t n)
+{
+    for (uint32_t i = 0u; i < n; i++) {
+        if (!ida_sonlu(d[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* En büyük mutlak bileşen (girdiler sonlu). */
+static float en_buyuk_mutlak(const float *d, uint32_t n)
+{
+    float m = 0.0f;
+    for (uint32_t i = 0u; i < n; i++) {
+        const float a = mutlak(d[i]);
+        if (a > m) {
+            m = a;
+        }
+    }
+    return m;
+}
+
+/* Taşmaya dayanıklı (ölçeklenmiş) birimleme: bileşenler en büyük mutlak değere bölünür,
+   ölçekli vektörün normu [1, √n] aralığındadır ve kare alma taşmaz. Girdiler sonlu, gerçek
+   norm > IDA_MAT_KUCUK ve sonuç sonluysa true; aksi halde s'nin içeriği anlamsızdır. */
+static bool olcekli_birimle(const float *d, float *s, uint32_t n)
+{
+    if (!hepsi_sonlu(d, n)) {
+        return false;
+    }
+    const float m = en_buyuk_mutlak(d, n);
+    if (!(m > 0.0f)) {
+        return false;
+    }
+    float t = 0.0f;
+    for (uint32_t i = 0u; i < n; i++) {
+        s[i] = d[i] / m;
+        t += s[i] * s[i];
+    }
+    const float nn = ida_karekok(t);
+    if (!(m * nn > IDA_MAT_KUCUK)) { /* m * nn taşarsa +inf: büyük, eşikten geçer */
+        return false;
+    }
+    for (uint32_t i = 0u; i < n; i++) {
+        s[i] = s[i] / nn;
+    }
+    return hepsi_sonlu(s, n);
+}
+
 float ida_v3_norm(ida_v3_t v)
 {
-    return ida_karekok(ida_v3_ic(v, v));
+    const float d[3] = {v.x, v.y, v.z};
+    if (!hepsi_sonlu(d, 3u)) {
+        return ida_karekok(ida_v3_ic(v, v)); /* +inf ya da NaN olduğu gibi yayılır */
+    }
+    const float m = en_buyuk_mutlak(d, 3u);
+    if (!(m > 0.0f)) {
+        return 0.0f;
+    }
+    const ida_v3_t o = {v.x / m, v.y / m, v.z / m};
+    return m * ida_karekok(ida_v3_ic(o, o)); /* gerçek norm FLT_MAX'ı aşarsa +inf */
 }
 
 bool ida_v3_birim(ida_v3_t v, ida_v3_t *sonuc)
 {
-    const float n = ida_v3_norm(v);
-    if (!(n > IDA_MAT_KUCUK)) {
+    const float d[3] = {v.x, v.y, v.z};
+    float s[3] = {0.0f, 0.0f, 0.0f};
+    if (!olcekli_birimle(d, s, 3u)) {
         const ida_v3_t sifir = {0.0f, 0.0f, 0.0f};
         *sonuc = sifir;
         return false;
     }
-    *sonuc = ida_v3_olcekle(v, 1.0f / n);
+    const ida_v3_t b = {s[0], s[1], s[2]};
+    *sonuc = b;
     return true;
 }
 
@@ -82,13 +148,13 @@ ida_q_t ida_q_eslenik(ida_q_t q)
 
 bool ida_q_birimle(ida_q_t q, ida_q_t *sonuc)
 {
-    const float n = ida_karekok((q.w * q.w) + (q.x * q.x) + (q.y * q.y) + (q.z * q.z));
-    if (!(n > IDA_MAT_KUCUK)) {
+    const float d[4] = {q.w, q.x, q.y, q.z};
+    float s[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (!olcekli_birimle(d, s, 4u)) {
         *sonuc = ida_q_birim_deger();
         return false;
     }
-    const float k = 1.0f / n;
-    const ida_q_t b = {q.w * k, q.x * k, q.y * k, q.z * k};
+    const ida_q_t b = {s[0], s[1], s[2], s[3]};
     *sonuc = b;
     return true;
 }
@@ -101,19 +167,21 @@ ida_v3_t ida_q_dondur(ida_q_t q, ida_v3_t v)
     return s;
 }
 
-ida_q_t ida_q_donme_vektorunden(ida_v3_t rv)
+bool ida_q_donme_vektorunden(ida_v3_t rv, ida_q_t *sonuc)
 {
     const float aci = ida_v3_norm(rv);
+    if (!ida_sonlu(aci)) {
+        *sonuc = ida_q_birim_deger(); /* sonlu olmayan girdi ya da normun taşması */
+        return false;
+    }
     if (!(aci > IDA_MAT_KUCUK)) {
         /* Küçük açı: q ≈ (1, rv/2), birimlenmiş. */
         const ida_q_t yaklasik = {1.0f, 0.5f * rv.x, 0.5f * rv.y, 0.5f * rv.z};
-        ida_q_t b;
-        (void)ida_q_birimle(yaklasik, &b);
-        return b;
+        return ida_q_birimle(yaklasik, sonuc);
     }
     const float k = ida_sin(0.5f * aci) / aci;
     const ida_q_t q = {ida_cos(0.5f * aci), rv.x * k, rv.y * k, rv.z * k};
-    return q;
+    return ida_q_birimle(q, sonuc); /* yuvarlama artığını da giderir */
 }
 
 ida_m3_t ida_q_dcm(ida_q_t q)
@@ -141,15 +209,21 @@ ida_m3_t ida_q_dcm(ida_q_t q)
     return r;
 }
 
-ida_euler_t ida_q_euler(ida_q_t q)
+bool ida_q_euler(ida_q_t q, ida_euler_t *sonuc)
 {
-    const ida_m3_t r = ida_q_dcm(q);
-    ida_euler_t e;
+    ida_euler_t e = {0.0f, 0.0f, 0.0f};
+    ida_q_t b;
+    if (!ida_q_birimle(q, &b)) {
+        *sonuc = e; /* kırpma NaN'ı ±π/2'ye çevirip gizlemesin diye başarı dönmez */
+        return false;
+    }
+    const ida_m3_t r = ida_q_dcm(b);
     const ida_aralik_t birim = {-1.0f, 1.0f};
     e.pitch = -ida_asin(ida_kirp(r.m[2][0], birim));
     e.roll = ida_atan2(r.m[2][1], r.m[2][2]);
     e.yaw = ida_atan2(r.m[1][0], r.m[0][0]);
-    return e;
+    *sonuc = e;
+    return ida_sonlu(e.pitch) && ida_sonlu(e.roll) && ida_sonlu(e.yaw);
 }
 
 ida_m3_t ida_m3_birim_deger(void)
@@ -231,7 +305,7 @@ bool ida_mat_carp(ida_mat_oku_t lhs, ida_mat_oku_t rhs, const ida_mat_yaz_t *son
             sonuc->veri[(i * p) + j] = t;
         }
     }
-    return true;
+    return hepsi_sonlu(sonuc->veri, m * p);
 }
 
 bool ida_mat_topla(ida_mat_oku_t lhs, ida_mat_oku_t rhs, const ida_mat_yaz_t *sonuc)
@@ -245,7 +319,7 @@ bool ida_mat_topla(ida_mat_oku_t lhs, ida_mat_oku_t rhs, const ida_mat_yaz_t *so
     for (uint32_t i = 0u; i < say; i++) {
         sonuc->veri[i] = lhs.veri[i] + rhs.veri[i];
     }
-    return true;
+    return hepsi_sonlu(sonuc->veri, say);
 }
 
 bool ida_mat_devrik(ida_mat_oku_t a, const ida_mat_yaz_t *sonuc)
@@ -261,7 +335,7 @@ bool ida_mat_devrik(ida_mat_oku_t a, const ida_mat_yaz_t *sonuc)
             sonuc->veri[(j * m) + i] = a.veri[(i * n) + j];
         }
     }
-    return true;
+    return hepsi_sonlu(sonuc->veri, m * n);
 }
 
 bool ida_mat_apat(ida_mat_oku_t a, ida_mat_oku_t p, const ida_mat_yaz_t *ara,
@@ -290,5 +364,5 @@ bool ida_mat_apat(ida_mat_oku_t a, ida_mat_oku_t p, const ida_mat_yaz_t *ara,
             sonuc->veri[(i * m) + j] = t;
         }
     }
-    return true;
+    return hepsi_sonlu(sonuc->veri, m * m);
 }

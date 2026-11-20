@@ -65,8 +65,9 @@ uint8_t ida_olay_bekleyen_tupler(const ida_olay_t *o);
 /* Bekleyen SAFETY_OPEN/FIRE sayısı (A4-K129). */
 uint32_t ida_olay_bekleyen_izin_sayisi(const ida_olay_t *o);
 
-/* Sonuç kabulü (A4-K69): event_id bekleyenlerdendir ise bekleyen silinir ve sonucun kaydı
-   *bulunan'a yazılır, true döner; değilse false (çağıran evres_ignored sayar). */
+/* Sonuç kabulü (A4-K69): result 3.5'te tanımlı ve event_id bekleyenlerdendir ise bekleyen
+   silinir ve sonucun kaydı *bulunan'a yazılır, true döner; değilse false (çağıran
+   evres_ignored sayar; tanımsız kodda olay beklemeyi sürdürür, last_event_result değişmez). */
 bool ida_olay_sonuc(ida_olay_t *o, const ida_event_result_t *r, ida_olay_bekleyen_t *bulunan);
 /* Zaman aşımı (A4-K70): now − cikis_now > apply_by + IDA_EVT_RESULT_MARGIN_NS olan ilk
    bekleyeni siler, *bulunan'a yazar ve true döner; yoksa false. */

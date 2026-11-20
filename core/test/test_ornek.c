@@ -317,6 +317,75 @@ static void test_k37_k108_gecikme(void)
     }
 }
 
+
+/* 3.11 (b3) (ii), A4-K37, K39: SESSION_START IMU_LAG mandalını çözmez, çözülme sayacını
+   sıfırlar; IMU taze idiyse IMU_STALE = 1; IMU kabul edilmemişken lag hesaplanmaz. */
+static void test_b3_imu_izi(void)
+{
+    hazirla();
+    ilerle();
+    IN.imu.hdr.t_meas.ns = g_t - (25 * DS_MS); /* mandal kurulur */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_TRUE(OUT.health.imu_lag);
+    for (uint32_t i = 0u; i < 5u; i++) { /* 5 temiz çağrı: sayaç 5 */
+        ilerle();
+        IN.imu.hdr.t_meas.ns = g_t - (5 * DS_MS);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT));
+    }
+    TEST_ASSERT_EQUAL_UINT32(5u, C.imz.temiz);
+    TEST_ASSERT_FALSE(C.imz.bayat_izi);
+    /* SESSION_START: IMU'suz zaman çerçeveli tick */
+    g_seq = 1u;
+    g_t += 5 * DS_MS;
+    ds_girdi(&IN, g_t, g_seq, false);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_TRUE(OUT.health.imu_lag); /* mandal çözülmedi */
+    TEST_ASSERT_EQUAL_UINT32(0u, C.imz.temiz);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_IMU_STALE));
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_IMU_STALE) != 0u);
+    /* IMU kabul edilmemişken lag hesaplanmaz: mandal ve sayaç değişmez */
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_NONE;
+    for (uint32_t i = 0u; i < 3u; i++) {
+        g_seq++;
+        g_t += 5 * DS_MS;
+        ds_girdi(&IN, g_t, g_seq, false);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+        TEST_ASSERT_TRUE(OUT.health.imu_lag);
+        TEST_ASSERT_EQUAL_UINT32(0u, C.imz.temiz);
+    }
+    /* Out NULL çağrısındaki SESSION_START'ın IMU_STALE günlüğü bekletilir. */
+    g_seq++;
+    g_t += 5 * DS_MS;
+    ds_girdi(&IN, g_t, g_seq, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT)); /* IMU taze: IMU_STALE 0 */
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_IMU_STALE));
+    TEST_ASSERT_EQUAL_INT32(0, OUT.logs[0].arg0);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, NULL));
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_NONE;
+    g_seq++;
+    g_t += 5 * DS_MS;
+    ds_girdi(&IN, g_t, g_seq, false);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_IMU_STALE));
+    /* Reddedilen çağrıdaki SESSION_START: taze → bayat geçişinin günlüğü o çağrıda çıkar. */
+    g_seq++;
+    g_t += 5 * DS_MS;
+    ds_girdi(&IN, g_t, g_seq, true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_step(&C, &IN, &OUT)); /* IMU yeniden taze */
+    TEST_ASSERT_FALSE(C.imz.bayat_izi);
+    g_seq++;
+    g_t += 5 * DS_MS;
+    ds_girdi(&IN, g_t, g_seq, true);
+    IN.n_samples = 17u; /* BAD_INPUT ((b3) (c)'den önce yapılır) */
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_BAD_INPUT, ida_core_step(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_IMU_STALE));
+    TEST_ASSERT_EQUAL_UINT16(IDA_LOG_IMU_STALE, OUT.logs[0].code);
+    TEST_ASSERT_EQUAL_INT32(1, OUT.logs[0].arg0);
+}
+
 static void test_k38_bosluk(void)
 {
     hazirla();
@@ -371,6 +440,7 @@ int main(void)
     RUN_TEST(test_k103_imu_reddi);
     RUN_TEST(test_k39_k128_bayatlik);
     RUN_TEST(test_k37_k108_gecikme);
+    RUN_TEST(test_b3_imu_izi);
     RUN_TEST(test_k38_bosluk);
     RUN_TEST(test_k40_ping360);
     return UNITY_END();
