@@ -35,3 +35,4 @@ set_tests_properties(host.cekirdek_siniri.temiz PROPERTIES
 
 # ---- vcpkg bağımlılık düzeneğinin dumanı (Eigen) ----------------------------------------
 add_subdirectory(duman)
+add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
