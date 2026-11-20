@@ -504,7 +504,7 @@ typedef struct {
     uint8_t  link_event;            /* IDA_LINKEV_*; olay yalnız bir çağrıda     */
     uint8_t  param_store;           /* IDA_PSTORE_*                               */
     uint8_t  param_fail;            /* IDA_PSFAIL_*                               */
-    uint32_t param_gen;             /* son başarılı kaydın kuşağı                 */
+    uint32_t param_gen;             /* son tamamlanan kayıt denemesinin kuşağı (OK ya da FAIL; belge 3.6) */
     bool     prev_overrun;          /* önceki çekirdek çağrısı bütçesini aştı     */
     bool     tx_stalled;            /* kritik gönderim kuyruğu boşalmıyor         */
     bool     batch_merged;          /* bu girdi birden çok partiden birleşti      */
