@@ -1,7 +1,7 @@
 /*
  * İDA — ortak çekirdek <-> çevresi: port arayüzü (A4)
  *
- * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (düzeltme turu 2).
+ * Sözleşme: docs/sozlesmeler/A4-port.md, sürüm 1.0-aday (çapraz uyum turu, W1-uyum).
  * Bu dosya sözleşmenin makinece okunur parçasıdır; belgeyle çelişemez.
  * Yalnız tip tanımları, sabitler ve işlev bildirimleri içerir (A4-K01).
  * Her bildirimin üstündeki yorum, ilgili kural numarasını verir.
@@ -54,7 +54,6 @@ extern "C" {
 #define IDA_PORT_MAX_EVRES           4u   /* çağrı başına olay sonucu                 */
 #define IDA_PORT_MAX_LOGS            4u   /* çağrı başına günlük kaydı                */
 #define IDA_PORT_CMD_DEDUP          32u   /* yinelenen cmd_id penceresi (A4-K48)      */
-#define IDA_PORT_FC_EXT_MAX         64u   /* atış kontrol ek durum baytı (A4-K91)     */
 #define IDA_PING360_MAX_SAMPLES   1200u   /* Ping360 örnek sayısı üst sınırı (cihaz)  */
 #define IDA_PING360_ANGLE_COUNT    400u   /* Ping360 açı birimi: gradyan (cihaz)      */
 #define IDA_PARAM_BLOB_MAX        8000u   /* kodlanmış parametre bloğu üst sınırı (B) */
@@ -73,13 +72,22 @@ extern "C" {
 #define IDA_PORT_STALE_MARGIN_NS     UINT32_C(14500000)   /* 14,5 ms = 11 + 3,5 (A4-K39) */
 #define IDA_EVT_RESULT_MARGIN_NS     UINT32_C(100000000)  /* 100 ms  */
 
-/* A4-K58, A4-K66: süre alanlarının geçerli aralıkları. */
-#define IDA_VALID_FOR_MIN_NS         UINT32_C(1000000)    /* 1 ms */
-#define IDA_VALID_FOR_MAX_NS         UINT32_C(1000000000) /* 1 s  */
-#define IDA_APPLY_BY_MIN_NS          UINT32_C(1000000)    /* 1 ms */
-#define IDA_APPLY_BY_MAX_NS          UINT32_C(1000000000) /* 1 s  */
-#define IDA_HOLD_MIN_NS              UINT32_C(1000000)    /* 1 ms */
-#define IDA_HOLD_MAX_NS              UINT32_C(1000000000) /* 1 s  */
+/* A4-K58, A4-K66 (W1-uyum U7): süre alanlarının geçerli aralıkları; sahibi A1-K104. */
+#define IDA_VALID_FOR_MIN_NS         UINT32_C(60000000)   /* 60 ms   */
+#define IDA_VALID_FOR_MAX_NS         UINT32_C(450000000)  /* 450 ms  */
+#define IDA_VALID_FOR_DEFAULT_NS     UINT32_C(100000000)  /* 100 ms  */
+#define IDA_APPLY_BY_MIN_NS          UINT32_C(16000000)   /* 16 ms   */
+#define IDA_APPLY_BY_MAX_NS          UINT32_C(1000000000) /* 1000 ms */
+#define IDA_HOLD_MIN_NS              UINT32_C(60000000)   /* 60 ms   */
+#define IDA_HOLD_MAX_NS              UINT32_C(450000000)  /* 450 ms  */
+
+/* A4-K39 (W1-uyum U7): IMU bayatlık parametresi T_imu_stale. */
+#define IDA_IMU_STALE_MIN_NS         UINT32_C(5000000)    /* 5 ms    */
+#define IDA_IMU_STALE_MAX_NS         UINT32_C(30000000)   /* 30 ms   */
+#define IDA_IMU_STALE_DEFAULT_NS     UINT32_C(20000000)   /* 20 ms   */
+
+/* A4-K118: algılama akışı bayatlık parametresi T_det_stale (tasarım seçimi). */
+#define IDA_DET_STALE_DEFAULT_NS     UINT32_C(2000000000) /* 2 s     */
 
 /* A4-K61, A4-K62: olay kimliği. */
 #define IDA_BOOT_COUNT_MIN           UINT32_C(1)
@@ -252,7 +260,9 @@ typedef struct {
     uint8_t tube[IDA_PORT_N_TUBE];    /* IDA_TUBE_* bitleri                        */
 } ida_safety_t;
 
-/* A4-K30: IMU ve Ping360 dışındaki örnekler; hdr.type birlik alanını seçer. */
+/* A4-K30, A4-K121: IMU ve Ping360 dışındaki örnekler. Birlik u'nun seçicisi hdr.type:
+   MAG->mag, BARO->baro, GNSS->gnss, DVL->dvl, PING1D->ping1d, BATT->batt,
+   LEAK->leak, SAFETY->safety. Etkin olmayan üyenin baytları anlamsızdır. */
 typedef struct {
     ida_hdr_t hdr;
     union {
@@ -338,7 +348,7 @@ typedef struct {
     float   yaw_rate;      /* rad/s                                              */
 } ida_guided_sp_t;
 
-/* Görev öğesi türleri. */
+/* Görev öğesi türleri: kapalı liste, A1 Tablo 3.6a (W1-uyum U1); 8 ve üstü yoktur. */
 #define IDA_MI_WAYPOINT      1u
 #define IDA_MI_DIVE_TO       2u
 #define IDA_MI_SURFACE       3u
@@ -346,19 +356,18 @@ typedef struct {
 #define IDA_MI_SCAN_LINES    5u
 #define IDA_MI_SCAN_POINT    6u
 #define IDA_MI_WAIT_GNSS     7u
-#define IDA_MI_TARGET_ALIGN  8u
 
 /* Görev öğesinin konum çerçevesi. */
 #define IDA_MI_FRAME_NONE    0u
 #define IDA_MI_FRAME_LOCAL   1u   /* north_m, east_m (NED, senaryo orijini) */
 #define IDA_MI_FRAME_GLOBAL  2u   /* lat_e7, lon_e7 (WGS-84)                 */
 
-/* A4-K51: görev öğesi kabı (Bölüm 3.4). */
+/* A4-K51: görev öğesi; bütün alanların anlamı, birimi ve aralığı A1 Tablo 3.6a. */
 typedef struct {
     uint16_t index;        /* 0 .. n-1                                           */
     uint8_t  item_type;    /* IDA_MI_*                                           */
     uint8_t  frame;        /* IDA_MI_FRAME_*                                     */
-    float    p[4];         /* türe özgü parametreler (anlamı çekirdek uygulaması) */
+    float    p[4];         /* türe göre A1 Tablo 3.6a; "0" yazanlar tam 0     */
     int32_t  lat_e7;       /* frame = GLOBAL                                      */
     int32_t  lon_e7;       /* frame = GLOBAL                                      */
     float    north_m;      /* frame = LOCAL                                       */
@@ -377,7 +386,7 @@ typedef struct {
 #define IDA_PT_U32  2u
 #define IDA_PT_F32  3u
 
-/* A4-K81, A4-K85 */
+/* A4-K81, A4-K85, A4-K121: birlik v'nin seçicisi type: I32->i32, U32->u32, F32->f32. */
 typedef struct {
     uint16_t id;
     uint8_t  type;         /* IDA_PT_*                                            */
@@ -388,25 +397,30 @@ typedef struct {
     } v;
 } ida_param_value_t;
 
-/* Atış kontrol komut işlemleri (ida_fc_cmd_t.op). Anlamları W4'ündür. */
+/* Atış kontrol komut işlemleri (ida_fc_cmd_t.op): kapalı liste, A1 Tablo 3.6
+   (W1-uyum U1); 4 ve 9 ve üstü yoktur. */
 #define IDA_FC_ARM         1u   /* genişletici (A4-K104) */
 #define IDA_FC_DISARM      2u   /* daraltıcı (mandal)    */
 #define IDA_FC_ABORT       3u   /* daraltıcı (mandal)    */
-#define IDA_FC_SELECT      4u   /* genişletici           */
 #define IDA_FC_FIRE        5u   /* genişletici           */
 #define IDA_FC_RESET       6u   /* genişletici           */
 #define IDA_FC_TEST_ENTER  7u   /* genişletici           */
 #define IDA_FC_TEST_EXIT   8u
 
-/* A4-K44: atış kontrol komutu; arg0/arg1 anlamı atış kontrol uygulamasınındır. */
+/* A4-K44, A4-K119: atış kontrol komutu; arg0 ve arg1 ayrılmıştır, bu sürümde 0
+   olmak zorundadır (değilse komut reddedilir). */
 typedef struct {
     uint8_t  op;           /* IDA_FC_*                                            */
     uint8_t  tube;         /* 0 .. IDA_PORT_N_TUBE-1                              */
-    uint32_t arg0;
-    uint32_t arg1;
+    uint32_t arg0;         /* ayrılmış, 0                                         */
+    uint32_t arg1;         /* ayrılmış, 0                                         */
 } ida_fc_cmd_t;
 
-/* A4-K43: daraltıcı olmayan komut (daraltıcılar ida_narrow_t ile gelir). */
+/* A4-K43, A4-K121: daraltıcı olmayan komut (daraltıcılar ida_narrow_t ile gelir).
+   Birlik u'nun seçicisi type: SET_MODE->set_mode, MANUAL->manual, GUIDED_SP->guided,
+   MISSION_BEGIN->mission_begin, MISSION_ITEM->mission_item, MISSION_CTL->mission_ctl,
+   PARAM_SET ve PARAM_GET->param, FC->fc; HEARTBEAT, ARM, MISSION_END, PARAM_COMMIT,
+   PARAM_SAVE ve FAILSAFE_RESET'te etkin üye yoktur. */
 typedef struct {
     uint32_t cmd_id;       /* sonuç aynı kimlikle (A4-K43, A4-K48)               */
     uint8_t  type;         /* IDA_CMD_*                                           */
@@ -568,7 +582,6 @@ typedef struct {
     ida_stime_t t_decide;      /* kararın ölçüm zamanı (ida_out_t.t_ref)            */
     uint32_t    apply_by_ns;   /* son geçerlilik: t_decide + apply_by_ns (A4-K66)  */
     uint32_t    hold_ns;       /* yalnız SAFETY_OPEN: izin süresi (A4-K66, K107)    */
-    uint32_t    fc_ref;        /* atış kontrolün iç başvuru numarası; yalnız kayıt  */
 } ida_event_t;
 
 /* Komut sonucu türü (ida_cmd_result_t.kind). */
@@ -583,7 +596,12 @@ typedef struct {
 #define IDA_ACK_DUPLICATE    4u
 #define IDA_ACK_UNSUPPORTED  5u
 
-/* Ret nedenleri (ida_cmd_result_t.reason); 0x100 ve üstü atış kontrolünün. */
+/* A4-K120: ret nedenleri (ida_cmd_result_t.reason). Çekirdek yalnız 0–15'i üretir;
+   16–127 ayrılmış; 128–191 A1 bağlantı katmanınındır, port sonucu olarak üretilmez;
+   192 ve üstü (0x100 ve üstü dahil) ayrılmış, kullanılmaz. */
+#define IDA_REASON_CORE_LAST    15u
+#define IDA_REASON_LINK_FIRST  128u
+#define IDA_REASON_LINK_LAST   191u
 #define IDA_REASON_NONE          0u
 #define IDA_REASON_CALL_REJECTED 1u  /* çağrı hata döndü (A4-K26)                 */
 #define IDA_REASON_ARMED         2u  /* silahlıyken ya da aynı çağrıda ARM varken  */
@@ -608,7 +626,9 @@ typedef struct {
     uint32_t       len;           /* <= IDA_PARAM_BLOB_MAX                        */
 } ida_param_save_t;
 
-/* A4-K43: komut kimliğiyle çoklanmış sonuç. */
+/* A4-K43, A4-K121: komut kimliğiyle çoklanmış sonuç. Seçici kind: PARAM_VALUE ise
+   value, PARAM_SAVE ve ack = ACCEPTED ise save geçerlidir; geçersiz olan çekirdekçe
+   sıfırla yazılır. */
 typedef struct {
     uint32_t          cmd_id;
     uint8_t           kind;       /* IDA_RES_*                                    */
@@ -742,23 +762,78 @@ typedef struct {
 #define IDA_SEV_INFO       6u
 #define IDA_SEV_DEBUG      7u
 
-/* A4-K90: günlük kaydı; code tablosu çekirdek uygulamasınındır. */
+/* A4-K90 (W1-uyum U1): günlük kodları; kapalı tablo, belge Bölüm 3.15. Tabloda
+   olmayan kod üretilmez; arg0/arg1 anlamı koda göre tablodadır (kullanılmayan 0). */
+#define IDA_LOG_RESET_INFO          1u  /* arg0 reset_cause, arg1 consecutive_faults */
+#define IDA_LOG_PARAM_LOAD          2u  /* arg0 init dönüş kodu, arg1 başarısız denetim */
+#define IDA_LOG_PARAM_COMMIT        3u  /* arg0 1 uygulandı / 0 reddedildi, arg1 neden */
+#define IDA_LOG_PARAM_SAVE          4u  /* arg0 gen, arg1 param_store                  */
+#define IDA_LOG_MODE_CHANGE         5u  /* arg0 yeni kip, arg1 önceki kip             */
+#define IDA_LOG_ARM_CHANGE          6u  /* arg0 armed, arg1 neden (IDA_REASON_*)       */
+#define IDA_LOG_FAILSAFE_CHANGE     7u  /* arg0 yeni fs_level, arg1 fs_reasons         */
+#define IDA_LOG_SESSION             8u  /* arg0 link_event, arg1 0                     */
+#define IDA_LOG_IMU_GAP             9u  /* arg0 boşluk µs (doyar), arg1 0              */
+#define IDA_LOG_IMU_LAG            10u  /* arg0 1 kuruldu / 0 çözüldü, arg1 lag µs      */
+#define IDA_LOG_IMU_STALE          11u  /* arg0 1 bayat / 0 taze, arg1 0               */
+#define IDA_LOG_WALL_BACKSTEP      12u  /* arg0 geri adım µs (doyar), arg1 0           */
+#define IDA_LOG_BG_SLICE_MISMATCH  13u  /* arg0 platform sayısı, arg1 çekirdek sayısı  */
+#define IDA_LOG_BG_BAD_INPUT       14u  /* arg0 önceki çağrıdan beri sayı, arg1 0      */
+#define IDA_LOG_SAMPLE_CONFLICT    15u  /* arg0 type, arg1 inst                        */
+#define IDA_LOG_DET_STREAM         16u  /* arg0 1 bayat / 0 taze, arg1 inst (kamera)    */
+#define IDA_LOG_EVENT_RESULT       17u  /* arg0 olay türü, arg1 IDA_EVR_*              */
+#define IDA_LOG_EVENT_UNKNOWN      18u  /* arg0 olay türü, arg1 tüp                    */
+#define IDA_LOG_SAFETY_INPUT       19u  /* arg0 etkin estop, arg1 etkin tüp bitleri   */
+#define IDA_LOG_FC_STATE           20u  /* arg0 yeni fc.state, arg1 önceki fc.state     */
+#define IDA_LOG_FC_INHIBIT         21u  /* arg0 yeni inhibit_mask, arg1 önceki          */
+#define IDA_LOG_NUMERIC_FAULT      22u  /* arg0 1 kestirim / 2 kontrol, arg1 0          */
+#define IDA_LOG_CORE_INTEGRITY     23u  /* arg0 denetim kodu 1–3, arg1 0               */
+#define IDA_LOG_CODE_LAST          23u
+
+/* A4-K90: günlük kaydı. */
 typedef struct {
     ida_wtime_t t_w;              /* çağrının kullanılan now_w'si                 */
-    uint16_t    code;
+    uint16_t    code;             /* IDA_LOG_*                                    */
     uint8_t     severity;         /* IDA_SEV_*                                    */
     int32_t     arg0;
     int32_t     arg1;
 } ida_log_t;
 
-/* A4-K91: atış kontrol durumu (yalnız durum ve engel bilgisi). */
+/* A4-K91 (W1-uyum U1): atış kontrol durumu (ida_fc_status_t.state); kapalı tablo. */
+#define IDA_FCS_SAFE           0u  /* emniyetli; açık izin yok                     */
+#define IDA_FCS_ARMED          1u  /* FC silahlı; açık izin yok                    */
+#define IDA_FCS_PERMIT_OPEN    2u  /* en az bir tüpte izin açık (A4-K107)           */
+#define IDA_FCS_FIRE_PENDING   3u  /* sonucu beklenen FIRE var                      */
+#define IDA_FCS_TEST           4u  /* sınama kipi                                   */
+#define IDA_FCS_FAULT_LATCHED  5u  /* mandallı arıza; yalnız FC_RESET çıkarır       */
+
+/* A4-K91 (W1-uyum U1): emniyet zinciri engelleri (inhibit_mask); kapalı tablo.
+   Bit 18–31 ayrılmış, 0. */
+#define IDA_FCI_NOT_ARMED        0x00000001u /* araç silahsız                      */
+#define IDA_FCI_MODE             0x00000002u /* kip izin kümesinde değil            */
+#define IDA_FCI_EST              0x00000004u /* kestirim düzeyi OK değil            */
+#define IDA_FCI_FAILSAFE         0x00000008u /* arıza eylemi HOLD ya da üstü        */
+#define IDA_FCI_ESTOP            0x00000010u /* etkin acil durdurma (A4-K116)       */
+#define IDA_FCI_PLUG_T0          0x00000020u /* tüp 0 fişi çıkık (etkin değer)       */
+#define IDA_FCI_PLUG_T1          0x00000040u /* tüp 1 fişi çıkık                     */
+#define IDA_FCI_PIN_T0           0x00000080u /* tüp 0 pimi takılı (etkin değer)      */
+#define IDA_FCI_PIN_T1           0x00000100u /* tüp 1 pimi takılı                    */
+#define IDA_FCI_EMPTY_T0         0x00000200u /* tüp 0 boş                           */
+#define IDA_FCI_EMPTY_T1         0x00000400u /* tüp 1 boş                           */
+#define IDA_FCI_EVENTS_OFF       0x00000800u /* olay kimliği kullanılamaz          */
+#define IDA_FCI_IMU_LAG          0x00001000u /* A4-K108                             */
+#define IDA_FCI_IMU_STALE        0x00002000u /* A4-K39                              */
+#define IDA_FCI_SESSION          0x00004000u /* A1 oturumu yok                      */
+#define IDA_FCI_RESULT_PENDING   0x00008000u /* sonucu beklenen olay var (A4-K106)  */
+#define IDA_FCI_FAULT_LATCHED    0x00010000u /* FC mandallı arıza                   */
+#define IDA_FCI_DET_STALE        0x00020000u /* kamera algılama akışı bayat (K118)  */
+#define IDA_FCI_DEFINED          0x0003FFFFu
+
+/* A4-K91: atış kontrol durumu (yalnız durum ve emniyet engeli bilgisi). */
 typedef struct {
-    uint8_t  state;               /* 0 = SAFE; diğer değerler W4'ün               */
-    uint32_t inhibit_mask;        /* etkin engel bitleri; tablo W4'ün             */
+    uint8_t  state;               /* IDA_FCS_*                                    */
+    uint32_t inhibit_mask;        /* IDA_FCI_* bitleri                            */
     uint64_t last_event_id;       /* son çıkan olay; yoksa 0                      */
     uint8_t  last_event_result;   /* IDA_EVR_*; sonuç gelmediyse 0                */
-    uint8_t  ext_len;             /* <= IDA_PORT_FC_EXT_MAX                       */
-    uint8_t  ext[IDA_PORT_FC_EXT_MAX]; /* biçimi W4 ve A1'in; port yorumlamaz     */
 } ida_fc_status_t;
 
 /* A4-K94: arka plan raporu. */
