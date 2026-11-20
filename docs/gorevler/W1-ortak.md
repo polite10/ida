@@ -9,7 +9,7 @@ Bir arayüzün iki tarafını birbirinden bağımsız yazılabilir kılan belged
 ## Öncelik sırası (çelişkide)
 
 1. Kullanıcının kesin kararları (`AGENTS.md`; 00 belgesi Bölüm 2.1, K1–K19).
-2. `docs/mimari/00-iskelet.md` **sürüm 0.8** (özellikle §3, §3.1, §3.2, §4, §8, §10).
+2. `docs/mimari/00-iskelet.md` **güncel sürüm** (W1 başında 0.8; uyum turunda 0.10) (özellikle §3, §3.1, §3.2, §4, §8, §10).
 3. Ölçüm raporları (`docs/olcumler/`) ve bu görev belgeleri.
 4. Mimari bölümleri 01–09 (taslak; iskelet 0.8'den eski; çeliştikleri yerde iskelet geçerlidir ve bölüm yeniden yazılmaz).
 5. Ham araştırma raporları yalnız 00 belgesinin düzeltmeleriyle birlikte.
