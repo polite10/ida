@@ -386,7 +386,8 @@ typedef struct {
 #define IDA_PT_U32  2u
 #define IDA_PT_F32  3u
 
-/* A4-K81, A4-K85, A4-K121: birlik v'nin seçicisi type: I32->i32, U32->u32, F32->f32. */
+/* A4-K81, A4-K85, A4-K121: birlik v'nin seçicisi type: I32->i32, U32->u32, F32->f32.
+   Üç üye aynı 32 biti paylaşır; kayıtta v her zaman 32 bitlik ham değerdir (belge 3.14). */
 typedef struct {
     uint16_t id;
     uint8_t  type;         /* IDA_PT_*                                            */
@@ -419,7 +420,8 @@ typedef struct {
 /* A4-K43, A4-K121: daraltıcı olmayan komut (daraltıcılar ida_narrow_t ile gelir).
    Birlik u'nun seçicisi type: SET_MODE->set_mode, MANUAL->manual, GUIDED_SP->guided,
    MISSION_BEGIN->mission_begin, MISSION_ITEM->mission_item, MISSION_CTL->mission_ctl,
-   PARAM_SET ve PARAM_GET->param, FC->fc; HEARTBEAT, ARM, MISSION_END, PARAM_COMMIT,
+   PARAM_SET->param (id, type, v), PARAM_GET->yalnız param.id (type ve v okunmaz),
+   FC->fc; HEARTBEAT, ARM, MISSION_END, PARAM_COMMIT,
    PARAM_SAVE ve FAILSAFE_RESET'te etkin üye yoktur. */
 typedef struct {
     uint32_t cmd_id;       /* sonuç aynı kimlikle (A4-K43, A4-K48)               */
