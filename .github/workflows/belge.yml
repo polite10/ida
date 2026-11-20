@@ -1,0 +1,46 @@
+# Belge ve depo denetimi (W2-depo §4, §5; 09 §2.8). Her pull request'te (açılış, yeni
+# gönderim, yeniden açılış; yalnız belge değiştiren PR dahil; etiket olayları hariç) koşar:
+#   ham rapor ve doğrulamalarda tabana (main) göre değişiklik yok, kişisel makine yolu yok,
+#   göreli bağlantılar çözülüyor, Rust ve ardıl kart bağımlılığı yok.
+# Önce denetimin kendi testi koşar (her denetim bilerek bozulmuş girdiyi reddeder).
+#
+# Koşucu Linux'tur (ubuntu-24.04): dakika ücreti macOS'unkinin onda biridir (0,006 / 0,062
+# USD). Bu iş ürün derlemesi değildir; Linux'ta derleme ve test yapılmaz, bu iş akışına
+# derleme adımı eklenmez. Yalnız Python standart kitaplığı ve git kullanan denetim betiği
+# koşar (mimar kararı 2026-11-20; iskelet §7'deki "ek bir Linux işi kurulmaz" ürün derlemesi
+# içindir).
+
+name: belge
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: belge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  belge:
+    name: Belge ve depo denetimi
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Sürümler
+        run: |
+          python3 --version
+          git --version
+
+      - name: Denetimin kendi testi
+        run: python3 -I tools/denetim/test/belge_denetimi_test.py -v
+
+      - name: Belge ve depo denetimi (taban origin/main)
+        run: python3 -I tools/denetim/belge-denetimi.py --taban origin/main

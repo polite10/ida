@@ -59,15 +59,53 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir.
 ## Depo düzeni
 
 ```
-docs/DURUM.md              projenin şu anki durumu ve sıradaki adım
-docs/mimari/               mimari belgeler (iskelet taslak)
-docs/research/             ham araştırma raporları ve 00 numaralı düzeltme belgesi
-docs/research/dogrulama/   bağımsız doğrulamalar
-tools/                     yardımcı betikler
-AGENTS.md                  yapay zeka agent'ları için çalışma kuralları
+core/                ortak çekirdek (ISO C17; kart ve SIL aynı kaynak)
+firmware/            kart yazılımı (C; STM32U5A9J-DK); third_party/ ST kütüphaneleri (W3)
+protocol/            A1 MAVLink dialect'i ve komut kataloğu; ida_link (W2)
+sim/                 sim sunucusu (C++20)
+viz/                 Godot projesi ve GDExtension (W5)
+web/                 web panelleri (W5)
+scenarios/           senaryo ve araç tanım dosyaları (A5)
+assets/              sahne ve model varlıkları (A7)
+tests/               bütünleme, duman ve denetim testleri; kabul/ (W2 sonrası)
+tools/               yardımcı betikler; denetim/ derleme ve depo denetimleri, ci/ otomatik
+                     derleme betikleri, olcum/ W0 ölçüm prototipleri (ürün kodu değil)
+cmake/               araç zinciri ve ortak CMake dosyaları
+.github/workflows/   otomatik derleme (Windows x64 her gönderimde, macOS arm64 `ci-mac`
+                     etiketiyle) ve belge denetimi (Linux koşucusunda; ürün derlemesi değil)
+docs/DURUM.md        projenin şu anki durumu ve sıradaki adım
+docs/mimari/         mimari belgeler ve açık bulgular kaydı
+docs/sozlesmeler/    arayüz sözleşmeleri (A1–A8)
+docs/gorevler/       görev belgeleri
+docs/olcumler/       ölçüm raporları
+docs/research/       ham araştırma raporları ve 00 numaralı düzeltme belgesi
+AGENTS.md            yapay zeka agent'ları için çalışma kuralları
 ```
 
-Kod dizinleri mimari belge onaylandıktan sonra eklenecek.
+Her kod dizininde amacını anlatan kısa bir `BENIOKU.md` vardır.
+
+## Derleme
+
+Gerekenler: CMake 3.25 ya da üstü, Ninja, Python 3 (derleme zamanında MAVLink kod üreteci için). Ön ayarlar `CMakePresets.json`'dadır; derleme dizini `build/<ön-ayar>/`'dır.
+
+```
+cmake --preset host-debug        # PC (macOS: Apple Clang, Windows: MSVC geliştirici ortamında)
+cmake --build --preset host-debug
+ctest --preset host-debug
+```
+
+Öteki PC ön ayarları: `host-asan` (ASan, Clang'da UBSan ile), `host-release`. vcpkg bağımlılıkları için `VCPKG_ROOT` ortam değişkeni vcpkg'nin köküne işaret etmelidir; verilmezse bağımlılık duman testi atlanır (otomatik derlemede zorunludur).
+
+Kart için (kartsız derleme; yükleme bu ön ayarların işi değildir):
+
+```
+export ARM_GCC_BIN=<GNU Tools for STM32 14.3.rel1 ya da Arm GNU Toolchain 14.3.rel1>/bin
+cmake --preset fw-debug          # ayrıca fw-release, fw-measure
+cmake --build --preset fw-debug
+ctest --preset fw-debug          # bellek ayırma denetimleri
+```
+
+Denetimler: `python3 -I tools/denetim/belge-denetimi.py` (belge ve depo), `tools/denetim/statik-analiz.sh` (clang-tidy, cppcheck). Otomatik derleme (`.github/workflows/`): Windows x64 derleme işi ve belge denetimi her pull request gönderiminde koşar; macOS arm64 derleme işi kota nedeniyle yalnız PR'a `ci-mac` etiketi eklendiğinde (ya da elle) koşar, çünkü her iş Mac'te yerelde de derlenip test edilir. Ayrıntı iş akışı dosyalarının başındaki yorumdadır.
 
 ## Çalışma yöntemi
 

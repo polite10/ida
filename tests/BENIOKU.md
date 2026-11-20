@@ -1,0 +1,3 @@
+# tests/ — bütünleme, duman ve denetim testleri
+
+Birden çok bileşeni birlikte sınayan testler bu dizindedir (iskelet §7; 09 §7.1); birim testleri kendi bileşeninin yanında durur (ör. `core/test/`). Bu sürümdeki içerik: `sozlesme-basliklari/` (sözleşme başlıklarının host Clang, MSVC ve arm-none-eabi-gcc ile uyarısız derlenmesi; `port.h` ile üretilen MAVLink başlığı aynı çeviri biriminde), `duman/` (vcpkg bağımlılık düzeneğinin dumanı: Eigen) ve `CMakeLists.txt`'deki bellek ayırma ve çekirdek sınırı denetimleri. Testler CTest'e bağlıdır (`ctest --preset host-debug`). Dondurulmuş kabul testleri ve sınır dosyaları ilgili işlerde test yazarınca `kabul/<kimlik>/` altına eklenir (09 §7.3).
