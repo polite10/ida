@@ -100,6 +100,14 @@ static const tablo_satiri_t *satir_bul(uint32_t msgid)
 
 enum { DURUM_BOSTA = 0, DURUM_ADAY = 1 };
 
+/* Çağırandan gelen rol, özgün (enum) genişliğiyle denetlenir; daraltma yalnız doğrulamadan
+   sonra, saklamak için yapılır (ör. (ida_link_rol_t)257 kart rolüne dönüşmesin). */
+static int rol_degeri_gecerli(ida_link_rol_t rol)
+{
+    return rol == IDA_LINK_ROL_KART || rol == IDA_LINK_ROL_SIM;
+}
+
+/* Örnekte saklanan rol. */
 static int rol_gecerli(uint8_t rol)
 {
     return rol == (uint8_t)IDA_LINK_ROL_KART || rol == (uint8_t)IDA_LINK_ROL_SIM;
@@ -140,7 +148,7 @@ ida_link_rc_t ida_link_alici_kur(ida_link_alici_t *a, ida_link_rol_t rol)
         return IDA_LINK_HATA_ARGUMAN;
     }
     memset(a, 0, sizeof *a);
-    if (!rol_gecerli((uint8_t)rol)) {
+    if (!rol_degeri_gecerli(rol)) {
         return IDA_LINK_HATA_ROL;
     }
     a->ozel_rol = (uint8_t)rol;
@@ -330,7 +338,7 @@ ida_link_rc_t ida_link_gonderici_kur(ida_link_gonderici_t *g, ida_link_rol_t rol
         return IDA_LINK_HATA_ARGUMAN;
     }
     memset(g, 0, sizeof *g);
-    if (!rol_gecerli((uint8_t)rol)) {
+    if (!rol_degeri_gecerli(rol)) {
         return IDA_LINK_HATA_ROL;
     }
     g->ozel_rol = (uint8_t)rol;

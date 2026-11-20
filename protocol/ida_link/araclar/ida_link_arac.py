@@ -16,9 +16,11 @@ Alt komutlar:
                  (yalnız derleme denetiminin deneme hedefi için)
   deneme-ek-b    Ek B'nin bir baytı değiştirilmiş sözleşme kopyası (altın denetiminin denemesi)
   deneme-xml     Bir alan adı değiştirilmiş ida.xml kopyası (dialect_hash denetiminin denemesi)
+  deneme-bos-altin     Ek B çerçeveleri silinmiş sözleşme + boş JSON (boş küme denemesi)
+  deneme-tablo-yinele  Tablo 3.3'ün ilk satırı yinelenmiş sözleşme (yinelenen kimlik denemesi)
 
 Denetim hataları stderr'de makinece aranabilir bir etiketle başlar: [DIALECT_FARKI],
-[ALTIN_FARKI], [AYNA_DENETIMI].
+[ALTIN_FARKI], [ALTIN_SAYISI], [TABLO_YINELENEN], [AYNA_DENETIMI].
 
 Sözleşme metni (Markdown) yalnız okunur; ayrıştırma desenleri sözleşmenin bugünkü
 biçimine bağlıdır ve biçim değişirse denetim açık bir hatayla durur (sessizce geçmez).
@@ -134,6 +136,10 @@ def xml_oku(yol):
         mesajlar.append(Mesaj(int(m.get("id")), m.get("name"), alanlar,
                               (acik.text or "") if acik is not None else ""))
     mesajlar.sort(key=lambda x: x.kimlik)
+    for onceki, sonraki in zip(mesajlar, mesajlar[1:]):
+        if onceki.kimlik == sonraki.kimlik:
+            raise DenetimHatasi(f"[TABLO_YINELENEN] ida.xml'de kimlik {onceki.kimlik} birden çok "
+                                f"mesajda ({onceki.ad}, {sonraki.ad})")
     numaralandirmalar = {}
     for e in kok.iter("enum"):
         girdiler = []
@@ -195,7 +201,11 @@ def tablo_3_3(sozlesme):
         r" (\d+) / (\d+) \|", re.M)
     sonuc = {}
     for m in satir_deseni.finditer(govde):
-        sonuc[int(m.group(1))] = (m.group(2), m.group(3), int(m.group(4)), int(m.group(5)))
+        kimlik = int(m.group(1))
+        if kimlik in sonuc:
+            raise DenetimHatasi(f"[TABLO_YINELENEN] A1 Tablo 3.3'te kimlik {kimlik} birden çok "
+                                f"satırda ({sonuc[kimlik][0]}, {m.group(2)})")
+        sonuc[kimlik] = (m.group(2), m.group(3), int(m.group(4)), int(m.group(5)))
     if not sonuc:
         raise DenetimHatasi("A1 Tablo 3.3 satırları ayrıştırılamadı")
     return sonuc
@@ -204,7 +214,8 @@ def tablo_3_3(sozlesme):
 def ek_b(sozlesme):
     """A1 Ek B'deki altın çerçeveler (sözleşmedeki sırayla)."""
     govde = bolum(sozlesme, "## Ek B. Altın bayt dizileri", r"^## ")
-    parcalar = re.split(r"^### ", govde, flags=re.M)[1:]
+    bolunmus = re.split(r"^### ", govde, flags=re.M)
+    parcalar_oncesi, parcalar = bolunmus[0], bolunmus[1:]
     baslik_deseni = re.compile(
         r"- Başlık: seq = (\d+), sysid = (\d+), compid = (\d+); CRC_EXTRA = (\d+); "
         r"yük azami (\d+) B, çerçeve azami (\d+) B; bu dizide yük (\d+) B, çerçeve (\d+) B\.")
@@ -238,7 +249,19 @@ def ek_b(sozlesme):
         if (b[0] != 0xFD or b[1] != yuk or b[4] != seq or b[5] != sysid or b[6] != compid
                 or int.from_bytes(b[7:10], "little") != kayit["msgid"]):
             raise DenetimHatasi(f"Ek B '{ilk}': başlık baytları başlık satırıyla tutarsız")
+        if any(k["msgid"] == kayit["msgid"] and k["ek_vaka"] == kayit["ek_vaka"]
+               for k in cerceveler):
+            raise DenetimHatasi(f"[ALTIN_SAYISI] Ek B '{ilk}' yinelenmiş")
         cerceveler.append(kayit)
+    # Boş küme kabul edilmez; sayı Ek B'nin giriş paragrafındaki "toplam N çerçeve"ye bağlıdır.
+    if not cerceveler:
+        raise DenetimHatasi("[ALTIN_SAYISI] Ek B'de hiç altın çerçeve yok")
+    mt = re.search(r"toplam (\d+) çerçeve", parcalar_oncesi)
+    if not mt:
+        raise DenetimHatasi("[ALTIN_SAYISI] Ek B girişinde 'toplam N çerçeve' bulunamadı")
+    if int(mt.group(1)) != len(cerceveler):
+        raise DenetimHatasi(f"[ALTIN_SAYISI] Ek B {mt.group(1)} çerçeve bildiriyor, "
+                            f"{len(cerceveler)} çerçeve ayrıştırıldı")
     return cerceveler
 
 
@@ -386,6 +409,9 @@ def altin_karsilastir(sozlesme_yolu, json_yolu):
     with open(json_yolu, "r", encoding="utf-8") as f:
         veri = json.load(f)
     kayitli = veri.get("cerceveler")
+    if not isinstance(kayitli, list) or not kayitli:
+        raise DenetimHatasi(f"[ALTIN_SAYISI] altın veri dosyası {json_yolu}: çerçeve listesi boş "
+                            f"ya da yok")
     if kayitli != c:
         ayrinti = ""
         if isinstance(kayitli, list):
@@ -573,6 +599,37 @@ def k_deneme_xml(a):
     return 0
 
 
+def k_deneme_bos_altin(a):
+    """Ek B'nin çerçeve bölümleri silinmiş sözleşme kopyası ve boş çerçeve listeli JSON (deneme).
+    Giriş paragrafı korunur; denetim boş kümeyi reddetmelidir."""
+    metin = oku(a.sozlesme)
+    bas = metin.find("\n## Ek B. Altın bayt dizileri\n")
+    if bas < 0:
+        raise DenetimHatasi("Ek B bulunamadı")
+    ilk = metin.find("\n### ", bas)
+    son = metin.find("\n## ", bas + 1)
+    if ilk < 0 or son < 0 or ilk > son:
+        raise DenetimHatasi("Ek B bölümleri bulunamadı")
+    yaz_degisirse(a.cikti_md, metin[:ilk] + "\n" + metin[son:])
+    yaz_degisirse(a.cikti_json, json.dumps({"cerceveler": []}) + "\n")
+    print("Ek B çerçeveleri silindi; JSON listesi boş")
+    return 0
+
+
+def k_deneme_tablo_yinele(a):
+    """A1 Tablo 3.3'ün ilk satırı yinelenmiş sözleşme kopyası (deneme)."""
+    metin = oku(a.sozlesme)
+    bas = metin.find("\n### 3.3 Mesaj listesi\n")
+    if bas < 0:
+        raise DenetimHatasi("Tablo 3.3 bulunamadı")
+    m = re.compile(r"^\| \d+ \| `IDA_[A-Z0-9_]+` \|.*$", re.M).search(metin, bas)
+    if not m:
+        raise DenetimHatasi("Tablo 3.3 satırı bulunamadı")
+    yaz_degisirse(a.cikti, metin[:m.end()] + "\n" + m.group(0) + metin[m.end():])
+    print("Tablo 3.3'ün ilk satırı yinelendi")
+    return 0
+
+
 def main(argv):
     for akis in (sys.stdout, sys.stderr):
         # -I altında PYTHONIOENCODING okunmaz; Windows kod sayfasında Türkçe metin kırılmasın.
@@ -598,6 +655,17 @@ def main(argv):
     k.add_argument("--sozlesme", required=True)
     k.add_argument("--cikti", required=True)
     k.set_defaults(f=k_deneme_ek_b)
+
+    k = alt.add_parser("deneme-bos-altin")
+    k.add_argument("--sozlesme", required=True)
+    k.add_argument("--cikti-md", required=True)
+    k.add_argument("--cikti-json", required=True)
+    k.set_defaults(f=k_deneme_bos_altin)
+
+    k = alt.add_parser("deneme-tablo-yinele")
+    k.add_argument("--sozlesme", required=True)
+    k.add_argument("--cikti", required=True)
+    k.set_defaults(f=k_deneme_tablo_yinele)
 
     k = alt.add_parser("deneme-xml")
     k.add_argument("--xml", required=True)

@@ -926,6 +926,39 @@ static void test_gecersiz_rol(void)
     TEST_ASSERT_EQUAL_size_t(0u, yz);
 }
 
+/* Rol, saklanmak için daraltılmadan önce özgün değeriyle denetlenir: düşük baytı geçerli bir
+   role (1 ya da 2) denk gelen değerler de geçersizdir (sol incelemesi, bulgu 3). */
+static void test_gecersiz_rol_genis_degerler(void)
+{
+    static const int degerler[] = {257, 258, 513, 514, 0x10001, -255, -254, -1};
+    static ida_link_alici_t a;
+    static ida_link_cerceve_t c;
+    ida_link_gonderici_t g;
+    mavlink_ida_keepalive_t k;
+    memset(&k, 0, sizeof k);
+    uint8_t o[32];
+    const uint8_t b = 0xFDu;
+    for (size_t i = 0; i < sizeof degerler / sizeof degerler[0]; ++i) {
+        const ida_link_rol_t rol = (ida_link_rol_t)degerler[i];
+        size_t tk = 0;
+        size_t yz = 5u;
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_ROL, ida_link_alici_kur(&a, rol));
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_ROL, ida_link_al(&a, &b, 1u, &tk, &c));
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_ROL, ida_link_alici_tasma(&a));
+        TEST_ASSERT_EQUAL_UINT32(0u, a.sayac.rx_bytes);
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_ROL, ida_link_gonderici_kur(&g, rol));
+        TEST_ASSERT_EQUAL_INT(IDA_LINK_HATA_ROL,
+                              ida_link_gonder(&g, MAVLINK_MSG_ID_IDA_KEEPALIVE, &k, sizeof k, o,
+                                              sizeof o, &yz));
+        TEST_ASSERT_EQUAL_size_t(0u, yz);
+    }
+    /* Karşı örnek: iki geçerli değer kurulur. */
+    TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_alici_kur(&a, IDA_LINK_ROL_KART));
+    TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_alici_kur(&a, IDA_LINK_ROL_SIM));
+    TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonderici_kur(&g, IDA_LINK_ROL_KART));
+    TEST_ASSERT_EQUAL_INT(IDA_LINK_TAMAM, ida_link_gonderici_kur(&g, IDA_LINK_ROL_SIM));
+}
+
 static void test_gonderici_hata_yollari(void)
 {
     mavlink_ida_ping360_data_t p;
@@ -1064,6 +1097,7 @@ int main(void)
     RUN_TEST(test_tasma_yarim_adayi_atar);
     RUN_TEST(test_bos_besleme_ve_null);
     RUN_TEST(test_gecersiz_rol);
+    RUN_TEST(test_gecersiz_rol_genis_degerler);
     RUN_TEST(test_gonderici_hata_yollari);
     RUN_TEST(test_coz_hata_yollari);
     RUN_TEST(test_sayaclar_sarar);

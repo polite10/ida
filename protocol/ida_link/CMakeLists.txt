@@ -77,6 +77,18 @@ add_custom_command(
   DEPENDS "${IDA_LINK_ARAC}" "${IDA_LINK_XML}"
   VERBATIM)
 add_custom_command(
+  OUTPUT "${_u}/deneme/A1-ek-b-bos.md" "${_u}/deneme/altin-bos.json"
+  COMMAND ${_py} deneme-bos-altin --sozlesme "${IDA_LINK_SOZLESME}"
+          --cikti-md "${_u}/deneme/A1-ek-b-bos.md" --cikti-json "${_u}/deneme/altin-bos.json"
+  DEPENDS "${IDA_LINK_ARAC}" "${IDA_LINK_SOZLESME}"
+  VERBATIM)
+add_custom_command(
+  OUTPUT "${_u}/deneme/A1-tablo-yinelenen.md"
+  COMMAND ${_py} deneme-tablo-yinele --sozlesme "${IDA_LINK_SOZLESME}"
+          --cikti "${_u}/deneme/A1-tablo-yinelenen.md"
+  DEPENDS "${IDA_LINK_ARAC}" "${IDA_LINK_SOZLESME}"
+  VERBATIM)
+add_custom_command(
   OUTPUT "${_u}/deneme/port/ida/port.h"
   COMMAND ${_py} ayna-boz --ayna "${IDA_LINK_AYNA}" --port "${IDA_LINK_PORT}"
           --cikti "${_u}/deneme/port/ida/port.h"
@@ -88,6 +100,8 @@ add_custom_target(ida_link_uret ALL
           "${_u}/ozel/ida_link_ayna_esitlik.h"
           "${_u}/ozel/ida_link_altin_veri.c" "${_u}/ozel/ida_link_altin_veri.h"
           "${_u}/deneme/A1-ek-b-bozuk.md" "${_u}/deneme/ida-alan-bozuk.xml"
+          "${_u}/deneme/A1-ek-b-bos.md" "${_u}/deneme/altin-bos.json"
+          "${_u}/deneme/A1-tablo-yinelenen.md"
           "${_u}/deneme/port/ida/port.h")
 
 # Üretilmiş başlıkların arayüzü: include yolu (sistem başlığı, MAVLink'le aynı kök) ve üretim
@@ -148,6 +162,20 @@ add_test(NAME protokol.altin.deneme_ek_b_bayt
   COMMAND ${_py} altin-denetle --sozlesme "${_u}/deneme/A1-ek-b-bozuk.md" --json "${IDA_LINK_ALTIN}")
 set_tests_properties(protokol.altin.deneme_ek_b_bayt PROPERTIES
   PASS_REGULAR_EXPRESSION "\\[ALTIN_FARKI\\]")
+# Boş Ek B ile boş JSON listesi birbirine "eşit" sayılmaz.
+add_test(NAME protokol.altin.deneme_bos_kume
+  COMMAND ${_py} altin-denetle --sozlesme "${_u}/deneme/A1-ek-b-bos.md"
+          --json "${_u}/deneme/altin-bos.json")
+set_tests_properties(protokol.altin.deneme_bos_kume PROPERTIES
+  PASS_REGULAR_EXPRESSION "\\[ALTIN_SAYISI\\]")
+
+# Tablo 3.3'te yinelenen kimlik üzerine yazılmaz, reddedilir.
+add_test(NAME protokol.tablo.deneme_yinelenen_kimlik
+  COMMAND ${_py} tablo --xml "${IDA_LINK_XML}" --sozlesme "${_u}/deneme/A1-tablo-yinelenen.md"
+          --cikti-tablo "${_u}/deneme/tablo-yinelenen.h"
+          --cikti-dialect "${_u}/deneme/dialect-yinelenen.h")
+set_tests_properties(protokol.tablo.deneme_yinelenen_kimlik PROPERTIES
+  PASS_REGULAR_EXPRESSION "\\[TABLO_YINELENEN\\]")
 
 add_test(NAME protokol.ayna.deneme_port_degeri
   COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target ida_link_deneme_ayna_bozuk)
