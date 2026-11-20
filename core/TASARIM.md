@@ -1,0 +1,290 @@
+# Ortak çekirdek iskeleti — tasarım notu
+
+| | |
+|---|---|
+| İş | W2-cekirdek (`docs/gorevler/W2-cekirdek.md`); birinci aşama notu mimarca kabul edildi, ikinci aşama uygulandı |
+| Yazan | `ida-uygulayici` (Opus) |
+| Başvuru | `docs/sozlesmeler/A4-port.md` 1.0-aday, dondurma öncesi son tur (130 kural), `core/include/ida/port.h`, `core/include/ida/algilama_kaydi.h`; iskelet §3.1, §3.2, §4, §5 |
+| Kapsam | Çağrı çerçevesi, emniyet daraltması, örnek kapısı ve IMU zamanlaması, olay altyapısı, parametreler ve komutları, zaman/seri aritmetik, matematik, günlük. Kestirim, güdüm, görev/kip/arıza, kontrol, atış kontrol ve sonar yer tutucudur |
+
+Bu belgede ölçülmüş olmayan süre rakamı yoktur. Boyutlar §3'te ölçüm kaynağıyla verilir.
+
+---
+
+## 1. Modüller ve dosya sahipliği
+
+Her modül `core/src/<modül>/` dizinindedir ve her dosyanın tek sahibi vardır. Üç paylaşım noktası bir kez çözülmüştür; sonraki işler yalnız kendi dizinine dokunur:
+
+- **Kaynak listesi:** `core/CMakeLists.txt` her modülün `kaynaklar.cmake` parçasını içerir; modüle dosya eklemek yalnız o parçada bir satırdır.
+- **Parametreler:** her modülün `<modül>_param.def` X-makro dosyası vardır; `param/param_listesi.inc` hepsini kimlik bloğu sırasıyla içerir (§5).
+- **`ida_core_t`:** `cekirdek.h` yalnız modül durum tiplerini dizer; tiplerin içi modülün kendi başlığındadır. Çağrı sırası `cerceve/cerceve.c`'dedir ve bütün modül kancalarını baştan çağırır (§2); sonraki işler yalnız kancaların gövdesini doldurur.
+
+| Modül | Dosyalar | Sahibi | Durum |
+|---|---|---|---|
+| Bileşim | `cekirdek.h` | W2 | tam |
+| Çağrı çerçevesi | `cerceve/`: `cerceve.{c,h}` (port işlevleri, (a1)–(e)), `komut.{c,h}` (dağıtıcı), `cikti.{c,h}`, `ornek.{c,h}` (kabul kapısı), `imu_zaman.{c,h}`, `cerceve_param.def` | W2 | tam |
+| Emniyet | `emniyet/emniyet.{c,h}`: yalnız kısıtlayan yön | W2 | tam |
+| Emniyet gevşetmesi | `emniyet/emniyet_gevset.c` (W4 açar) | W4 atış kontrol | yok |
+| Olaylar | `olay/olay.{c,h}`: kimlik, SAFETY_CLOSE, bekleyenler, sonuçlar, yalnız silen çıkış kapısı | W2 | tam; genişletici aday üretimi W4'ün kendi dosyasında |
+| Parametreler | `param/`: `param.{c,h}`, `param_komut.c`, `ozet.{c,h}` (SHA-256), `param_listesi.inc` | W2 | tam |
+| Zaman | `zaman/zaman.h` (yalnız `static inline`) | W2 | tam |
+| Matematik | `mat/`: `mat.{c,h}`, `ida_math.{c,h}` | W2 | tam (çekirdek küme) |
+| Günlük | `telemetri/`: `telemetri.h`, `gunluk.c` | W2 | tam |
+| Kestirim | `kestirim/` | W3 kestirim | yer tutucu |
+| Güdüm | `gudum/` | W3 güdüm ve görev | yer tutucu |
+| Görev, kip, arıza | `gorev/` | W3 güdüm ve görev | yer tutucu |
+| Kontrol, tahsis | `kontrol/` | W3 kontrol | yer tutucu |
+| Atış kontrol | `atis/` | W4 atış kontrol | yer tutucu (yalnız sınır) |
+| Sonar, arka plan işi | `sonar/` | W4 sonar | yer tutucu |
+
+Durum, sağlık ve fc alanlarının yazımı `cerceve/cikti.c`'dedir (çekirdek tarafı W2'de tam; M10c). `src/iskelet.{c,h}` W2-depo'nun firmware yer tutucusu (`firmware/yer_tutucu/main.c`) için korunmuştur.
+
+Yetki alanları (`armed`, `mode`) `ida_emn_t`'dedir. Emniyet modülü bunlara yalnız kısıtlayan yönde yazar; genişletme yönünde yalnız görev/kip modülü (W3) yazar (`ida_gor_komut` ve `ida_gor_adim` kancaları `ida_emn_t *` alır). Gevşetme W4'ün `ida_fc_emniyet_ornegi` kancasından, `cagri_kisit` alanlarını gevşetmeden yapılır (M9).
+
+## 2. Step ve tick'in sırası (`ida_cer_cagri`)
+
+1. (a1) `c`/`in` NULL → `BAD_INPUT`. (a2) kurulu işareti yok → `NOT_INIT` (A4-K126'nın sabit çıktısı; örnek belleği okunmaz).
+2. Kullanılan `now_w` = max(önceki, verilen) (A4-K10); iç tutarlılık (A4-K89).
+3. (b) `ida_emn_daralt` → `ida_fc_daralt` → `ida_olay_kapat_iste`; SESSION_END günlüğü.
+4. (b2) `out` NULL → çağrı başına izler sıfırlanır, kapanma ve günlük bekler, `BAD_INPUT`.
+5. `out` sıfırlanır (A4-K27, K121). (b3) SESSION_START: örnek ve tf izi, IMU zamanlaması sıfırlanır, modüllerin yeniden başlaması bekler.
+6. Çağrı başına izler: `bg_slices` karşılaştırması, `bg_bad_input`, `step_miss`.
+7. (c) yapısal doğrulama, (d) sıra; hata → sayaç, `ida_kom_reddet`, `ida_cik_yaz`.
+8. (e): modüllerin yeniden başlaması; kayıt deposu izleme; IMU ve örnek kapısı; kabul edilenler sahiplerine (SAFETY → emniyet ve `ida_fc_emniyet_ornegi`; BATT/LEAK → görev; diğerleri → kestirim); Ping360; algılama (`ida_fc_algilama`); tf kabulü; IMU gecikmesi ve bayatlık; olay sonuçları ve zaman aşımı; kestirim; görev; komutlar (3.17); güdüm; step OK'ta atış kontrol, kontrol, sonar; commit uygulaması; `narrow_from_rejected`; `ida_cik_yaz`.
+
+## 3. `ida_core_t` ve boyutlar
+
+Sıra: koruma sözcüğü, kurulu işareti ve tümleyeni, çerçeve, emniyet, olay, örnek kapısı, IMU zamanlaması, parametreler (blob tamponu dahil), günlük, kestirim, güdüm, görev, kontrol, atış kontrol, sonar, koruma sözcüğü.
+
+| Ölçüm | Değer | Kaynak |
+|---|---|---|
+| `sizeof(ida_core_t)` | 2192 B (Cortex-M33 ve macOS arm64 aynı); hizalama 8 | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2`, Apple Clang) |
+| Çekirdek arşivi, fw-release | text 18 880 B, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
+| Çekirdek arşivi, fw-debug | text 19 724 B, data 0, bss 0 | aynı |
+| En büyük yığın çerçevesi (fw-release) | 344 B (`blok_isle`, SHA-256) | `-fstack-usage` |
+
+`ida_core_info`: port 1.0, `core_size` = `sizeof`, `core_align` = `_Alignof`, `param_schema_hash` her çağrıda hesaplanır (önbellek yok), `core_version` = `0x000100` (0.1.0).
+
+A4-K22: dosya ya da işlev ölçeğinde `const` olmayan nesne yoktur; tablolar işaretçisiz `static const`'tır. `cekirdek.yazilabilir_veri` testi çekirdek arşivinde yazılabilir veri simgesi olmadığını simge tablosundan gösterir (host Mach-O ve ARM ELF); karşı örneği yakalar.
+
+## 4. Emniyet ve olay sınırı
+
+- **Emniyet (W2):** `kisitli` alan bitleri yalnız `|=` ile ya da SESSION_END'de hepsi birden kısıtlayana yazılır; init'te hepsi kısıtlayandır (A4-K116, K128). Mandal bitleri, `cmds[]`'teki daraltıcılar (ilk `min(n_cmds, 8)`), SESSION_END ve yapısal geçerli her SAFETY örneğinin (her `inst`) kısıtlayıcı içeriği (b)'de uygulanır. Kapanma SAFETY_CLOSE ister (A4-K125 birleştirmesi olay modülünde); SAFETY_INPUT günlüğü; kapanmaya yalnız reddedilen örnek yol açtıysa `narrow_from_rejected` (oturum sonu sayılmaz).
+- **Olaylar (W2):** kimlik `(boot_count << 32) | ctr`; SAFETY_CLOSE'lar önce, en çok iki; bekleyen kümesi 8 (7 + 1); sonuç kabulü, 100 ms paylı zaman aşımı. Çıkış kapısı W4'ün `aday[]` dizisine koyduğu SAFETY_OPEN/FIRE'ı yalnız siler: step OK değil, daraltma, IMU_LAG (bu ikisi `widen_blocked`), kısıtlı tüp, bekleyen sonuç, FIRE'da `armed ∧ ¬is_safe` yok, `hold_ns` aralık dışı, olay kimliği ya da yuva yok, `events[]`'te yer yok. Yer tutucu çekirdekte aday üreten kod yoktur.
+- **Atış kontrol sınırı:** `atis/atis.h`'taki `ida_fc_daralt`, `ida_fc_emniyet_ornegi`, `ida_fc_algilama`, `ida_fc_olay_sonucu`, `ida_fc_olay_bilinmiyor`, `ida_fc_engel`, `ida_fc_durum`, `ida_fc_komut`, `ida_fc_adim`. İç durum makinesi, hedefle ilgili hesap ve fırlatma mantığı bu işte yoktur.
+
+## 5. Parametreler
+
+Satır biçimi: `IDA_PARAM(kimlik, AD, TIP, SINIF, en_az, en_cok, varsayilan, alan)`; kimlik blokları `0x01xx` çerçeve, `0x02xx` kestirim, `0x03xx` güdüm, `0x04xx` görev, `0x05xx` kontrol, `0x06xx` atış, `0x07xx` sonar. Kanonik şema metni: kimlik artan sırada `"<id>\t<ad>\t<type>\n"` (ondalık, ASCII); özet SHA-256'nın ilk 8 baytı, küçük uçlu.
+
+| Kimlik | Ad | Tip, sınıf | Aralık | Varsayılan | Kural |
+|---|---|---|---|---|---|
+| 0x0101 | `IMU_STALE_NS` | U32, B | 5–30 ms | 20 ms | K39 |
+| 0x0102 | `VALID_FOR_NS` | U32, B | 60–450 ms | 100 ms | K58 |
+| 0x0103 | `IMU_LAG_SET_NS` | U32, B | 10–50 ms | 20 ms | K37 |
+| 0x0104 | `IMU_LAG_CLR_NS` | U32, B | 1–50 ms; grup: ≤ SET | 10 ms | K37 |
+| 0x0105 | `IMU_LAG_CLR_N` | U32, B | 1–200 | 20 | K37 |
+| 0x0106 | `IMU_GAP_ORAN` | F32, B | 0,01–1 | 0,1 | K38 |
+| 0x0107 | `DET_STALE_MS` | U32, B | 100–10 000 ms | 2000 ms | K118 (ns `uint32_t`'ye sığmadığı için ms) |
+| 0x0108 | `FC_APPLY_BY_NS` | U32, B | 16–1000 ms | 20 ms (A1 §3.9) | K66 |
+| 0x0109 | `FC_HOLD_NS` | U32, B | 60–450 ms | 200 ms (A1 §3.9) | K66 |
+
+B sınıfı (yalnız silahsızken) seçimi uygulamanındır: zamanlama emniyetine giren değerler silahlıyken değişmez.
+
+## 6. Yer tutucu çekirdeğin görünen davranışı
+
+İtki yok, genişletici olay yok: `armed`'ı 1 yapan bir yol yoktur, `thr_cmd` yalnız `armed ∧ ¬is_safe` iken kontrolün önerisinden kopyalanır, olay kapısı yalnız siler. Kabul md.4'ü `cekirdek.birim.belirlenimcilik` sınar (sabit tohum, 2 × 20 000 karışık çağrı).
+
+| Alan | step `OK` | tick `OK` | step `IMU_REJECTED` |
+|---|---|---|---|
+| `thr_valid` / `is_safe` / `thr_cmd` | 1 / 1 / 0 | `is_safe` / 1 / 0 (A4-K56) | `is_safe` / 1 / 0 |
+| `valid_for_ns` | `VALID_FOR_NS` | `thr_valid` ise aynı | aynı |
+| `armed`, `fs_level` | 0, NONE | aynı | aynı |
+| `seq`, `t_ref` | tf | tf; ızgarada son geçerli | tf |
+| `events` | (b)'nin SAFETY_CLOSE'u (SESSION_END ya da kapanma) | aynı | aynı |
+| `nav` | `nav_valid` 1; `t` = `t_ref`, `est_level` INIT, `q_nb` (1,0,0,0), diğerleri 0 (A4-K87) | 0 | 0 |
+| `status` | `mode` INIT, `fs_reasons` yalnız IMU_LAG, `regime`/`phase` 0, görev IDLE | aynı | aynı |
+| `fc` | SAFE; maske her bit tanımına göre, MODE ve DET_STALE hep kurulu (M7) | aynı | aynı |
+| `det_tx`, `bg` | 0 | 0 | 0 |
+
+Komut yanıtları tablo 3.17'nin yer tutucu durumuna uygulanmasıdır; modülü bu sürümde olmayan türler `UNSUPPORTED` / `NONE` alır (A4-K124):
+
+| Komut | Yanıt |
+|---|---|
+| ARM | `EVENTS_OFF` → `PARAM_INVALID` → `PARAM_BUSY` → `NOT_ARMABLE` (kestirim INIT) |
+| SET_MODE (GUIDED/AUTO) | `BAD_MODE` |
+| FC (K119 dışı) | `OUT_OF_RANGE` |
+| FC_ARM, FC_TEST_ENTER, FC_FIRE | `SESSION` → `EVENTS_OFF` → `BAD_MODE` (izin kümesi boş) |
+| FC_RESET | `SESSION` → `BAD_MODE` |
+| FC_TEST_EXIT | `ACCEPTED` (etkisiz) |
+| PARAM_* | 3.17'nin satırları, tam |
+| HEARTBEAT, MANUAL, GUIDED_SP, MISSION_*, FAILSAFE_RESET, bilinmeyen tür | `UNSUPPORTED` |
+| cmds[]'te daraltıcı | `ACCEPTED`, pencereden muaf |
+
+## 7. Kararlar ve belirsizliklerin kapanışı
+
+Kararlar (mimar, 2026-11-20): M1 örnek kapısı ve IMU zamanlaması bu işte; M2 olay altyapısı bu işte; M3 parametre komutları bu işte; M4 yanıtlar 3.17'den, modülü olmayan tür `UNSUPPORTED`; M5 `thr_valid = is_safe`; M6 INIT nav; M7 maske tanımına göre, DET_STALE hep kurulu; M8 A1 §3.9 varsayılanları; M9 gevşetme W4'ün dosyasında, W2 kapanma yolunu test kaynağından sınar; M10 arıza W3 görev/güdüm, sonar ayrı W4 işi, durum/sağlık/günlük W2'de tam.
+
+Birinci aşamanın belirsizliklerini kapatan A4 metni:
+
+| Madde | Kapatan | Madde | Kapatan |
+|---|---|---|---|
+| E1 | K126, K88, K89 | İ10 | 3.17 ARM satırı |
+| E2 | K124, 3.17 | İ11 | K116 (gevşetme yalnız `inst` 0) |
+| E3 | K125 | İ12 | K122, 3.11 (c) |
+| E4 | K81 | İ13 | K116, K33 |
+| E5 | K128, K39 | İ14 | 3.9, init sırası (5) |
+| İ1 | K46, K113, K114, K48, 3.11 (b)/(c) | İ15 | K129 |
+| İ2 | 3.11 (b3), K72 | İ16 | 3.8 `step_miss` |
+| İ3 | K116, K72 | İ17 | K38 |
+| İ4 | 3.11 (b2), K63, K90, 4.15 | İ18 | K50 |
+| İ5 | K56 | İ19 | K46 |
+| İ6 | K90, 3.15, 4.14 | İ20 | K127 |
+| İ7 | K45 | İ21 | 3.11 arka plan sırası |
+| İ8 | K10 | İ9 | K48 |
+| F1 | §4 girişi (130) | F6 | §7 |
+| F2 | 3.11 (c) | F7 | `port.h` yorumları |
+| F3 | 3.15 önem sütunu | F8 | dayanak 0.10 |
+| F4 | K37 aralıkları, 3.8 | F9 | K39 ("kesin büyük") |
+| F5 | K80 (5), 3.15 | | |
+
+Uygulamada seçilen okumalar (A4'ün açık bıraktığı, raporda ayrıca bildirilen): `out` NULL çağrısındaki SESSION_START işlenmez ((b2), (b3)'ten önce gelir); `n_cmds` > 8 iken `cmds[]`'teki daraltıcılar için de sonuç yazılmaz (4.14); NOT_INIT'te `out.fs_level` = DISARM; (b2)'de çekirdeğin dilim sayımı karşılaştırılmadan sıfırlanır, geri adım sayılır ve günlüğü bekler; PARAM_SAVE `gen` = max(son kendi gen, `plat.param_gen`) + 1; bekleyen değeri olmayan commit "uygulanmış commit" sayılır; commit kabul edilen çağrının sonunda uygulanır; reddedilen PARAM_VALUE sonucunda `value` = (id, 0, 0); çelişkili ve reddedilen IMU örnekleri `sample_rejected`'e de sayılır, Ping360 reddi yalnız `ping360_rejected`'e; günlük taşmasında üretim sırasında sonradan gelenler atılır.
+
+## 8. Kural dağılımı tablosu
+
+Sınıflar: **i** bu işte tam; **ii → iş** yer tutucu; **iii** platformun. Bölünmüş satırda ilk sınıf baskındır.
+
+| Kural | Konu | Sınıf | Gerekçe |
+|---|---|---|---|
+| K01 | `port.h` ve A8 başlığı C17/C++'tan uyarısız | i | Başlık değişmez; dört ön ayarda ve W2-depo'nun sözleşme başlıkları hedefinde derlenir |
+| K02 | Sürüm uyuşmazlığı → `VERSION` | i | Init sırası (3) |
+| K03 | Port yapıları bayt düzeniyle taşınmaz | iii | Kodlayıcılar A1/A6'nın; blok alan alan kodlanır |
+| K04 | Sayı tipleri, `double` yok | i | `port.h`; çekirdekte `double` yok |
+| K05 | Birimler | i | `port.h` |
+| K06 | Aynı başlık, derleyici, ikili | iii | Derleme sistemi |
+| K07 | İki saat alanı karışmaz | i | Ayrı tipler; derleme hatası testi |
+| K08 | Zaman aralığı | i | (c), init (4), arka plan (3), kapı |
+| K09 | Duvar saati azalmaz | iii | Platform |
+| K10 | Kullanılan `now_w` | i | `now_guncelle` |
+| K11 | SIL'de `now_w = tf.t` | iii | SIL koşucusu |
+| K12 | Saat ve rastgele kaynak okunmaz | i | Dış başvuru denetimi |
+| K13 | `t_meas` anlamı | iii | Platform aktarır; kullanımı W3 |
+| K14 | Alım damgası; gelecek damga reddi | iii + i | Damga platformun; ret ve sayaç kapıda |
+| K15 | seq arttı t artmadı → `BAD_INPUT` | i | (c) |
+| K16 | Partiler sırayla | iii | Platform |
+| K17 | `imu_present` | i | (c) |
+| K18 | Izgara takvimi | iii | Platform |
+| K19 | Dağıtım sınırı | iii | Platform |
+| K20 | Eşzamanlı çağrı yok | iii | Platform; çekirdekte paylaşılan durum yok |
+| K21 | Bloklama ve geri çağırma yok | i | Dış başvuru denetimi |
+| K22 | Değişebilir statik durum yok | i | Simge tablosu denetimi |
+| K23 | Süre bütçeleri | ii → W3 sonu ölçümü | Kartta ölçüm |
+| K24 | Belirlenimcilik | i | İki örnek iç içe ve ayrı koşu |
+| K25 | Dönüş kodu ve sıra | i | (d) |
+| K26 | Hata dönüşünde işleme yok | i | (e)'ye girilmez |
+| K27 | Her alan yazılır | i | `out` sıfırlanır, tek yazım |
+| K28 | Hata dönüşünde itki ve genişletici yok | i | `ida_cik_yaz` |
+| K29 | Gönderme kararı A1'in | iii | Platform/A1 |
+| K30 | Tür ve kap denetimi | i | Kapı; gövde okunmaz |
+| K31 | Kapasite → `BAD_INPUT` | i | (c) |
+| K32 | Platformun taşması | iii | Platform |
+| K33 | Kabul koşulları | i | Kapı |
+| K34 | SAFETY eşit `t_meas` | i + ii → W4 atış | Kabul kapıda; değer güncellemesi gevşetmede |
+| K35 | Sıradan bağımsızlık | i | Kapı sıralar |
+| K36 | Tazelik çekirdekte | i + ii → W3 kestirim | İz kapıda; tür başına karar kestirimde |
+| K37 | IMU_LAG mandalı | i | `imu_zaman` |
+| K38 | IMU boşluğu | i | Sayaç ve günlük; filtre davranışı W3 |
+| K39 | Bayatlıkta nötr güvenli çıktı | i | Çıkış ve parametre doğrulaması |
+| K40 | Ping360 doğrulaması | i + ii → W4 sonar | Doğrulama kapıda; tüketim sonarda |
+| K41 | Algılama partisi | ii → W4 atış | `ida_fc_algilama` |
+| K42 | Montajlar, dönme kolu | ii → W3 kestirim | |
+| K43 | Sonuç sayısı ve sırası | i | Dağıtıcı |
+| K44 | Daraltıcı girdiler | i | Emniyet, dağıtıcı |
+| K45 | Daraltma hâkim | i | Dağıtıcı ve olay kapısı |
+| K46 | Mandallar, `cmds[]` daraltıcıları | i | (b), (c) |
+| K47 | Bütün komutlar işlenir | i + ii → W4 atış | FC iç kapasitesi W4'ün |
+| K48 | Yineleme penceresi | i | Dağıtıcı |
+| K49 | MANUAL | ii → W3 kontrol | Yer tutucu `UNSUPPORTED` |
+| K50 | GUIDED_SP | ii → W3 güdüm | Yer tutucu `UNSUPPORTED` |
+| K51 | Görev yüklemesi | ii → W3 görev | Yer tutucu `UNSUPPORTED` |
+| K52 | HEARTBEAT canlılığı | ii → W3 görev | Yer tutucu `UNSUPPORTED` |
+| K53 | Sürekli komut alanları | i | Çıkış |
+| K54 | `thr_cmd` anlamı | ii → W3 kontrol | ESC dönüşümü platformun |
+| K55 | `is_safe` | i | Çıkış |
+| K56 | Tick ve IMU_REJECTED | i | `thr_valid = is_safe` |
+| K57 | `seq`, `t_ref` | i | Çıkış; olayların seq/t_decide'ı |
+| K58 | `valid_for_ns` | i | Parametre |
+| K59 | Platform nötrler | iii | Platform |
+| K60 | Olay alanları | i | Olay modülü |
+| K61 | Olay kimliği, olaysız çalışma | i | Olay, ARM reddi |
+| K62 | Sayaç sınırları | i | Olay |
+| K63 | Her olay bir kez | i | Olay; (b2) bekletmesi |
+| K64 | OPEN/FIRE'ın yeri | i | Kapı yalnız siler; üretim W4 |
+| K65 | SAFETY_CLOSE önce | i | Olay |
+| K66 | Süre aralıkları, numarasız kapanma | i + ii → W4 atış | Parametreler W2; iznin süresi W4 |
+| K67 | İlk kabul kapısı | iii | Platform |
+| K68 | Son sonuç döndürülür | iii | Platform |
+| K69 | Bekleyen olayın sonucu | i | Olay |
+| K70 | Sonuçsuz olay | i + ii → W4 atış | Sayaç W2; güvenli duruma alma `ida_fc_olay_bilinmiyor` |
+| K71 | Oturum sonu sonuçları | iii | Platform |
+| K72 | SESSION_START | i + ii → W3 kestirim | (b3) W2; yeniden başlatma kancaları W3 |
+| K73 | SESSION_END | i | (b) |
+| K74 | Platformun silmesi | iii | Platform |
+| K75 | Emniyet girdileri yalnız örnekle | iii | Platform ve sim |
+| K76 | Batarya, sızıntı eşikleri | ii → W3 görev | |
+| K77 | INIT ve silahsız başlangıç | i | Init |
+| K78 | Geçersiz blok, ARM engeli | i | Parametre |
+| K79 | Blok bayt düzeni | i | Parametre |
+| K80 | Blok denetimleri | i | Grup kancaları modüllerin |
+| K81 | SET, COMMIT | i | `param_komut.c` |
+| K82 | SAVE | i | `param_komut.c` |
+| K83 | BUSY'de ARM reddi | i + iii | Bildirim platformun |
+| K84 | Platform saklar | iii | Platform |
+| K85 | Parametre işlevleri | i | `param.c` |
+| K86 | Açılış sayacı | iii | Platform |
+| K87 | `nav` | i + ii → W3 kestirim | INIT içeriği W2; kestirim W3 |
+| K88 | `status` | i | Çıkış |
+| K89 | `core_ok` | i | Koruma sözcükleri, tümleyen, durum değerleri |
+| K90 | Günlük | i | `gunluk.c` |
+| K91 | `fc` alanı | ii → W4 atış | Yer tutucu maske M7; çerçeve tablo dışını maskeler |
+| K92 | `det_tx` | ii → W4 sonar | Yer tutucu 0 |
+| K93 | Arka plan dilimi | ii → W4 sonar | Yer tutucu IDLE |
+| K94 | Arka plan sonucu | ii → W4 sonar | |
+| K95 | SIL `N_bg` | iii | SIL koşucusu |
+| K96 | Kart arka plan sıklığı | iii | Platform |
+| K97 | Bellek ayırma, özyineleme yok | i | Bellek ve dış başvuru denetimi; yığın raporu |
+| K98 | `ida_core_info` | i | Karşılaştırma platformun |
+| K99 | Girdi işaretçisi saklanmaz | i | Ping360 içeriği yer tutucuda kullanılmaz |
+| K100 | Blob işaretçisinin ömrü | i | Tampon `ida_core_t`'de |
+| K101 | Önkoşullar | i | Her port işlevi |
+| K102 | Bekleyen parti ve birleştirme | iii | Platform; `input_dropped` W2 |
+| K103 | IMU reddi | i | (e) |
+| K104 | Genişleticiler | i | Dağıtıcı |
+| K105 | Erteleme ve atma | iii | Platform |
+| K106 | Taşıma yinelemesi | iii | Platform/A1 |
+| K107 | İznin açık sayılması | ii → W4 atış | |
+| K108 | IMU_LAG'da genişletici yok | i | Dağıtıcı, kapı |
+| K109 | `bg_slices` | i | Çerçeve |
+| K110 | Arka plan iş birimi | ii → W4 sonar | |
+| K111 | Emniyet girdisinin kapanması | i | (b); test kancasıyla |
+| K112 | Çağrıda tek SAVE | i | `param_komut.c` |
+| K113 | Değerlendirme sırası | i | Çerçeve |
+| K114 | Reddedilen çağrı ve NOT_INIT sonuçları | i | Dağıtıcı |
+| K115 | Eşit anahtarlı örnekler | i | Kapı |
+| K116 | Etkin emniyet değerleri | i + ii → W4 atış | Kısıtlayan yön W2; gevşetme W4 |
+| K117 | Arka plan geçersiz girdi | i | Çerçeve |
+| K118 | Kamera akışı bayatlığı | ii → W4 atış | Yer tutucu DET_STALE hep kurulu |
+| K119 | FC komut biçimi | i | Dağıtıcı |
+| K120 | Neden kodu aralığı | i | Sonuç yazımı |
+| K121 | Etkin olmayan üye sıfır | i | Çıkış sıfırlaması |
+| K122 | Oturum sonu çağrısı | iii + ii → W4 atış | Tür ayrımı ve alan kısıtının BAD_INPUT olmaması W2; akış sıfırlaması W4 |
+| K123 | Sonucu beklenen izin olayı | ii → W4 atış | Bekleyen kümesi ve maske biti W2 |
+| K124 | Komut ret tablosu | i + ii → W3/W4 | Dağıtıcı ve yer tutucu yanıtları W2; modül satırları sahiplerinin |
+| K125 | SAFETY_CLOSE birleştirmesi | i | Olay |
+| K126 | NOT_INIT sabit çıktısı | i | `ida_cik_kurulmamis` |
+| K127 | `armed` ve `mode` bağımsız | i + ii → W3 görev | Daraltma tarafı W2; kip semantiği W3 |
+| K128 | İlk kabulden önceki değerler | i | IMU bayat, tüpler boş |
+| K129 | Bekleyen olay kümesi | i | Olay |
+| K130 | Taşınan emniyet örneği (`VALID` = 0) | i + iii | Kapı ve (b) W2; teslim platformun |
+
+Sayım: 130 kural (K01–K130, boşluk ve yineleme yok; betikle denetlendi). Baskın sınıfa göre i 87, ii 17, iii 26 (bölünmüş satırlar: K14 iii + i, K122 iii + ii; i + ii: K34, K36, K40, K47, K66, K70, K72, K87, K116, K124, K127; i + iii: K83, K130).

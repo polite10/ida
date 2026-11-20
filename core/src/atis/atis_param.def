@@ -1,0 +1,5 @@
+/*
+ * atis_param.def — atış kontrol parametreleri. Sahibi: W4 atış kontrol işi. Kimlik bloğu
+ * 0x06xx. Bu sürümde boştur (FC_APPLY_BY_NS, FC_HOLD_NS ve DET_STALE_MS A4'ün adlandırdığı
+ * değerler olarak cerceve/cerceve_param.def'tedir); satır biçimi o dosyanın başındadır.
+ */

@@ -1,0 +1,5 @@
+/*
+ * sonar_param.def — kart içi sonar algılama ve arka plan işi parametreleri (K_bg dahil;
+ * A4-K94). Sahibi: W4 sonar işi. Kimlik bloğu 0x07xx. Bu sürümde boştur; satır biçimi
+ * cerceve/cerceve_param.def başındadır.
+ */
