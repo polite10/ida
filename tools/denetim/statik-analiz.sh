@@ -102,7 +102,9 @@ if [ "$uretilen_gerekli" -eq 1 ]; then
     fi
     gunluk "üretilmiş başlıklar: $uretilen"
     ct_sistem=(-isystem "$uretilen")
-    cc_uretilen=("-I$uretilen" "--suppress=*:*protocol/uretilen/*" "--suppress=*:*protocol\\uretilen\\*")
+    # Tek desen: cppcheck bastırma yollarını '/' ayracına çevirerek eşler (Windows'ta da);
+    # aynı desenin iki biçimi "already exists" kullanım hatası verir (PR #9).
+    cc_uretilen=("-I$uretilen" "--suppress=*:*protocol/uretilen/*")
 fi
 
 sistem_args=()
@@ -118,6 +120,12 @@ trap 'rm -rf "$gecici"' EXIT
 
 zaman() { date +%s; }
 bulgu_say() { grep -c -E "$1" "$2"; }
+# Bulgu satırı: <dosya>:<satır>:<sütun>: <düzey>: ... (aracın kendi hata satırları sayılmaz).
+CT_BULGU=':[0-9]+:[0-9]+: (warning|error): '
+CC_BULGU=':[0-9]+:[0-9]+: (error|warning|style|performance|portability): '
+# Aracın kendisi çalışmadıysa (çıkış sıfırdan farklı ama bulgu satırı yok, ya da cppcheck
+# kullanım hatası) bu bulgu değil, "araç çalışmadı"dır: çıkış 70.
+arac_hatasi=""
 
 # ---- clang-tidy (dil başına bir çağrı) --------------------------------------------------
 ct_surum=$("$clang_tidy" --version 2>&1 | tr -d '\r' | grep -m1 -i 'version' | sed 's/^ *//')
@@ -134,7 +142,10 @@ if [ "${#cxx_kaynaklar[@]}" -gt 0 ]; then
         ${sistem_args[@]+"${sistem_args[@]}"} >>"$gecici/clang-tidy.txt" 2>&1 || ct_rc=$?
 fi
 t1=$(zaman)
-ct_bulgu=$(bulgu_say '(warning|error): ' "$gecici/clang-tidy.txt")
+ct_bulgu=$(bulgu_say "$CT_BULGU" "$gecici/clang-tidy.txt")
+if [ "$ct_rc" -ne 0 ] && [ "$ct_bulgu" -eq 0 ]; then
+    arac_hatasi="$arac_hatasi clang-tidy"
+fi
 
 # ---- cppcheck --------------------------------------------------------------------------
 cc_surum=$("$cppcheck" --version 2>&1 | tr -d '\r')
@@ -150,14 +161,19 @@ t2=$(zaman)
     >"$gecici/cppcheck.txt" 2>&1
 cc_rc=$?
 t3=$(zaman)
-cc_bulgu=$(bulgu_say ': (error|warning|style|performance|portability): ' "$gecici/cppcheck.txt")
+cc_bulgu=$(bulgu_say "$CC_BULGU" "$gecici/cppcheck.txt")
+if grep -q -E '^cppcheck: (error|failed)' "$gecici/cppcheck.txt" ||
+   { [ "$cc_rc" -ne 0 ] && [ "$cc_bulgu" -eq 0 ]; }; then
+    arac_hatasi="$arac_hatasi cppcheck"
+fi
 
 ozet=$(printf '%s\n' \
     "# Statik analiz özeti (taranan: ${taranan[*]}; ${#c_kaynaklar[@]} C, ${#cxx_kaynaklar[@]} C++ kaynak)" \
     "clang-tidy: ${ct_surum}" \
     "  çıkış=${ct_rc} bulgu=${ct_bulgu} süre=$((t1 - t0)) s" \
     "cppcheck: ${cc_surum}" \
-    "  çıkış=${cc_rc} bulgu=${cc_bulgu} süre=$((t3 - t2)) s")
+    "  çıkış=${cc_rc} bulgu=${cc_bulgu} süre=$((t3 - t2)) s" \
+    "araç çalışmadı:${arac_hatasi:- yok}")
 
 printf '%s\n' "$ozet"
 printf '%s\n' '---- clang-tidy çıktısı ----'
@@ -178,11 +194,11 @@ fi
 deneme=tools/denetim/deneme/statik/hatali.c
 "$clang_tidy" --quiet --config-file=.clang-tidy \
     "$deneme" -- -std=c17 ${sistem_args[@]+"${sistem_args[@]}"} >"$gecici/ct-deneme.txt" 2>&1
-ct_deneme=$(bulgu_say '(warning|error): ' "$gecici/ct-deneme.txt")
+ct_deneme=$(bulgu_say "$CT_BULGU" "$gecici/ct-deneme.txt")
 "$cppcheck" --quiet --std=c11 --language=c --enable=warning,style,performance,portability \
     --template='{file}:{line}:{column}: {severity}: {message} [{id}]' \
     "$deneme" >"$gecici/cc-deneme.txt" 2>&1
-cc_deneme=$(bulgu_say ': (error|warning|style|performance|portability): ' "$gecici/cc-deneme.txt")
+cc_deneme=$(bulgu_say "$CC_BULGU" "$gecici/cc-deneme.txt")
 printf 'karşı örnek (%s): clang-tidy %s bulgu, cppcheck %s bulgu\n' "$deneme" "$ct_deneme" "$cc_deneme"
 [ -z "$rapor" ] || printf 'karşı örnek (%s): clang-tidy %s bulgu, cppcheck %s bulgu\n' \
     "$deneme" "$ct_deneme" "$cc_deneme" >>"$rapor"
@@ -192,6 +208,10 @@ if [ "$ct_deneme" -eq 0 ] || [ "$cc_deneme" -eq 0 ]; then
     exit 70
 fi
 
+if [ -n "$arac_hatasi" ]; then
+    gunluk "araç çalışmadı:$arac_hatasi (çıktı yukarıda); bulgu sayısı güvenilir değil"
+    exit 70
+fi
 if [ "$ct_rc" -ne 0 ] || [ "$ct_bulgu" -ne 0 ] || [ "$cc_rc" -ne 0 ] || [ "$cc_bulgu" -ne 0 ]; then
     exit 1
 fi
