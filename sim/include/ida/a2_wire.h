@@ -162,6 +162,7 @@ enum class VedaNedeni : std::uint32_t {
   tampon_tasti = 2,
   nabiz_zaman_asimi = 3,
   sim_kapaniyor = 4,
+  yeni_calistirma = 5,               // A2-K96
 };
 
 enum class KareDusmeNedeni : std::uint8_t {
