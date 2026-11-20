@@ -642,7 +642,7 @@ Aşağıdaki sensör ve sonar yükleri bu 12 alanla, bu sırayla başlar; tablol
 | `seyreltilen_durum` | u64 | - | tipin aralığı | A2 §5 |
 | `protokol_hatasi` | u64 | - | tipin aralığı | A2 §5 |
 | `baglanti` | u64 | - | tipin aralığı | A2 bağlantı sayısı |
-| `kopma` | u64 | - | tipin aralığı | A2 kopma sayısı; neden `surec_durumu` olayında |
+| `kopma` | u64 | - | tipin aralığı | A2 kopma sayısı; A2 oturum kapanış nedeni `surec_durumu.a2_veda_nedeni`'nde |
 | `istek_hazir_adet` | u64 | - | tipin aralığı | istekten hazıra süresi ölçülen kare (yuva başlığındaki duvar saatlerinden; A2 §5) |
 | `istek_hazir_toplam_ns` | u64 | ns | tipin aralığı | bu sürelerin toplamı |
 | `istek_hazir_en_buyuk_ns` | u64 | ns | tipin aralığı | en büyük süre |
@@ -709,7 +709,7 @@ Aşağıdaki sensör ve sonar yükleri bu 12 alanla, bu sırayla başlar; tablol
 | `on_denetim_sonucu` | 2104 | 2104 |
 | `kayit_durumu` | 313 | 313 |
 | `kayit_eksik` | 356 | 356 |
-| `surec_durumu` | 1113 | 1113 |
+| `surec_durumu` | 1150 | 1150 |
 | `olay_kaybi` | 33 | 33 |
 | `erisim_reddedildi` | 1081 | 1081 |
 | `izleme_durumu` | 86 | 86 |

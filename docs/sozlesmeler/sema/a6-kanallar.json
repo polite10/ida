@@ -4361,7 +4361,7 @@
         "ad": "kopma",
         "tip": "u64",
         "birim": "-",
-        "anlam": "A2 kopma sayısı; neden `surec_durumu` olayında"
+        "anlam": "A2 kopma sayısı; A2 oturum kapanış nedeni `surec_durumu.a2_veda_nedeni`'nde"
       },
       {
         "ad": "istek_hazir_adet",

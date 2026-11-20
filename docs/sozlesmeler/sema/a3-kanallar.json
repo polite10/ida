@@ -3334,7 +3334,7 @@
         "ad": "kopma",
         "tip": "u64",
         "birim": "-",
-        "anlam": "A2 kopma sayısı; neden `surec_durumu` olayında"
+        "anlam": "A2 kopma sayısı; A2 oturum kapanış nedeni `surec_durumu.a2_veda_nedeni`'nde"
       },
       {
         "ad": "istek_hazir_adet",
@@ -7462,6 +7462,18 @@
             "dustu",
             "durduruldu"
           ]
+        },
+        "a2_veda_nedeni": {
+          "type": "string",
+          "enum": [
+            "olagan",
+            "protokol_hatasi",
+            "tampon_tasti",
+            "nabiz_zaman_asimi",
+            "sim_kapaniyor",
+            "yeni_calistirma"
+          ],
+          "description": "A2 oturumu `veda` ile kapandıysa A2 `VedaNedeni` (0-5; `yeni_calistirma` = 5, A2-K96); kapalı liste"
         },
         "neden": {
           "type": "string",
