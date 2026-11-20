@@ -76,16 +76,20 @@ static size_t cerceve_kur(uint8_t *o, uint8_t len, uint8_t iflag, uint8_t seq, u
 }
 
 /* Ek B'deki (ek vaka olmayan) çerçeve. Bulunmazsa test başarısız sayılır; kartta Unity
-   testi kesmediğinden (setjmp yok) geçerli bir öğe döner, NULL dönmez. */
+   testi kesmediğinden (setjmp yok) geçerli bir öğe döner, NULL dönmez. Koşulsuz
+   TEST_FAIL'den sonra kod bırakılmaz (PC'de longjmp: MSVC C4702). */
 static const ida_link_altin_t *altin_bul(uint32_t msgid)
 {
-    for (unsigned i = 0; i < IDA_LINK_ALTIN_SAYISI; ++i) {
+    const ida_link_altin_t *bulunan = &ida_link_altin[0];
+    int var = 0;
+    for (unsigned i = 0; i < IDA_LINK_ALTIN_SAYISI && !var; ++i) {
         if (ida_link_altin[i].msgid == msgid && !ida_link_altin[i].ek_vaka) {
-            return &ida_link_altin[i];
+            bulunan = &ida_link_altin[i];
+            var = 1;
         }
     }
-    TEST_FAIL_MESSAGE("Ek B'de beklenen mesaj yok");
-    return &ida_link_altin[0];
+    TEST_ASSERT_TRUE_MESSAGE(var, "Ek B'de beklenen mesaj yok");
+    return bulunan;
 }
 
 /* Bütün baytları besler; teslim edilen çerçeveleri sırayla kaydeder (en çok kap tane). */
