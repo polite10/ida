@@ -6,7 +6,7 @@
 | Görev | `docs/gorevler/W1-A2A7.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `sim/include/ida/a2_wire.h` (bayt düzeni; bu belgeyle çelişemez) |
 | İlgili sözleşmeler | A7 (`docs/sozlesmeler/A7-sahne.md`), A8 (kamera algılama), A5 (senaryo), A6 (kayıt), A3 (web panelleri) |
-| Dayanak | İskelet 0.8 (`docs/mimari/00-iskelet.md`) §2, §3 (A2, A7, A8), §3.1, §4, §6, §8, §10 md.18–21, 25; ölçüm `docs/olcumler/MP6-godot-kamera.md`; bölüm 07 (taslak; iskeletle çeliştiği yerde iskelet geçerlidir) |
+| Dayanak | İskelet 0.10 (`docs/mimari/00-iskelet.md`) §2, §3 (A2, A7, A8), §3.1, §4, §6, §8, §10 md.18–21, 25; ölçüm `docs/olcumler/MP6-godot-kamera.md`; bölüm 07 (taslak; iskeletle çeliştiği yerde iskelet geçerlidir) |
 
 Atıf biçimi: `A2-Knn` bu belgenin kuralı; `A7-Knn` A7 sözleşmesinin kuralı; `MP6 §n` ölçüm raporu başlığı; `07 §n`, `04 §n`, `05 §n` taslak mimari bölüm başlığı (gerekçe için; bağlayıcı değildir); `AB-nnn` açık bulgu.
 
@@ -248,10 +248,10 @@ Geçersiz alanlı `ortam` iletisi protokol hatasıdır. Işınımın Godot ış�
 | `yapilandirma_surumu` | u32 | — | kamera yapılandırmasının sürümü | `hosgeldin`'deki | `kare_dustu(tutarsiz_surum)` |
 | `t_cizim_ns` | i64 | ns | pozlama ortası; çizilecek durumun zamanı | adım sınırı | `kare_dustu(gecersiz_istek)` |
 | `t_olcum_ns` | i64 | ns | pozlama sonu | `= t_cizim_ns + pozlama_ns/2` | aynı |
-| `pozlama_ns` | i64 | ns | pozlama süresi | > 0, çift | aynı |
+| `pozlama_ns` | i64 | ns | pozlama süresi | > 0, çift, ≤ 1 000 000 000 (§3.6) | aynı |
 | `t_teslim_ns` | i64 | ns | modellenmiş alım anı | `≥ t_olcum_ns` | aynı |
 | `adim_no` | u64 | — | `t_cizim` anının adımı | `t_cizim_ns = adim_no · adim_ns` | aynı |
-| `gurultu_tohumu` | u64 | — | sensör gürültüsünün anahtarı (`(tohum, kamera, kare)` karması 05'te) | — | — |
+| `gurultu_tohumu` | u64 | — | sensör gürültüsünün anahtarı; değeri A5 Ek D'deki `a2/kamera_gurultu` alt akışından, A5'in tanımladığı türetim ve sayaç tahsisiyle bu kare için üretilir (A2-K95) | — | — |
 | `dalga_kumesi_surumu`, `ortam_surumu`, `malzeme_optik_surumu` | u32 | — | çizimde kullanılacak sürümler | görselleştiricide mevcut | `kare_dustu(tutarsiz_surum)` |
 | `govde_sayisi` | u16 | — | ardından gelen gövde durumu | ≤ 64 | protokol hatası |
 | `calisma_nesli` | u32 | — | isteğin ait olduğu çalıştırma nesli (A2-K80) | görselleştiricinin bildiği son nesil | `kare_dustu(tutarsiz_surum)` |
@@ -271,18 +271,20 @@ Geçersiz alanlı `ortam` iletisi protokol hatasıdır. Işınımın Godot ış�
 | `kamera_kimligi` | u8 | — | 0 | 0 |
 | `piksel_bicimi` | u8 | — | 1 = `rgb8_srgb` (§3.8) | 1 |
 | `genislik`, `yukseklik` | u16 | piksel | çözünürlük | `kademe_kamera`'nın değeri (§6): tam 640 × 480, sade 320 × 240; genel sınır 16 ≤ g ≤ 640, 16 ≤ y ≤ 480 (iskelet §10 md.25) |
-| `hiz_pay`, `hiz_payda` | u32 | Hz | kare hızı = pay / payda | `kademe_kamera`'nın değeri (§6): tam 30/1, sade 15/1; genel sınır pay/payda ≤ 30 |
-| `yapilandirma_surumu`, `kalibrasyon_surumu` | u32 | — | A5'teki sürümler | — |
-| `fx`, `fy`, `cx`, `cy` | f64 | piksel | iğne deliği iç parametreleri | fx, fy > 0; 0 ≤ cx < g; 0 ≤ cy < y |
+| `hiz_pay`, `hiz_payda` | u32 | Hz | kare hızı = pay / payda | `kademe_kamera`'nın değeri (§6): tam 30/1, sade 15/1; genel sınır pay/payda ≤ 30 ve `1000 · pay / payda` tamsayı (A8 `rate_mhz` kayıpsız taşınır) |
+| `yapilandirma_surumu` | u32 | — | sim'in bu çalıştırmada kamera yapılandırmasına verdiği sürüm (1'den başlar; senaryo alanı değildir) | ≥ 1 |
+| `kalibrasyon_surumu` | u16 | — | A5'teki kalibrasyon sürümü; A8 `calib_ver` ile aynı genişlik | 1 … 65 535 |
+| `ayrilmis_kal` | u16 | — | ayrılmış | 0 |
+| `fx`, `fy`, `cx`, `cy` | f64 | piksel | iğne deliği iç parametreleri | sonlu; fx, fy > 0; −0,5 ≤ cx ≤ g − 0,5; −0,5 ≤ cy ≤ y − 0,5 (A8'in sınırı; U13) |
 | `bozulma_modeli` | u32 | — | 0 yok, 1 Brown–Conrady (k1 k2 p1 p2 k3) | 0–1 |
 | `montaj_govde_kimligi` | u32 | — | kameranın bağlı olduğu gövde (araç) | yaşayan araç |
 | `bozulma` | 5 × f64 | — | k1 k2 p1 p2 k3 | sonlu |
-| `montaj_l_b` | 3 × f64 | m | kamera merkezinin `O_b`'ye göre konumu, gövde çerçevesi | sonlu |
-| `montaj_q_bs` | 4 × f64 | — | kamera çerçevesinden gövdeye dönüş | birim |
-| `pozlama_ns` | i64 | ns | nominal pozlama süresi | > 0, çift |
+| `montaj_l_b` | 3 × f64 | m | kamera merkezinin `O_b`'ye göre konumu, gövde çerçevesi; **fizik gerçeği** montajı | sonlu; her bileşenin mutlak değeri ≤ 10 m (mimari seçimi, tahmin) |
+| `montaj_q_bs` | 4 × f64 | — | **S çerçevesinden** (x ileri = optik eksen, y sağ, z aşağı; A5 ve A8 ile aynı) gövdeye dönüş, w x y z; fizik gerçeği montajı. Optik çerçeveye geçiş A2-K94'tedir | sonlu; `|w² + x² + y² + z² − 1| ≤ 1·10⁻⁵`, toplam binary64'te w, x, y, z sırasıyla |
+| `pozlama_ns` | i64 | ns | nominal pozlama süresi | > 0, çift, ≤ 1 000 000 000 |
 | `yakin_m`, `uzak_m` | f64 | m | kırpma uzaklıkları | 0 < yakın < uzak |
 
-**Kamera çerçevesi ve piksel kabulü (bağlayıcı):** kamera çerçevesi x sağa, y aşağı, z optik eksen boyunca ileri (OpenCV kabulü). Kamera çerçevesindeki `(X, Y, Z)` noktası, bozulma yokken `u = fx·X/Z + cx`, `v = fy·Y/Z + cy` pikseline düşer; tamsayı `(u, v)` piksel `(u, v)`'nin **merkezidir**; `(0, 0)` sol üst piksel. Geçersiz alanlı yapılandırma görselleştiricide `veda(protokol_hatasi)` ile sonuçlanır.
+**Kamera çerçevesi ve piksel kabulü (bağlayıcı):** iç parametrelerin ve izdüşümün tanımlandığı **optik çerçeve** x sağa, y aşağı, z optik eksen boyunca ileridir (OpenCV kabulü); montaj ise S çerçevesinde verilir ve ikisi arasındaki sabit dönüşüm A2-K94'tedir. Kamera çerçevesindeki `(X, Y, Z)` noktası, bozulma yokken `u = fx·X/Z + cx`, `v = fy·Y/Z + cy` pikseline düşer; tamsayı `(u, v)` piksel `(u, v)`'nin **merkezidir**; `(0, 0)` sol üst piksel. Geçersiz alanlı yapılandırma görselleştiricide `veda(protokol_hatasi)` ile sonuçlanır. Bu tablonun geçerli aralıkları kamera yapılandırmasının tek kaynağıdır (W1-uyum U13): A8 aynı alanları `CAMERA_CONFIG`'te bu aralıklara atıfla taşır, A5 senaryo değerlerini bunlarla doğrular; bu aralıktaki her değer A8'e kayıpsız taşınır (A8'in `f32` alanlarına çevirme A8'in kuralıdır).
 
 Yapılandırma montaj ve iç parametreleri görselleştiriciye verir, çünkü kareyi fizik gerçeğindeki kamera pozundan çizmek görselleştiricinin işidir. Bu değerler kare halkasına yazılmaz (A2-K55).
 
@@ -292,7 +294,7 @@ Yapılandırma montaj ve iç parametreleri görselleştiriciye verir, çünkü k
 |---|---|---|
 | `kamera_kimligi` | u8 | halkanın kamerası |
 | `halka_nesli` | u32 | §2 |
-| `yuva_sayisi` | u32 | 4–32 (varsayılan 8; mimari seçimi, tahmin) |
+| `yuva_sayisi` | u32 | 4–32 (varsayılan 8; mimari seçimi, tahmin; sim yapılandırması A2-K93) |
 | `yuva_boyutu` | u64 | `⌈(256 + satir_adimi·yukseklik) / 4096⌉ · 4096` bayt |
 | `toplam_boyut` | u64 | `4096 + yuva_sayisi · yuva_boyutu` |
 | `ad` | metin (64 B) | işletim sistemi nesne adı (A2-K70–K72) |
@@ -329,7 +331,8 @@ Halka başlığını yalnız sim, halkayı oluştururken bir kez yazar; sonra de
 | `cizim_yolu` | u8 | — | 1 = ana iş parçacığından `force_draw` (A2-K38); başka değer yoktur |
 | `genislik`, `yukseklik`, `satir_adimi` | u16, u16, u32 | piksel, bayt | halka başlığıyla aynı |
 | `bayraklar` | u32 | — | aşağıdaki tablo |
-| `yapilandirma_surumu`, `kalibrasyon_surumu`, `dalga_kumesi_surumu`, `ortam_surumu` | u32 | — | karenin üretildiği sürümler |
+| `yapilandirma_surumu`, `dalga_kumesi_surumu`, `ortam_surumu` | u32 | — | karenin üretildiği sürümler |
+| `kalibrasyon_surumu`, `ayrilmis_kal` | u16, u16 | — | karenin üretildiği kalibrasyon sürümü (1 … 65 535); ayrılmış 0 |
 | `t_olcum_ns`, `pozlama_ns` | i64 | ns | ölçüm zamanı (pozlama sonu) ve pozlama süresi; istekten aynen. Kare zamanının birincil gösterimi budur (iskelet §3.1) |
 | `t_cizim_ns` | i64 | ns | `t_olcum_ns − pozlama_ns/2`; türetilmiş, kolaylık için yazılır; istekten aynen |
 | `t_teslim_ns` | i64 | ns | istekten aynen |
@@ -359,7 +362,7 @@ Halka hiçbir koşulda poz, montaj, iç parametre, hedef konumu ya da başka bir
 
 ### 4.1 Taşıma
 
-- **A2-K01.** Sim, durum kanalını yalnız `127.0.0.1` adresinde bir TCP dinleyicisi olarak açar; varsayılan port 47210'dur (mimari seçimi: IANA kayıt defterinde 47101–47556 aralığı atanmamış; macOS ve Windows'un geçici port aralığı 49152–65535'in dışında; Microsoft KB 929851). Port A5'ten değiştirilir; başka bir arabirime bağlanılmaz.
+- **A2-K01.** Sim, durum kanalını yalnız `127.0.0.1` adresinde bir TCP dinleyicisi olarak açar; varsayılan port 47210'dur (mimari seçimi: IANA kayıt defterinde 47101–47556 aralığı atanmamış; macOS ve Windows'un geçici port aralığı 49152–65535'in dışında; Microsoft KB 929851). Port sim yapılandırmasından değiştirilir (A2-K93); başka bir arabirime bağlanılmaz.
 - **A2-K02.** 3B görünüm kademesi kapalıysa sim A2 dinleyicisini açmaz ve kamera kademesi kapalı olmak zorundadır (A5 doğrulaması; §6).
 - **A2-K03.** Sim aynı anda en çok bir görselleştirici bağlantısı tutar; ikinci bir bağlantıya `ret(mesgul)` gönderir ve onu kapatır, mevcut oturumu etkilemez.
 - **A2-K04.** İki taraf bağlantı kurulur kurulmaz sokette `TCP_NODELAY` ayarlar.
@@ -395,7 +398,7 @@ Halka hiçbir koşulda poz, montaj, iç parametre, hedef konumu ya da başka bir
 ### 4.4 Operatör görünümü ve iki zamanlı çizim
 
 - **A2-K30.** Operatör zamanı `t_op` hiçbir zaman alınmış son `durum.t_ns`'den büyük olmaz; görselleştirici ekstrapolasyon yapmaz, veri gecikirse son durumda bekler ve `operator_bekleme_sayaci`nı artırır.
-- **A2-K31.** `t_op = t_son − D_op`'tur; `D_op` varsayılanı 33 333 333 ns'dir (iki `durum` periyodu; mimari seçimi, tahmin: bilgisayar tarafında 10–20 ms'lik seyrek gecikmeler görüldü, iskelet §8) ve A5'ten 0–100 ms aralığında ayarlanır.
+- **A2-K31.** `t_op = t_son − D_op`'tur; `D_op` varsayılanı 33 333 000 ns'dir (yaklaşık iki `durum` periyodu, mikrosaniyeye yuvarlanmış; mimari seçimi, tahmin: bilgisayar tarafında 10–20 ms'lik seyrek gecikmeler görüldü, iskelet §8) ve sim yapılandırmasından (A2-K93) 0–100 ms aralığında ayarlanır.
 - **A2-K32.** Görselleştirici iki durum arasında yalnız aynı `govde_kimligi` ve aynı `sureklilik_no`yu taşıyan durumlarla ara değerler: konumda `v_n` ile kübik Hermite, yönelimde kısa yoldan küresel doğrusal ara değerleme (slerp). Bir gövdenin sürekliliği `T`'de değiştiyse (A2-K21): `t_op < T − 1 250 000 ns` için eski parçanın içinde ara değerlenir; `T − 1 250 000 ns ≤ t_op < T` için eski parçanın son durumu (`T − h` zamanlı) değiştirilmeden çizilir; `t_op ≥ T` için yeni parça kullanılır ve sınırda (`t_op = T`) olay sonrası durum çizilir. Olayın iki yanı arasında ara değerleme yapılmaz; sınırdaki konum hatası en çok bir fizik adımı boyunca yer değiştirmedir.
 - **A2-K33.** `T`'de doğan gövde `t_op < T` için çizilmez, `t_op ≥ T` için çizilir; `T`'de ölen gövde `t_op < T` için çizilir, `t_op ≥ T` için çizilmez.
 - **A2-K34.** Görselleştirici her gövde için en az son 500 ms'lik (sim zamanı; mimari seçimi) durum geçmişini tutar.
@@ -446,7 +449,7 @@ Halka hiçbir koşulda poz, montaj, iç parametre, hedef konumu ya da başka bir
 ### 4.8 Paylaşımlı bellek adlandırması ve yaşam döngüsü
 
 - **A2-K70.** Halka nesnesinin adı `ida2-<oturum>-c<kamera>-g<nesil>` biçimindedir: `<oturum>` oturum kimliğinin düşük 32 bitinin 8 haneli küçük harf onaltılık yazımı, `<kamera>` kamera kimliğinin onluk yazımı, `<nesil>` halka neslinin 8 haneli küçük harf onaltılık yazımı.
-- **A2-K71.** **macOS.** Ad başına `/` eklenir (örnek `/ida2-1a2b3c4d-c0-g00000001`, 27 karakter). xnu'da POSIX paylaşımlı bellek adı en çok `PSHMNAMLEN` = 31 bayttır (`bsd/sys/posix_shm_internal.h`; `posix_shm.c` adı `PSHMNAMLEN + 1` baytlık tampona NUL dahil kopyalar). Sim nesneyi `shm_open(ad, O_CREAT | O_EXCL | O_RDWR, 0600)` ile oluşturur ve boyutunu tek bir `ftruncate` ile verir (xnu bir nesnenin ömründe yalnız bir `ftruncate`'e izin verir: `posix_shm.c`, "We only allow one ftruncate() per lifetime"); halkanın boyutu nesnenin ömrü boyunca değişmez. Görselleştirici `O_RDWR`, okuyucular `O_RDONLY` ile açar.
+- **A2-K71.** **macOS.** Ad başına `/` eklenir (örnek `/ida2-1a2b3c4d-c0-g00000001`, 27 karakter). xnu'da POSIX paylaşımlı bellek adı en çok `PSHMNAMLEN` = 31 bayttır (`bsd/sys/posix_shm.h`; `bsd/kern/posix_shm.c` adı `PSHMNAMLEN + 1` baytlık tampona NUL dahil kopyalar). Sim nesneyi `shm_open(ad, O_CREAT | O_EXCL | O_RDWR, 0600)` ile oluşturur ve boyutunu tek bir `ftruncate` ile verir (xnu bir nesnenin ömründe yalnız bir `ftruncate`'e izin verir: `posix_shm.c`, "We only allow one ftruncate() per lifetime"); halkanın boyutu nesnenin ömrü boyunca değişmez. Görselleştirici `O_RDWR`, okuyucular `O_RDONLY` ile açar.
 - **A2-K72.** **Windows.** Ad başına `Local\` eklenir (oturum ad alanı; örnek `Local\ida2-1a2b3c4d-c0-g00000001`). Sim nesneyi `CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, …)` ile sayfa dosyası destekli olarak oluşturur; görselleştirici yazma, okuyucular okuma erişimiyle `OpenFileMappingW` kullanır. Nesne son tutamak ve son görünüm kapanınca işletim sistemince kaldırılır (Microsoft, `CreateFileMappingA` belgesi).
 - **A2-K73.** Oluşturma sırasında ad zaten varsa (macOS `EEXIST`, Windows `ERROR_ALREADY_EXISTS`) sim mevcut nesneyi kullanmaz, kendi tutamağını kapatır ve nesli artırıp yeni adla yeniden dener; 16 denemede başaramazsa kamera o oturum için kullanılamaz ve her kare `halka_hatasi` nedeniyle düşer.
 - **A2-K74.** Görselleştirici ve okuyucular halkayı eşledikten sonra halka başlığının `sihirli`, `duzen_ana`, `oturum_kimligi`, `halka_nesli`, `yuva_sayisi`, `yuva_boyutu`, `toplam_boyut`, `genislik`, `yukseklik`, `satir_adimi`, `piksel_bicimi` alanlarının kendilerine bildirilen değerlerle aynı olduğunu ve eşlenen boyutun `toplam_boyut`'a eşit olduğunu denetler; farklıysa halkayı kullanmaz (görselleştirici `hazir.durum` ya da `halka_eslendi.durum` = `halka_duzeni_uyusmaz`).
@@ -508,6 +511,28 @@ Bu başlıktaki "taraf", bir halkaya bağlı olan görselleştirici ya da bir t�
 - **A2-K90.** **Gövde tablosu.** Sim her `atlama` olayından hemen sonra, yeni zamandaki ilk `durum` ve ilk `kamera_istegi` iletisinden önce, tek bir `govde_tablosu` iletisi gönderir: başlık (`t_ns` yeni zaman, `adim_no`, `calisma_nesli` yeni nesil, `govde_sayisi`) ve ardından yeni zamanda yaşayan **bütün** gövdeler için `hosgeldin`'deki gövde tablosuyla aynı biçimdeki `GovdeBilgisi` girdileri (`govde_kimligi`, `sureklilik_no`, `varlik_indeksi`, `govde_turu`, `dolu_tupler`). Blok tek iletidir; başlangıcı `atlama` olayı, sonu `govde_tablosu` iletisidir. Bloğun içinde `govde_dogdu` ve `govde_oldu` olayları gönderilmez.
 - **A2-K91.** **Alıcının davranışı.** Görselleştirici `atlama` olayını alınca gövde geçmişini siler ve `govde_tablosu` gelene kadar sahneyi değiştirmez. `govde_tablosu` gelince: tabloda olmayan her gövdeyi ölmüş sayar ve sahneden kaldırır; tablodaki her gövdeyi varlık indeksi ve türüyle (gerekirse yeniden yükleyerek) sahneye koyar; süreklilik numaralarını tablodaki değerlerle başlatır. `atlama` ile `govde_tablosu` arasında gelen `durum` ya da `kamera_istegi`, `t_ns`'i atlama zamanından farklı bir `govde_tablosu` ve tablodaki `calisma_nesli`'nin atlama olayındakinden farklı olması protokol hatasıdır (A2-K06). `govde_tablosu`'ndan sonraki ilk `durum` iletisinin `t_ns`'i tablonun `t_ns`'ine eşittir ve gövde listesi tablodaki kimliklerle birebir aynıdır.
 - **A2-K92.** **Kimlik eşlemesi.** `govde_kimligi` oturum boyunca tek bir gövdeyi gösterir ve hiçbir zaman başka bir gövdeye verilmez: bir kimlik oturum içinde ilk görüldüğü varlık indeksi ve türle her zaman birlikte gelir; farklı bir varlık indeksi ya da türle gelmesi protokol hatasıdır. Tekrar izleme kipinde kimlik kayıttaki gövdenin kimliğidir; atlamadan sonra bir kimliğin yeniden görünmesi (ör. geri atlamada daha önce ölmüş bir hedef) aynı gövdenin başka bir zamandaki halidir ve yeni bir gövde değildir. Varlık indeksi (`varlik_indeksi`) bir kimlik değildir: aynı A7 varlığını birden çok gövde kullanabilir (ör. iki hedef); gövdeler yalnız `govde_kimligi` ile ayırt edilir. Sıfırlama (A2-K29) kimlikleri yeniden kullanmaz: sıfırlamadan sonra doğan gövdeler yeni kimlik alır.
+
+### 4.12 Sim yapılandırması, kamera çerçevesi ve gürültü anahtarı (W1-uyum U13, U17)
+
+- **A2-K93.** **Sim yapılandırması.** Aşağıdaki süreç ayarları senaryo alanı **değildir** (A5'te yer almaz, çözümlenmiş senaryoya ve özetine girmez, simülasyonun sonucunu değiştirmez); sim sunucusunun ve görselleştiricinin komut satırı seçenekleriyle verilir, A6 üst verisine yazılır (A6'dan beklenen):
+
+  | Ayar | Seçenek (süreç) | Geçerli | Varsayılan | Kural |
+  |---|---|---|---|---|
+  | A2 portu | `--a2-port <ondalık>` (sim ve görselleştirici) | 1024 … 65 535 | 47210 | A2-K01 |
+  | Halka yuva sayısı | `--a2-yuva <ondalık>` (sim) | 4 … 32 | 8 (tahmin) | §3.7 |
+  | Operatör gecikmesi `D_op` | `--a2-operator-gecikme-us <ondalık>` (görselleştirici) | 0 … 100 000 µs | 33 333 µs (tahmin) | A2-K31 |
+
+  Paylaşımlı bellek adı ayar değildir: biçimi A2-K70–K72 ile sabittir. Sahiplik kilidi ve kayıt dosyasının yeri (A2-K75, K77) de sabittir. Geçersiz bir seçenek değeriyle sim ya da görselleştirici başlamaz ve nedenini bildirir.
+- **A2-K94.** **S çerçevesinden optik çerçeveye sabit dönüşüm.** Kamera montajı (`montaj_l_b`, `montaj_q_bs`) S çerçevesinde verilir: x ileri (optik eksen), y sağ, z aşağı; bu, A5'in sensör montaj kabulü ve A8'in sensör çerçevesiyle aynıdır. İç parametrelerin ve izdüşümün tanımlandığı optik çerçeve (§3.6: x sağ, y aşağı, z ileri) ile S arasındaki dönüşüm sabittir:
+
+  ```
+  v_S = R_SO · v_O,   R_SO = [[0, 0, 1], [1, 0, 0], [0, 1, 0]],   det R_SO = +1
+  (z_O → x_S,  x_O → y_S,  y_O → z_S)
+  Optik çerçeveden gövdeye: R_bO = R(montaj_q_bs) · R_SO
+  ```
+
+  Görselleştirici kamerayı `R_bO` ve `montaj_l_b` ile konumlar (Godot'ya geçiş A2 §2'deki `C` ile); `montaj_q_bs` hiçbir tarafça optik çerçeveden gövdeye dönüş gibi yorumlanmaz. **Uygunluk örnekleri** (hesap, betikle yeniden üretildi): (a) `montaj_q_bs = (1, 0, 0, 0)` → optik eksen (`z_O`) gövde +x'e (ileri), görüntünün sağı (`x_O`) gövde +y'ye (sancak), görüntünün aşağısı (`y_O`) gövde +z'ye (aşağı) bakar; (b) `montaj_q_bs = (cos 45°, 0, −sin 45°, 0)` (gövde y ekseni etrafında −90°) → optik eksen gövde +z'ye (aşağı bakan kamera), görüntünün sağı gövde +y'ye, görüntünün aşağısı gövde −x'e (geriye) bakar. Sabit `a2_wire.h`'de `kR_SO`'dur.
+- **A2-K95.** **Gürültü anahtarı.** `kamera_istegi.gurultu_tohumu`, A5 Ek D'nin rastgelelik kataloğundaki `a2/kamera_gurultu` alt akışından, A5'in yazdığı türetim (anahtar, sayaç tahsisi; yasak ya da sıfır sonuçta yeniden çekiliş) ile o kamera karesi için üretilen değerdir (W1-uyum U17). Türetimin kendisi A5'tedir; A2 onu yinelemez. Sim değeri isteğe yazar; görselleştirici kamera gürültüsünü yalnız bu değeri anahtar alarak üretir ve kendi rastgele üretecini kullanmaz. Aynı ana tohum ve aynı `kare_sirasi` aynı `gurultu_tohumu`'nu verir.
 
 ---
 
@@ -583,7 +608,7 @@ Test kodu bu işte yazılmaz. Tür: **B** birim, **S** sözleşme (iki taraftan 
 | A2-U09 | A2-K41–K48 | S | Sahte görselleştirici gecikmesi ayarlanarak: zamanında yanıt teslim edilir; `S_d`'den sonra gelen reddedilir ve yuva boşalır; iptal edilmiş istek tam bir yanıt alır; aynı kamerada iki bekleyen istekte eskisi `daha_yeni_istek` |
 | A2-U10 | A2-K47 | SIL ve K | Görselleştirici donduruldu (SIGSTOP / süreç askıya alma), öldürüldü, hiç başlatılmadı: sim'in `kaçırılan_adım` sayacı ve HIL bariyer bekleme süreleri görselleştiricili referans koşudan farklı değil; kamera düşen kare sayacı artar |
 | A2-U11 | §3.8 piksel biçimi | SIL (Godot) | Işıksız (unshaded) düz renkli bir yüzey, sRGB taban rengi `(64, 128, 192)`, doğrusal ton eşleme, pozlama 1: kare piksel değerleri ±1 içinde; satır adımı `genislik × 3`; ilk satır sahnenin üstü |
-| A2-U12 | §3.6 kamera kabulü | SIL (Godot) | Bilinen konumdaki işaret noktası `u = fx·X/Z + cx` izdüşümünün ≤ 1 piksel içinde; A7'nin koordinat testiyle birlikte (A7-U06) |
+| A2-U12 | §3.6 kamera kabulü, A2-K94 | B ve SIL (Godot) | Birim testinde A2-K94'ün iki uygunluk örneği (birim kuaterniyon → optik eksen gövde +x; y etrafında −90° → optik eksen gövde +z) ve `det R_SO = +1`; Godot'da bilinen konumdaki işaret noktası `u = fx·X/Z + cx` izdüşümünün ≤ 1 piksel içinde (A7-U06 ile birlikte); birim montajla kamera karesinin merkezinde aracın önündeki işaret görünür |
 | A2-U13 | A2-K52–K59 | B (sim, yazıcı ve iki okuyucu süreci) | 10⁶ kare, arm64 ve x86-64'te: her karenin piksellerine gömülü kare kimliği ve içerik özeti okuyucunun gördüğüyle aynı (bellek görünürlüğü varsayımının sınaması, A2-K53); okuyucu A bir kareyi iki kez bırakır → B bırakana kadar yuva yeniden ayrılmaz; okuyucu 1 s'den uzun bekletilir → yuva geri alınmaz, halka emekliye ayrılır, yavaş okuyucunun eski halkada okuduğu kare üzerine yazılmaz; süreç içi benzetimde (iki iş parçacığı) ThreadSanitizer yuva verisine eşzamanlı erişim raporlamaz |
 | A2-U14 | A2-K59, K60, K64, K65, K88 | SIL | Bekleyen başvurusu olan okuyucu süreci öldürülür → başvuru azaltılmaz, halka emekliye ayrılır, `halka_yenile`/`halka_eslendi` sonrası kare akışı sürer, emekli halka oturum sonuna kadar tutulur; başvurusu olmayan okuyucu kapanır → halka değişmez; görselleştirici öldürülüp yeniden başlatılır → yeni oturum kimliği, yeni halka adı ve nesli, eski nesil hiç kullanılmaz, 5 s içinde (mimari seçimi) kare akışı yeniden başlar |
 | A2-U15 | A2-K62 | S | Görselleştirici 3 s ileti göndermeyince sim kapatır; sim 3 s sessiz kalınca görselleştirici kapatır |
@@ -592,6 +617,8 @@ Test kodu bu işte yazılmaz. Tür: **B** birim, **S** sözleşme (iki taraftan 
 | A2-U22 | A2-K80–K85 | S | Sahte görselleştirici ve sahte tüketiciyle: sıfırlama ve atlamada yanıtlanmamış, hazır ve tüketicideki kareler için sırasıyla iptal, teslim etmeme ve sonuç reddi; geç yanıt yalnız yuvayı boşaltır; tüketicinin eski nesil sonucu karta gitmez; `kare_sirasi` sıfırlanmaz; emekli halkada kalan eski nesil karesi için A2-K85 |
 | A2-U23 | A2-K29, K90–K92 | S ve SIL (tekrar izleme) | Üç atlama: (a) bir torpidonun doğumunun üzerinden ileri: tabloda torpido var, `govde_dogdu` gönderilmez, görselleştirici torpidoyu tablodan kurar; (b) bir hedefin ölümünün üzerinden ileri: tabloda hedef yok, görselleştirici onu kaldırır; (c) geri atlama ölümden önceye: aynı kimlikli hedef aynı varlık indeksiyle yeniden görünür. Her üçünde `atlama` → `govde_tablosu` → `durum` sırası; tablodan önce gönderilen bir `durum` (sahte sim) protokol hatası; aynı kimliğin farklı varlık indeksiyle gelmesi protokol hatası; iki hedef aynı varlık indeksini paylaşır |
 | A2-U24 | A2-K86–K89, §4.10 | S (sahte görselleştirici ve iki sahte tüketici) | Durum tablosunun her satırı (E1–E24) için ayrı senaryo; özellikle: emeklilik anında hazır olan kare, yeni halkayla el sıkışmış tüketiciye hiç verilmez ve `halka_emekli_hazir` sayılır; emeklilikten sonra gelen `kare_hazir` teslim üretmez; sim eski halkayı bütün bağlı taraflar yeni halkayla el sıkışana kadar tutar, bağlantısı kopan tüketici varken oturum sonuna kadar tutar; aynı tüketici üç ardışık emekliliğe yol açınca üçüncüde kamera yolu kapanır, yeni bağlantıyla döner; emekli halkanın hiçbir yuvası yeniden ayrılmaz (yuva başlığı `yazim_sayaci` emeklilikten sonra değişmez) |
+| A2-U25 | A2-K93, §3.6 | B | Sim yapılandırması seçeneklerinin aralık dışı değerlerinde süreç başlamaz; seçeneklerin çözümlenmiş senaryo özetini değiştirmediği; §3.6'nın sınır değerleri (pozlama 1 000 000 000 ns kabul, 1 000 000 002 ret; tek sayı ret; `cx` = −0,5 ve g − 0,5 kabul, dışı ret; `kalibrasyon_surumu` 0 ret, 65 535 kabul; kuaterniyon norm farkı 1·10⁻⁵ sınırı) |
+| A2-U26 | A2-K95 | S | Aynı ana tohum ve `kare_sirasi` ile iki koşuda `gurultu_tohumu` aynı; değerin A5 Ek D'nin `a2/kamera_gurultu` vektörleriyle (A5'in yayımladığı) bit düzeyinde aynı olduğu |
 | A2-U17 | A2-K25, K26 | S | Yavaş okuyan görselleştirici: sim bloklanmaz (dünya adım süresi değişmez); `durum` seyreltilir ve `sira` boşlukları sayılır; olay iletileri kaybolmaz; kuyruk taşınca `veda(tampon_tasti)` |
 | A2-U18 | A2-K50 | SIL | `kamera_gerekli` çalıştırmada bağlantı kopunca ve %1 eşiği aşılınca geçersiz işareti; gerekmeyende yalnız sayaç |
 | A2-U19 | §3.4 dalga kuralı | SIL (Godot) | En az 25 noktada (bir kısmı ağ köşelerinin arasında), hem `t_cizim` hem `t_op` geçişinde GPU'dan geri okunan yükseklik ile 04'ün `surface_elevation` değeri arasındaki fark ≤ max(1 mm, %1 `H_s`) (07 §7 P7; mimari seçimi); sıfırdan farklı fazlı bileşenle |
@@ -615,9 +642,35 @@ Test kodu bu işte yazılmaz. Tür: **B** birim, **S** sözleşme (iki taraftan 
 | A2-A08 | Kamera karelerinin tekrar oynatmada yeniden çizilmesi | açık | A6 (tekrar izleme kipinde istek üretilip üretilmeyeceği) |
 | A2-A09 | Godot'da düğüm pozlarının `force_draw`'dan önce RenderingServer'a ulaştığı (AB-191) ve aydınlatmanın iki zamanlı çizimde doğru ilerlediği | ölçülecek | Godot sahnesi uygulama işi; A2-U07, A2-U08 sınar |
 
-**A5'ten beklenen:** A2 portu; kamera kademesi seçimi (çözünürlük ve hız kademeden gelir, §6) ve kamera yapılandırmasının geri kalanı (§3.6: iç parametreler, bozulma, montaj, pozlama, kırpma uzaklıkları, `t_teslim − t_olcum` için `L_sonrası`); `kamera_gerekli`; `D_op`; yuva sayısı; su optiği ve güneş/ortam ışığı (§3.4); statik sahnenin varlık kimliği ve pozu; A7 malzemelerinin optik ve akustik geçersiz kılmaları (A7-K30); doğrulama kuralı "kamera kademesi kapalı değilse 3B kademesi kapalı olamaz"; `pozlama_ns` çift sayı kuralı.
+**A5'ten beklenen** (yalnız senaryo alanları; süreç ayarları A2-K93'tedir ve senaryoda yer almaz):
 
-**A8'den beklenen:** halkayı §3.8 ve A2-K53, A2-K54'e göre salt okunur eşlemek; halka bilgisini (ad, nesil, boyutlar) sim'den kendi el sıkışmasında almak; kare bildiriminde `(halka_nesli, yuva, istek_kimligi, kare_sirasi, calisma_nesli, yazim_sayaci)` taşımak; okumadan önce edinme çiti (A2-K53); bırakmayı A2-K58'deki üçlüyle, kare başına bir kez yapmak; **halka yenileme** bildirimi ve yeni halkayla el sıkışma (A2-K86, K88); yeni halkayla el sıkışmadan önce eski halkadaki okumalarını bitirmek ve el sıkışmanın sim'e yeni halka neslini bildirmesi (A2-K88'in serbest bırakma koşulu); A2'nin `SimKareDusmeNedeni` kodlarının (özellikle `halka_emekli_hazir` = 8: emeklilik anında teslim edilmeden düşen kare) A8'in kare durumlarına eşlenmesi ("kare yok" bildiriminde neden); kamera yolu kapalı tüketicinin (A2-K89) yeni bağlantı ve tam el sıkışmayla dönüşü; **çalıştırma nesli** bildirimi ve eski nesil sonuçlarını göndermeme (A2-K83); "kare yok" bildiriminin biçimi (A2-K49); algılama kaydının yakalama zamanını `t_olcum_ns − pozlama_ns/2` olarak türetmek (A2-K41); kamera kalibrasyonunu halkadan değil kendi bağlantısından almak (A2-K55); kamera kademe değerlerine A2 §6'dan atıf vermek.
+1. Kamera kademesinin seçimi (çözünürlük ve hız kademeden gelir; kademe değerlerinin kaynağı A2 §6'dır, A8 değil).
+2. Kamera yapılandırmasının senaryodan gelen alanları, A2 §3.6'nın aralıklarıyla doğrulanmış olarak: `fx`, `fy`, `cx`, `cy`; bozulma modeli ve katsayıları; `pozlama_ns` (pozitif, çift, ≤ 1 s); `kalibrasyon_surumu` (1 … 65 535); **fizik gerçeği** montajı (`l_b`, S çerçevesinden gövdeye `q_bs`; görselleştiriciye bu gider) ve ondan ayrı **nominal** montaj (A8'e ve karta giden); `yakin_m`, `uzak_m`; `L_sonrası` (`t_teslim − t_olcum`); `L_alg` (A8). Varsayılanlar A5 Ek E'de.
+3. `kamera_gerekli` (A2-K50).
+4. Su optiği (`beta_d_m`, `beta_b_m`, `b_sonsuz_rgb_dogrusal`, `bulaniklik_olcegi`, `su_optigi_surumu`), güneş yönü ve ışınımı, ortam ışığı (§3.4 `Ortam`).
+5. Statik sahnenin A7 varlık kimliği ve pozu (`Ortam.statik_*`).
+6. A7 malzemelerinin optik ve akustik geçersiz kılmaları (A7-K30).
+7. Doğrulama kuralları: en çok bir etkin kamera ve `inst = 0` (`kamera_kimligi` 0); kamera kademesi kapalı değilse 3B kademesi kapalı olamaz (A2-K02); A2 §3.6 aralıkları; yaşayan gövde bütçesi ≤ 64 ve dalga bileşeni ≤ 256 (§3.2 sınırları).
+8. Ek D alt akış kataloğunda `a2/kamera_gurultu` ve onun kare başına türetim ve sayaç tahsisi kuralı (A2-K95; W1-uyum U17).
+
+**A8'den beklenen** (halka ve nesil yaşam döngüsünün kaynağı A2'dir, W1-uyum U14; ileti adları ve kodları A8'indir; köşeli parantezde bugünkü A8 metninin değişmesi gereken yeri):
+
+1. **Salt okunur eşleme.** Bileşen halkayı yalnız salt okunur eşler, halkanın hiçbir baytına yazmaz (A2-K54) [A8-K38; uyumlu].
+2. **Kare bildirimi.** Bir kareyi sunan ileti en az şunları taşır: `halka_nesli`, `yuva`, `istek_kimligi`, `kare_sirasi`, `calisma_nesli`, `yazim_sayaci`, `t_olcum_ns`, `pozlama_ns`, `yapilandirma_surumu` (A2-K53, K58, K80) [`FRAME_AVAILABLE`'da `istek_kimligi`, `calisma_nesli`, `yazim_sayaci` yok].
+3. **Okuma ve denetim.** Bileşen bildirimi aldıktan sonra, yuvayı okumadan önce edinme çiti koyar; okumadan önce ve okuma bittikten sonra yuva başlığındaki `yazim_sayaci`, `istek_kimligi`, `calisma_nesli`, `halka_nesli` değerlerinin bildirimdekilerle, `genislik`, `yukseklik`, `satir_adimi`, `piksel_bicimi` değerlerinin yapılandırmayla aynı olduğunu denetler; farklıysa kayıt üretmez ve karenin geçersiz olduğunu bildirir (A2-K53, K74) [A8-K48: `istek_kimligi`, `calisma_nesli` ve edinme çiti eklenir].
+4. **Geçersiz kare.** Yuva başlığında `tutarsiz` bayrağı (bit 7) 1 ise ya da `yapilandirma_surumu` veya `kalibrasyon_surumu` el sıkışmadaki yapılandırmayla tutmuyorsa bileşen o kareden kayıt üretmez ve karenin geçersiz olduğunu bildirir (A2 §3.8, K28) [A8-K48].
+5. **Bırakma.** Bir karenin bırakılması `(halka_nesli, yuva, istek_kimligi)` ile tek anlamlı belirlenir ve bileşen başına kare başına en çok bir kezdir; tüketici kimliği sim'de bağlantıdan türer (A2-K58) [A8-K45: bırakma olarak sayılan iletinin bu üçlüyü belirlediği yazılır].
+6. **Kopma ve zaman aşımı.** Bağlantının kapanması ve bırakma süresinin (1 s) aşılması yuvayı **bırakmaz**: başvuru kaldırılmaz, sim etkin halkayı emekliye ayırır (A2-K59, K60, K86); zaman aşımı bağlantıyı kapatmayı gerektirmez [A8-K45 "bağlantı kapandığında bırakır" ve A8-K50 "yuvayı bırakır" kalkar].
+7. **Halka yenileme.** Sim, emeklilikte bileşene yeni halkanın adını, neslini ve boyutlarını bildiren bir ileti gönderir (A2-K86 (8)); bileşen eski halkadaki okumalarını bitirir, o karelerin (nesli geçerliyse) sonuçlarını gönderir ve bırakmalarını yapar, ardından yeni halkayı salt okunur eşler, başlığını A2-K74 ile denetler ve **yeni nesli onaylayan** bir yanıt gönderir; eski okumalar bitmeden bu onay gönderilmez. Sim için bu onay A2-K88'deki "daha yeni halkayla el sıkışma"dır; onaya kadar sim bileşene yeni halkadan kare sunmaz (A2-K61). Yeni halka eşlenemezse bileşen bunu bildirir ve sim o bileşen için kamera yolunu kapatır [yeni ileti ve yanıt; A8-K52'nin "3.5'te olmayan alan gönderilmez" kuralı yeni iletiyi kapsayacak biçimde güncellenir].
+8. **Kamera yolu kapatılan tüketici.** A2-K89 durumunda sim bileşene kamera yolunun kapandığını bildirir ve kare sunmaz; bileşen yalnız yeni bir bağlantı ve tam el sıkışmayla döner; bu süre içinde karta giden kare durumları A8'in tanımladığı "bileşen yok" türünden bir durumdur [yeni bildirim ve dönüş kuralı].
+9. **A2 oturum sonu.** A2 oturumu bitince (A2-K64) sim bileşene bunu bildirir; bileşen eski halkayı bırakır ve yeni A2 oturumunun halkasıyla yeniden el sıkışır (yenileme iletisiyle ya da yeni bağlantıyla; seçim A8'in) [yeni bildirim].
+10. **Çalıştırma nesli.** Sim her nesil değişimini (A2-K80) bileşene bildirir; bileşen eski nesle ait karelerin sonuçlarını göndermez, okumayı bitirip yuvayı yine bırakır; sim eski nesil sonucunu kesin reddeder ve `eski_nesil` sayar (A2-K83, K84); A8'in akış başına "son kabul edilen" `det_seq`, `batch_seq` ve `t_meas_ns` durumunun nesil değişiminde nasıl yeniden başladığı A8'te tanımlanır (geri atlamada sim zamanı geriye gider) [A8-K15–K17'ye nesil kuralı eklenir].
+11. **Kare sayacının ömrü.** `kare_sirasi` sim süreci başlarken 1'dir, her kamera periyodunda istek gönderilsin ya da gönderilmesin 1 artar, sıfırlama ve atlamada sıfırlanmaz (A2-K49) [A8 "A2'den beklenen" md. 7 ve K16 "her çalıştırmada 1'den" ifadesi süreç ömrüne çekilir].
+12. **Düşme nedenlerinin eşlemesi.** A2'nin bütün düşme nedeni kodlarının (`SimKareDusmeNedeni` 1–8 ve görselleştirici nedenleri 33–39) A8 kare durumlarına kapalı ve tam bir eşlemesi; her kod tek duruma eşlenir, özgün kod A6 kaydında korunur; `halka_emekli_hazir` (8) "bileşen meşgul" ya da "bileşen yok" durumlarına eşlenmez (öneri: bütün kodlar `FRAME_DROPPED`) [A8-K63].
+13. **Geçerlilik anı.** Algılama kaydının tek geçerlilik anı `t_olcum_ns − pozlama_ns/2`'dir; `t_olcum_ns` ve `pozlama_ns` kayda bit düzeyinde kopyalanır (A2-K41) [A8-K10–K12; uyumlu].
+14. **Yapılandırma.** `CAMERA_CONFIG`'in kamera alanlarının geçerli aralıkları A2 §3.6'ya atıfla verilir; `calib_ver` A2'nin `kalibrasyon_surumu`yla aynı (u16); bileşene giden montaj A5'in **nominal** montajıdır (S çerçevesi), görselleştiriciye giden fizik gerçeği montajı A8'e gitmez; kalibrasyon halkadan alınmaz (A2-K55) [A8-K36, K53].
+15. **Kademe ve tek kamera.** Kademe değerleri A2 §6'dadır; bu sürümde tek kamera ve `kamera_kimligi` 0 [A8-K35, K68].
+16. **Halka adı.** Ad A2-K70–K72'deki biçimdedir (en çok 32 ASCII karakter, Windows `Local\` önekiyle; macOS'ta 27); A8'in 63 karakterlik alanına sığar [uyumlu].
 
 **A6'dan beklenen:** düşen her karenin `kare_sirasi`, nedeni ve `S_d`'si; çalıştırma nesli değişimleri; halka emekliye ayırma olayları; kaydedilen karelerin çalıştırma nesli etiketi (A2-K83); A2 sayaçları (§5); oturumların açılış ve kapanış nedenleri; manifest ve dalga kümesi özetleri; `tam` kayıt kademesinde kare kaydı (sim içi tüketici olarak, A2-K61); kameradan türetilen algılama kayıtlarının kaydı ve tekrar oynatmanın onlardan yapılması (A2-K51).
 
