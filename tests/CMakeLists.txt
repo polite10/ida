@@ -69,3 +69,4 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 
 # ---- vcpkg bağımlılık düzeneğinin dumanı (Eigen) ----------------------------------------
 add_subdirectory(duman)
+add_subdirectory(kabul/cekirdek)
