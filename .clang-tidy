@@ -3,17 +3,31 @@
 #
 # Politika: bugprone-*, cert-*, clang-analyzer-*; her uyarı hatadır.
 #
-# Kapatılan tek denetim (mimar kararı 2026-11-20):
+# Kapatılan denetimler (mimar kararları, 2026-11-20); başka denetim kapatılmaz:
+#
 #   clang-analyzer-optin.performance.Padding — A4 port yapılarının (ida_in_t, ida_out_t)
 #   alan sırası sözleşmedir ve yerleşimi static_assert ile sabittir; denetim dolguyu
 #   azaltmak için alan sırasını değiştirmeyi önerir, yani sözleşmeyi değiştirmeyi ister.
 #   İlk CI koşusunda (PR #8, Windows) port.h:530 ve port.h:846 için yalnız bu denetim
-#   bulgu verdi. Başka denetim kapatılmaz.
+#   bulgu verdi.
+#
+#   clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling — memset/memcpy
+#   yerine C11 Annex K işlevlerini (memset_s, memcpy_s) önerir; denetim yalnız hedefin
+#   C kitaplığı Annex K sunduğunda etkinleşir (Windows'ta bulgu verdi, macOS'ta vermedi;
+#   PR #9, protocol/ida_link/src/tel.c). Annex K işlevleri kart araç zincirinde
+#   (newlib-nano) ve macOS'ta yoktur; çekirdek ve ida_link ISO C17 taşınabilir kalır.
+#   Sınırlar çağıran kodda açıkça denetlenir ve GCC -fanalyzer, MSVC /analyze ve ASan ile
+#   sınanır. Aynı ailenin öteki üyeleri (ör. insecureAPI.strcpy) açık kalır.
+#
+# Başlık süzgeci: core/ ve protocol/ida_link/ altındaki include/ ve src/ başlıkları
+# denetlenir; sistem başlıkları ve üretilmiş MAVLink başlıkları (derleme dizininde,
+# -isystem ile verilir) denetlenmez.
 Checks: >-
   -*,
   bugprone-*,
   cert-*,
   clang-analyzer-*,
-  -clang-analyzer-optin.performance.Padding
+  -clang-analyzer-optin.performance.Padding,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
 WarningsAsErrors: '*'
-HeaderFilterRegex: '.*core[/\\](include|src)[/\\].*'
+HeaderFilterRegex: '.*(core|protocol[/\\]ida_link)[/\\](include|src)[/\\].*'
