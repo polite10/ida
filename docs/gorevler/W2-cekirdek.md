@@ -42,6 +42,25 @@ Kestirim, güdüm, kontrol, görev, atış kontrol ve arka plan işi: iç başl�
 
 A4 §7'nin bu işte tam uygulanan kurallara düşen satırları; ayrıca: (i) §3.11 öncelik tablosunun her hücresi için bir vaka; (ii) belirlenimcilik: aynı init ve aynı çağrı dizisiyle iki örneğin çıktı dizilerinin bayt bayt eşitliği (A4-K24), iki örnek aynı süreçte iç içe çağrılırken de; (iii) hata dönüşlerinde çıktının hiçbir alanının önceki çağrıdan kalmadığının gösterimi (çıktı tamponu çağrıdan önce bilinen bir desenle doldurulur; A4-K27); (iv) NULL işaretçi satırlarının her biri (§4.15). Testler `host-asan`'da da koşar ve firmware araç zinciriyle derlenebilir.
 
+## Birinci aşamanın sonucu (mimar kararları, 2026-11-20)
+
+Tasarım notu (`core/TASARIM.md`) yazıldı: A4'ün 123 kuralı sınıflandırıldı (80 bu işte tam, 17 yer tutucu, 26 platformun), 10 karar ve A4'te 35 belirsizlik (5 engelleyen, 21 iki okumalı, 9 ifade) bildirildi. Belirsizlikler A4'ün dondurma öncesi son turunda sözleşmede kapatılır; ikinci aşama o tur bittikten sonra, A4'ün son metniyle başlar. Not, A4'ün son metnine göre güncellenir.
+
+| Karar | Sonuç |
+|---|---|
+| M1 örnek kabul kapısı ve IMU zamanlaması | Bu işte tam (A4-K30, K33–K40'ın kabul payı, K103, K108'in komut payı, K115). Kapı port düzeyindedir ve algoritmadan bağımsızdır |
+| M2 olay altyapısı | Bu işte (A4-K60–K63, K65, K69, K70'in sayaç ve günlük payı; yalnız silen çıkış kapısı). Genişletici olay üreten hiçbir yol bu işte yoktur |
+| M3 parametre komutları | Bu işte (A4-K81–K83, K100, K112, `PARAM_GET`) |
+| M4 yer tutucunun komut yanıtları | A4'e eklenecek "komut × durum → ret nedeni" tablosuna göre; yer tutucu hiçbir genişleticiyi kabul etmez. Modülü henüz olmayan komut türü `UNSUPPORTED` alır |
+| M5 silahsızken tick ve `IMU_REJECTED` | `thr_valid = is_safe` (nötr güvenli çıktı) |
+| M6 yer tutucu `nav` | `est_level = INIT`, birim kuaterniyon, `t = tf.t`, öteki alanlar 0; A4 bu durumda alanların anlam taşımadığını kurala bağlar |
+| M7 yer tutucu engel maskesi | Her bit tanımına göre; `DET_STALE` init'ten itibaren kurulu; maske hiçbir zaman 0 yazılmaz |
+| M8 `apply_by_ns`, `hold_ns` | A1 §3.9 varsayılanları (tahmin) |
+| M9 emniyet gevşetmesi | W4 atış kontrol işinin dosyasında; bu işte kapanma yolu test kaynağından yapı alanlarına yazılarak sınanır, çekirdekte test kipi ya da koşullu derleme olmaz |
+| M10 sahiplik | Arıza güvenliği görev/güdüm işinde (W3); çekirdekteki sonar algılama ve arka plan işi ayrı modül ve ayrı W4 işi; durum, sağlık ve günlük çıktısının çekirdek tarafı bu işte tam |
+
+"Tam uygulanacaklar" listesi M1–M3 ile genişlemiştir; kabul md.3 ve md.4 bunları da kapsar.
+
 ## Kapsam dışı
 
 Kestirim, güdüm, kontrol, görev mantığı (W3); atış kontrolün emniyet zinciri durum makinesi ve arayüzleri (W4; içerik emniyet zinciri ve arayüzlerle sınırlıdır, hedefleme çözümü ve atış ölçütü hiçbir işte ayrıntılandırılmaz); platform (kart yazılımı, SIL koşucusu) ve platformun kuralları; `ida_link`; `port.h`, `algilama_kaydi.h` ve sözleşme metninde değişiklik; kartta çalıştırma ve süre ölçümü.
