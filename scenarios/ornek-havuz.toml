@@ -1,5 +1,6 @@
 # En küçük geçerli senaryo (A5 senaryo dosyası): kapalı havuz, bir sabit hedef, kısa görev, sade kademe.
-# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0-aday). Birimler SI; açılar radyan; süreler tamsayı ns.
+# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0-aday). Birimler SI; açılar radyan; süreler tamsayı ns
+# (görev öğeleri A1 Tablo 3.6a'nın birimlerini taşır; A5-K11, K55).
 # Çözümlenmiş biçimi ve davranış özeti: scenarios/ornek-havuz.cozumlenmis.json (A5-K16, K17).
 # [MV] = mimari varsayım (bölümlerde değer yoktu; mimar belirledi, K10).
 
@@ -16,14 +17,23 @@ dosya = "ida0.toml"           # bu dosyanın dizinine göre göreli (A5-K12)
 [arac.sensorler.gnss0]
 etkin = false
 
+# Kamera senaryo düzeyinde kapalı: canlı SIL koşuları arasındaki eşitlik bu örnekte sınanır (A5-K85).
+[arac.sensorler.kamera0]
+etkin = false
+
+[varliklar]
+kume = "ornek"                # A7 kümesi: assets/ornek/manifest.json (A5-K115)
+kume_surumu = 1               # beklenen `kume_surumu` (A7-K07)
+manifest_ozeti = "29063c2d7f89a80e452dfbb66504e9470d5c928d0fcf7dd295497e2b22a22ca4"   # manifest ham baytlarının SHA-256'sı (A7-K05)
+
 [calistirma]
 kip = "sil"
 sure_ns = 60_000_000_000      # 60 s
 
 [ortam]
 tur = "havuz"
-sahne = "havuz_ornek"         # A7 sahne kimliği: 25 m × 12,5 m, düz taban [MV]; sahne A7 işinde tanımlanacak
-derinlik = 3.0                # m [MV]; A7 sahnesinin taban derinliğiyle eşit olmalı (A5-K36)
+sahne = "havuz_ornek"         # A7 `statik` varlığı: 25 m × 12,5 m, düz taban [MV]
+derinlik = 3.0                # m [MV]; A7 manifestinin `taban_derinligi_m` alanıyla eşit olmalı (A5-K36)
 manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]   # B_n (NED), T [MV]; WMM'den doğrulanmadı
 
 [ortam.orijin]                # [MV] 41,0° K, 29,0° D, 0 m (IMU dünya dönüşü için zorunlu, A5-K45)
@@ -37,23 +47,34 @@ sicaklik_c = 20.0             # °C [G] senaryo girdisi
 
 [hedefler.h1]
 kimlik = 1
-sinif = "sabit_ornek"
-varlik = "hedef_ornek"        # A7 varlık kimliği (şekil, isabet bölgesi, malzeme A7'de)
+sinif = "sabit_nesne"         # A5-K113 sınıf tablosu (yalnız kayıt kodlaması)
+varlik = "hedef_ornek"        # A7 `hedef` varlığı (şekil, isabet bölgesi, malzeme A7'de)
 konum = [4.0, 0.0, 1.5]       # NED, m
 yonelim = [1.0, 0.0, 0.0, 0.0]
 
 [gorev]
 yukleme_zamani_ns = 0
 
+# Görev öğeleri A1 Tablo 3.6a'nın alanlarını bire bir taşır (A5-K55).
 [[gorev.ogeler]]
-tur = "WAYPOINT"
-konum_ne = [2.0, 0.0]
-derinlik = 0.0
-hiz = 0.3
-kabul_yaricapi = 0.3
+item_type = "WAYPOINT"
+frame = "LOCAL"
+p = [0.3, 0.3, 0.0, 0.0]      # kabul yarıçapı 0,3 m; seyir hızı 0,3 m/s
+lat_e7 = 0
+lon_e7 = 0
+north_m = 2.0
+east_m = 0.0
+depth = 0.0
 
 [[gorev.ogeler]]
-tur = "SURFACE"
+item_type = "SURFACE"
+frame = "NONE"
+p = [0.25, 0.0, 0.0, 0.0]     # çıkış hızı 0,25 m/s
+lat_e7 = 0
+lon_e7 = 0
+north_m = 0.0
+east_m = 0.0
+depth = 0.0
 
 # Zaman çizelgesi: aracın kip komutları yer istasyonu yolundan gelir (02 §2.6). Atış komutu yoktur (A5-K73).
 [[olaylar]]
@@ -79,9 +100,9 @@ ana_tohum = 1
 
 [kalite]
 gorunum = "sade"
-kamera = "sade"
+kamera = "kapali"
 sonar = "sade"                # ping başına 5 000 ışın (iskelet §6)
-kayit = "sade"
+kayit = "telemetri"
 
 [baslangic]
 konum = [0.0, 0.0, 0.0]

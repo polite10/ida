@@ -14,7 +14,7 @@ aciklama = "BlueROV2 Heavy sınıfı başlangıç aracı (iskelet §5; 04 §2.6)
 
 [arac]
 ad = "IDA-0"
-varlik = "ida0"               # A7 varlık kimliği; biçim A7'den beklenen. Yer tutucu ağlar A7'de (04 §2.6).
+varlik = "ida0"               # A7 `arac` türündeki varlık (A5-K19); yer tutucu ağlar A7 uygunluk örneğinde (04 §2.6)
 referans_noktasi = "Cercevenin geometrik merkezi; bos aracin agirlik merkezi bu noktada kabul edilir (r_g = 0); govdeye sabit, yuk ayrilinca degismez (iskelet §3.1; 04 §2.2)"   # [MV]
 
 # ---------------------------------------------------------------- boş araç (04 §2.6)
@@ -139,6 +139,7 @@ surtunme_katsayisi = 0.5
 # ---------------------------------------------------------------- torpido ve fırlatıcılar (iskelet §5; 04 §2.8)
 # Hepsi mimari varsayımdır, ölçüm değildir. 1.0'da değiştirilemez (A5-K29); itki, güdüm ya da menzil alanı yoktur.
 [arac.torpido]
+varlik = "torpido_ida0"       # A7 `torpido` türündeki varlık (A5-K19); A7 uygunluk örneğinde
 geometri = "prolate_sferoid"
 boy = 0.20                    # m [T]
 cap = 0.04                    # m [T]; L/D = 5
@@ -222,8 +223,22 @@ montaj = { konum = [0.12, 0.0, -0.20], yonelim = [1.0, 0.0, 0.0, 0.0] }        #
 tur = "kamera"
 kimlik = 8
 inst = 0
-profil = "kamera_on"          # çözünürlük ve hız A8 kademesinden
-montaj = { konum = [0.21, 0.0, -0.02], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV] optik eksen +x
+profil = "kamera_on"          # çözünürlük ve hız kamera kademesinden (A2 §6)
+montaj = { konum = [0.21, 0.0, -0.02], yonelim = [1.0, 0.0, 0.0, 0.0] }        # [MV] S çerçevesi, optik eksen +x (A5-K89)
+
+# Kamera ayarları [MV]: mimari seçimi (2026-11-20); ölçüm ya da kalibrasyon değildir.
+# Su içinde yatay görüş açısı 80° kabulünden: fx = fy = (g/2) / tan 40° (tam 320 / tan 40° ≈ 381,36 px).
+# Aralıklar A2 §3.6 (A5-K114). l_alg_ns (50 ms, A8 §6.1) ve l_sonrasi_ns (0, kalibre edilmedi) profilden gelir.
+[arac.sensorler.kamera0.ayar]
+ic_tam = { fx = 381.36, fy = 381.36, cx = 319.5, cy = 239.5 }    # 640 × 480 [MV]
+ic_sade = { fx = 190.68, fy = 190.68, cx = 159.5, cy = 119.5 }   # 320 × 240 [MV]
+bozulma_modeli = "yok"                                           # A2 bozulmasız model [MV]
+bozulma = [0.0, 0.0, 0.0, 0.0, 0.0]
+pozlama_ns = 8_000_000        # 8 ms [MV]
+yakin_m = 0.05                # m [MV]
+uzak_m = 40.0                 # m [MV]
+kalibrasyon_surumu = 1        # [MV]
+nominal_montaj = { konum = [0.21, 0.0, -0.02], yonelim = [1.0, 0.0, 0.0, 0.0] }   # [MV] fizik montajıyla aynı değer; ayrı alan (A8-K53)
 
 [arac.sensorler.batarya0]
 tur = "batarya_olcer"
@@ -251,7 +266,5 @@ montaj = { konum = [0.0, 0.0, 0.0], yonelim = [1.0, 0.0, 0.0, 0.0] }          # 
 
 # anten_konumu: telsiz anteni modeli bu sürümde yok; anahtar verilirse "desteklenmiyor" hatası (A5-K102).
 
-
-# ---------------------------------------------------------------- otopilot (02 §3.6; 08 §3.3)
-[otopilot]
-nominal = "fizik"             # kartın nominal modeli fizikten türetilir ve çözümlenmiş senaryoya açıkça yazılır (A5-K51)
+# otopilot: bu sürümde yalnız açık (kimlik, değer) çiftleri (A5-K52); parametre kataloğu W3'ündür (A4 O9).
+# İDA-0 için çift yazılmadı; çözümlenmiş biçimde `otopilot.parametreler = []`.
