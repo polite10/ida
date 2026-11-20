@@ -1,0 +1,136 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "mp5-fw-taban",
+      "hidden": true,
+      "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-stm32.cmake",
+      "cacheVariables": {
+        "MP5_HEDEF": "fw",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g -DNDEBUG",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g"
+      }
+    },
+    {
+      "name": "mp5-o2",
+      "displayName": "MP5 ölçüm yazılımı; ürün kitaplığı (fw-release, -O2)",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/o2",
+      "cacheVariables": {
+        "MP5_DERLEME": "urun-O2",
+        "MP5_KAYNAK": "urun",
+        "MP5_YINELEME": "10000"
+      }
+    },
+    {
+      "name": "mp5-kisa",
+      "displayName": "MP5 kısa düzenek denemesi (200 yineleme)",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/kisa",
+      "cacheVariables": {
+        "MP5_DERLEME": "urun-O2-kisa",
+        "MP5_KAYNAK": "urun",
+        "MP5_YINELEME": "200"
+      }
+    },
+    {
+      "name": "mp5-kopya-o2",
+      "displayName": "MP5 Deneme denetimi: ürün kaynağının kopyası, -O2 (ürünle aynı olmalı)",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/kopya-o2",
+      "cacheVariables": {
+        "MP5_DERLEME": "kopya-O2",
+        "MP5_KAYNAK": "kopya",
+        "MP5_KOPYA_DOSYA": "kopya/tel_kopya.c",
+        "MP5_KOPYA_OPT": "-O2",
+        "MP5_YINELEME": "10000",
+        "MP5_ONBELLEK": "3"
+      }
+    },
+    {
+      "name": "mp5-kopya-os",
+      "displayName": "MP5 Deneme: ürün kaynağının kopyası, -Os",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/kopya-os",
+      "cacheVariables": {
+        "MP5_DERLEME": "kopya-Os",
+        "MP5_KAYNAK": "kopya",
+        "MP5_KOPYA_DOSYA": "kopya/tel_kopya.c",
+        "MP5_KOPYA_OPT": "-Os",
+        "MP5_YINELEME": "10000",
+        "MP5_ONBELLEK": "3"
+      }
+    },
+    {
+      "name": "mp5-tablo-o2",
+      "displayName": "MP5 Deneme: tablolu CRC kopyası, -O2",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/tablo-o2",
+      "cacheVariables": {
+        "MP5_DERLEME": "tablo-O2",
+        "MP5_KAYNAK": "kopya",
+        "MP5_KOPYA_DOSYA": "kopya/tel_crc_tablo.c",
+        "MP5_KOPYA_OPT": "-O2",
+        "MP5_YINELEME": "10000",
+        "MP5_ONBELLEK": "3"
+      }
+    },
+    {
+      "name": "mp5-iyi",
+      "displayName": "MP5 iyileştirme turu: kopya/tel_iyi.c, -O2 (tanımlar derle.sh'den, kopya/cesitler.txt)",
+      "inherits": "mp5-fw-taban",
+      "binaryDir": "${sourceDir}/derleme/iyi",
+      "cacheVariables": {
+        "MP5_DERLEME": "iyi",
+        "MP5_KAYNAK": "kopya",
+        "MP5_KOPYA_DOSYA": "kopya/tel_iyi.c",
+        "MP5_KOPYA_OPT": "-O2",
+        "MP5_YINELEME": "10000",
+        "MP5_ONBELLEK": "3"
+      }
+    },
+    {
+      "name": "mp5-pc",
+      "displayName": "MP5 PC araçları (üreteç, kayıt)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/derleme/pc",
+      "cacheVariables": {
+        "MP5_HEDEF": "pc",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mp5-o2",
+      "configurePreset": "mp5-o2"
+    },
+    {
+      "name": "mp5-kisa",
+      "configurePreset": "mp5-kisa"
+    },
+    {
+      "name": "mp5-kopya-o2",
+      "configurePreset": "mp5-kopya-o2"
+    },
+    {
+      "name": "mp5-kopya-os",
+      "configurePreset": "mp5-kopya-os"
+    },
+    {
+      "name": "mp5-tablo-o2",
+      "configurePreset": "mp5-tablo-o2"
+    },
+    {
+      "name": "mp5-pc",
+      "configurePreset": "mp5-pc"
+    }
+  ]
+}

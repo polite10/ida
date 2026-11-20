@@ -41,6 +41,7 @@ vcpkg_installed/
 # W0 ölçüm prototipleri: derleme çıktısı ve ham ölçüm verisi
 tools/olcum/*/derleme/
 tools/olcum/mp7/veri/
+tools/olcum/mp5/veri/
 # Godot proje önbelleği ve ölçüm ham kare dökümleri (MP6)
 .godot/
 kare_*.rgb

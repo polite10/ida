@@ -1,0 +1,18 @@
+# W0-MP5a iyileştirme turu: tel_iyi.c çeşitleri. Satır: <ad> <tanımlar, virgülle>.
+# Bayrakların anlamı kopya/tel_iyi.c başındadır. d0 bütün bayraklar kapalı (denetim).
+d0          MP5_K=0
+k           MP5_K=1
+w           MP5_W=1
+b           MP5_B=1
+t256        MP5_CRC=256
+t16         MP5_CRC=16
+e           MP5_E=1
+h           MP5_H=1
+kw          MP5_K=1,MP5_W=1
+kwb         MP5_K=1,MP5_W=1,MP5_B=1
+kwbt256     MP5_K=1,MP5_W=1,MP5_B=1,MP5_CRC=256
+kwbt16      MP5_K=1,MP5_W=1,MP5_B=1,MP5_CRC=16
+kwbt256e    MP5_K=1,MP5_W=1,MP5_B=1,MP5_CRC=256,MP5_E=1
+kwbt256eh   MP5_K=1,MP5_W=1,MP5_B=1,MP5_CRC=256,MP5_E=1,MP5_H=1
+kwbt16eh    MP5_K=1,MP5_W=1,MP5_B=1,MP5_CRC=16,MP5_E=1,MP5_H=1
+wbt256eh    MP5_W=1,MP5_B=1,MP5_CRC=256,MP5_E=1,MP5_H=1
