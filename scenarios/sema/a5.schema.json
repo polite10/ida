@@ -16,7 +16,7 @@
     "varlik": {
      "type": "string",
      "description": "A7 varlık kimliği (BUOY_*, COL_*, SON_* ağları).",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
     "referans_noktasi": {
      "type": "string",
@@ -1101,6 +1101,11 @@
        "type": "number",
        "description": "Bağıl ayrılma hızı v₀, m/s.",
        "const": 2.0
+      },
+      "varlik": {
+       "type": "string",
+       "description": "A7 `torpido` türündeki varlık kimliği (sayısal değer değildir; A5-K19).",
+       "pattern": "^[a-z0-9_]{1,32}$"
       }
      },
      "patternProperties": {
@@ -1110,6 +1115,7 @@
      },
      "additionalProperties": false,
      "required": [
+      "varlik",
       "geometri",
       "boy",
       "cap",
@@ -1347,7 +1353,7 @@
       "varlik": {
        "type": "string",
        "description": "A7 varlık kimliği (BUOY_*, COL_*, SON_* ağları).",
-       "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+       "pattern": "^[a-z0-9_]{1,32}$"
       },
       "referans_noktasi": {
        "type": "string",
@@ -2296,6 +2302,11 @@
          "type": "number",
          "description": "Bağıl ayrılma hızı v₀, m/s.",
          "const": 2.0
+        },
+        "varlik": {
+         "type": "string",
+         "description": "A7 `torpido` türündeki varlık kimliği (sayısal değer değildir; A5-K19).",
+         "pattern": "^[a-z0-9_]{1,32}$"
         }
        },
        "patternProperties": {
@@ -2590,10 +2601,13 @@
      "additionalProperties": {
       "$ref": "#/$defs/hedef"
      },
-     "maxProperties": 64
+     "maxProperties": 61
     },
     "gorev": {
      "$ref": "#/$defs/gorev"
+    },
+    "varliklar": {
+     "$ref": "#/$defs/varliklar"
     },
     "olaylar": {
      "type": "array",
@@ -2633,7 +2647,8 @@
     "arac",
     "calistirma",
     "ortam",
-    "rastgelelik"
+    "rastgelelik",
+    "varliklar"
    ]
   },
   "arac_dosyasi": {
@@ -2817,10 +2832,13 @@
      "additionalProperties": {
       "$ref": "#/$defs/hedef_cozum"
      },
-     "maxProperties": 64
+     "maxProperties": 61
     },
     "gorev": {
      "$ref": "#/$defs/gorev_cozum"
+    },
+    "varliklar": {
+     "$ref": "#/$defs/varliklar_cozum"
     },
     "olaylar": {
      "type": "array",
@@ -2861,6 +2879,7 @@
     "otopilot",
     "calistirma",
     "ortam",
+    "varliklar",
     "hedefler",
     "olaylar",
     "emniyet_girdileri",
@@ -2871,46 +2890,25 @@
     "baslangic"
    ]
   },
-  "otopilot": {
+  "varliklar": {
    "type": "object",
-   "description": "Kartın nominal modeli ve kalıcı parametreleri (02 §3.6; A5-K50..K53).",
+   "description": "Varlık kümesi seçimi (A7 §2, K01–K07; A5-K19).",
    "properties": {
-    "nominal": {
+    "kume": {
      "type": "string",
-     "description": "fizik: fizikten türetilir ve açık yazılır; acik: yalnız verilen değerler.",
-     "enum": [
-      "fizik",
-      "acik"
-     ],
-     "default": "fizik"
+     "description": "A7 `kume_kimligi`; küme yolu `assets/<kume>/manifest.json`.",
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
-    "parametreler": {
-     "type": "object",
-     "description": "A4 parametre adı → değer. x_ önekli anahtar girdi değil deneysel alandır (A5-K07).",
-     "propertyNames": {
-      "anyOf": [
-       {
-        "pattern": "^x_"
-       },
-       {
-        "pattern": "^(?!x_)[A-Za-z0-9_]{1,16}$"
-       }
-      ]
-     },
-     "patternProperties": {
-      "^x_": {
-       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
-      }
-     },
-     "additionalProperties": {
-      "type": [
-       "number",
-       "boolean"
-      ],
-      "description": "A4 parametre değeri (skaler)."
-     },
-     "maxProperties": 1024,
-     "default": {}
+    "kume_surumu": {
+     "type": "integer",
+     "description": "Beklenen `kume_surumu` (A7-K07); verilirse eşit olmalı.",
+     "minimum": 1,
+     "maximum": 2147483647
+    },
+    "manifest_ozeti": {
+     "type": "string",
+     "description": "Beklenen manifest özeti (A7-K05), 64 küçük onaltılık.",
+     "pattern": "^[0-9a-f]{64}$"
     }
    },
    "patternProperties": {
@@ -2920,8 +2918,62 @@
    },
    "additionalProperties": false,
    "required": [
-    "nominal"
+    "kume"
    ]
+  },
+  "otopilot": {
+   "type": "object",
+   "description": "Kartın kalıcı parametreleri: yalnız açık çiftler (02 §3.6; A5-K50, K52, K53).",
+   "properties": {
+    "parametreler": {
+     "type": "array",
+     "description": "Parametre çiftleri; kimlik tekil.",
+     "items": {
+      "type": "object",
+      "description": "Açık (kimlik, değer) çifti (A5-K52).",
+      "properties": {
+       "kimlik": {
+        "type": "integer",
+        "description": "A4 parametre kimliği (`ida_param_value_t.id`, u16).",
+        "minimum": 0,
+        "maximum": 65535
+       },
+       "tip": {
+        "type": "string",
+        "description": "i32 | u32 | f32 (A4 `IDA_PT_*`).",
+        "enum": [
+         "i32",
+         "u32",
+         "f32"
+        ]
+       },
+       "deger": {
+        "type": "number",
+        "description": "Değer; tipine göre A5-K52."
+       }
+      },
+      "patternProperties": {
+       "^x_": {
+        "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "kimlik",
+       "tip",
+       "deger"
+      ]
+     },
+     "maxItems": 1024,
+     "default": []
+    }
+   },
+   "patternProperties": {
+    "^x_": {
+     "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+    }
+   },
+   "additionalProperties": false
   },
   "calistirma": {
    "type": "object",
@@ -2977,8 +3029,145 @@
     },
     "sahne": {
      "type": "string",
-     "description": "A7 sahne kimliği.",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "description": "A7 `statik` türündeki varlık kimliği (A5-K19).",
+     "pattern": "^[a-z0-9_]{1,32}$"
+    },
+    "sahne_poz": {
+     "type": "object",
+     "description": "Statik varlığın REF noktasının NED pozu (A2 §3.4 `statik_p_n`, `statik_q_nb`).",
+     "properties": {
+      "konum": {
+       "type": "array",
+       "description": "NED, m.",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 3,
+       "maxItems": 3,
+       "default": [
+        0.0,
+        0.0,
+        0.0
+       ]
+      },
+      "yonelim": {
+       "type": "array",
+       "description": "Gövdeden (varlık) NED'e. Birim kuaterniyon (w, x, y, z), Hamilton (A5-K32).",
+       "items": {
+        "type": "number",
+        "minimum": -1.0000001,
+        "maximum": 1.0000001
+       },
+       "minItems": 4,
+       "maxItems": 4,
+       "default": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {}
+    },
+    "su_optigi": {
+     "type": "object",
+     "description": "Su optiği (A2 §3.4 `ortam`; 07 §2.5). Verilmeyen alan ideal değerle çözümlenir (A5-K101).",
+     "properties": {
+      "beta_d_m": {
+       "type": "array",
+       "description": "R, G, B zayıflama, 1/m.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "beta_b_m": {
+       "type": "array",
+       "description": "R, G, B geri saçılım, 1/m.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "b_sonsuz_rgb_dogrusal": {
+       "type": "array",
+       "description": "Sonsuz uzaklık geri saçılım rengi.",
+       "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "bulaniklik_olcegi": {
+       "type": "number",
+       "description": "İleri saçılım bulanıklığı ölçeği.",
+       "minimum": 0
+      },
+      "surum": {
+       "type": "integer",
+       "description": "Su optiği kalibrasyon sürümü (u32).",
+       "minimum": 1,
+       "maximum": 4294967295,
+       "default": 1
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {}
+    },
+    "isik": {
+     "type": "object",
+     "description": "Güneş ve ortam ışığı (A2 §3.4). Verilmeyen alan A5-K101 değeriyle çözümlenir.",
+     "properties": {
+      "gunes_yonu_n": {
+       "type": "array",
+       "description": "Sahneden güneşe birim vektör, NED.",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "gunes_isinimi_w_m2": {
+       "type": "number",
+       "description": "Yüzeyde güneş ışınımı, W/m².",
+       "minimum": 0
+      },
+      "ortam_isigi_rgb_dogrusal": {
+       "type": "array",
+       "description": "Doğrusal RGB ortam ışığı.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {}
     },
     "derinlik": {
      "type": "number",
@@ -3142,9 +3331,9 @@
       },
       "bilesen_sayisi": {
        "type": "integer",
-       "description": "Bileşen sayısı.",
+       "description": "Bileşen sayısı (A2 §3.4 kapasitesi 256).",
        "minimum": 1,
-       "maximum": 1024,
+       "maximum": 256,
        "default": 64
       }
      },
@@ -3304,13 +3493,19 @@
     },
     "sinif": {
      "type": "string",
-     "description": "Senaryo etiketi (bilgi; A6'ya).",
-     "pattern": "^[a-z][a-z0-9_]{0,31}$"
+     "description": "Algılama kaydının sınıf kodlaması (A5-K113): yalnız kodlama, seçim anlamı yok.",
+     "enum": [
+      "bilinmiyor",
+      "sabit_nesne",
+      "hareketli_nesne",
+      "yapi"
+     ],
+     "default": "bilinmiyor"
     },
     "varlik": {
      "type": "string",
-     "description": "A7 varlık kimliği.",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "description": "A7 `hedef` türündeki varlık kimliği.",
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
     "konum": {
      "type": "array",
@@ -3429,11 +3624,11 @@
      "description": "Öğeler.",
      "items": {
       "type": "object",
-      "description": "Görev öğesi (02 §2.6).",
+      "description": "Görev öğesi: A1 Tablo 3.6a'nın alanları bire bir (A5-K55). Anlam, birim ve aralık A1 Tablo 3.6a'dadır.",
       "properties": {
-       "tur": {
+       "item_type": {
         "type": "string",
-        "description": "Öğe türü.",
+        "description": "A1 Tablo 3.6a `Ad` sütunu (item_type 1–7).",
         "enum": [
          "WAYPOINT",
          "DIVE_TO",
@@ -3441,74 +3636,50 @@
          "HOLD",
          "SCAN_LINES",
          "SCAN_POINT",
-         "WAIT_GNSS",
-         "TARGET_ALIGN"
+         "WAIT_GNSS"
         ]
        },
-       "konum_ne": {
+       "frame": {
+        "type": "string",
+        "description": "NONE | LOCAL | GLOBAL (A1 Tablo 3.6a).",
+        "enum": [
+         "NONE",
+         "LOCAL",
+         "GLOBAL"
+        ]
+       },
+       "p": {
         "type": "array",
-        "description": "Kuzey, doğu, m.",
+        "description": "p[0..3], türe göre anlam ve birim A1 Tablo 3.6a.",
         "items": {
          "type": "number"
         },
-        "minItems": 2,
-        "maxItems": 2
+        "minItems": 4,
+        "maxItems": 4
        },
-       "derinlik": {
-        "type": "number",
-        "description": "m (0 yüzey).",
-        "minimum": 0
-       },
-       "hiz": {
-        "type": "number",
-        "description": "m/s.",
-        "exclusiveMinimum": 0
-       },
-       "kabul_yaricapi": {
-        "type": "number",
-        "description": "m.",
-        "exclusiveMinimum": 0
-       },
-       "sure_ns": {
+       "lat_e7": {
         "type": "integer",
-        "description": "HOLD süresi.",
-        "minimum": 0,
-        "maximum": 9007199254740991
+        "description": "1e-7 derece (A1 tel birimi).",
+        "minimum": -900000000,
+        "maximum": 900000000
        },
-       "kose_a": {
-        "type": "array",
-        "description": "SCAN_LINES alan köşesi (n, e), m.",
-        "items": {
-         "type": "number"
-        },
-        "minItems": 2,
-        "maxItems": 2
+       "lon_e7": {
+        "type": "integer",
+        "description": "1e-7 derece (A1 tel birimi).",
+        "minimum": -1800000000,
+        "maximum": 1800000000
        },
-       "kose_b": {
-        "type": "array",
-        "description": "SCAN_LINES karşı köşe (n, e), m.",
-        "items": {
-         "type": "number"
-        },
-        "minItems": 2,
-        "maxItems": 2
-       },
-       "hat_araligi": {
+       "north_m": {
         "type": "number",
-        "description": "m.",
-        "exclusiveMinimum": 0
+        "description": "m."
        },
-       "tur_sayisi": {
-        "type": "integer",
-        "description": "SCAN_POINT tam tur sayısı.",
-        "minimum": 1,
-        "maximum": 100
+       "east_m": {
+        "type": "number",
+        "description": "m."
        },
-       "zaman_asimi_ns": {
-        "type": "integer",
-        "description": "Öğe zaman aşımı (duvar saati).",
-        "maximum": 9007199254740991,
-        "exclusiveMinimum": 0
+       "depth": {
+        "type": "number",
+        "description": "m, aşağı pozitif."
        }
       },
       "patternProperties": {
@@ -3518,7 +3689,14 @@
       },
       "additionalProperties": false,
       "required": [
-       "tur"
+       "item_type",
+       "frame",
+       "p",
+       "lat_e7",
+       "lon_e7",
+       "north_m",
+       "east_m",
+       "depth"
       ]
      },
      "minItems": 1,
@@ -4557,7 +4735,7 @@
         "pattern": "^x_"
        },
        {
-        "pattern": "^(?!x_)[A-Za-z0-9_.:/-]{1,128}$"
+        "pattern": "^(?!x_)[a-z0-9_]{1,32}$"
        }
       ]
      },
@@ -4572,30 +4750,66 @@
       "properties": {
        "akustik": {
         "type": "object",
-        "description": "Akustik malzeme geçersiz kılması (05 §2.4.1).",
+        "description": "Akustik malzeme geçersiz kılması: A7 §3.4 alan adları, değer kümeleri ve aralıkları aynen.",
         "properties": {
-         "geri_sacilim": {
+         "geri_sacilim_mu": {
           "type": "number",
-          "description": "μ, birimsiz.",
-          "minimum": 0
+          "description": "μ, birimsiz; 0 < μ ≤ 1.",
+          "maximum": 1,
+          "exclusiveMinimum": 0
          },
          "gelis_yasasi": {
           "type": "string",
-          "description": "lambert_cos2 | lambert_cos.",
+          "description": "lambert_cos2 | cos1.",
           "enum": [
            "lambert_cos2",
-           "lambert_cos"
+           "cos1"
           ]
          },
-         "spekuler_yansima": {
+         "ayna_yansima_rs": {
           "type": "number",
-          "description": "R_s.",
+          "description": "R_s; −1 ≤ R_s ≤ 1.",
           "minimum": -1,
+          "maximum": 1
+         },
+         "puruzluluk_gamma_p": {
+          "type": "number",
+          "description": "γ_p; 0 ≤ γ_p ≤ 1.",
+          "minimum": 0,
+          "maximum": 1
+         }
+        },
+        "patternProperties": {
+         "^x_": {
+          "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+         }
+        },
+        "additionalProperties": false
+       },
+       "optik": {
+        "type": "object",
+        "description": "Optik malzeme geçersiz kılması: A7 §3.4 ve A2 §3.4 `MalzemeOptik` alanları.",
+        "properties": {
+         "taban_rengi_dogrusal": {
+          "type": "array",
+          "description": "RGBA, doğrusal.",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "minItems": 4,
+          "maxItems": 4
+         },
+         "metaliklik": {
+          "type": "number",
+          "description": "0–1.",
+          "minimum": 0,
           "maximum": 1
          },
          "puruzluluk": {
           "type": "number",
-          "description": "γ_p.",
+          "description": "0–1.",
           "minimum": 0,
           "maximum": 1
          }
@@ -4682,17 +4896,27 @@
     },
     "kayit": {
      "type": "string",
-     "description": "kapali = yalnızca olaylar, sade = telemetri, tam.",
+     "description": "Kayıt kademesi (A6 değer kümesi; emniyet kaydı her kademede).",
      "enum": [
-      "kapali",
-      "sade",
+      "olaylar",
+      "telemetri",
       "tam"
      ],
-     "default": "sade"
+     "default": "telemetri"
     },
-    "kamera_kare_kaydi": {
+    "kamera_kareleri": {
+     "type": "string",
+     "description": "Kamera kare kaydı (A6 değer kümesi).",
+     "enum": [
+      "kapali",
+      "pencereli",
+      "surekli"
+     ],
+     "default": "kapali"
+    },
+    "kamera_gerekli": {
      "type": "boolean",
-     "description": "Kare kaydı ayrı bayrak (08 §2.6.1).",
+     "description": "Çalıştırma kamerayı gerektirir (A5-K80).",
      "default": false
     },
     "sonar_tam": {
@@ -5738,13 +5962,166 @@
       "properties": {
        "ayar": {
         "type": "object",
-        "description": "Kamera sensör tarafı (05 §2.5). Çözünürlük ve hız A8. Verilmeyen anahtarda ürün profilinin değeri kullanılır (A5-K40).",
+        "description": "Kamera (U13; aralıkların sahibi A2 §3.6). Çözünürlük ve hız kamera kademesinden (A2 §6). Verilmeyen anahtarda ürün profilinin değeri kullanılır (A5-K40).",
         "properties": {
          "l_sonrasi_ns": {
           "type": "integer",
           "description": "Pozlama sonu → teslim (K).",
           "minimum": 0,
           "maximum": 9007199254740991
+         },
+         "l_alg_ns": {
+          "type": "integer",
+          "description": "L_alg: algılama sonucunun ek gecikmesi (A8 §6.1).",
+          "minimum": 5000000,
+          "maximum": 500000000
+         },
+         "ic_tam": {
+          "type": "object",
+          "description": "İç parametreler, tam kademe (640 × 480).",
+          "properties": {
+           "fx": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "fy": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "cx": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           },
+           "cy": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "fx",
+           "fy",
+           "cx",
+           "cy"
+          ]
+         },
+         "ic_sade": {
+          "type": "object",
+          "description": "İç parametreler, sade kademe (320 × 240).",
+          "properties": {
+           "fx": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "fy": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "cx": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           },
+           "cy": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "fx",
+           "fy",
+           "cx",
+           "cy"
+          ]
+         },
+         "bozulma_modeli": {
+          "type": "string",
+          "description": "yok | brown_conrady (A2 §3.6 kodları 0, 1).",
+          "enum": [
+           "yok",
+           "brown_conrady"
+          ]
+         },
+         "bozulma": {
+          "type": "array",
+          "description": "k1 k2 p1 p2 k3; modelin kullanmadığı katsayılar 0.",
+          "items": {
+           "type": "number"
+          },
+          "minItems": 5,
+          "maxItems": 5
+         },
+         "pozlama_ns": {
+          "type": "integer",
+          "description": "Nominal pozlama süresi; A2 §3.6: pozitif, çift, ≤ 1 s.",
+          "minimum": 2,
+          "maximum": 1000000000
+         },
+         "yakin_m": {
+          "type": "number",
+          "description": "Yakın kırpma uzaklığı, m.",
+          "exclusiveMinimum": 0
+         },
+         "uzak_m": {
+          "type": "number",
+          "description": "Uzak kırpma uzaklığı, m.",
+          "exclusiveMinimum": 0
+         },
+         "kalibrasyon_surumu": {
+          "type": "integer",
+          "description": "Kalibrasyon sürümü (A2 §3.6: 1…65535; A8 `calib_ver`).",
+          "minimum": 1,
+          "maximum": 65535
+         },
+         "nominal_montaj": {
+          "type": "object",
+          "description": "Otopilotun ve A8 bileşeninin gördüğü montaj (A8-K53); yoksa fizik montajının kopyası (A5-K98).",
+          "properties": {
+           "konum": {
+            "type": "array",
+            "description": "O_b'ye göre, m; her bileşen |·| ≤ 10 (A8-K36).",
+            "items": {
+             "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+           },
+           "yonelim": {
+            "type": "array",
+            "description": "Sensörden (S, x ileri) gövdeye. Birim kuaterniyon (w, x, y, z), Hamilton (A5-K32).",
+            "items": {
+             "type": "number",
+             "minimum": -1.0000001,
+             "maximum": 1.0000001
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "konum",
+           "yonelim"
+          ]
          }
         },
         "patternProperties": {
@@ -5938,46 +6315,25 @@
     }
    ]
   },
-  "otopilot_cozum": {
+  "varliklar_cozum": {
    "type": "object",
-   "description": "Kartın nominal modeli ve kalıcı parametreleri (02 §3.6; A5-K50..K53).",
+   "description": "Varlık kümesi seçimi (A7 §2, K01–K07; A5-K19).",
    "properties": {
-    "nominal": {
+    "kume": {
      "type": "string",
-     "description": "fizik: fizikten türetilir ve açık yazılır; acik: yalnız verilen değerler.",
-     "enum": [
-      "fizik",
-      "acik"
-     ],
-     "default": "fizik"
+     "description": "A7 `kume_kimligi`; küme yolu `assets/<kume>/manifest.json`.",
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
-    "parametreler": {
-     "type": "object",
-     "description": "A4 parametre adı → değer. x_ önekli anahtar girdi değil deneysel alandır (A5-K07).",
-     "propertyNames": {
-      "anyOf": [
-       {
-        "pattern": "^x_"
-       },
-       {
-        "pattern": "^(?!x_)[A-Za-z0-9_]{1,16}$"
-       }
-      ]
-     },
-     "patternProperties": {
-      "^x_": {
-       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
-      }
-     },
-     "additionalProperties": {
-      "type": [
-       "number",
-       "boolean"
-      ],
-      "description": "A4 parametre değeri (skaler)."
-     },
-     "maxProperties": 1024,
-     "default": {}
+    "kume_surumu": {
+     "type": "integer",
+     "description": "Beklenen `kume_surumu` (A7-K07); verilirse eşit olmalı.",
+     "minimum": 1,
+     "maximum": 2147483647
+    },
+    "manifest_ozeti": {
+     "type": "string",
+     "description": "Beklenen manifest özeti (A7-K05), 64 küçük onaltılık.",
+     "pattern": "^[0-9a-f]{64}$"
     }
    },
    "patternProperties": {
@@ -5987,7 +6343,63 @@
    },
    "additionalProperties": false,
    "required": [
-    "nominal",
+    "kume"
+   ]
+  },
+  "otopilot_cozum": {
+   "type": "object",
+   "description": "Kartın kalıcı parametreleri: yalnız açık çiftler (02 §3.6; A5-K50, K52, K53).",
+   "properties": {
+    "parametreler": {
+     "type": "array",
+     "description": "Parametre çiftleri; kimlik tekil.",
+     "items": {
+      "type": "object",
+      "description": "Açık (kimlik, değer) çifti (A5-K52).",
+      "properties": {
+       "kimlik": {
+        "type": "integer",
+        "description": "A4 parametre kimliği (`ida_param_value_t.id`, u16).",
+        "minimum": 0,
+        "maximum": 65535
+       },
+       "tip": {
+        "type": "string",
+        "description": "i32 | u32 | f32 (A4 `IDA_PT_*`).",
+        "enum": [
+         "i32",
+         "u32",
+         "f32"
+        ]
+       },
+       "deger": {
+        "type": "number",
+        "description": "Değer; tipine göre A5-K52."
+       }
+      },
+      "patternProperties": {
+       "^x_": {
+        "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "deger",
+       "kimlik",
+       "tip"
+      ]
+     },
+     "maxItems": 1024,
+     "default": []
+    }
+   },
+   "patternProperties": {
+    "^x_": {
+     "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+    }
+   },
+   "additionalProperties": false,
+   "required": [
     "parametreler"
    ]
   },
@@ -6078,8 +6490,152 @@
     },
     "sahne": {
      "type": "string",
-     "description": "A7 sahne kimliği.",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "description": "A7 `statik` türündeki varlık kimliği (A5-K19).",
+     "pattern": "^[a-z0-9_]{1,32}$"
+    },
+    "sahne_poz": {
+     "type": "object",
+     "description": "Statik varlığın REF noktasının NED pozu (A2 §3.4 `statik_p_n`, `statik_q_nb`).",
+     "properties": {
+      "konum": {
+       "type": "array",
+       "description": "NED, m.",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 3,
+       "maxItems": 3,
+       "default": [
+        0.0,
+        0.0,
+        0.0
+       ]
+      },
+      "yonelim": {
+       "type": "array",
+       "description": "Gövdeden (varlık) NED'e. Birim kuaterniyon (w, x, y, z), Hamilton (A5-K32).",
+       "items": {
+        "type": "number",
+        "minimum": -1.0000001,
+        "maximum": 1.0000001
+       },
+       "minItems": 4,
+       "maxItems": 4,
+       "default": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {},
+     "required": [
+      "konum",
+      "yonelim"
+     ]
+    },
+    "su_optigi": {
+     "type": "object",
+     "description": "Su optiği (A2 §3.4 `ortam`; 07 §2.5). Verilmeyen alan ideal değerle çözümlenir (A5-K101).",
+     "properties": {
+      "beta_d_m": {
+       "type": "array",
+       "description": "R, G, B zayıflama, 1/m.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "beta_b_m": {
+       "type": "array",
+       "description": "R, G, B geri saçılım, 1/m.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "b_sonsuz_rgb_dogrusal": {
+       "type": "array",
+       "description": "Sonsuz uzaklık geri saçılım rengi.",
+       "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "bulaniklik_olcegi": {
+       "type": "number",
+       "description": "İleri saçılım bulanıklığı ölçeği.",
+       "minimum": 0
+      },
+      "surum": {
+       "type": "integer",
+       "description": "Su optiği kalibrasyon sürümü (u32).",
+       "minimum": 1,
+       "maximum": 4294967295,
+       "default": 1
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {},
+     "required": [
+      "surum"
+     ]
+    },
+    "isik": {
+     "type": "object",
+     "description": "Güneş ve ortam ışığı (A2 §3.4). Verilmeyen alan A5-K101 değeriyle çözümlenir.",
+     "properties": {
+      "gunes_yonu_n": {
+       "type": "array",
+       "description": "Sahneden güneşe birim vektör, NED.",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 3,
+       "maxItems": 3
+      },
+      "gunes_isinimi_w_m2": {
+       "type": "number",
+       "description": "Yüzeyde güneş ışınımı, W/m².",
+       "minimum": 0
+      },
+      "ortam_isigi_rgb_dogrusal": {
+       "type": "array",
+       "description": "Doğrusal RGB ortam ışığı.",
+       "items": {
+        "type": "number",
+        "minimum": 0
+       },
+       "minItems": 3,
+       "maxItems": 3
+      }
+     },
+     "patternProperties": {
+      "^x_": {
+       "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+      }
+     },
+     "additionalProperties": false,
+     "default": {}
     },
     "derinlik": {
      "type": "number",
@@ -6246,9 +6802,9 @@
       },
       "bilesen_sayisi": {
        "type": "integer",
-       "description": "Bileşen sayısı.",
+       "description": "Bileşen sayısı (A2 §3.4 kapasitesi 256).",
        "minimum": 1,
-       "maximum": 1024,
+       "maximum": 256,
        "default": 64
       }
      },
@@ -6431,9 +6987,12 @@
     "dalga",
     "derinlik",
     "hava_yogunlugu",
+    "isik",
     "ruzgar",
     "sahne",
+    "sahne_poz",
     "su",
+    "su_optigi",
     "tur",
     "yercekimi"
    ]
@@ -6450,13 +7009,19 @@
     },
     "sinif": {
      "type": "string",
-     "description": "Senaryo etiketi (bilgi; A6'ya).",
-     "pattern": "^[a-z][a-z0-9_]{0,31}$"
+     "description": "Algılama kaydının sınıf kodlaması (A5-K113): yalnız kodlama, seçim anlamı yok.",
+     "enum": [
+      "bilinmiyor",
+      "sabit_nesne",
+      "hareketli_nesne",
+      "yapi"
+     ],
+     "default": "bilinmiyor"
     },
     "varlik": {
      "type": "string",
-     "description": "A7 varlık kimliği.",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "description": "A7 `hedef` türündeki varlık kimliği.",
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
     "konum": {
      "type": "array",
@@ -6559,6 +7124,7 @@
     "hareket",
     "kimlik",
     "konum",
+    "sinif",
     "varlik",
     "yonelim",
     "yonelim_rastgele"
@@ -6580,11 +7146,11 @@
      "description": "Öğeler.",
      "items": {
       "type": "object",
-      "description": "Görev öğesi (02 §2.6).",
+      "description": "Görev öğesi: A1 Tablo 3.6a'nın alanları bire bir (A5-K55). Anlam, birim ve aralık A1 Tablo 3.6a'dadır.",
       "properties": {
-       "tur": {
+       "item_type": {
         "type": "string",
-        "description": "Öğe türü.",
+        "description": "A1 Tablo 3.6a `Ad` sütunu (item_type 1–7).",
         "enum": [
          "WAYPOINT",
          "DIVE_TO",
@@ -6592,74 +7158,50 @@
          "HOLD",
          "SCAN_LINES",
          "SCAN_POINT",
-         "WAIT_GNSS",
-         "TARGET_ALIGN"
+         "WAIT_GNSS"
         ]
        },
-       "konum_ne": {
+       "frame": {
+        "type": "string",
+        "description": "NONE | LOCAL | GLOBAL (A1 Tablo 3.6a).",
+        "enum": [
+         "NONE",
+         "LOCAL",
+         "GLOBAL"
+        ]
+       },
+       "p": {
         "type": "array",
-        "description": "Kuzey, doğu, m.",
+        "description": "p[0..3], türe göre anlam ve birim A1 Tablo 3.6a.",
         "items": {
          "type": "number"
         },
-        "minItems": 2,
-        "maxItems": 2
+        "minItems": 4,
+        "maxItems": 4
        },
-       "derinlik": {
-        "type": "number",
-        "description": "m (0 yüzey).",
-        "minimum": 0
-       },
-       "hiz": {
-        "type": "number",
-        "description": "m/s.",
-        "exclusiveMinimum": 0
-       },
-       "kabul_yaricapi": {
-        "type": "number",
-        "description": "m.",
-        "exclusiveMinimum": 0
-       },
-       "sure_ns": {
+       "lat_e7": {
         "type": "integer",
-        "description": "HOLD süresi.",
-        "minimum": 0,
-        "maximum": 9007199254740991
+        "description": "1e-7 derece (A1 tel birimi).",
+        "minimum": -900000000,
+        "maximum": 900000000
        },
-       "kose_a": {
-        "type": "array",
-        "description": "SCAN_LINES alan köşesi (n, e), m.",
-        "items": {
-         "type": "number"
-        },
-        "minItems": 2,
-        "maxItems": 2
+       "lon_e7": {
+        "type": "integer",
+        "description": "1e-7 derece (A1 tel birimi).",
+        "minimum": -1800000000,
+        "maximum": 1800000000
        },
-       "kose_b": {
-        "type": "array",
-        "description": "SCAN_LINES karşı köşe (n, e), m.",
-        "items": {
-         "type": "number"
-        },
-        "minItems": 2,
-        "maxItems": 2
-       },
-       "hat_araligi": {
+       "north_m": {
         "type": "number",
-        "description": "m.",
-        "exclusiveMinimum": 0
+        "description": "m."
        },
-       "tur_sayisi": {
-        "type": "integer",
-        "description": "SCAN_POINT tam tur sayısı.",
-        "minimum": 1,
-        "maximum": 100
+       "east_m": {
+        "type": "number",
+        "description": "m."
        },
-       "zaman_asimi_ns": {
-        "type": "integer",
-        "description": "Öğe zaman aşımı (duvar saati).",
-        "maximum": 9007199254740991,
-        "exclusiveMinimum": 0
+       "depth": {
+        "type": "number",
+        "description": "m, aşağı pozitif."
        }
       },
       "patternProperties": {
@@ -6669,7 +7211,14 @@
       },
       "additionalProperties": false,
       "required": [
-       "tur"
+       "depth",
+       "east_m",
+       "frame",
+       "item_type",
+       "lat_e7",
+       "lon_e7",
+       "north_m",
+       "p"
       ]
      },
      "minItems": 1,
@@ -7800,7 +8349,7 @@
         "pattern": "^x_"
        },
        {
-        "pattern": "^(?!x_)[A-Za-z0-9_.:/-]{1,128}$"
+        "pattern": "^(?!x_)[a-z0-9_]{1,32}$"
        }
       ]
      },
@@ -7815,30 +8364,66 @@
       "properties": {
        "akustik": {
         "type": "object",
-        "description": "Akustik malzeme geçersiz kılması (05 §2.4.1).",
+        "description": "Akustik malzeme geçersiz kılması: A7 §3.4 alan adları, değer kümeleri ve aralıkları aynen.",
         "properties": {
-         "geri_sacilim": {
+         "geri_sacilim_mu": {
           "type": "number",
-          "description": "μ, birimsiz.",
-          "minimum": 0
+          "description": "μ, birimsiz; 0 < μ ≤ 1.",
+          "maximum": 1,
+          "exclusiveMinimum": 0
          },
          "gelis_yasasi": {
           "type": "string",
-          "description": "lambert_cos2 | lambert_cos.",
+          "description": "lambert_cos2 | cos1.",
           "enum": [
            "lambert_cos2",
-           "lambert_cos"
+           "cos1"
           ]
          },
-         "spekuler_yansima": {
+         "ayna_yansima_rs": {
           "type": "number",
-          "description": "R_s.",
+          "description": "R_s; −1 ≤ R_s ≤ 1.",
           "minimum": -1,
+          "maximum": 1
+         },
+         "puruzluluk_gamma_p": {
+          "type": "number",
+          "description": "γ_p; 0 ≤ γ_p ≤ 1.",
+          "minimum": 0,
+          "maximum": 1
+         }
+        },
+        "patternProperties": {
+         "^x_": {
+          "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+         }
+        },
+        "additionalProperties": false
+       },
+       "optik": {
+        "type": "object",
+        "description": "Optik malzeme geçersiz kılması: A7 §3.4 ve A2 §3.4 `MalzemeOptik` alanları.",
+        "properties": {
+         "taban_rengi_dogrusal": {
+          "type": "array",
+          "description": "RGBA, doğrusal.",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "minItems": 4,
+          "maxItems": 4
+         },
+         "metaliklik": {
+          "type": "number",
+          "description": "0–1.",
+          "minimum": 0,
           "maximum": 1
          },
          "puruzluluk": {
           "type": "number",
-          "description": "γ_p.",
+          "description": "0–1.",
           "minimum": 0,
           "maximum": 1
          }
@@ -7928,17 +8513,27 @@
     },
     "kayit": {
      "type": "string",
-     "description": "kapali = yalnızca olaylar, sade = telemetri, tam.",
+     "description": "Kayıt kademesi (A6 değer kümesi; emniyet kaydı her kademede).",
      "enum": [
-      "kapali",
-      "sade",
+      "olaylar",
+      "telemetri",
       "tam"
      ],
-     "default": "sade"
+     "default": "telemetri"
     },
-    "kamera_kare_kaydi": {
+    "kamera_kareleri": {
+     "type": "string",
+     "description": "Kamera kare kaydı (A6 değer kümesi).",
+     "enum": [
+      "kapali",
+      "pencereli",
+      "surekli"
+     ],
+     "default": "kapali"
+    },
+    "kamera_gerekli": {
      "type": "boolean",
-     "description": "Kare kaydı ayrı bayrak (08 §2.6.1).",
+     "description": "Çalıştırma kamerayı gerektirir (A5-K80).",
      "default": false
     },
     "sonar_tam": {
@@ -7985,7 +8580,8 @@
    "required": [
     "gorunum",
     "kamera",
-    "kamera_kare_kaydi",
+    "kamera_gerekli",
+    "kamera_kareleri",
     "kayit",
     "sonar"
    ],
@@ -9166,13 +9762,166 @@
       "properties": {
        "ayar": {
         "type": "object",
-        "description": "Kamera sensör tarafı (05 §2.5). Çözünürlük ve hız A8. Verilmeyen anahtarda ürün profilinin değeri kullanılır (A5-K40).",
+        "description": "Kamera (U13; aralıkların sahibi A2 §3.6). Çözünürlük ve hız kamera kademesinden (A2 §6). Verilmeyen anahtarda ürün profilinin değeri kullanılır (A5-K40).",
         "properties": {
          "l_sonrasi_ns": {
           "type": "integer",
           "description": "Pozlama sonu → teslim (K).",
           "minimum": 0,
           "maximum": 9007199254740991
+         },
+         "l_alg_ns": {
+          "type": "integer",
+          "description": "L_alg: algılama sonucunun ek gecikmesi (A8 §6.1).",
+          "minimum": 5000000,
+          "maximum": 500000000
+         },
+         "ic_tam": {
+          "type": "object",
+          "description": "İç parametreler, tam kademe (640 × 480).",
+          "properties": {
+           "fx": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "fy": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "cx": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           },
+           "cy": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "cx",
+           "cy",
+           "fx",
+           "fy"
+          ]
+         },
+         "ic_sade": {
+          "type": "object",
+          "description": "İç parametreler, sade kademe (320 × 240).",
+          "properties": {
+           "fx": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "fy": {
+            "type": "number",
+            "description": "piksel.",
+            "exclusiveMinimum": 0
+           },
+           "cx": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           },
+           "cy": {
+            "type": "number",
+            "description": "piksel; A2 §3.6 aralığı."
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "cx",
+           "cy",
+           "fx",
+           "fy"
+          ]
+         },
+         "bozulma_modeli": {
+          "type": "string",
+          "description": "yok | brown_conrady (A2 §3.6 kodları 0, 1).",
+          "enum": [
+           "yok",
+           "brown_conrady"
+          ]
+         },
+         "bozulma": {
+          "type": "array",
+          "description": "k1 k2 p1 p2 k3; modelin kullanmadığı katsayılar 0.",
+          "items": {
+           "type": "number"
+          },
+          "minItems": 5,
+          "maxItems": 5
+         },
+         "pozlama_ns": {
+          "type": "integer",
+          "description": "Nominal pozlama süresi; A2 §3.6: pozitif, çift, ≤ 1 s.",
+          "minimum": 2,
+          "maximum": 1000000000
+         },
+         "yakin_m": {
+          "type": "number",
+          "description": "Yakın kırpma uzaklığı, m.",
+          "exclusiveMinimum": 0
+         },
+         "uzak_m": {
+          "type": "number",
+          "description": "Uzak kırpma uzaklığı, m.",
+          "exclusiveMinimum": 0
+         },
+         "kalibrasyon_surumu": {
+          "type": "integer",
+          "description": "Kalibrasyon sürümü (A2 §3.6: 1…65535; A8 `calib_ver`).",
+          "minimum": 1,
+          "maximum": 65535
+         },
+         "nominal_montaj": {
+          "type": "object",
+          "description": "Otopilotun ve A8 bileşeninin gördüğü montaj (A8-K53); yoksa fizik montajının kopyası (A5-K98).",
+          "properties": {
+           "konum": {
+            "type": "array",
+            "description": "O_b'ye göre, m; her bileşen |·| ≤ 10 (A8-K36).",
+            "items": {
+             "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+           },
+           "yonelim": {
+            "type": "array",
+            "description": "Sensörden (S, x ileri) gövdeye. Birim kuaterniyon (w, x, y, z), Hamilton (A5-K32).",
+            "items": {
+             "type": "number",
+             "minimum": -1.0000001,
+             "maximum": 1.0000001
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          },
+          "patternProperties": {
+           "^x_": {
+            "description": "Deneysel alan: uyarıyla kabul edilir, modeller okumaz; değer türü A5-K97."
+           }
+          },
+          "additionalProperties": false,
+          "required": [
+           "konum",
+           "yonelim"
+          ]
          }
         },
         "patternProperties": {
@@ -9182,6 +9931,10 @@
         },
         "additionalProperties": false,
         "required": [
+         "bozulma",
+         "bozulma_modeli",
+         "kalibrasyon_surumu",
+         "l_alg_ns",
          "l_sonrasi_ns"
         ]
        },
@@ -9423,7 +10176,7 @@
     "varlik": {
      "type": "string",
      "description": "A7 varlık kimliği (BUOY_*, COL_*, SON_* ağları).",
-     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+     "pattern": "^[a-z0-9_]{1,32}$"
     },
     "referans_noktasi": {
      "type": "string",
@@ -10515,6 +11268,11 @@
        "type": "number",
        "description": "Bağıl ayrılma hızı v₀, m/s.",
        "const": 2.0
+      },
+      "varlik": {
+       "type": "string",
+       "description": "A7 `torpido` türündeki varlık kimliği (sayısal değer değildir; A5-K19).",
+       "pattern": "^[a-z0-9_]{1,32}$"
       }
      },
      "patternProperties": {
@@ -10533,7 +11291,8 @@
       "kanat_x",
       "kutle",
       "r_g",
-      "surukleme_katsayisi"
+      "surukleme_katsayisi",
+      "varlik"
      ]
     },
     "firlaticilar": {
