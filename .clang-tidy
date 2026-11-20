@@ -1,0 +1,19 @@
+# İDA clang-tidy yapılandırması (09 §2.8; W2-depo §4). tools/denetim/statik-analiz.sh bu
+# dosyayı açıkça kullanır (--config-file); düzenleyiciler de kökten bulur.
+#
+# Politika: bugprone-*, cert-*, clang-analyzer-*; her uyarı hatadır.
+#
+# Kapatılan tek denetim (mimar kararı 2026-11-20):
+#   clang-analyzer-optin.performance.Padding — A4 port yapılarının (ida_in_t, ida_out_t)
+#   alan sırası sözleşmedir ve yerleşimi static_assert ile sabittir; denetim dolguyu
+#   azaltmak için alan sırasını değiştirmeyi önerir, yani sözleşmeyi değiştirmeyi ister.
+#   İlk CI koşusunda (PR #8, Windows) port.h:530 ve port.h:846 için yalnız bu denetim
+#   bulgu verdi. Başka denetim kapatılmaz.
+Checks: >-
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*core[/\\](include|src)[/\\].*'

@@ -15,8 +15,10 @@
 # port.h ve algilama_kaydi.h dahil). Firmware'in GCC -fanalyzer'ı fw-debug ön ayarında,
 # MSVC /analyze IDA_MSVC_ANALYZE seçeneğiyle derlemenin içindedir.
 #
-# Politika: clang-tidy bugprone-*, cert-*, clang-analyzer-* (uyarı hatadır); cppcheck
-# warning, style, performance, portability. "MISRA uyumlu" iddiası yoktur (09 §2.8).
+# Politika: clang-tidy denetimleri ve kapatılan tek denetim kökteki .clang-tidy dosyasındadır
+# (bugprone-*, cert-*, clang-analyzer-*; uyarı hatadır). cppcheck: warning, style,
+# performance, portability; hedefin <float.h> değerleri tools/denetim/cppcheck-hedef.h ile
+# --include olarak verilir (gerekçesi o dosyada). "MISRA uyumlu" iddiası yoktur (09 §2.8).
 # Çıkış: 0 bulgu yok, 1 bulgu var, 70 araç yok ya da çalışmadı.
 
 set -u
@@ -59,10 +61,7 @@ zaman() { date +%s; }
 # ---- clang-tidy ----------------------------------------------------------------------
 ct_surum=$("$clang_tidy" --version 2>&1 | tr -d '\r' | grep -m1 -i 'version' | sed 's/^ *//')
 t0=$(zaman)
-"$clang_tidy" --quiet \
-    --checks='-*,bugprone-*,cert-*,clang-analyzer-*' \
-    --warnings-as-errors='*' \
-    --header-filter='.*core[/\\](include|src)[/\\].*' \
+"$clang_tidy" --quiet --config-file=.clang-tidy \
     "${kaynaklar[@]}" -- "${derleyici_args[@]}" >"$gecici/clang-tidy.txt" 2>&1
 ct_rc=$?
 t1=$(zaman)
@@ -74,6 +73,7 @@ t2=$(zaman)
 "$cppcheck" --quiet --std=c11 --language=c \
     --enable=warning,style,performance,portability \
     --inline-suppr --suppress=missingIncludeSystem \
+    --include=tools/denetim/cppcheck-hedef.h \
     --error-exitcode=1 \
     --template='{file}:{line}:{column}: {severity}: {message} [{id}]' \
     -Icore/include -Icore/src \
@@ -106,7 +106,7 @@ fi
 
 # ---- Karşı örnek: araçlar bilerek hatalı dosyada bulgu üretmeli ------------------------
 deneme=tools/denetim/deneme/statik/hatali.c
-"$clang_tidy" --quiet --checks='-*,bugprone-*,cert-*,clang-analyzer-*' \
+"$clang_tidy" --quiet --config-file=.clang-tidy \
     "$deneme" -- "${derleyici_args[@]}" >"$gecici/ct-deneme.txt" 2>&1
 ct_deneme=$(grep -c -E '(warning|error): ' "$gecici/ct-deneme.txt")
 "$cppcheck" --quiet --std=c11 --language=c --enable=warning,style,performance,portability \
