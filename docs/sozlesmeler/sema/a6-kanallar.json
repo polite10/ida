@@ -23,6 +23,7 @@
     "u16": "2 bayt isaretsiz, kucuk uclu",
     "u32": "4 bayt isaretsiz, kucuk uclu",
     "u64": "8 bayt isaretsiz, kucuk uclu",
+    "i32": "4 bayt ikiye tumleyen, kucuk uclu",
     "i64": "8 bayt ikiye tumleyen, kucuk uclu",
     "f32": "IEEE-754 binary32, kucuk uclu",
     "f64": "IEEE-754 binary64, kucuk uclu",
@@ -207,10 +208,343 @@
     ],
     "yuk_sayac_gercek_zaman": [
       {
-        "ad": "son_tarih_ihlali",
+        "ad": "parti_gonderilen",
         "tip": "u64",
         "birim": "-",
-        "anlam": "adımın son tarihinden herhangi bir miktar geç bitmesi (04 §2.11)"
+        "anlam": "gönderilen TF sayısı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "parti_kacirildi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "uygulama anında yuvası tamamlanmamış ve kaçırılan parti; birleştirilen dahil (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "parti_kacirildi_birlesik",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "bunların sonradan gelen bir yanıtın n_merged'i kapsadığı kısmi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "bariyer_bekleme",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "bariyerde beklenen yuva sayısı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "gercek_zaman_kaymasi_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "bariyer beklemelerinin toplam süresi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "gercek_zaman_kaymasi_en_buyuk_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "en uzun tek bariyer beklemesi (A1'de `gercek_zaman_kaymasi_ns` adinin \"en büyük\" değeri; ayrı alan olduğu için sonek aldı) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "tf_gec_yazim_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "TF yazım başlangıcının `W(t_n)`'den en büyük gecikmesi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_ret_seq_disi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sıra dışı yanıt reddi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_ret_yinelenen",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "yinelenen yanıt reddi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_ret_gec",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "uygulama anı geçmiş yanıt reddi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_ret_oturum",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "oturum dışı yanıt reddi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_iptal_esz",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "eşzamansız güvenli çıktının iptal ettiği yuva (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "esz_guvenli_uygulanan",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "uygulanan eşzamansız güvenli çıktı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "komut_suresi_doldu",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kullanım süresi dolup nötre geçiş (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "olay_alinan",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "yeni olay (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "olay_gec",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "geç uygulanmaya çalışılan olay (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "olay_eksik",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "yuvası n_events tamamlanmadan kapanan olay (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "olay_sonuc",
+        "tip": "u64",
+        "adet": 6,
+        "birim": "-",
+        "anlam": "sonuç kodu başına olay sayacı; sıra `APPLIED`, `DUPLICATE`, `REJ_EXPIRED`, `REJ_SAFE`, `REJ_TUBE_EMPTY`, `REJ_SESSION` (olay_sonuc_<kod>) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "komut_birlestirildi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim'de birleştirilen daraltıcı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "komut_ertelendi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sonraki pencereye kalan toplu komut (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "komut_sonucsuz",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "oturum bittiği için sonucu gelmeyen komut (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "ping360_seyreltildi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "atilan Ping360 satırı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "ping360_gecikme_en_buyuk",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "t_hazir'dan teslim partisine en büyük gecikme (periyot) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "pencere_tasma",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kritik ve atanmis üyelerin B_pencere'yi astigi pencere (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_crc_err",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının çerçeve hatası (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_resync_bytes",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının çerçeve dışı atilan baytı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_unknown_msgid",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının bilinmeyen kimlikli çerçevesi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_bad_len",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının len hatası (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_wrong_sys",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının sysid/compid hatası (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_iflag",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının incompat_flags hatası (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_mav1",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının MAVLink 1 çerçevesi (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "rx_seq_gap",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim alıcısının başlık seq boşluğu (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "oturum_kurulan",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kurulan oturum (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "oturum_kopma",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kopan oturum (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "beklenmeyen_sifirlama",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kartın beklenmeyen sıfırlanması (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "calistirma_gecersiz",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "çalıştırma zamanlama bakımından geçersiz (A1-K79) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "neden_bitleri",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1-K79 neden bitleri; bit numaralari A3 Tablo 4.8 (0-11) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "son_tarih_kacirildi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "yuvayı tamamlayan çerçevenin D_n'den sonra alınması (A1-K108) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "sim_gecikmesi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim'in fizik adımını planlanan duvar anından sonra hesaplaması (A1-K108) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yanit_ret_eski_uretim",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "out_seq'i artmayan sürekli çıktı (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "olay_rev_ret",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "safety_rev damgasi güncel olmadığı için REJ_SAFE alan izin acan olay (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "sonuc_kuyrugu_en_buyuk",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "olay sonucu kuyruğunun en büyük doluluğu (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "kritik_erteleme",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "B_krit yüzünden kayan kritik üye (A1-K113) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "kritik_erteleme_en_buyuk",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "en büyük kritik erteleme (parti) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "cagri_izi_eksik",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "gelmeyen IDA_CALL_TRACE (A1-K95) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "yapilandirma_ret",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A1-K104 ile reddedilen yapılandırma; ayrıntı `yapilandirma_reddedildi` olayında (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "cagri_cakismasi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "CALL_CONFLICT bayrakli parti (A1-K117) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "sonuc_talebi_atildi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "yer olmadığı için yanıtlanmayan saklı sonuç talebi (A1-K111) (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "komut_kovasi_bekleme",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "kova yüzünden bekleyen komut (A1 Tablo 3.11a)"
+      },
+      {
+        "ad": "emniyet_rev_doydu",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "emniyet revizyonu doygunluğa ulaştı (A1 Tablo 3.11a; iskelet §3.2)"
+      },
+      {
+        "ad": "mesaj_retleri",
+        "tip": "dizi",
+        "sayac": "u8",
+        "azami": 64,
+        "birim": "-",
+        "anlam": "mesaj başına kart çerçevesi retleri; yalnız sıfırdan büyük olanlar, mesaj kimliği sırasıyla",
+        "oge": [
+          {
+            "ad": "mesaj_kimligi",
+            "tip": "u32",
+            "birim": "-",
+            "anlam": "reddedilen kart çerçevesinin A1 mesaj kimliği"
+          },
+          {
+            "ad": "alan_ret",
+            "tip": "u64",
+            "birim": "-",
+            "anlam": "alan_ret_<mesaj> (A1 Tablo 3.11a, Tablo 4.6)"
+          },
+          {
+            "ad": "bag_ret",
+            "tip": "u64",
+            "birim": "-",
+            "anlam": "bag_ret_<mesaj> (A1 Tablo 3.11a, Tablo 4.6)"
+          }
+        ]
+      },
+      {
+        "ad": "adim_son_tarih_ihlali",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "sim fizik adımının son tarihinden geç bitmesi (04 §2.11)"
       },
       {
         "ad": "kacirilan_adim",
@@ -222,67 +556,7 @@
         "ad": "azami_adim_gecikmesi_ns",
         "tip": "i64",
         "birim": "ns",
-        "anlam": "en büyük adım gecikmesi"
-      },
-      {
-        "ad": "kacirilan_parti",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "iskelet §4: uygulama anında yuvası boş kalıp 'kaçırıldı' kapanan parti"
-      },
-      {
-        "ad": "gec_yanit_bekletildi",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "bariyer kipinde L_act anına yetişmeyip bekleme sınırı içinde gelen ve uygulanan yanıt"
-      },
-      {
-        "ad": "gercek_zaman_kaymasi_ns",
-        "tip": "i64",
-        "birim": "ns",
-        "anlam": "bariyer beklemelerinin toplam süresi (iskelet §4)"
-      },
-      {
-        "ad": "azami_bariyer_beklemesi_ns",
-        "tip": "i64",
-        "birim": "ns",
-        "anlam": "en uzun tek bariyer beklemesi"
-      },
-      {
-        "ad": "ret_yinelenen_yanit",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "aynı sıra numarasıyla ikinci kez gelen yanıt (iskelet §4)"
-      },
-      {
-        "ad": "ret_gec_yanit",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "uygulama anı geçmiş sıra numarasına ait yanıt (iskelet §4)"
-      },
-      {
-        "ad": "komut_omru_doldu",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "kullanım süresi dolup nötr duruma geçiş (iskelet §4)"
-      },
-      {
-        "ad": "parti_eksik",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "06 §4; tanım A1"
-      },
-      {
-        "ad": "bulk_drop",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "06 §4; tanım A1"
-      },
-      {
-        "ad": "ping360_eksik",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "06 §4; tanım A1"
+        "anlam": "en büyük fizik adımı gecikmesi (04 §2.11)"
       },
       {
         "ad": "sonar_gec",
@@ -303,28 +577,28 @@
         "anlam": "05 §4 teslim kuyruğu taşması"
       },
       {
-        "ad": "gec_olay",
+        "ad": "donma_onceki_cikti_yok",
         "tip": "u64",
         "birim": "-",
-        "anlam": "06 §4; tanım A1"
+        "anlam": "A5 Tablo 3.10-A donma arıza sayacı"
       },
       {
-        "ad": "es_zamansiz_guvenli_cikti",
+        "ad": "atama_celiskisi",
         "tip": "u64",
         "birim": "-",
-        "anlam": "06 §4; tanım A1"
+        "anlam": "A5-K63 atama çelişkisi sayısı"
       },
       {
-        "ad": "eski_oturum",
+        "ad": "gevsetme_reddedildi",
         "tip": "u64",
         "birim": "-",
-        "anlam": "06 §4 oturum dışı çerçeve"
+        "anlam": "senaryonun reddedilen gevşeten atamasi (W1-uyum U3)"
       },
       {
-        "ad": "a1_crc_hatasi",
+        "ad": "bayat_yetki",
         "tip": "u64",
         "birim": "-",
-        "anlam": "06 §4"
+        "anlam": "emülatörden çıkışta revizyonu değişmiş olduğu için atilan genişletici yer istasyonu komutu (A3-K101)"
       },
       {
         "ad": "a3_halka_tasma",
@@ -337,12 +611,6 @@
         "tip": "u64",
         "birim": "-",
         "anlam": "dünya -> kayıt halka tamponunda düşen ileti (A6-K30)"
-      },
-      {
-        "ad": "kamera_kare_dusen",
-        "tip": "u64",
-        "birim": "-",
-        "anlam": "A2'nin bildirdiği ya da zamanında gelmeyen kamera karesi"
       }
     ],
     "yuk_olay": [
@@ -555,7 +823,7 @@
         "tip": "u8",
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "otopilot kipi; değer adları A1'den beklenen; bilinmiyorsa 255"
+        "anlam": "otopilot kipi (A1 `IDA_STATUS.mode` = A4 `status.mode`); değer adları A4'te; bilinmiyorsa 255"
       },
       {
         "ad": "silahli",
@@ -570,9 +838,9 @@
       },
       {
         "ad": "saglik",
-        "tip": "u32",
+        "tip": "u8",
         "birim": "-",
-        "anlam": "sağlık bitleri (A1/A4'ten beklenen)"
+        "anlam": "sağlık bitleri (A1 `IDAW_HEALTH`): bit0 core_ok, bit1 data_ok, bit2 imu_rejected, bit3 imu_lag, bit4 input_dropped, bit5 narrowed, bit6 sample_conflict, bit7 bg_bad_input"
       },
       {
         "ad": "kestirim_gecerli",
@@ -640,19 +908,30 @@
         "ad": "fc_durumu",
         "tip": "u8",
         "birim": "-",
+        "degerler": {
+          "0": "SAFE",
+          "1": "ARMED",
+          "2": "PERMIT_OPEN",
+          "3": "FIRE_PENDING",
+          "4": "TEST",
+          "5": "FAULT_LATCHED"
+        },
         "yok_degeri": "255",
-        "anlam": "atış kontrol durum makinesi durumu; değer adları A1/A4'ten beklenen; bilinmiyorsa 255"
+        "anlam": "kartın bildirdiği emniyet zinciri durumu (A1 `IDA_FC_STATUS.state` = A4 `fc.state`); değer adları ve anlamları A4 §3.16; bilinmiyorsa 255"
       },
       {
-        "ad": "fc_kipi",
-        "tip": "u8",
+        "ad": "engel_maskesi",
+        "tip": "u32",
         "birim": "-",
-        "degerler": {
-          "0": "operator",
-          "1": "otonom",
-          "255": "bilinmiyor"
-        },
-        "anlam": "atış kontrol kipi"
+        "yok_degeri": "0xFFFFFFFF",
+        "anlam": "kartın bildirdiği emniyet engeli bitleri (A1 `IDA_FC_STATUS.inhibit_mask` = A4 `fc.inhibit_mask`); bit adları ve anlamları A4 §3.16; bilinmiyorsa 0xFFFFFFFF"
+      },
+      {
+        "ad": "kart_son_olay_kimligi",
+        "tip": "u64",
+        "birim": "-",
+        "yok_degeri": "0",
+        "anlam": "A1 `IDA_FC_STATUS.last_event_id`; yoksa 0"
       },
       {
         "ad": "tupler",
@@ -725,27 +1004,29 @@
           "0": "serbest",
           "1": "basili"
         },
-        "anlam": "sanal acil durdurma yetkili durumu"
+        "anlam": "sanal acil durdurma yetkili durumu (tek)"
       },
       {
         "ad": "silahlandirma_fisi",
         "tip": "u8",
+        "adet": 2,
         "birim": "-",
         "degerler": {
           "0": "cikarilmis",
           "1": "takili"
         },
-        "anlam": "sanal silahlandırma fişi yetkili durumu"
+        "anlam": "tüp başına sanal silahlandırma fişi yetkili durumu; dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5)"
       },
       {
         "ad": "emniyet_pimi",
         "tip": "u8",
+        "adet": 2,
         "birim": "-",
         "degerler": {
           "0": "cikarilmis",
           "1": "takili"
         },
-        "anlam": "sanal emniyet pimi yetkili durumu"
+        "anlam": "tüp başına sanal emniyet pimi yetkili durumu; dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5)"
       },
       {
         "ad": "son_degisim_adimi",
@@ -770,33 +1051,49 @@
         "tip": "u8",
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son bildirdiği geri okuma (A1); bilinmiyorsa 255"
+        "anlam": "kartın son bildirdiği geri okuma (A1 `IDA_SAFETY.estop`); bilinmiyorsa 255"
       },
       {
         "ad": "kart_silahlandirma_fisi",
         "tip": "u8",
+        "adet": 2,
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son bildirdiği geri okuma (A1); bilinmiyorsa 255"
+        "anlam": "kartın son geri okuması (`IDA_SAFETY.tube[i]` `PLUG_IN` biti); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); bilinmiyorsa 255"
       },
       {
         "ad": "kart_emniyet_pimi",
         "tip": "u8",
+        "adet": 2,
         "birim": "-",
         "yok_degeri": "255",
-        "anlam": "kartın son bildirdiği geri okuma (A1); bilinmiyorsa 255"
+        "anlam": "kartın son geri okuması (`IDA_SAFETY.tube[i]` `PIN_OUT` bitinin tersi: 1 = takili); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5); bilinmiyorsa 255"
       },
       {
         "ad": "geri_okuma_farki",
         "tip": "u8",
         "birim": "-",
-        "anlam": "anlık fark bitleri: bit0 acil, bit1 fiş, bit2 pim; kartın okuması bilinmiyorsa bit 0"
+        "anlam": "anlık fark bitleri: bit0 acil, bit1 fiş f1, bit2 fiş f2, bit3 pim f1, bit4 pim f2; kartın okuması bilinmiyorsa bit 0"
       },
       {
         "ad": "emniyet_rev",
-        "tip": "u64",
+        "tip": "u32",
         "birim": "-",
-        "anlam": "emniyet revizyonu: sim süreci boyunca 1'den başlayan; kabul edilen her kısıtlayan komutta, her fiilî gevşetmede ve A3-K117'deki olaylarda bir artan sayaç"
+        "aralik": [
+          1,
+          4294967295
+        ],
+        "anlam": "emniyet revizyonu (iskelet §3.2; A3-K117): 1'den başlar, sıfırlanmaz, `0xFFFFFFFF`'te doyar"
+      },
+      {
+        "ad": "emniyet_rev_doydu",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "revizyon doydu; bundan sonra bütün gevşetmeler reddedilir"
       }
     ],
     "yuk_ariza_etkin": [
@@ -1712,46 +2009,21 @@
         "anlam": "sensör modelinin sürümü (05 §2.6)"
       },
       {
-        "ad": "tup_dolu_maskesi",
-        "tip": "u8",
-        "birim": "-",
-        "anlam": "kartın okuyacağı geri okuma: bit0 tup0 dolu, bit1 tup1 dolu"
-      },
-      {
-        "ad": "tup_emniyet_acik_maskesi",
-        "tip": "u8",
-        "birim": "-",
-        "anlam": "kartın okuyacağı geri okuma: tüp başına süreli izin geçerli"
-      },
-      {
-        "ad": "sanal_acil_durdurma",
+        "ad": "acil_durdurma",
         "tip": "u8",
         "birim": "-",
         "degerler": {
           "0": "serbest",
           "1": "basili"
         },
-        "anlam": "kartın okuyacağı sanal acil durdurma (arızayla bozulabilir)"
+        "anlam": "kartın okuyacağı sanal acil durdurma (`IDA_SAFETY.estop`; arızayla bozulabilir)"
       },
       {
-        "ad": "sanal_silahlandirma_fisi",
+        "ad": "tup_bitleri",
         "tip": "u8",
+        "adet": 2,
         "birim": "-",
-        "degerler": {
-          "0": "cikarilmis",
-          "1": "takili"
-        },
-        "anlam": "kartın okuyacağı sanal fiş"
-      },
-      {
-        "ad": "sanal_emniyet_pimi",
-        "tip": "u8",
-        "birim": "-",
-        "degerler": {
-          "0": "cikarilmis",
-          "1": "takili"
-        },
-        "anlam": "kartın okuyacağı sanal pim"
+        "anlam": "kartın okuyacağı tüp başına bitler (`IDA_SAFETY.tube[i]`): bit0 `LOADED`, bit1 `PLUG_IN`, bit2 `PIN_OUT`, bit3 `PERMIT_OPEN` (A4 `IDA_TUBE_*`); dizin 0 = tüp `f1`, dizin 1 = tüp `f2` (A5)"
       }
     ],
     "yuk_ping360": [
@@ -1839,44 +2111,52 @@
         "anlam": "sensör modelinin sürümü (05 §2.6)"
       },
       {
-        "ad": "aci_rad",
-        "tip": "f32",
-        "birim": "rad",
+        "ad": "aci_grad",
+        "tip": "u16",
+        "birim": "grad",
         "aralik": [
           0,
-          6.283185307179586
+          399
         ],
-        "anlam": "kafa açısı, sensör çerçevesi"
+        "anlam": "kafa açısı, cihaz biriminde (A1 `angle_grad`); radyan = 2*pi*aci_grad/400 (A3 §3.4)"
       },
       {
-        "ad": "menzil_baslangic_m",
-        "tip": "f32",
-        "birim": "m",
-        "anlam": "ilk kutunun nominal menzili"
+        "ad": "n_ornek",
+        "tip": "u16",
+        "birim": "-",
+        "aralik": [
+          1,
+          1200
+        ],
+        "anlam": "örnek sayısı (A1 `n_samples`)"
       },
       {
-        "ad": "kutu_genisligi_m",
-        "tip": "f32",
-        "birim": "m",
-        "anlam": "kutu genişliği (doğrudan yol, nominal; iskelet §3.1)"
+        "ad": "ornek_periyodu",
+        "tip": "u16",
+        "birim": "25 ns",
+        "aralik": [
+          80,
+          40000
+        ],
+        "anlam": "örnek periyodu, 25 ns biriminde (A1 `sample_period`)"
       },
       {
-        "ad": "ses_hizi_mps",
-        "tip": "f32",
-        "birim": "m/s",
-        "anlam": "kutu zamanına çevirmede kullanılan ses hızı"
+        "ad": "darbe_suresi_us",
+        "tip": "u16",
+        "birim": "us",
+        "anlam": "darbe süresi (A1 `tx_duration_us`)"
       },
       {
-        "ad": "frekans_hz",
-        "tip": "f32",
-        "birim": "Hz",
-        "anlam": "darbe frekansı"
+        "ad": "frekans_khz",
+        "tip": "u16",
+        "birim": "kHz",
+        "anlam": "darbe frekansı (A1 `tx_freq_khz`)"
       },
       {
         "ad": "kazanc",
         "tip": "u8",
         "birim": "-",
-        "anlam": "alıcı kazanç ayarı (05)"
+        "anlam": "cihaz kazanç kodu (A1 `gain`)"
       },
       {
         "ad": "kademe",
@@ -1889,12 +2169,18 @@
         "anlam": "satırı üreten sonar kademesi"
       },
       {
+        "ad": "ses_hizi_mps",
+        "tip": "f32",
+        "birim": "m/s",
+        "anlam": "sim'in nominal ses hızı; yalnız panelin menzil dönüşümü için (A3 §3.4); kartın parametresi farklı olabilir"
+      },
+      {
         "ad": "ornekler",
         "tip": "bayt_dizisi",
         "sayac": "u16",
         "azami": 1200,
         "birim": "bayt",
-        "anlam": "kutu şiddetleri, 8 bit"
+        "anlam": "kutu şiddetleri, 8 bit (A1 `data[n_samples]`)"
       }
     ],
     "yuk_ping1d": [
@@ -2023,22 +2309,61 @@
         "tip": "u8",
         "birim": "-",
         "degerler": {
-          "0": "kamera",
-          "1": "sonar"
+          "1": "ping360",
+          "2": "cam_fwd"
         },
-        "anlam": "algılama kaynağı"
+        "anlam": "A8 `source`"
       },
       {
-        "ad": "kare_id",
-        "tip": "u64",
+        "ad": "inst",
+        "tip": "u8",
         "birim": "-",
-        "anlam": "kamera karesi kimliği (A2/A8); sonarda 0"
+        "anlam": "A8 `inst`"
       },
       {
-        "ad": "a8_surumu",
+        "ad": "batch_seq",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "kaydın ait olduğu partinin `batch_seq`'i (kamerada `kare_seq`; A8-K16)"
+      },
+      {
+        "ad": "run_gen",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "partinin çalıştırma nesli (A8 `run_gen` = A2 `calisma_nesli`, A2-K80)"
+      },
+      {
+        "ad": "kayit_indeksi",
+        "tip": "u8",
+        "birim": "-",
+        "aralik": [
+          0,
+          3
+        ],
+        "anlam": "partideki sıra, 0'dan"
+      },
+      {
+        "ad": "a8_major",
         "tip": "u16",
         "birim": "-",
-        "anlam": "kaydın A8 tel düzeni sürümü"
+        "anlam": "A8 şema ana sürümü (`IDA_DET_SCHEMA_MAJOR`)"
+      },
+      {
+        "ad": "a8_minor",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "A8 şema yan sürümü (`IDA_DET_SCHEMA_MINOR`)"
+      },
+      {
+        "ad": "sonuc",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "karta_iletildi",
+          "1": "parti_reddedildi",
+          "2": "gec"
+        },
+        "anlam": "kaydın akıbeti"
       },
       {
         "ad": "kayit",
@@ -2046,7 +2371,593 @@
         "sayac": "u16",
         "azami": 512,
         "birim": "bayt",
-        "anlam": "algılama kaydının A8 sözleşmesindeki tel düzeni, değiştirilmeden"
+        "anlam": "algılama kaydının A8 §3.2'deki tel düzeni, değiştirilmeden; içindeki `class_id` kodlamasi A5-K113'un kapalı tablosudur"
+      }
+    ],
+    "yuk_algilama_parti": [
+      {
+        "ad": "kaynak",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "1": "ping360",
+          "2": "cam_fwd"
+        },
+        "anlam": "A8 `source`"
+      },
+      {
+        "ad": "inst",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A8 `inst`"
+      },
+      {
+        "ad": "batch_seq",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A8 `batch_seq` (kamerada `kare_seq`); `NO_FRAME`'de 0"
+      },
+      {
+        "ad": "run_gen",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "karenin ya da yanıtın çalıştırma nesli (A8 `run_gen`; A2-K80)"
+      },
+      {
+        "ad": "kare_sirasi",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "karenin A2 `kare_sirasi`'i (A2-K49)"
+      },
+      {
+        "ad": "window_ns",
+        "tip": "u32",
+        "birim": "ns",
+        "anlam": "A8 `window_ns`"
+      },
+      {
+        "ad": "calib_ver",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "A8 `calib_ver`"
+      },
+      {
+        "ad": "producer_ver",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "A8 `producer_ver`"
+      },
+      {
+        "ad": "producer_id",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A8 `producer_id`"
+      },
+      {
+        "ad": "parti_bayraklari",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "A8 parti `flags` (bit0 `NO_FRAME`)"
+      },
+      {
+        "ad": "bilesen_durumu",
+        "tip": "u8",
+        "birim": "-",
+        "yok_degeri": "255",
+        "anlam": "bileşenin bildirdiği `status`; yanıt yoksa ya da parti sim'de üretildiyse 255"
+      },
+      {
+        "ad": "bilesen_kayit_sayisi",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "bileşenin yanıtındaki `count`; yanıt yoksa 0"
+      },
+      {
+        "ad": "eski_nesil",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "kare ya da yanıt `M_k` anında güncel nesilde değil (A8-K63 adım 0, K79): karta başlık gitmez, `nihai_durum` 255"
+      },
+      {
+        "ad": "a2_dusme_nedeni",
+        "tip": "u8",
+        "birim": "-",
+        "yok_degeri": "0",
+        "anlam": "A2 kareyi teslim etmediyse özgün `SimKareDusmeNedeni` kodu (1-8, 33-39; A8-K76); etmediyse 0"
+      },
+      {
+        "ad": "nihai_durum",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "OK",
+          "1": "SKIPPED_BUSY",
+          "2": "LATE",
+          "3": "COMPONENT_DOWN",
+          "4": "FRAME_DROPPED",
+          "5": "FRAME_INVALID",
+          "6": "CALIB_MISMATCH",
+          "7": "CAMERA_OFF",
+          "8": "COMPONENT_ERROR"
+        },
+        "yok_degeri": "255",
+        "anlam": "karta giden nihai kare durumu (A8-K63; A8 §3.4); karta başlık gitmediyse 255"
+      },
+      {
+        "ad": "ret_nedeni",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "yok",
+          "1": "STRUCT",
+          "2": "ECHO",
+          "3": "CALIB",
+          "4": "LINK",
+          "5": "SEQ",
+          "6": "TIME",
+          "7": "KIND",
+          "8": "FLAGS",
+          "9": "VALUE",
+          "10": "UNCERT"
+        },
+        "anlam": "sim'in A8-K27 ret nedeni (`IDA_DET_RJ_*`); ret yoksa 0"
+      },
+      {
+        "ad": "gec",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "hayir",
+          "1": "evet"
+        },
+        "anlam": "yanıt `M_k`'dan sonra alındı (A8-K59)"
+      },
+      {
+        "ad": "karta_kayit_sayisi",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "karta giden partinin `count`'u"
+      },
+      {
+        "ad": "a1_batch_seq",
+        "tip": "u32",
+        "birim": "-",
+        "yok_degeri": "0xFFFFFFFF",
+        "anlam": "partinin karta iletildiği A1 partisi; iletilmediyse 0xFFFFFFFF"
+      }
+    ],
+    "yuk_algilama_sayaclari": [
+      {
+        "ad": "akislar",
+        "tip": "dizi",
+        "sayac": "u8",
+        "azami": 4,
+        "birim": "-",
+        "anlam": "akış başına sim'in kabul kapısı sayaçları (A8-K30, K65); bileşenin iç sayaçları dışa açılmaz",
+        "oge": [
+          {
+            "ad": "kaynak",
+            "tip": "u8",
+            "birim": "-",
+            "degerler": {
+              "1": "ping360",
+              "2": "cam_fwd"
+            },
+            "anlam": "A8 `source`"
+          },
+          {
+            "ad": "inst",
+            "tip": "u8",
+            "birim": "-",
+            "anlam": "A8 `inst`"
+          },
+          {
+            "ad": "ret",
+            "tip": "u64",
+            "adet": 10,
+            "birim": "-",
+            "anlam": "ret nedeni başına sayaç; sıra `STRUCT`, `ECHO`, `CALIB`, `LINK`, `SEQ`, `TIME`, `KIND`, `FLAGS`, `VALUE`, `UNCERT` (A8-K30)"
+          },
+          {
+            "ad": "durum",
+            "tip": "u64",
+            "adet": 9,
+            "birim": "-",
+            "anlam": "karta giden durum başına sayaç; sıra A8 §3.4 değerleri 0-8 (A8-K30, K65)"
+          },
+          {
+            "ad": "gec",
+            "tip": "u64",
+            "birim": "-",
+            "anlam": "geç yanıt sayısı (A8-K59)"
+          },
+          {
+            "ad": "eski_nesil",
+            "tip": "u64",
+            "birim": "-",
+            "anlam": "`eski_nesil` ile reddedilen yanıt (A8-K79)"
+          },
+          {
+            "ad": "bilinmeyen_dusme_nedeni",
+            "tip": "u64",
+            "birim": "-",
+            "anlam": "A8-K76 tablosunda olmayan A2 kodu (sim hatası)"
+          }
+        ]
+      }
+    ],
+    "yuk_kart_baglanti_sayaclari": [
+      {
+        "ad": "acilis_sayaci",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "sayaçların ait olduğu kart açılışı (`boot_count`)"
+      },
+      {
+        "ad": "rx_bytes",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #0 (`IDA_LINK_STATS.cnt[0]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_frames",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #1 (`IDA_LINK_STATS.cnt[1]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_crc_err",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #2 (`IDA_LINK_STATS.cnt[2]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_unknown_msgid",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #3 (`IDA_LINK_STATS.cnt[3]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_iflag",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #4 (`IDA_LINK_STATS.cnt[4]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_bad_len",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #5 (`IDA_LINK_STATS.cnt[5]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_wrong_sys",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #6 (`IDA_LINK_STATS.cnt[6]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_mav1",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #7 (`IDA_LINK_STATS.cnt[7]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_overflow",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #8 (`IDA_LINK_STATS.cnt[8]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_resync_bytes",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #9 (`IDA_LINK_STATS.cnt[9]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_seq_gap",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #10 (`IDA_LINK_STATS.cnt[10]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_stale_session",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #11 (`IDA_LINK_STATS.cnt[11]`); 2^32'de sarar"
+      },
+      {
+        "ad": "rx_outside_session",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #12 (`IDA_LINK_STATS.cnt[12]`); 2^32'de sarar"
+      },
+      {
+        "ad": "stamp_coarse",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #13 (`IDA_LINK_STATS.cnt[13]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_closed",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #14 (`IDA_LINK_STATS.cnt[14]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_incomplete",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #15 (`IDA_LINK_STATS.cnt[15]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_skipped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #16 (`IDA_LINK_STATS.cnt[16]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_old",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #17 (`IDA_LINK_STATS.cnt[17]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_dup",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #18 (`IDA_LINK_STATS.cnt[18]`); 2^32'de sarar"
+      },
+      {
+        "ad": "batch_merged",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #19 (`IDA_LINK_STATS.cnt[19]`); 2^32'de sarar"
+      },
+      {
+        "ad": "member_overflow",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #20 (`IDA_LINK_STATS.cnt[20]`); 2^32'de sarar"
+      },
+      {
+        "ad": "ping360_incomplete",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #21 (`IDA_LINK_STATS.cnt[21]`); 2^32'de sarar"
+      },
+      {
+        "ad": "ping360_bad",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #22 (`IDA_LINK_STATS.cnt[22]`); 2^32'de sarar"
+      },
+      {
+        "ad": "ping360_orphan",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #23 (`IDA_LINK_STATS.cnt[23]`); 2^32'de sarar"
+      },
+      {
+        "ad": "cmd_deferred",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #24 (`IDA_LINK_STATS.cnt[24]`); 2^32'de sarar"
+      },
+      {
+        "ad": "cmd_dropped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #25 (`IDA_LINK_STATS.cnt[25]`); 2^32'de sarar"
+      },
+      {
+        "ad": "narrow_coalesced",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #26 (`IDA_LINK_STATS.cnt[26]`); 2^32'de sarar"
+      },
+      {
+        "ad": "cmd_bad_field",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #27 (`IDA_LINK_STATS.cnt[27]`); 2^32'de sarar"
+      },
+      {
+        "ad": "grid_missed",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #28 (`IDA_LINK_STATS.cnt[28]`); 2^32'de sarar"
+      },
+      {
+        "ad": "out_fixed",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #29 (`IDA_LINK_STATS.cnt[29]`); 2^32'de sarar"
+      },
+      {
+        "ad": "tx_frames",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #30 (`IDA_LINK_STATS.cnt[30]`); 2^32'de sarar"
+      },
+      {
+        "ad": "tx_dropped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #31 (`IDA_LINK_STATS.cnt[31]`); 2^32'de sarar"
+      },
+      {
+        "ad": "tx_crit_stall",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #32 (`IDA_LINK_STATS.cnt[32]`); 2^32'de sarar"
+      },
+      {
+        "ad": "events_sent",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #33 (`IDA_LINK_STATS.cnt[33]`); 2^32'de sarar"
+      },
+      {
+        "ad": "events_resent",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #34 (`IDA_LINK_STATS.cnt[34]`); 2^32'de sarar"
+      },
+      {
+        "ad": "sessions",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A1 Tablo 3.11b #35 (`IDA_LINK_STATS.cnt[35]`); 2^32'de sarar"
+      }
+    ],
+    "yuk_kart_cekirdek_sayaclari": [
+      {
+        "ad": "acilis_sayaci",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "sayaçların ait olduğu kart açılışı (`boot_count`)"
+      },
+      {
+        "ad": "sample_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.sample_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "sample_future",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.sample_future` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "sample_conflict",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.sample_conflict` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "sample_dup_dropped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.sample_dup_dropped` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "narrow_from_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.narrow_from_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "bg_bad_input",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.bg_bad_input` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "imu_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.imu_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "imu_gap",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.imu_gap` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "bad_input",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.bad_input` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "dup_seq",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.dup_seq` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "old_seq",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.old_seq` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "wall_backstep",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.wall_backstep` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "cmd_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.cmd_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "widen_blocked",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.widen_blocked` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "evres_ignored",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.evres_ignored` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "event_unknown",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.event_unknown` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "det_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.det_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "ping360_rejected",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.ping360_rejected` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "bg_dropped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.bg_dropped` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "bg_slice_mismatch",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.bg_slice_mismatch` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "log_dropped",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.log_dropped` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "step_miss",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A4 `ida_core_counters_t.step_miss` (A1 `IDA_CORE_COUNTERS`); 2^32'de sarar"
+      },
+      {
+        "ad": "saglik",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A4 `ida_health_t` (A1 `IDA_STATUS.health`, `IDAW_HEALTH`): bit0 core_ok, bit1 data_ok, bit2 imu_rejected, bit3 imu_lag, bit4 input_dropped, bit5 narrowed, bit6 sample_conflict, bit7 bg_bad_input"
       }
     ],
     "yuk_a1_blok": [
@@ -2131,7 +3042,7 @@
         "tip": "i64",
         "birim": "ns",
         "yok_degeri": "INT64_MIN",
-        "anlam": "yanıtın vardığı duvar saati; gelmediyse INT64_MIN"
+        "anlam": "yuvayı tamamlayan son çerçevenin alim anı (duvar saati); gelmediyse INT64_MIN"
       },
       {
         "ad": "bekleme_ns",
@@ -2329,12 +3240,26 @@
         "anlam": "geçiş planlı mı"
       },
       {
+        "ad": "kapanis_nedeni",
+        "tip": "u8",
+        "birim": "-",
+        "yok_degeri": "0",
+        "anlam": "A1 `IDA_SESSION_CLOSE.reason` (`IDAW_CLOSE_REASON`, `EVENT_OVERFLOW` = 7 dahil); yoksa 0"
+      },
+      {
+        "ad": "oturum_sonucu",
+        "tip": "u8",
+        "birim": "-",
+        "yok_degeri": "255",
+        "anlam": "A1 `IDA_SESSION_ACCEPT.result` (`IDAW_SESSION_RESULT`); yoksa 255"
+      },
+      {
         "ad": "ayrinti",
         "tip": "metin",
         "sayac": "u16",
         "azami": 256,
         "birim": "bayt",
-        "anlam": "ek bilgi (HELLO_ACK sonucu vb.)"
+        "anlam": "ek bilgi"
       }
     ],
     "yuk_hil_dusen": [
@@ -2343,21 +3268,22 @@
         "tip": "u8",
         "birim": "-",
         "degerler": {
-          "0": "bulk_drop",
-          "1": "ping360_eksik",
-          "2": "sonar_gec",
-          "3": "sonar_kuyruk_dolu",
-          "4": "parti_eksik",
-          "5": "sensor_kuyruk_tasma",
-          "6": "gcs_kaymasi",
-          "7": "crc_hatasi",
-          "8": "eski_oturum",
-          "9": "gec_olay",
-          "10": "es_zamansiz_guvenli_cikti",
-          "11": "a1_alan_hatasi",
-          "12": "kamera_kare_dusen"
+          "0": "ping360_seyreltildi",
+          "1": "sonar_gec",
+          "2": "sonar_kuyruk_dolu",
+          "3": "sensor_kuyruk_tasma",
+          "4": "komut_ertelendi",
+          "5": "komut_sonucsuz",
+          "6": "sonuc_talebi_atildi",
+          "7": "rx_crc_err",
+          "8": "rx_bad_len",
+          "9": "yanit_ret_oturum",
+          "10": "olay_gec",
+          "11": "olay_eksik",
+          "12": "kamera_kare_dusen",
+          "13": "cagri_izi_eksik"
         },
-        "anlam": "düşen verinin türü"
+        "anlam": "düşen verinin türü; adlar A1 Tablo 3.11a, 05 §4 ve A2 sayaç adlarıdır (`kamera_kare_dusen` ayrıntısı `kamera/kare_dusme`)"
       },
       {
         "ad": "step_seq",
@@ -2465,6 +3391,206 @@
         "anlam": "aşağı yön teslim gecikmesi kestirimi; yoksa INT64_MIN"
       }
     ],
+    "yuk_hil_tf_yazim": [
+      {
+        "ad": "batch_seq",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "TF'nin parti sıra numarası"
+      },
+      {
+        "ad": "plan_duvar_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "kritik pencerenin planlanan başlangıcı W(t_n), kayıt duvar saatinde"
+      },
+      {
+        "ad": "yazim_baslangic_duvar_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "TF'nin ilk baytının taşımaya verildiği an (A1-K43)"
+      },
+      {
+        "ad": "yazim_bitis_duvar_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "TF'nin son baytının taşımaya verildiği an (A1-K43)"
+      }
+    ],
+    "yuk_kart_acilis": [
+      {
+        "ad": "dialect_hash",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A1 `IDA_BOARD_HELLO.dialect_hash`"
+      },
+      {
+        "ad": "param_schema_hash",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "`param_schema_hash`"
+      },
+      {
+        "ad": "peer_nonce",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`peer_nonce`"
+      },
+      {
+        "ad": "nonce",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`nonce`"
+      },
+      {
+        "ad": "boot_count",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`boot_count`"
+      },
+      {
+        "ad": "reset_flags",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`reset_flags`"
+      },
+      {
+        "ad": "core_version",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`core_version`"
+      },
+      {
+        "ad": "fw_version",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`fw_version`"
+      },
+      {
+        "ad": "fw_git",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`fw_git`"
+      },
+      {
+        "ad": "param_blob_crc",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`param_blob_crc`"
+      },
+      {
+        "ad": "param_gen",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`param_gen`"
+      },
+      {
+        "ad": "last_cmd_id",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "`last_cmd_id`"
+      },
+      {
+        "ad": "ctrl_period_ns",
+        "tip": "u32",
+        "birim": "ns",
+        "anlam": "`ctrl_period_ns`"
+      },
+      {
+        "ad": "param_blob_len",
+        "tip": "u16",
+        "birim": "bayt",
+        "anlam": "`param_blob_len`"
+      },
+      {
+        "ad": "port_major",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`port_major`"
+      },
+      {
+        "ad": "port_minor",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`port_minor`"
+      },
+      {
+        "ad": "det_schema_major",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`det_schema_major`"
+      },
+      {
+        "ad": "det_schema_minor",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`det_schema_minor`"
+      },
+      {
+        "ad": "prev_sess",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`prev_sess`"
+      },
+      {
+        "ad": "sessions_since_boot",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "`sessions_since_boot`"
+      },
+      {
+        "ad": "proto_major",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`proto_major`"
+      },
+      {
+        "ad": "proto_minor",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`proto_minor`"
+      },
+      {
+        "ad": "role",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "1": "board",
+          "2": "sil"
+        },
+        "anlam": "`role` (`IDAW_ROLE`)"
+      },
+      {
+        "ad": "reset_cause",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`reset_cause`"
+      },
+      {
+        "ad": "consecutive_faults",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`consecutive_faults`"
+      },
+      {
+        "ad": "boot_count_ok",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`boot_count_ok`"
+      },
+      {
+        "ad": "param_src",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`param_src`"
+      },
+      {
+        "ad": "init_rc",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "`init_rc` (`IDAW_CORE_RC`)"
+      }
+    ],
     "yuk_yer_istasyonu_emulator": [
       {
         "ad": "yon",
@@ -2485,7 +3611,8 @@
           "1": "dus_kayip",
           "2": "dus_kuyruk",
           "3": "kopuk",
-          "4": "model_tutulamadi"
+          "4": "model_tutulamadi",
+          "5": "bayat_yetki"
         },
         "anlam": "emülatör kararı"
       },
@@ -2754,10 +3881,12 @@
         "birim": "-",
         "degerler": {
           "1": "step",
-          "2": "tick",
-          "3": "background"
+          "2": "tick_tf",
+          "3": "tick_izgara",
+          "4": "oturum_sonu",
+          "5": "background"
         },
-        "anlam": "çağrılan işlev"
+        "anlam": "çağrı türü (A4-K122); 1-4 A1 `IDAW_CALL_KIND` değerleriyle aynı: `tick_tf` `tf.present = 1` olan tick, `tick_izgara` `tf.present = 0` olan öteki tick, `oturum_sonu` `tf.present = 0` ve `link_event = SESSION_END` olan `ida_core_tick`; 5 `ida_core_background` (A1'de karşılığı yok)"
       },
       {
         "ad": "girdi",
@@ -2765,7 +3894,7 @@
         "sayac": "u32",
         "azami": 262144,
         "birim": "bayt",
-        "anlam": "step ve tick: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A4 alan sırasıyla alan alan kodlanmış (A6-K52)"
+        "anlam": "step, tick ve oturum sonu: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A6-K52'ye göre alan alan kodlanmış"
       },
       {
         "ad": "donus_kodu",
@@ -2779,7 +3908,7 @@
         "sayac": "u32",
         "azami": 262144,
         "birim": "bayt",
-        "anlam": "step ve tick: `ida_out_t`, alan alan kodlanmış; background: boş"
+        "anlam": "step, tick ve oturum sonu: `ida_out_t`, A6-K52'ye göre kodlanmış (`PARAM_SAVE` blobu dahil); background: boş"
       }
     ],
     "yuk_a3_komut_sonucu": [
@@ -2839,12 +3968,12 @@
     ],
     "yuk_senaryo_oge_uygulama": [
       {
-        "ad": "oge_kimligi",
+        "ad": "olay_kimligi",
         "tip": "metin",
         "sayac": "u16",
         "azami": 64,
         "birim": "bayt",
-        "anlam": "A5 zaman çizelgesi öğesinin kimliği"
+        "anlam": "A5 zaman çizelgesi öğesinin kimliği (A5 §3.15)"
       },
       {
         "ad": "tur",
@@ -2878,9 +4007,23 @@
         "birim": "-",
         "degerler": {
           "0": "uygulandi",
-          "1": "reddedildi"
+          "1": "reddedildi",
+          "2": "uygulanmadi"
         },
-        "anlam": "sonuç"
+        "anlam": "sonuç (A5 §3.15); `uygulanmadi`: koşul çalıştırma boyunca hiç sağlanmadı (çalıştırma sonunda yazılır)"
+      },
+      {
+        "ad": "neden",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "0": "yok",
+          "1": "gevsetme_reddedildi",
+          "2": "desteklenmiyor",
+          "3": "hedef_yok",
+          "4": "kosul_saglanmadi"
+        },
+        "anlam": "A5 §3.15 nedeni; `uygulandi`'da 0"
       },
       {
         "ad": "ayrinti",
@@ -2956,10 +4099,52 @@
     ],
     "yuk_kamera_kare": [
       {
-        "ad": "kare_id",
+        "ad": "istek_kimligi",
         "tip": "u64",
         "birim": "-",
-        "anlam": "kare kimliği (A2)"
+        "anlam": "A2 `istek_kimligi`"
+      },
+      {
+        "ad": "kare_sirasi",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A2 `kare_sirasi` (A2-K49)"
+      },
+      {
+        "ad": "kamera_kimligi",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A2 `kamera_kimligi`"
+      },
+      {
+        "ad": "calisma_nesli",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A2 `calisma_nesli` (A2-K80)"
+      },
+      {
+        "ad": "halka_nesli",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A2 `halka_nesli`"
+      },
+      {
+        "ad": "yapilandirma_surumu",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "A2 `yapilandirma_surumu`"
+      },
+      {
+        "ad": "pozlama_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "A2 `pozlama_ns`; ileti `log_time`'i pozlama sonudur (A2 `t_olcum_ns`)"
+      },
+      {
+        "ad": "a2_surumu",
+        "tip": "u16",
+        "birim": "-",
+        "anlam": "karenin A2 sürümü"
       },
       {
         "ad": "genislik",
@@ -2985,13 +4170,7 @@
         "ad": "piksel_bicimi",
         "tip": "u8",
         "birim": "-",
-        "anlam": "A2'nin piksel biçimi kodu (A2'den beklenen)"
-      },
-      {
-        "ad": "a2_surumu",
-        "tip": "u16",
-        "birim": "-",
-        "anlam": "karenin A2 sürümü"
+        "anlam": "A2'nin piksel biçimi kodu"
       },
       {
         "ad": "piksel",
@@ -3000,6 +4179,180 @@
         "azami": 921600,
         "birim": "bayt",
         "anlam": "piksel verisi, A2 düzeninde"
+      }
+    ],
+    "yuk_kamera_kare_dusme": [
+      {
+        "ad": "kamera_kimligi",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A2 `kamera_kimligi`"
+      },
+      {
+        "ad": "kare_sirasi",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "düşen karenin `kare_sirasi` (A2-K49)"
+      },
+      {
+        "ad": "calisma_nesli",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "karenin çalışma nesli (A2-K80)"
+      },
+      {
+        "ad": "s_d_ns",
+        "tip": "i64",
+        "birim": "ns",
+        "anlam": "karenin A2 teslim anı `S_d`, sim zamanı (A2-K46; A8-K65)"
+      },
+      {
+        "ad": "neden",
+        "tip": "u8",
+        "birim": "-",
+        "degerler": {
+          "1": "halka_dolu",
+          "2": "kamera_gec",
+          "3": "gorsellestirici_yok",
+          "4": "calisma_nesli_degisti",
+          "5": "halka_yenilendi",
+          "6": "halka_yenileniyor",
+          "7": "halka_hatasi",
+          "8": "halka_emekli_hazir",
+          "33": "daha_yeni_istek",
+          "34": "iptal",
+          "35": "geri_okuma_hatasi",
+          "36": "sahne_hazir_degil",
+          "37": "gecersiz_istek",
+          "38": "tutarsiz_surum",
+          "39": "gorsellestirici_halka_hatasi"
+        },
+        "anlam": "A2 `SimKareDusmeNedeni` (görselleştiricinin nedenleri 32 + kod)"
+      }
+    ],
+    "yuk_kamera_halka_sayaclari": [
+      {
+        "ad": "kamera_kimligi",
+        "tip": "u8",
+        "birim": "-",
+        "anlam": "A2 `kamera_kimligi`"
+      },
+      {
+        "ad": "dusen_sim",
+        "tip": "u64",
+        "adet": 8,
+        "birim": "-",
+        "anlam": "sim nedenli düşen kare; sıra `SimKareDusmeNedeni` 1-8 (8 = `halka_emekli_hazir`)"
+      },
+      {
+        "ad": "dusen_gorsellestirici",
+        "tip": "u64",
+        "adet": 7,
+        "birim": "-",
+        "anlam": "görselleştirici nedenli düşen kare; sıra kod 33-39"
+      },
+      {
+        "ad": "gec_hazir",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K48"
+      },
+      {
+        "ad": "tuketici_gec",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K59"
+      },
+      {
+        "ad": "tuketici_koptu",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K59"
+      },
+      {
+        "ad": "halka_emekliye_ayirma",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K86"
+      },
+      {
+        "ad": "emekli_halka_yaniti",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K87"
+      },
+      {
+        "ad": "tuketici_kamera_kapali",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2-K89"
+      },
+      {
+        "ad": "tutulan_emekli_halka",
+        "tip": "u32",
+        "birim": "-",
+        "anlam": "su an tutulan emekli halka sayısı (A2-K88)"
+      },
+      {
+        "ad": "eski_nesil",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "`eski_nesil` sonuç reddi (A2 §5)"
+      },
+      {
+        "ad": "yok_sayilan_birakma",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2 §5"
+      },
+      {
+        "ad": "seyreltilen_durum",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2 §5"
+      },
+      {
+        "ad": "protokol_hatasi",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2 §5"
+      },
+      {
+        "ad": "baglanti",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2 bağlantı sayısı"
+      },
+      {
+        "ad": "kopma",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "A2 kopma sayısı; neden `surec_durumu` olayında"
+      },
+      {
+        "ad": "istek_hazir_adet",
+        "tip": "u64",
+        "birim": "-",
+        "anlam": "istekten hazıra süresi ölçülen kare (yuva başlığındaki duvar saatlerinden; A2 §5)"
+      },
+      {
+        "ad": "istek_hazir_toplam_ns",
+        "tip": "u64",
+        "birim": "ns",
+        "anlam": "bu sürelerin toplamı"
+      },
+      {
+        "ad": "istek_hazir_en_buyuk_ns",
+        "tip": "u64",
+        "birim": "ns",
+        "anlam": "en büyük süre"
+      },
+      {
+        "ad": "istek_hazir_dagilim",
+        "tip": "u64",
+        "adet": 8,
+        "birim": "-",
+        "anlam": "dağılım kovaları; sıra <5, <10, <20, <33, <50, <100, <200, >=200 ms (kova sınırları tahmin)"
       }
     ],
     "yuk_kayit_eksik": [
@@ -3190,6 +4543,105 @@
       "kaynak": "kayıt yazıcısı"
     },
     {
+      "ad": "kart/baglanti_sayaclari",
+      "kanal_surumu": 1,
+      "yuk": "yuk_kart_baglanti_sayaclari",
+      "kademe": "olaylar",
+      "kayit_hizi": "her_uretimde",
+      "zaman_anlami": "alim",
+      "a3_ortak": true,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A1 `IDA_LINK_STATS`"
+    },
+    {
+      "ad": "kart/cekirdek_sayaclari",
+      "kanal_surumu": 1,
+      "yuk": "yuk_kart_cekirdek_sayaclari",
+      "kademe": "olaylar",
+      "kayit_hizi": "her_uretimde",
+      "zaman_anlami": "alim",
+      "a3_ortak": true,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A1 `IDA_CORE_COUNTERS`, `IDA_STATUS`"
+    },
+    {
+      "ad": "kamera/halka_sayaclari",
+      "kanal_surumu": 1,
+      "yuk": "yuk_kamera_halka_sayaclari",
+      "kademe": "olaylar",
+      "kayit_hizi": "1 Hz (duvar saati) ve kapanışta",
+      "zaman_anlami": "sim",
+      "a3_ortak": true,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A2 §5"
+    },
+    {
+      "ad": "kamera/kare_dusme",
+      "kanal_surumu": 1,
+      "yuk": "yuk_kamera_kare_dusme",
+      "kademe": "olaylar",
+      "kayit_hizi": "her düşen kare (A2-K49)",
+      "zaman_anlami": "sim",
+      "a3_ortak": false,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A2"
+    },
+    {
+      "ad": "algilama/sayaclar",
+      "kanal_surumu": 1,
+      "yuk": "yuk_algilama_sayaclari",
+      "kademe": "olaylar",
+      "kayit_hizi": "1 Hz (duvar saati) ve kapanışta",
+      "zaman_anlami": "sim",
+      "a3_ortak": true,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A8-K30"
+    },
+    {
+      "ad": "algilama/parti",
+      "kanal_surumu": 1,
+      "yuk": "yuk_algilama_parti",
+      "kademe": "olaylar",
+      "kayit_hizi": "olaylar kademesinde yalnız nihai durumu OK olmayan, reddedilen ya da geç partiler (A8-K65); telemetri ve tamda her parti, boş partiler dahil",
+      "zaman_anlami": "olcum",
+      "a3_ortak": true,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme"
+      ],
+      "kaynak": "A8"
+    },
+    {
+      "ad": "hil/kart_acilis",
+      "kanal_surumu": 1,
+      "yuk": "yuk_kart_acilis",
+      "kademe": "olaylar",
+      "kayit_hizi": "her `IDA_BOARD_HELLO`",
+      "zaman_anlami": "alim",
+      "a3_ortak": false,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme",
+        "yeniden_kurma"
+      ],
+      "kaynak": "A1 §3.8"
+    },
+    {
       "ad": "sayac/gercek_zaman",
       "kanal_surumu": 1,
       "yuk": "yuk_sayac_gercek_zaman",
@@ -3318,6 +4770,21 @@
         "yeniden_kurma"
       ],
       "kaynak": "06 §2.5"
+    },
+    {
+      "ad": "hil/tf_yazim",
+      "kanal_surumu": 1,
+      "yuk": "yuk_hil_tf_yazim",
+      "kademe": "telemetri",
+      "kayit_hizi": "her TF (A1-K43)",
+      "zaman_anlami": "sim",
+      "a3_ortak": false,
+      "kosul": null,
+      "tekrar_duzeyi": [
+        "izleme",
+        "yeniden_kurma"
+      ],
+      "kaynak": "06 G/Ç iş parçacığı"
     },
     {
       "ad": "hil/enjeksiyon",
@@ -3847,9 +5314,24 @@
           "anlam": "A1 proto_major.proto_minor (A1'den beklenen); SIL tekrar koşusunda da"
         },
         {
-          "ad": "a1_sema_ozeti",
+          "ad": "a2_port",
+          "zorunlu": "kosullu",
+          "anlam": "A2-K93 `--a2-port` (onluk); kamera ya da görselleştirici kullanıldıysa"
+        },
+        {
+          "ad": "a2_yuva_sayisi",
+          "zorunlu": "kosullu",
+          "anlam": "A2-K93 `--a2-yuva` (onluk)"
+        },
+        {
+          "ad": "a2_operator_gecikme_us",
+          "zorunlu": "kosullu",
+          "anlam": "A2-K93 `--a2-operator-gecikme-us` (onluk; görselleştiricinin değeri, A2'nin bildirdiği; bilinmiyorsa yazılmaz)"
+        },
+        {
+          "ad": "a1_dialect_hash",
           "zorunlu": "evet",
-          "anlam": "A1 hash_base ve hash_full (A1'den beklenen)"
+          "anlam": "A1 `dialect_hash` (A1 §3.2), onluk u64"
         },
         {
           "ad": "a2_surumu",
@@ -3864,17 +5346,42 @@
         {
           "ad": "a7_manifest_ozeti",
           "zorunlu": "evet",
-          "anlam": "A7 manifest özeti (A7'den beklenen biçimde)"
+          "anlam": "`sha256:` + A7 manifestinin ham baytlarının SHA-256'si (64 küçük onaltılık; A7-K05, A5-K115); senaryo vermediyse sim'in hesapladigi"
         },
         {
-          "ad": "a8_surumu",
+          "ad": "a7_kume",
+          "zorunlu": "evet",
+          "anlam": "A5 `varliklar.kume` (A7 `kume_kimligi`)"
+        },
+        {
+          "ad": "a7_kume_surumu",
+          "zorunlu": "evet",
+          "anlam": "manifestin `kume_surumu`'u (onluk; A7-K07, A5-K115); senaryo vermediyse sim'in okuduğu"
+        },
+        {
+          "ad": "a8_surumu_major",
           "zorunlu": "kosullu",
-          "anlam": "algılama bileşeni bağlandıysa"
+          "anlam": "A8 şema ana sürümü (`IDA_DET_SCHEMA_MAJOR`); algılama bileşeni bağlandıysa"
+        },
+        {
+          "ad": "a8_surumu_minor",
+          "zorunlu": "kosullu",
+          "anlam": "A8 şema yan sürümü (`IDA_DET_SCHEMA_MINOR`)"
         },
         {
           "ad": "run_id",
           "zorunlu": "evet",
-          "anlam": "çalıştırma kimliği; dosya adıyla aynı"
+          "anlam": "çalıştırma kimliği (A3-K63); dosya adıyla aynı"
+        },
+        {
+          "ad": "a1_run_id",
+          "zorunlu": "evet",
+          "anlam": "A1 `run_id` (u32, onluk): kartlı kiplerde `run_id` metninin UTF-8 baytlarindan hesaplanan SHA-256 özetinin ilk dört baytı, küçük uçlu, 0 çıkarsa 1; SIL'de A5 türetimiyle a1/run_id (A5 Ek D) etiketinden (W1-uyum U17)"
+        },
+        {
+          "ad": "sil_n_bg",
+          "zorunlu": "kosullu",
+          "anlam": "SIL kiplerinde zorunlu: her step ve tick öncesindeki arka plan çağrısı sayısı `N_bg` (u32, onluk; A1-K121)"
         },
         {
           "ad": "kip",
@@ -3914,12 +5421,12 @@
         {
           "ad": "senaryo_ozeti",
           "zorunlu": "evet",
-          "anlam": "`sha256:<hex>` çözümlenmiş senaryonun özeti (A5)"
+          "anlam": "`sha256:` + A5 davranış özetinin 64 onaltılık karakteri (A5-K17)"
         },
         {
-          "ad": "arac_ozeti",
+          "ad": "senaryo_kaynak_ozetleri",
           "zorunlu": "evet",
-          "anlam": "`sha256:<hex>` araç tanım dosyasının özeti (A5)"
+          "anlam": "A5 doğrulama raporundaki `kaynak_ozetleri` (dosya -> ham bayt SHA-256) tablosunun RFC 8785 JSON metni; değerler `sha256:` önekli"
         },
         {
           "ad": "sim_surumu",
@@ -3957,9 +5464,19 @@
           "anlam": "04 dalga listesi özeti"
         },
         {
-          "ad": "kart_yazilimi_ozeti",
+          "ad": "kart_fw_version",
           "zorunlu": "kosullu",
-          "anlam": "HIL'de kartın BOOT_RECORD'undaki yazılım özeti (A1'den beklenen)"
+          "anlam": "ilk `IDA_BOARD_HELLO.fw_version` (onluk)"
+        },
+        {
+          "ad": "kart_fw_git",
+          "zorunlu": "kosullu",
+          "anlam": "ilk `IDA_BOARD_HELLO.fw_git` (onluk)"
+        },
+        {
+          "ad": "kart_core_version",
+          "zorunlu": "kosullu",
+          "anlam": "ilk `IDA_BOARD_HELLO.core_version` (onluk)"
         },
         {
           "ad": "kontrol_hizi_hz",
@@ -4000,22 +5517,42 @@
     },
     {
       "kayit": "ida_kayit_guncelleme",
-      "ne_zaman": "acilista boş bırakılan bir kosullu anahtar sonradan öğrenildiğinde (A6-K46)",
+      "ne_zaman": "açılışta boş bırakılan bir koşullu anahtar sonradan öğrenildiğinde (A6-K46)",
       "anahtarlar": [
+        {
+          "ad": "a2_operator_gecikme_us",
+          "zorunlu": "kosullu",
+          "anlam": "A2-K93 `--a2-operator-gecikme-us` (onluk; görselleştiricinin değeri, A2'nin bildirdiği; bilinmiyorsa yazılmaz)"
+        },
         {
           "ad": "a2_surumu",
           "zorunlu": "kosullu",
           "anlam": "görselleştirici bağlandıysa"
         },
         {
-          "ad": "a8_surumu",
+          "ad": "a8_surumu_major",
           "zorunlu": "kosullu",
-          "anlam": "algılama bileşeni bağlandıysa"
+          "anlam": "A8 şema ana sürümü (`IDA_DET_SCHEMA_MAJOR`); algılama bileşeni bağlandıysa"
         },
         {
-          "ad": "kart_yazilimi_ozeti",
+          "ad": "a8_surumu_minor",
           "zorunlu": "kosullu",
-          "anlam": "HIL'de kartın BOOT_RECORD'undaki yazılım özeti (A1'den beklenen)"
+          "anlam": "A8 şema yan sürümü (`IDA_DET_SCHEMA_MINOR`)"
+        },
+        {
+          "ad": "kart_fw_version",
+          "zorunlu": "kosullu",
+          "anlam": "ilk `IDA_BOARD_HELLO.fw_version` (onluk)"
+        },
+        {
+          "ad": "kart_fw_git",
+          "zorunlu": "kosullu",
+          "anlam": "ilk `IDA_BOARD_HELLO.fw_git` (onluk)"
+        },
+        {
+          "ad": "kart_core_version",
+          "zorunlu": "kosullu",
+          "anlam": "ilk `IDA_BOARD_HELLO.core_version` (onluk)"
         }
       ]
     },
@@ -4051,7 +5588,7 @@
         {
           "ad": "gecerlilik_nedenleri",
           "zorunlu": "evet",
-          "anlam": "virgülle ayrılmış neden adları (A3 Tablo 4.8); yoksa boş"
+          "anlam": "virgülle ayrılmış neden adları (A3 Tablo 4.8; A1-K79 ile bire bir); yoksa boş"
         },
         {
           "ad": "sayaclar",
@@ -4098,16 +5635,22 @@
   ],
   "x_ida_ekler": [
     {
-      "ad": "cozumlenmis_senaryo.toml",
-      "media_type": "application/toml",
+      "ad": "cozumlenmis_senaryo.json",
+      "media_type": "application/json",
       "zorunlu": "evet",
-      "anlam": "A5 çözümlenmiş senaryo, kanonik biçim (`application/toml` IANA'da kayıtlı, 2024-10-21)"
+      "anlam": "A5 çözümlenmiş senaryonun kanonik (RFC 8785) baytları, değiştirilmeden; SHA-256'si `senaryo_ozeti` (A5-K02, K17)"
     },
     {
-      "ad": "arac.toml",
-      "media_type": "application/toml",
+      "ad": "dogrulama_raporu.json",
+      "media_type": "application/json",
       "zorunlu": "evet",
-      "anlam": "A5 araç tanım dosyası olduğu gibi"
+      "anlam": "A5 §3.14 doğrulama raporu (uyarılar dahil; A5-K95); ön denetim raporundan ayrı"
+    },
+    {
+      "ad": "a1_komutlar.json",
+      "media_type": "application/json",
+      "zorunlu": "evet",
+      "anlam": "çalıştırmada kullanılan `protocol/komutlar.json` (A1), değiştirilmeden"
     },
     {
       "ad": "a6_kanallar.json",
@@ -4118,8 +5661,8 @@
     {
       "ad": "a1_dialect.xml",
       "media_type": "application/xml",
-      "zorunlu": "kosullu",
-      "anlam": "A1 dialect XML'i (A1 MAVLink kullanıyorsa; A1'den beklenen)"
+      "zorunlu": "evet",
+      "anlam": "`protocol/ida.xml` (A1), değiştirilmeden"
     },
     {
       "ad": "a7_manifest.json",
@@ -4147,7 +5690,16 @@
         "a1_proto_surumu": {
           "type": "string"
         },
-        "a1_sema_ozeti": {
+        "a2_port": {
+          "type": "string"
+        },
+        "a2_yuva_sayisi": {
+          "type": "string"
+        },
+        "a2_operator_gecikme_us": {
+          "type": "string"
+        },
+        "a1_dialect_hash": {
           "type": "string"
         },
         "a2_surumu": {
@@ -4159,10 +5711,25 @@
         "a7_manifest_ozeti": {
           "type": "string"
         },
-        "a8_surumu": {
+        "a7_kume": {
+          "type": "string"
+        },
+        "a7_kume_surumu": {
+          "type": "string"
+        },
+        "a8_surumu_major": {
+          "type": "string"
+        },
+        "a8_surumu_minor": {
           "type": "string"
         },
         "run_id": {
+          "type": "string"
+        },
+        "a1_run_id": {
+          "type": "string"
+        },
+        "sil_n_bg": {
           "type": "string"
         },
         "kip": {
@@ -4189,7 +5756,7 @@
         "senaryo_ozeti": {
           "type": "string"
         },
-        "arac_ozeti": {
+        "senaryo_kaynak_ozetleri": {
           "type": "string"
         },
         "sim_surumu": {
@@ -4213,7 +5780,13 @@
         "dalga_listesi_ozeti": {
           "type": "string"
         },
-        "kart_yazilimi_ozeti": {
+        "kart_fw_version": {
+          "type": "string"
+        },
+        "kart_fw_git": {
+          "type": "string"
+        },
+        "kart_core_version": {
           "type": "string"
         },
         "kontrol_hizi_hz": {
@@ -4243,17 +5816,20 @@
         "a6_surumu",
         "a3_surumu",
         "a1_proto_surumu",
-        "a1_sema_ozeti",
+        "a1_dialect_hash",
         "a5_sema_surumu",
         "a7_manifest_ozeti",
+        "a7_kume",
+        "a7_kume_surumu",
         "run_id",
+        "a1_run_id",
         "kip",
         "kayit_kademesi",
         "kamera_kareleri",
         "kademeler",
         "tohum",
         "senaryo_ozeti",
-        "arac_ozeti",
+        "senaryo_kaynak_ozetleri",
         "sim_surumu",
         "platform",
         "derleyici",
@@ -4267,12 +5843,20 @@
         "baslangic_utc",
         "kayit_duvar_saati"
       ],
-      "description": "açılış kaydı (fiziksel Metadata kaydı); kosullu anahtarlar yok ya da boş olabilir (A6-K46)"
+      "description": "açılış kaydı (fiziksel Metadata kaydı); koşullu anahtarlar yok ya da boş olabilir (A6-K46)"
     },
     "ust_veri_ida_kayit_guncelleme": {
       "type": "object",
       "properties": {
-        "kart_yazilimi_ozeti": {
+        "kart_fw_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kart_fw_git": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kart_core_version": {
           "type": "string",
           "minLength": 1
         },
@@ -4280,14 +5864,22 @@
           "type": "string",
           "minLength": 1
         },
-        "a8_surumu": {
+        "a8_surumu_major": {
+          "type": "string",
+          "minLength": 1
+        },
+        "a8_surumu_minor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "a2_operator_gecikme_us": {
           "type": "string",
           "minLength": 1
         }
       },
       "additionalProperties": false,
       "minProperties": 1,
-      "description": "kısmi güncelleme kaydı; yalnız kapalı listedeki anahtarlar; acilista boş olani doldurur, dolu olani değiştirirse dosya bozuktur (A6-K46)"
+      "description": "kısmi güncelleme kaydı; yalnız kapalı listedeki anahtarlar; açılışta boş olanı doldurur, dolu olanı değiştirirse dosya bozuktur (A6-K46)"
     },
     "ust_veri_ida_kayit_kapanis": {
       "type": "object",

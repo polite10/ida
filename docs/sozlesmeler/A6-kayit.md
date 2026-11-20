@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Sözleşme | A6 |
-| Sürüm | 1.0-aday, düzeltme turu 2 (dosya sürümü `a6_surumu = 1.0`) |
-| Tarih | 2026-11-19; düzeltme turu 1: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit.md`); düzeltme turu 2: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit-2.md`) |
+| Sürüm | 1.0-aday, düzeltme turu 2 ve W1 çapraz uyum turu (dosya sürümü `a6_surumu = 1.0`) |
+| Tarih | 2026-11-19; düzeltme turu 1: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit.md`); düzeltme turu 2: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit-2.md`); çapraz uyum turu: 2026-11-20 (`docs/gorevler/W1-uyum.md`, §12) |
 | Görev | `docs/gorevler/W1-A3A6.md` |
 | Makinece okunur parça | `docs/sozlesmeler/sema/a6-kanallar.json` |
-| Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.8 (§3 A6 satırı, §4, §6, §10 md.22–23); `docs/mimari/08-laboratuvar-uygulamasi.md` §2.6, §3.5; 04 §2.13; 06 §2.13 |
+| Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.10 (§3 A6 satırı, §3.2, §4, §6, §10 md.22–23); `docs/gorevler/W1-uyum.md` (U2, U3, U6, U10, U17, U18, P4-1); `docs/mimari/08-laboratuvar-uygulamasi.md` §2.6, §3.5; 04 §2.13; 06 §2.13 |
 | İlgili sözleşme | A3 (`docs/sozlesmeler/A3-web.md`): ortak kanallar ve yük düzenleri; A1, A2, A4, A5, A8 (ayrı işler) |
 
 Bu belge kural yazar; gerekçe 08 §2.6 ve §3.5'tedir. Makinece okunur dosya bu belgenin parçasıdır. Ortak kanalların yük düzenleri A3 kataloğundakiyle aynıdır ve iki dosya aynı tanımdan üretilmiştir; bu eşitlik 7. başlıktaki denetimle gösterilir.
@@ -85,6 +85,13 @@ MCAP biçimi birincil kaynaktan doğrulandı (https://mcap.dev/spec ve https://m
 | `hil/bariyer` | `yuk_hil_bariyer` | olaylar | olaylar kademesinde yalnız `karar != zamaninda`; telemetri ve tamda her parti | sim | izleme, fizik | hayır | iskelet §4, 06 bariyer |
 | `hil/dusen` | `yuk_hil_dusen` | olaylar | her_uretimde | sim | izleme | hayır | 05, 06 |
 | `kayit/eksik` | `yuk_kayit_eksik` | olaylar | her_uretimde | sim | izleme, fizik, girdi, yeniden_kurma | hayır | kayıt yazıcısı |
+| `kart/baglanti_sayaclari` | `yuk_kart_baglanti_sayaclari` | olaylar | her_uretimde | alim | izleme | evet | A1 `IDA_LINK_STATS` |
+| `kart/cekirdek_sayaclari` | `yuk_kart_cekirdek_sayaclari` | olaylar | her_uretimde | alim | izleme | evet | A1 `IDA_CORE_COUNTERS`, `IDA_STATUS` |
+| `kamera/halka_sayaclari` | `yuk_kamera_halka_sayaclari` | olaylar | 1 Hz (duvar saati) ve kapanışta | sim | izleme | evet | A2 §5 |
+| `kamera/kare_dusme` | `yuk_kamera_kare_dusme` | olaylar | her düşen kare (A2-K49) | sim | izleme | hayır | A2 |
+| `algilama/sayaclar` | `yuk_algilama_sayaclari` | olaylar | 1 Hz (duvar saati) ve kapanışta | sim | izleme | evet | A8-K30 |
+| `algilama/parti` | `yuk_algilama_parti` | olaylar | olaylar kademesinde yalnız nihai durumu OK olmayan, reddedilen ya da geç partiler (A8-K65); telemetri ve tamda her parti, boş partiler dahil | olcum | izleme | evet | A8 |
+| `hil/kart_acilis` | `yuk_kart_acilis` | olaylar | her `IDA_BOARD_HELLO` | alim | izleme, yeniden_kurma | hayır | A1 §3.8 |
 | `sayac/gercek_zaman` | `yuk_sayac_gercek_zaman` | olaylar | 1 Hz (duvar saati) ve kapanışta | sim | izleme | evet | 04, 05, 06 |
 | `calistirma/durum` | `yuk_calistirma_durum` | olaylar | değişimde | sim | izleme | evet | çalıştırma denetçisi |
 | `emniyet/girdiler` | `yuk_emniyet_girdiler` | olaylar | değişimde | sim | izleme, fizik | evet | sanal emniyet girdileri |
@@ -94,6 +101,7 @@ MCAP biçimi birincil kaynaktan doğrulandı (https://mcap.dev/spec ve https://m
 | `fizik/adim_sonucu` | `yuk_fizik_adim_sonucu` | telemetri | boş olmayan her fizik adımı | sim | fizik | hayır | 04 StepResult |
 | `a1/kart_sim` | `yuk_a1_blok` | telemetri | her_uretimde | alim | izleme, yeniden_kurma | hayır | 06 G/Ç iş parçacığı |
 | `hil/zaman_esleme` | `yuk_hil_zaman_esleme` | telemetri | değişimde ve 1 Hz | sim | izleme, yeniden_kurma | hayır | 06 §2.5 |
+| `hil/tf_yazim` | `yuk_hil_tf_yazim` | telemetri | her TF (A1-K43) | sim | izleme, yeniden_kurma | hayır | 06 G/Ç iş parçacığı |
 | `hil/enjeksiyon` | `yuk_hil_enjeksiyon` | telemetri | her_uretimde | sim | izleme, yeniden_kurma | hayır | 06 §2.12 |
 | `yer_istasyonu/emulator` | `yuk_yer_istasyonu_emulator` | telemetri | her_uretimde | sim | izleme | hayır | 06 §2.11 |
 | `kart/durum` | `yuk_kart_durum` | telemetri | her_uretimde | alim | izleme | evet | A1 HIL düzlemi |
@@ -155,7 +163,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `kapanis_adimi` | u64 | - | tipin aralığı | partinin kapandığı fizik adımı |
 | `uygulama_adimi` | u64 | - | tipin aralığı | kapanış + L_act'e denk gelen fizik adımı |
 | `karar` | u8 | - | 0=zamaninda, 1=gec_bekletildi, 2=kacirildi, 3=ret_yinelenen, 4=ret_uygulama_ani_gecmis | iskelet §4 kararı |
-| `varis_duvar_ns` | i64 | ns | yok: INT64_MIN | yanıtın vardığı duvar saati; gelmediyse INT64_MIN |
+| `varis_duvar_ns` | i64 | ns | yok: INT64_MIN | yuvayı tamamlayan son çerçevenin alim anı (duvar saati); gelmediyse INT64_MIN |
 | `bekleme_ns` | i64 | ns | tipin aralığı | bariyer beklemesi (gerçek zaman kayması); beklenmediyse 0 |
 | `kip` | u8 | - | 1=sil, 2=hil_1x, 3=hil_bariyer | zaman kipi |
 
@@ -188,13 +196,15 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `acilis_sayaci` | u32 | - | tipin aralığı | kartın açılış sayacı; yoksa 0 |
 | `neden` | u8 | - | 0=el_sikisma_tamam, 1=uyumsuzluk, 2=reboot_istendi, 3=canlilik_kaybi, 4=aygit_kalkti, 5=beklenmedik_sifirlama, 6=planli_sifirlama, 7=sim_kapanisi | geçiş nedeni |
 | `planli` | u8 | - | 0=hayir, 1=evet | geçiş planlı mı |
-| `ayrinti` | metin(u16, en çok 256) | bayt | tipin aralığı | ek bilgi (HELLO_ACK sonucu vb.) |
+| `kapanis_nedeni` | u8 | - | yok: 0 | A1 `IDA_SESSION_CLOSE.reason` (`IDAW_CLOSE_REASON`, `EVENT_OVERFLOW` = 7 dahil); yoksa 0 |
+| `oturum_sonucu` | u8 | - | yok: 255 | A1 `IDA_SESSION_ACCEPT.result` (`IDAW_SESSION_RESULT`); yoksa 255 |
+| `ayrinti` | metin(u16, en çok 256) | bayt | tipin aralığı | ek bilgi |
 
 #### `yuk_hil_dusen`
 
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
-| `tur` | u8 | - | 0=bulk_drop, 1=ping360_eksik, 2=sonar_gec, 3=sonar_kuyruk_dolu, 4=parti_eksik, 5=sensor_kuyruk_tasma, 6=gcs_kaymasi, 7=crc_hatasi, 8=eski_oturum, 9=gec_olay, 10=es_zamansiz_guvenli_cikti, 11=a1_alan_hatasi, 12=kamera_kare_dusen | düşen verinin türü |
+| `tur` | u8 | - | 0=ping360_seyreltildi, 1=sonar_gec, 2=sonar_kuyruk_dolu, 3=sensor_kuyruk_tasma, 4=komut_ertelendi, 5=komut_sonucsuz, 6=sonuc_talebi_atildi, 7=rx_crc_err, 8=rx_bad_len, 9=yanit_ret_oturum, 10=olay_gec, 11=olay_eksik, 12=kamera_kare_dusen, 13=cagri_izi_eksik | düşen verinin türü; adlar A1 Tablo 3.11a, 05 §4 ve A2 sayaç adlarıdır (`kamera_kare_dusen` ayrıntısı `kamera/kare_dusme`) |
 | `step_seq` | u32 | - | yok: 0xFFFFFFFF | ilgili parti; yoksa 0xFFFFFFFF |
 | `sensor_id` | u16 | - | yok: 0xFFFF | ilgili sensör; yoksa 0xFFFF |
 | `adet` | u32 | - | tipin aralığı | bu kayıtla bildirilen düşen öğe sayısı |
@@ -219,12 +229,54 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `timesync_ofset_ns` | i64 | ns | yok: INT64_MIN | kart saati ile sim duvar saati arasındaki ofset kestirimi; yoksa INT64_MIN |
 | `d_asagi_ns` | i64 | ns | yok: INT64_MIN | aşağı yön teslim gecikmesi kestirimi; yoksa INT64_MIN |
 
+#### `yuk_hil_tf_yazim`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `batch_seq` | u32 | - | tipin aralığı | TF'nin parti sıra numarası |
+| `plan_duvar_ns` | i64 | ns | tipin aralığı | kritik pencerenin planlanan başlangıcı W(t_n), kayıt duvar saatinde |
+| `yazim_baslangic_duvar_ns` | i64 | ns | tipin aralığı | TF'nin ilk baytının taşımaya verildiği an (A1-K43) |
+| `yazim_bitis_duvar_ns` | i64 | ns | tipin aralığı | TF'nin son baytının taşımaya verildiği an (A1-K43) |
+
+#### `yuk_kart_acilis`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `dialect_hash` | u64 | - | tipin aralığı | A1 `IDA_BOARD_HELLO.dialect_hash` |
+| `param_schema_hash` | u64 | - | tipin aralığı | `param_schema_hash` |
+| `peer_nonce` | u32 | - | tipin aralığı | `peer_nonce` |
+| `nonce` | u32 | - | tipin aralığı | `nonce` |
+| `boot_count` | u32 | - | tipin aralığı | `boot_count` |
+| `reset_flags` | u32 | - | tipin aralığı | `reset_flags` |
+| `core_version` | u32 | - | tipin aralığı | `core_version` |
+| `fw_version` | u32 | - | tipin aralığı | `fw_version` |
+| `fw_git` | u32 | - | tipin aralığı | `fw_git` |
+| `param_blob_crc` | u32 | - | tipin aralığı | `param_blob_crc` |
+| `param_gen` | u32 | - | tipin aralığı | `param_gen` |
+| `last_cmd_id` | u32 | - | tipin aralığı | `last_cmd_id` |
+| `ctrl_period_ns` | u32 | ns | tipin aralığı | `ctrl_period_ns` |
+| `param_blob_len` | u16 | bayt | tipin aralığı | `param_blob_len` |
+| `port_major` | u16 | - | tipin aralığı | `port_major` |
+| `port_minor` | u16 | - | tipin aralığı | `port_minor` |
+| `det_schema_major` | u16 | - | tipin aralığı | `det_schema_major` |
+| `det_schema_minor` | u16 | - | tipin aralığı | `det_schema_minor` |
+| `prev_sess` | u16 | - | tipin aralığı | `prev_sess` |
+| `sessions_since_boot` | u16 | - | tipin aralığı | `sessions_since_boot` |
+| `proto_major` | u8 | - | tipin aralığı | `proto_major` |
+| `proto_minor` | u8 | - | tipin aralığı | `proto_minor` |
+| `role` | u8 | - | 1=board, 2=sil | `role` (`IDAW_ROLE`) |
+| `reset_cause` | u8 | - | tipin aralığı | `reset_cause` |
+| `consecutive_faults` | u8 | - | tipin aralığı | `consecutive_faults` |
+| `boot_count_ok` | u8 | - | tipin aralığı | `boot_count_ok` |
+| `param_src` | u8 | - | tipin aralığı | `param_src` |
+| `init_rc` | u8 | - | tipin aralığı | `init_rc` (`IDAW_CORE_RC`) |
+
 #### `yuk_yer_istasyonu_emulator`
 
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
 | `yon` | u8 | - | 0=yer_to_arac, 1=arac_to_yer | yön |
-| `karar` | u8 | - | 0=gecti, 1=dus_kayip, 2=dus_kuyruk, 3=kopuk, 4=model_tutulamadi | emülatör kararı |
+| `karar` | u8 | - | 0=gecti, 1=dus_kayip, 2=dus_kuyruk, 3=kopuk, 4=model_tutulamadi, 5=bayat_yetki | emülatör kararı |
 | `giris_t_ns` | i64 | ns | tipin aralığı | çerçevenin emülatöre girdiği sim zamanı |
 | `cikis_t_ns` | i64 | ns | yok: INT64_MIN | çerçevenin emülatörden çıktığı sim zamanı; düştüyse INT64_MIN |
 | `cerceve` | bayt_dizisi(u16, en çok 280) | bayt | tipin aralığı | emülatöre giren MAVLink çerçevesi |
@@ -280,10 +332,10 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 |---|---|---|---|---|
 | `cagri_sirasi` | u64 | - | tipin aralığı | çalıştırma genelinde tekdüze çekirdek çağrısı sırası; init, step, tick ve background ortak sıradadır, init'te sıfırlanmaz (A6-K54) |
 | `init_kusagi` | u32 | - | tipin aralığı | çağrının ait olduğu init kuşağı (`cekirdek/baslatma.init_kusagi`) |
-| `islev` | u8 | - | 1=step, 2=tick, 3=background | çağrılan işlev |
-| `girdi` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step ve tick: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A4 alan sırasıyla alan alan kodlanmış (A6-K52) |
+| `islev` | u8 | - | 1=step, 2=tick_tf, 3=tick_izgara, 4=oturum_sonu, 5=background | çağrı türü (A4-K122); 1-4 A1 `IDAW_CALL_KIND` değerleriyle aynı: `tick_tf` `tf.present = 1` olan tick, `tick_izgara` `tf.present = 0` olan öteki tick, `oturum_sonu` `tf.present = 0` ve `link_event = SESSION_END` olan `ida_core_tick`; 5 `ida_core_background` (A1'de karşılığı yok) |
+| `girdi` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step, tick ve oturum sonu: `ida_in_t` (`bg_slices` ve `ping360` varlık bayrağı ile satırı dahil); background: `now_w`; A6-K52'ye göre alan alan kodlanmış |
 | `donus_kodu` | u8 | - | tipin aralığı | çağrının dönüş kodu (`ida_rc_t` ya da `ida_bg_rc_t`) |
-| `cikti` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step ve tick: `ida_out_t`, alan alan kodlanmış; background: boş |
+| `cikti` | bayt_dizisi(u32, en çok 262144) | bayt | tipin aralığı | step, tick ve oturum sonu: `ida_out_t`, A6-K52'ye göre kodlanmış (`PARAM_SAVE` blobu dahil); background: boş |
 
 #### `yuk_a3_komut_sonucu`
 
@@ -301,11 +353,12 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
-| `oge_kimligi` | metin(u16, en çok 64) | bayt | tipin aralığı | A5 zaman çizelgesi öğesinin kimliği |
+| `olay_kimligi` | metin(u16, en çok 64) | bayt | tipin aralığı | A5 zaman çizelgesi öğesinin kimliği (A5 §3.15) |
 | `tur` | u8 | - | 0=ariza, 1=emniyet_girdisi, 2=ortam, 3=gorev, 4=diger | öğe türü |
 | `kosul_saglandi_adimi` | u64 | - | tipin aralığı | koşulun sağlandığı adım; zamanlı öğede uygulama adımıyla aynı |
 | `uygulama_adimi` | u64 | - | yok: 2^64-1 | öğenin uygulandığı fizik adımı; reddedildiyse 2^64-1 |
-| `sonuc` | u8 | - | 0=uygulandi, 1=reddedildi | sonuç |
+| `sonuc` | u8 | - | 0=uygulandi, 1=reddedildi, 2=uygulanmadi | sonuç (A5 §3.15); `uygulanmadi`: koşul çalıştırma boyunca hiç sağlanmadı (çalıştırma sonunda yazılır) |
+| `neden` | u8 | - | 0=yok, 1=gevsetme_reddedildi, 2=desteklenmiyor, 3=hedef_yok, 4=kosul_saglanmadi | A5 §3.15 nedeni; `uygulandi`'da 0 |
 | `ayrinti` | metin(u16, en çok 1024) | bayt | tipin aralığı | UTF-8 JSON nesnesi |
 
 #### `yuk_sonar_gercek_ping360`
@@ -324,12 +377,28 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 | Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
 |---|---|---|---|---|
-| `kare_id` | u64 | - | tipin aralığı | kare kimliği (A2) |
+| `istek_kimligi` | u64 | - | tipin aralığı | A2 `istek_kimligi` |
+| `kare_sirasi` | u32 | - | tipin aralığı | A2 `kare_sirasi` (A2-K49) |
+| `kamera_kimligi` | u8 | - | tipin aralığı | A2 `kamera_kimligi` |
+| `calisma_nesli` | u32 | - | tipin aralığı | A2 `calisma_nesli` (A2-K80) |
+| `halka_nesli` | u32 | - | tipin aralığı | A2 `halka_nesli` |
+| `yapilandirma_surumu` | u32 | - | tipin aralığı | A2 `yapilandirma_surumu` |
+| `pozlama_ns` | i64 | ns | tipin aralığı | A2 `pozlama_ns`; ileti `log_time`'i pozlama sonudur (A2 `t_olcum_ns`) |
+| `a2_surumu` | u16 | - | tipin aralığı | karenin A2 sürümü |
 | `genislik` | u16 | piksel | [1, 640] | genişlik; kademe değerleri A2'de (tam 640, sade 320; tahmin) |
 | `yukseklik` | u16 | piksel | [1, 480] | yükseklik; kademe değerleri A2'de (tam 480, sade 240; tahmin) |
-| `piksel_bicimi` | u8 | - | tipin aralığı | A2'nin piksel biçimi kodu (A2'den beklenen) |
-| `a2_surumu` | u16 | - | tipin aralığı | karenin A2 sürümü |
+| `piksel_bicimi` | u8 | - | tipin aralığı | A2'nin piksel biçimi kodu |
 | `piksel` | bayt_dizisi(u32, en çok 921600) | bayt | tipin aralığı | piksel verisi, A2 düzeninde |
+
+#### `yuk_kamera_kare_dusme`
+
+| Alan | Tip | Birim | Geçerli aralık / değerler | Anlam |
+|---|---|---|---|---|
+| `kamera_kimligi` | u8 | - | tipin aralığı | A2 `kamera_kimligi` |
+| `kare_sirasi` | u32 | - | tipin aralığı | düşen karenin `kare_sirasi` (A2-K49) |
+| `calisma_nesli` | u32 | - | tipin aralığı | karenin çalışma nesli (A2-K80) |
+| `s_d_ns` | i64 | ns | tipin aralığı | karenin A2 teslim anı `S_d`, sim zamanı (A2-K46; A8-K65) |
+| `neden` | u8 | - | 1=halka_dolu, 2=kamera_gec, 3=gorsellestirici_yok, 4=calisma_nesli_degisti, 5=halka_yenilendi, 6=halka_yenileniyor, 7=halka_hatasi, 8=halka_emekli_hazir, 33=daha_yeni_istek, 34=iptal, 35=geri_okuma_hatasi, 36=sahne_hazir_degil, 37=gecersiz_istek, 38=tutarsiz_surum, 39=gorsellestirici_halka_hatasi | A2 `SimKareDusmeNedeni` (görselleştiricinin nedenleri 32 + kod) |
 
 #### `yuk_kayit_eksik`
 
@@ -354,12 +423,20 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `a6_surumu` | evet | A6 sürümü, 'major.minor' |
 | `a3_surumu` | evet | A3 sürümü |
 | `a1_proto_surumu` | evet | A1 proto_major.proto_minor (A1'den beklenen); SIL tekrar koşusunda da |
-| `a1_sema_ozeti` | evet | A1 hash_base ve hash_full (A1'den beklenen) |
+| `a2_port` | koşullu | A2-K93 `--a2-port` (onluk); kamera ya da görselleştirici kullanıldıysa |
+| `a2_yuva_sayisi` | koşullu | A2-K93 `--a2-yuva` (onluk) |
+| `a2_operator_gecikme_us` | koşullu | A2-K93 `--a2-operator-gecikme-us` (onluk; görselleştiricinin değeri, A2'nin bildirdiği; bilinmiyorsa yazılmaz) |
+| `a1_dialect_hash` | evet | A1 `dialect_hash` (A1 §3.2), onluk u64 |
 | `a2_surumu` | koşullu | görselleştirici bağlandıysa |
 | `a5_sema_surumu` | evet | senaryonun schema_version'i (A5) |
-| `a7_manifest_ozeti` | evet | A7 manifest özeti (A7'den beklenen biçimde) |
-| `a8_surumu` | koşullu | algılama bileşeni bağlandıysa |
-| `run_id` | evet | çalıştırma kimliği; dosya adıyla aynı |
+| `a7_manifest_ozeti` | evet | `sha256:` + A7 manifestinin ham baytlarının SHA-256'si (64 küçük onaltılık; A7-K05, A5-K115); senaryo vermediyse sim'in hesapladigi |
+| `a7_kume` | evet | A5 `varliklar.kume` (A7 `kume_kimligi`) |
+| `a7_kume_surumu` | evet | manifestin `kume_surumu`'u (onluk; A7-K07, A5-K115); senaryo vermediyse sim'in okuduğu |
+| `a8_surumu_major` | koşullu | A8 şema ana sürümü (`IDA_DET_SCHEMA_MAJOR`); algılama bileşeni bağlandıysa |
+| `a8_surumu_minor` | koşullu | A8 şema yan sürümü (`IDA_DET_SCHEMA_MINOR`) |
+| `run_id` | evet | çalıştırma kimliği (A3-K63); dosya adıyla aynı |
+| `a1_run_id` | evet | A1 `run_id` (u32, onluk): kartlı kiplerde `run_id` metninin UTF-8 baytlarindan hesaplanan SHA-256 özetinin ilk dört baytı, küçük uçlu, 0 çıkarsa 1; SIL'de A5 türetimiyle a1/run_id (A5 Ek D) etiketinden (W1-uyum U17) |
+| `sil_n_bg` | koşullu | SIL kiplerinde zorunlu: her step ve tick öncesindeki arka plan çağrısı sayısı `N_bg` (u32, onluk; A1-K121) |
 | `kip` | evet | `sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma` |
 | `kaynak_run_id` | koşullu | tekrar koşusunda kaynak kaydın run_id'si |
 | `guvencesiz_nedenler` | koşullu | `guvencesiz: true` ile başlatılan tekrar koşusunda sağlanmayan koşulların virgülle ayrılmış listesi (A3-K68, A6-K38) |
@@ -367,8 +444,8 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `kamera_kareleri` | evet | `kapali`, `pencereli`, `surekli` |
 | `kademeler` | evet | `gorunum=..,kamera=..,sonar=..,kayit=..` (iskelet §6) |
 | `tohum` | evet | ana tohum, onluk u64 |
-| `senaryo_ozeti` | evet | `sha256:<hex>` çözümlenmiş senaryonun özeti (A5) |
-| `arac_ozeti` | evet | `sha256:<hex>` araç tanım dosyasının özeti (A5) |
+| `senaryo_ozeti` | evet | `sha256:` + A5 davranış özetinin 64 onaltılık karakteri (A5-K17) |
+| `senaryo_kaynak_ozetleri` | evet | A5 doğrulama raporundaki `kaynak_ozetleri` (dosya -> ham bayt SHA-256) tablosunun RFC 8785 JSON metni; değerler `sha256:` önekli |
 | `sim_surumu` | evet | sim sunucusunun sürüm kimliği (git commit ve kirli bayrağı) |
 | `platform` | evet | `macos-arm64`, `windows-x64` |
 | `derleyici` | evet | derleyici adı ve sürümü |
@@ -376,7 +453,9 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `bagimliliklar` | evet | `ad=surum` listesi: eigen, jolt, embree, mcap ve diğerleri |
 | `rng_surumu` | evet | RNG ve dağılım kodu sürümü (04 §2.13, 05 §2.6) |
 | `dalga_listesi_ozeti` | evet | 04 dalga listesi özeti |
-| `kart_yazilimi_ozeti` | koşullu | HIL'de kartın BOOT_RECORD'undaki yazılım özeti (A1'den beklenen) |
+| `kart_fw_version` | koşullu | ilk `IDA_BOARD_HELLO.fw_version` (onluk) |
+| `kart_fw_git` | koşullu | ilk `IDA_BOARD_HELLO.fw_git` (onluk) |
+| `kart_core_version` | koşullu | ilk `IDA_BOARD_HELLO.core_version` (onluk) |
 | `kontrol_hizi_hz` | evet | 200 (iskelet §4) |
 | `fizik_adimi_ns` | evet | 1250000 (iskelet §4) |
 | `l_act_ns` | evet | 10000000 (iskelet §4) |
@@ -385,13 +464,17 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `baslangic_utc` | evet | ISO 8601 UTC başlangıç anı |
 | `kayit_duvar_saati` | evet | duvar_ns alanlarının kaynağı: monoton saat, kayıt açılışından itibaren ns |
 
-**`ida_kayit_guncelleme`** — acilista boş bırakılan bir kosullu anahtar sonradan öğrenildiğinde (A6-K46).
+**`ida_kayit_guncelleme`** — açılışta boş bırakılan bir koşullu anahtar sonradan öğrenildiğinde (A6-K46).
 
 | Anahtar | Zorunlu | Anlam |
 |---|---|---|
+| `a2_operator_gecikme_us` | koşullu | A2-K93 `--a2-operator-gecikme-us` (onluk; görselleştiricinin değeri, A2'nin bildirdiği; bilinmiyorsa yazılmaz) |
 | `a2_surumu` | koşullu | görselleştirici bağlandıysa |
-| `a8_surumu` | koşullu | algılama bileşeni bağlandıysa |
-| `kart_yazilimi_ozeti` | koşullu | HIL'de kartın BOOT_RECORD'undaki yazılım özeti (A1'den beklenen) |
+| `a8_surumu_major` | koşullu | A8 şema ana sürümü (`IDA_DET_SCHEMA_MAJOR`); algılama bileşeni bağlandıysa |
+| `a8_surumu_minor` | koşullu | A8 şema yan sürümü (`IDA_DET_SCHEMA_MINOR`) |
+| `kart_fw_version` | koşullu | ilk `IDA_BOARD_HELLO.fw_version` (onluk) |
+| `kart_fw_git` | koşullu | ilk `IDA_BOARD_HELLO.fw_git` (onluk) |
+| `kart_core_version` | koşullu | ilk `IDA_BOARD_HELLO.core_version` (onluk) |
 
 **`ida_kayit_kapanis`** — olağan kapanışta, son iletiden sonra.
 
@@ -402,7 +485,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | `son_sim_t_ns` | evet | son sim zamanı |
 | `gecerli` | evet | `true`, `false` (A3 Tablo 4.8) |
 | `gercek_zamani_kacirdi` | evet | `true`, `false` |
-| `gecerlilik_nedenleri` | evet | virgülle ayrılmış neden adları (A3 Tablo 4.8); yoksa boş |
+| `gecerlilik_nedenleri` | evet | virgülle ayrılmış neden adları (A3 Tablo 4.8; A1-K79 ile bire bir); yoksa boş |
 | `sayaclar` | evet | `ad=deger` listesi: yuk_sayac_gercek_zaman alanlarının son değerleri |
 | `kayit_eksik` | evet | `true`, `false` |
 | `ilk_eksik_adim` | koşullu | `kayit_eksik` `true` ise tekrar düzeyi kanallarındaki ilk eksik adım |
@@ -416,10 +499,11 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 | Ad | Ortam türü | Zorunlu | Anlam |
 |---|---|---|---|
-| `cozumlenmis_senaryo.toml` | `application/toml` | evet | A5 çözümlenmiş senaryo, kanonik biçim (`application/toml` IANA'da kayıtlı, 2024-10-21) |
-| `arac.toml` | `application/toml` | evet | A5 araç tanım dosyası olduğu gibi |
+| `cozumlenmis_senaryo.json` | `application/json` | evet | A5 çözümlenmiş senaryonun kanonik (RFC 8785) baytları, değiştirilmeden; SHA-256'si `senaryo_ozeti` (A5-K02, K17) |
+| `dogrulama_raporu.json` | `application/json` | evet | A5 §3.14 doğrulama raporu (uyarılar dahil; A5-K95); ön denetim raporundan ayrı |
+| `a1_komutlar.json` | `application/json` | evet | çalıştırmada kullanılan `protocol/komutlar.json` (A1), değiştirilmeden |
 | `a6_kanallar.json` | `application/json` | evet | yazan sürümün a6-kanallar.json dosyası, değiştirilmeden |
-| `a1_dialect.xml` | `application/xml` | koşullu | A1 dialect XML'i (A1 MAVLink kullanıyorsa; A1'den beklenen) |
+| `a1_dialect.xml` | `application/xml` | evet | `protocol/ida.xml` (A1), değiştirilmeden |
 | `a7_manifest.json` | `application/json` | evet | A7 manifesti |
 | `on_denetim_raporu.json` | `application/json` | evet | A3 ön denetim raporu (A3 $defs/on_denetim_raporu) |
 
@@ -452,7 +536,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 - **A6-K16** Bir kanal, Tablo 3.3'teki "Kademe" değerinde ve üstündeki kademelerde yazılır: `olaylar` kanalları her kademede, `telemetri` kanalları `telemetri` ve `tam`'da, `tam` kanalları yalnız `tam`'da. `kamera/kare` ayrıca `kamera_kareleri` `kapali` değilse yazılır.
 - **A6-K17** `hil/bariyer` `olaylar` kademesinde yalnız `karar` değeri `zamaninda` olmayan partiler için, diğer kademelerde her parti için yazılır.
-- **A6-K18** Kademeden bağımsız olarak her kayıtta şunlar bulunur: olaylar; A3 komutları ve nihai sonuçları; senaryo zaman çizelgesi öğelerinin uygulanması; sanal emniyet girdisi değişimleri; atış kontrol ve arıza durumu değişimleri; kaçırılan, geç bekletilen ve reddedilen her yanıt; düşürülen her veri; A1 oturum geçişleri; kayıt eksikliği bildirimleri; 1 Hz'te ve kapanışta gerçek zaman sayaçları (iskelet §4: geç kalan yanıt, kaçırılan parti ve "gerçek zamanı kaçırdı" işareti A6'ya kaydedilir).
+- **A6-K18** Kademeden bağımsız olarak her kayıtta şunlar bulunur: olaylar; A3 komutları ve nihai sonuçları; senaryo zaman çizelgesi öğelerinin uygulanması (`uygulanmadi` sonucu dahil); sanal emniyet girdisi değişimleri (fiş ve pim tüp başına); atış kontrol ve arıza durumu değişimleri; kaçırılan, geç bekletilen ve reddedilen her yanıt; düşürülen her veri; A1 oturum geçişleri ve her `IDA_BOARD_HELLO` (`hil/kart_acilis`); kayıt eksikliği bildirimleri; 1 Hz'te ve kapanışta gerçek zaman sayaçları (iskelet §4: geç kalan yanıt, kaçırılan parti ve "gerçek zamanı kaçırdı" işareti A6'ya kaydedilir); her üretimde kartın bağlantı ve çekirdek sayaçları (`kart/baglanti_sayaclari`, `kart/cekirdek_sayaclari`); 1 Hz'te ve kapanışta A2 halka sayaçları ve A8 kabul kapısı sayaçları; her düşen kamera karesi özgün A2 nedeniyle (`kamera/kare_dusme`); her `eski_nesil` reddi, her parti reddi, her geç yanıt ve nihai durumu `OK` olmayan her algılama partisi (`algilama/parti`; A8-K65). Bu kanalların yük tanımları ve kaynak eşlemeleri A3 §3.3'tedir.
 - **A6-K19** `kamera_kareleri = surekli` her kareyi; `pencereli` yalnız bir `algilama/kayit` kaydının ya da `atis_olayi_sonucu` olayının sim zamanının ±2 s çevresindeki kareleri yazar (pencere mimari seçimi, tahmin); yazıcı bunun için son 2 s'lik kareleri bellekte tutar.
 - **A6-K20** Kayıt kademesi ve `kamera_kareleri` çalıştırma boyunca değişmez.
 
@@ -466,8 +550,8 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 - **A6-K24** Her A3 komutu alındığı anda `a3/komut`'a, nihai sonucu uygulama adımıyla `a3/komut_sonucu`'na yazılır (A3-K52, K57).
 - **A6-K25** Senaryo zaman çizelgesindeki her öğe (zamanlı ya da koşullu) uygulandığında ya da reddedildiğinde `senaryo/oge_uygulama`'ya, koşulun sağlandığı ve öğenin uygulandığı adımla yazılır (08 §2.2).
 - **A6-K26** Düşürülen her veri `hil/dusen` kaydıyla, türü, ilgili parti ve sensör, adet ve nedeniyle yazılır.
-- **A6-K27** A1 oturumunun her geçişi (el sıkışma sonucu, `HAZIR`, `KOŞUYOR`, `KOPUK`, yeniden başlatma isteği, planlı ve planlanmamış kart sıfırlaması, sim kapanışı) `hil/oturum` kaydıyla, oturum numarası ve kartın açılış sayacıyla yazılır (AB-096).
-- **A6-K28** A1 baytları ham ve zaman damgalı kaydedilir: sim'in taşımaya verdiği her bayt bloğu (hata enjektörünün değişikliklerinden **sonraki** hali) `a1/sim_kart`'a, taşımadan aldığı her blok (hata enjektörünün değişikliklerinden **önceki** hali) `a1/kart_sim`'e, kayıt duvar saati ve sim zamanıyla yazılır. Enjektörün her işlemi ayrıca `hil/enjeksiyon`'a yazılır. A6 A1 çerçevelerini çözmez; çerçeve içeriği A1 sözleşmesindedir.
+- **A6-K27** A1 oturumunun her geçişi (el sıkışma sonucu, `HAZIR`, `KOŞUYOR`, `KOPUK`, yeniden başlatma isteği, planlı ve planlanmamış kart sıfırlaması, sim kapanışı) `hil/oturum` kaydıyla, oturum numarası, kartın açılış sayacı, A1 kapanış nedeni (`IDA_SESSION_CLOSE.reason`) ve oturum kabul sonucuyla yazılır (AB-096). Kartın her `IDA_BOARD_HELLO`'su bütün alanlarıyla `hil/kart_acilis`'e yazılır. Sim'in çalıştırma nesli değişimi (yeni çalıştırma, sıfırlama, atlama; A2-K80) A1'de her zaman bir oturum kapanışı ve yeni bir oturumdur (A1-K128); bu yüzden bir kayıt birden çok oturum içerebilir ve her oturumun sınırı `hil/oturum` kayıtlarından okunur.
+- **A6-K28** A1 baytları ham ve zaman damgalı kaydedilir: sim'in taşımaya verdiği her bayt bloğu (hata enjektörünün değişikliklerinden **sonraki** hali) `a1/sim_kart`'a, taşımadan aldığı her blok (hata enjektörünün değişikliklerinden **önceki** hali) `a1/kart_sim`'e, kayıt duvar saati ve sim zamanıyla yazılır. Enjektörün her işlemi ayrıca `hil/enjeksiyon`'a yazılır. Her zaman çerçevesinin (TF) planlanan anı ile gerçek yazım başlangıcı ve bitişi `hil/tf_yazim`'e yazılır (A1-K43). A6 A1 çerçevelerini çözmez; çerçeve içeriği A1 sözleşmesindedir.
 - **A6-K29** Bağlantı emülatörünün her çerçeve kararı `yer_istasyonu/emulator`'a yazılır; modellenen gecikme (emülatöre giriş ve çıkış sim zamanları) ile köprünün gerçek iletimi (A1 bloklarının duvar saati) ayrı alanlardadır (06 §2.11).
 
 ### 4.5 Eksik kayıt
@@ -483,13 +567,13 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 | Düzey | En düşük kademe | Gereken kayıt | Ne yapılır | Güvence | Güvencenin koşulu |
 |---|---|---|---|---|---|
 | (a) `izleme` | `olaylar` | Okunabilen herhangi bir dosya | Kayıttaki ortak kanallar A3 üzerinden `kaynak_kayit` bayrağıyla yayınlanır (A3-K112); fizik koşmaz | Gösterilen her değer kayıttaki değerin aynısıdır | Yok. `olaylar` kademesinde yalnız olay zaman çizelgesi izlenir; tekrar oynatma güvencesi yoktur (iskelet A6) |
-| (b) `fizik` | `telemetri` | `fizik/adim_sonucu`, `a3/komut`, `a3/komut_sonucu`, `senaryo/oge_uygulama`, `emniyet/girdiler`, `fizik/durum`; ekler `cozumlenmis_senaryo.toml`, `arac.toml`; üst veri `tohum`, sürümler | Senaryo ve tohumla dünya yeniden kurulur; kart, A1, görselleştirici ve algılama bileşeni yerine kayıtlı komut ve olay kararları, elle arızalar, emniyet değişiklikleri ve senaryo öğeleri kayıtlı adımlarda uygulanır | Kanonik fizik izi (§4.7) kayıttakiyle bit düzeyinde aynıdır | Aynı `sim_surumu`, `platform`, `derleyici`, `derleme_bayraklari`, `bagimliliklar`, `rng_surumu`; `senaryo_ozeti` ve `arac_ozeti` eşit; gereken kanallarda eksik yok (ya da önek). Farklı platformda yalnız toleranslı eşdeğerlik (Ç7; tolerans 04 §6 ve 09'da). Senaryo, tohum ya da ikili farklıysa koşu yapılır ama "tekrar" sayılmaz (08 §2.6.2) |
+| (b) `fizik` | `telemetri` | `fizik/adim_sonucu`, `a3/komut`, `a3/komut_sonucu`, `senaryo/oge_uygulama`, `emniyet/girdiler`, `fizik/durum`; ekler `cozumlenmis_senaryo.json`; üst veri `tohum`, `senaryo_ozeti`, sürümler | Senaryo ve tohumla dünya yeniden kurulur; kart, A1, görselleştirici ve algılama bileşeni yerine kayıtlı komut ve olay kararları, elle arızalar, emniyet değişiklikleri ve senaryo öğeleri kayıtlı adımlarda uygulanır | Kanonik fizik izi (§4.7) kayıttakiyle bit düzeyinde aynıdır | Aynı `sim_surumu`, `platform`, `derleyici`, `derleme_bayraklari`, `bagimliliklar`, `rng_surumu`; `senaryo_ozeti` (araç tanımını da kapsayan A5 davranış özeti) eşit; gereken kanallarda eksik yok (ya da önek). Farklı platformda yalnız toleranslı eşdeğerlik (Ç7; tolerans 04 §6 ve 09'da). Senaryo, tohum ya da ikili farklıysa koşu yapılır ama "tekrar" sayılmaz (08 §2.6.2) |
 | (c) `girdi` | `tam`, yalnız `sil` kipindeki kayıt | `cekirdek/baslatma`, `cekirdek/cagri` (bütün init ve çağrılar, `cagri_sirasi` boşluksuz) | Tekrar hedefi PC'deki çekirdektir: iki kanalın kayıtları `cagri_sirasi` sırasıyla yürütülür; her init kaydı çekirdeği kayıttaki başlatma girdisi ve parametre bloğuyla yeniden başlatır ve init dönüş kodu da karşılaştırılır; çağrılar ait oldukları `init_kusagi` altında, duvar saatinden bağımsız koşturulur (A6-K55); fizik koşmaz | Her init ve çağrının dönüş kodu ve çıktısı kayıttakiyle bit düzeyinde aynıdır (A4-K24) | Kaynak kayıt `sil` kipinde; `cekirdek_bilgisi` (çekirdek yapı kimliği), `platform`, `derleyici`, `derleme_bayraklari` ve `senaryo_ozeti` eşit; gereken kanallarda eksik yok (ya da önek) |
-| (d) `yeniden_kurma` | `tam`, `hil_1x` ya da `hil_bariyer` kaydı | `a1/sim_kart`, `a1/kart_sim` (alım damgalarıyla), `hil/oturum` ve `hil/zaman_esleme` (yalnız üst veri) | Kayıtlı sim → kart bayt blokları PC'deki ortak platform katmanı koduna verilir, bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır; oturum el sıkışması tekrar edilmez (A6-K56, K57) | **Güvence yoktur.** Kartın o koşudaki çıktılarıyla karşılaştırma yalnız raporlanır | — (güvence olmadığı için sürüm koşulu yoktur) |
+| (d) `yeniden_kurma` | `tam`, `hil_1x` ya da `hil_bariyer` kaydı | `a1/sim_kart`, `a1/kart_sim` (alım damgalarıyla), `hil/oturum`, `hil/kart_acilis` (oturum başına açılış alanları), `hil/zaman_esleme` ve `hil/tf_yazim` (yalnız üst veri) | Kayıtlı sim → kart bayt blokları PC'deki ortak platform katmanı koduna verilir, bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır; her oturum kayıttaki açılış alanlarıyla yeniden başlatılır, el sıkışması karta karşı tekrar edilmez (A6-K56, K57) | **Güvence yoktur.** Kartın o koşudaki çıktılarıyla karşılaştırma yalnız raporlanır | — (güvence olmadığı için sürüm koşulu yoktur) |
 
 - **A6-K33** Kapanışta yazıcı `tekrar_guvencesi`'ni şöyle belirler: düzeyin kademe, kip ve kanal gereği sağlanan en yüksek düzey (`fizik` için `telemetri`; `girdi` için `tam` ve `sil` kipi; HIL kaydı en çok `fizik` verir, `yeniden_kurma` bir güvence düzeyi değildir); `olaylar` kademesinde `izleme`; A6-K38 ve A6-K53'teki durumlarda `yok`. O düzeyin gerektirdiği bir kanalda `kayit/eksik` kaydı varsa güvence o düzeyde **önek güvencesidir**: `guvence_on_eki_son_adim` = gereken kanallardaki ilk eksik adım − 1 yazılır ve güvence yalnız 0 … bu adım için geçerlidir; ilk eksik adım 0 ise o düzey verilmez ve bir alt düzeye inilir.
 - **A6-K34** Bariyer beklemesi olan ya da gerçek zamanı kaçıran bir çalıştırmanın kaydı `fizik` düzeyini korur (komutlar kayıtlı adımlarda uygulanır). HIL kaydından `girdi` güvencesi hiçbir koşulda verilmez; kartın duvar saatine bağlı davranışı (gözetim, emniyet süreleri, bağlantı zaman aşımı) için güvence yoktur (iskelet §4; Ç1).
-- **A6-K35** Fizik yeniden koşturmada sim kayıtlı sürekli komutları ve tek seferlik olay kararlarını kaydedildikleri adımlarda uygular ve kararı yeniden hesaplar; yeniden hesaplanan karar kayıttakinden farklıysa kayıttaki uygulanır ve `uyari` olayı (`kod = tekrar_karar_farki`) üretilir.
+- **A6-K35** Fizik yeniden koşturmada sim kayıtlı sürekli komutları ve tek seferlik olay kararlarını kaydedildikleri adımlarda uygular ve kararı yeniden hesaplar; aynı fizik sınırındaki emniyet işlemleri iskelet §3.2'deki sırayla (A3-K95) uygulanır. Yeniden hesaplanan karar kayıttakinden farklıysa kayıttaki uygulanır ve `uyari` olayı (`kod = tekrar_karar_farki`) üretilir.
 - **A6-K36** Fizik yeniden koşturmada sensör modelleri ve sonar tohumdan yeniden üretilir ve hiçbir yere iletilmez; sonar çıktısının kayıttakiyle eşitliği güvence değildir (Embree'nin bit eşitliği garantisi bulunamadı, aynı ikili ve platformda eşitlik M11/M15 ile doğrulanmadı; 08 §2.6.2). Fizik sonar çıktısını tüketmediği için kanonik fizik izi bundan etkilenmez.
 - **A6-K37** Tekrar koşusunun kendisi yeni bir dosyaya kaydedilir; üst veride `kip` `tekrar_fizik`, `tekrar_girdi_sil` ya da `tekrar_yeniden_kurma`, `kaynak_run_id` kaynak kaydın `run_id`'sidir. Kayıttan uygulanan her A3 komutu güncel sim sürecinden **yeni bir `komut_no`** alır ve yeni dosyada `a3/komut_sonucu`'na bu numarayla yazılır; kaynak kimliği ayrı alanlardadır: `kaynak_run_id` ve `kaynak_komut_no` (kaynak kayıttaki numara). Canlı komutlarda bu iki alan boş ve 0'dır. `komut_no` ile yapılan sorgular (A3-K60) yalnız güncel sürecin numaralarını kapsar; kaynak kayıttaki bir komut ancak (`kaynak_run_id`, `kaynak_komut_no`) çiftiyle aranır.
 - **A6-K38** **Sürüm, platform ya da özet koşulu sağlanmayan tekrar isteği reddedilir** (A3-K68: 409 `tekrar_kosulu_saglanmiyor`, `ayrinti.nedenler`). Yalnız istekte açık `guvencesiz: true` varsa koşu başlar; o zaman yeni dosyanın açılış üst verisine `guvencesiz_nedenler`, kapanışına `tekrar_guvencesi = yok` ve `guvence_nedenleri = guvencesiz_baslatma` yazılır ve `uyari` olayı (`kod = tekrar_guvencesi_yok`) üretilir. `yeniden_kurma` düzeyi güvence vermediği için bu koşula bağlı değildir.
@@ -506,7 +590,7 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 
 - **A6-K44** Olağan kapanışta yazıcı bekleyen iletileri yazar, son `sayac/gercek_zaman` iletisini yazar, `ida_kayit_kapanis` üst verisini yazar ve MCAP dosyasını kitaplığın `close` çağrısıyla (Data End, özet, Footer, sondaki sihirli baytlar) kapatır.
 - **A6-K45** `bitis_durumu` çalıştırmanın son durumudur ve şu değerlerden biridir: `bitti`, `durduruldu` (`durdur` ya da `sifirla` ile; A3-K67), `on_denetim_kaldi` (çalıştırma ön denetimde kaldı; A3-K62), `hata`, `disk_dolu` ya da `yazma_hatasi` (A6-K31), `sinira_ulasti` (A6-K12) ya da `sim_kapanisi` (canlı çalıştırma sürerken sim sunucusu olağan kapandı). Liste `x_ida_ust_veri` kataloğundakiyle aynıdır.
-- **A6-K46** `ida_kayit` açılış kaydı dosya açılışında, ilk kanal iletisinden önce bir kez yazılır, bütün zorunlu anahtarları taşır ve `$defs/ust_veri_ida_kayit`'e uyar; açılışta değeri bilinmeyen koşullu anahtar yazılmaz ya da boş metinle yazılır. Sonradan öğrenilen değerler `ida_kayit_guncelleme` kısmi güncelleme kaydıyla yazılır; bu kayıt yalnız kapalı listedeki anahtarları (`kart_yazilimi_ozeti`, `a2_surumu`, `a8_surumu`) taşıyabilir ve `$defs/ust_veri_ida_kayit_guncelleme`'ye uyar. **Birleştirme:** okuyucu açılış kaydından başlar ve güncelleme kayıtlarını dosya sırasıyla uygular; bir güncelleme yalnız açılışta yok ya da boş olan anahtarı doldurur. Dolu bir anahtarı (açılışta ya da önceki bir güncellemede doldurulmuş) farklı bir değerle yeniden yazan güncelleme dosyayı `bozuk` yapar (A6-K59'daki sonuçlarla); aynı değerle yeniden yazan güncelleme etkisizdir. İkinci bir `ida_kayit` açılış kaydı da dosyayı `bozuk` yapar.
+- **A6-K46** `ida_kayit` açılış kaydı dosya açılışında, ilk kanal iletisinden önce bir kez yazılır, bütün zorunlu anahtarları taşır ve `$defs/ust_veri_ida_kayit`'e uyar; açılışta değeri bilinmeyen koşullu anahtar yazılmaz ya da boş metinle yazılır. Sonradan öğrenilen değerler `ida_kayit_guncelleme` kısmi güncelleme kaydıyla yazılır; bu kayıt yalnız kapalı listedeki anahtarları (`kart_fw_version`, `kart_fw_git`, `kart_core_version`, `a2_surumu`, `a8_surumu_major`, `a8_surumu_minor`, `a2_operator_gecikme_us`) taşıyabilir ve `$defs/ust_veri_ida_kayit_guncelleme`'ye uyar. **Birleştirme:** okuyucu açılış kaydından başlar ve güncelleme kayıtlarını dosya sırasıyla uygular; bir güncelleme yalnız açılışta yok ya da boş olan anahtarı doldurur. Dolu bir anahtarı (açılışta ya da önceki bir güncellemede doldurulmuş) farklı bir değerle yeniden yazan güncelleme dosyayı `bozuk` yapar (A6-K59'daki sonuçlarla); aynı değerle yeniden yazan güncelleme etkisizdir. İkinci bir `ida_kayit` açılış kaydı da dosyayı `bozuk` yapar.
 
 ### 4.9 Sürüm uyumluluğu
 
@@ -518,12 +602,12 @@ A3 ile ortak yüklerin tabloları A3 §3.4'tedir ve burada yinelenmez: `yuk_cali
 ### 4.10 Bütünlük, kurtarma ve girdi tekrarının sınırı (düzeltme turu 1)
 
 - **A6-K51** Yazıcı her parçanın `uncompressed_crc` alanını (MCAP spesifikasyonundaki CRC-32, parçanın sıkıştırmasız kayıt verisi üzerinden) ve her ekin `crc` alanını hesaplar ve yazar; CRC hesaplamasını kapatan kitaplık seçenekleri (`noChunkCRC`, `noAttachmentCRC`) kullanılmaz.
-- **A6-K52** `cekirdek/baslatma` ve `cekirdek/cagri` yüklerindeki A4 yapıları bellekteki bayt düzeniyle yazılmaz (A4-K03); A4 §3'teki alan sırasıyla alan alan kodlanır: A3 §3.1 tel tipleri, `bool` için `u8` (0/1), sabit boyutlu diziler kapasiteleri kadar tam (kullanılmayan öğeler sıfır), işaretçi alanı (`ping360`) önce `u8` varlık bayrağı ve varsa ardından gösterdiği yapı, iç içe yapılar sırayla, doldurma yok. Yerleşimin sürümü `cekirdek/baslatma`'daki `port_major`/`port_minor`'dur; kodlayıcı ve çözücü `core/include/ida/port.h`'den üretilir (uygulama işi).
+- **A6-K52** `cekirdek/baslatma` ve `cekirdek/cagri` yüklerindeki A4 yapıları bellekteki bayt düzeniyle yazılmaz (A4-K03); W1-uyum U1 ile temizlenmiş `core/include/ida/port.h`'deki alan sırasıyla alan alan kodlanır (kaldırılan alanlar kayda girmez): A3 §3.1 tel tipleri (`u8`–`u64`, `i32`, `i64`, `f32`, `f64`); `bool` için `u8` (0/1); iç içe yapılar sırayla; doldurma yok. **Birlikler ve koşullu alanlar:** etkin üyeyi yalnız A4 §3.14'teki (A4-K121) seçici belirler; kodlayıcı önce seçici alanı, ardından yalnız etkin üyeyi yazar; etkin üyesi olmayan seçici değerinde birlik için hiçbir bayt yazılmaz. **Kullanılmayan alan yazılmaz:** sayaçlı dizilerde (`n_*`) yalnız ilk `n_*` öğe, maske seçicili alanlarda yalnız biti kurulu öğeler, geçerlilik bayraklı alanlarda (`imu_present`, `nav_valid`, `ida_cmd_result_t.value`/`save`) yalnız geçerliyken alan yazılır. İşaretçi alanı (`ping360`) önce `u8` varlık bayrağı ve varsa ardından gösterdiği yapı olarak yazılır. `PARAM_SAVE` çıktısının blobu `len` (`u32`) ve ardından `len` bayt olarak yazılır. Çözücü aynı kurallarla okur; seçici değeri A4 §3.14'te tanımsızsa kayıt `bozuk` sayılır (A6-K59). Yerleşimin sürümü `cekirdek/baslatma`'daki `port_major`/`port_minor`'dur; kodlayıcı ve çözücü `port.h`'den üretilir (uygulama işi).
 - **A6-K53** Tekrar koşusunda A3-K120'ye göre kabul edilen ilk canlı müdahalenin uygulandığı adım kapanış üst verisine `canli_mudahale_adimi` olarak yazılır; dosyanın `tekrar_guvencesi` `yok`, `guvence_nedenleri` `canli_mudahale` olur. Kayıtlı girdiyle beslenen kiplerde müdahale reddedildiği için bu kural yalnız `tekrar_fizik` koşularına uygulanır.
-- **A6-K54** Çekirdeği PC'de çağıran kiplerde (`sil`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`) ve `tam` kademede, çekirdeği çağıran platform katmanı her `ida_core_init` çağrısını `cekirdek/baslatma`'ya (çekirdek yapı kimliği olarak `ida_core_info_t`, başlatma girdisi, parametre bloğu, dönüş kodu) ve her `ida_core_step`, `ida_core_tick` ve `ida_core_background` çağrısını `cekirdek/cagri`'ya (işlev türü, çekirdeğe verdiği girdinin tamamı, dönüş kodu, çıktı) yazar. **`cagri_sirasi`** çalıştırma genelinde tekdüzedir: çalıştırmanın ilk çekirdek çağrısında 1'dir, init dahil her çağrıda bir artar ve init'te sıfırlanmaz; iki kanal birlikte boşluksuz bir sıra oluşturur. **`init_kusagi`** çalıştırmanın ilk init'inde 1'dir, her init'te bir artar; her çağrı kaydı ait olduğu kuşağı taşır. Çekirdeğin gördüğü bütün zaman değerleri (`now_w`, zaman çerçevesi, alım zamanları) ve `bg_slices` girdinin parçasıdır. Kaydı platform katmanı çağrının kendisinden üretir; A1 baytlarından türetmez.
-- **A6-K55** `girdi` tekrarında tekrar sürücüsü önce ilk `cekirdek/baslatma` kaydındaki `cekirdek_bilgisi`'ni kendi çekirdeğinin `ida_core_info` çıktısıyla karşılaştırır; farklıysa A6-K38 uygulanır. Sonra `cekirdek/baslatma` ve `cekirdek/cagri` kayıtlarını birlikte, `cagri_sirasi` sırasıyla yürütür: bir init kaydında çekirdeği kayıttaki başlatma girdisi ve parametre bloğuyla yeniden başlatır (`ida_core_init`) ve init'in dönüş kodunu kayıttakiyle karşılaştırır; bir çağrı kaydında, kaydın `init_kusagi`'nin son yürütülen init'inkine eşit olduğunu denetler ve çağrıyı kayıttaki girdiyle, duvar saatinden ve gerçek zamandan bağımsız olarak yapar; dönüş kodunu ve çıktıyı kayıttakiyle bayt bayt karşılaştırır. `cagri_sirasi`'nda boşluk, kuşak uyuşmazlığı ya da ilk karşılaştırma farkı tekrarı durdurur ve ilgili sıra raporlanır. Bit eşitliği güvencesi yalnız kaynak kayıt `sil` kipindeyse ve Tablo 4.6'daki koşul sağlanıyorsa verilir.
-- **A6-K56** HIL kaydından (`hil_1x`, `hil_bariyer`) yapılan tekrar **yeniden kurma tekrarıdır** (`tekrar_yeniden_kurma`). Kartın içindeki çağrı girdileri PC'de görünmediği için tekrar sürücüsü kayıttaki `a1/sim_kart` bloklarını kayıt duvar saati damgalarıyla PC'deki ortak platform katmanı koduna (A1 ↔ A4 dönüştürücüsü, `protocol/ida_link`) verir; bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır (kurulan çağrılar `cekirdek/*` kanallarına yeni dosyada yazılır). Kartın gerçek alım zamanları ve arka plan dilimleri bilinmediğinden kurulan girdiler kartınkilerden farklı olabilir; kartın o koşudaki çıktılarıyla bit eşitliği güvencesi verilmez, karşılaştırma (A6-K40) yalnız raporlanır. HIL'de `bg_slices`'ın PC'ye taşınması gerekmez.
-- **A6-K57** Yeniden kurma tekrarında A1 oturum el sıkışması tekrar edilmez: hedef yeni bir kart oturumu değil PC'deki çekirdektir. Kayıtlı `HELLO`, `HELLO_ACK` ve `hil/oturum` kayıtları yalnız üst veri olarak okunur; platform katmanı kayıttaki ilk `KOŞUYOR` geçişinden itibaren oturumu kurulmuş sayar (A1'den beklenen: el sıkışmasız başlatma kipi).
+- **A6-K54** Çekirdeği PC'de çağıran kiplerde (`sil`, `tekrar_girdi_sil`, `tekrar_yeniden_kurma`) ve `tam` kademede, çekirdeği çağıran platform katmanı her `ida_core_init` çağrısını `cekirdek/baslatma`'ya (çekirdek yapı kimliği olarak `ida_core_info_t`, başlatma girdisi, parametre bloğu, dönüş kodu) ve her `ida_core_step`, `ida_core_tick` ve `ida_core_background` çağrısını `cekirdek/cagri`'ya (çağrı türü, çekirdeğe verdiği girdinin tamamı, dönüş kodu, çıktı) yazar; oturum sonu çağrısı (A4-K122) kendi türüyle (`islev = oturum_sonu`) yazılır. **`cagri_sirasi`** çalıştırma genelinde tekdüzedir: çalıştırmanın ilk çekirdek çağrısında 1'dir, init dahil her çağrıda bir artar ve init'te sıfırlanmaz; iki kanal birlikte boşluksuz bir sıra oluşturur. **`init_kusagi`** çalıştırmanın ilk init'inde 1'dir, her init'te bir artar; her çağrı kaydı ait olduğu kuşağı taşır. Çekirdeğin gördüğü bütün zaman değerleri (`now_w`, zaman çerçevesi, alım zamanları) ve `bg_slices` girdinin parçasıdır. Canlı SIL'de arka plan çağrılarının takvimi A1-K121 ve A4-K95'tir (her step ve tick'ten önce tam `N_bg`, oturum sonu çağrısından önce hiç); kayıt yapılan arka plan çağrılarının tamamını içerir ve `N_bg` üst verideki `sil_n_bg`'dir (W1-uyum U10). Kaydı platform katmanı çağrının kendisinden üretir; A1 baytlarından türetmez.
+- **A6-K55** `girdi` tekrarında tekrar sürücüsü önce ilk `cekirdek/baslatma` kaydındaki `cekirdek_bilgisi`'ni kendi çekirdeğinin `ida_core_info` çıktısıyla karşılaştırır; farklıysa A6-K38 uygulanır. Sonra `cekirdek/baslatma` ve `cekirdek/cagri` kayıtlarını birlikte, `cagri_sirasi` sırasıyla yürütür: bir init kaydında çekirdeği kayıttaki başlatma girdisi ve parametre bloğuyla yeniden başlatır (`ida_core_init`) ve init'in dönüş kodunu kayıttakiyle karşılaştırır; bir çağrı kaydında, kaydın `init_kusagi`'nin son yürütülen init'inkine eşit olduğunu denetler ve çağrıyı kayıttaki girdiyle, duvar saatinden ve gerçek zamandan bağımsız olarak yapar; dönüş kodunu ve çıktıyı kayıttakiyle bayt bayt karşılaştırır. Arka plan çağrıları **yalnız** kayıtlı çağrı dizisinden yürütülür; sürücü kendiliğinden arka plan çağrısı eklemez ve çıkarmaz (A4-K95, A4-K109). `bg_slices` yalnız tutarlılık denetimidir: her step ve tick kaydının `bg_slices`'ı, kayıtta o kuşaktaki bir önceki step/tick'ten (ya da init'ten) beri yürütülen arka plan çağrısı sayısına eşit olmalıdır; eşit değilse tekrar hata verir (W1-uyum U10). `cagri_sirasi`'nda boşluk, kuşak uyuşmazlığı, `bg_slices` uyuşmazlığı ya da ilk karşılaştırma farkı tekrarı durdurur ve ilgili sıra raporlanır. Bit eşitliği güvencesi yalnız kaynak kayıt `sil` kipindeyse ve Tablo 4.6'daki koşul sağlanıyorsa verilir.
+- **A6-K56** HIL kaydından (`hil_1x`, `hil_bariyer`) yapılan tekrar **yeniden kurma tekrarıdır** (`tekrar_yeniden_kurma`). Kartın içindeki çağrı girdileri PC'de görünmediği için tekrar sürücüsü kayıttaki `a1/sim_kart` bloklarını kayıt duvar saati damgalarıyla PC'deki ortak platform katmanı koduna (A1 ↔ A4 dönüştürücüsü, `protocol/ida_link`) A1'in PC'ye özgü yeniden kurma girişinden verir (A6-K57); bu katman çağrı girdilerini yeniden kurar ve PC'deki çekirdeği çağırır (kurulan çağrılar `cekirdek/*` kanallarına yeni dosyada yazılır). Kartın duvar saati, arka plan dilimleri ve alım yaşları yalnız kayıttaki `IDA_CALL_TRACE`'lerden (`now_w_ns`, `bg_slices`, `rx_age_ns`; A1-K127) alınır; iz eksikse (A1-K95, `cagri_izi_eksik`) o periyot yaklaşık kurulur. Kurulan girdiler kartınkilerden farklı olabilir; kartın o koşudaki çıktılarıyla bit eşitliği güvencesi verilmez, karşılaştırma (A6-K40) yalnız raporlanır.
+- **A6-K57** Yeniden kurma tekrarında A1 oturum el sıkışması karta karşı tekrar edilmez: hedef PC'deki çekirdektir. Platform katmanı A1-K127'deki yeniden kurma girişini kullanır (iskelet §3 A6 satırı; W1-uyum U18): girdi kayıttaki iki yöndeki A1 çerçeveleridir (`a1/sim_kart`, `a1/kart_sim`); oturum değerleri kayıttaki `IDA_SIM_HELLO`, `IDA_BOARD_HELLO` ve `IDA_SESSION_ACCEPT` çerçevelerinden alınır. **Çok oturumlu kayıt:** kayıttaki her `OK` sonuçlu `IDA_SESSION_ACCEPT` yeni bir oturumdur (çalıştırma nesli değişimi dahil; A6-K27, A1-K128); her oturumda PC'deki çekirdek o oturumun `IDA_BOARD_HELLO`'sundaki açılış alanlarıyla (A1-K127'deki liste) yeniden başlatılır (`ida_core_init`, yeni `init_kusagi`); bir oturumun sonu oturum sonu çağrısıyla (A4-K122) işlenir. Kurulan çağrılar yeni dosyanın `cekirdek/*` kanallarına yazılır.
 - **A6-K58** Kayıtlı bayt akışının gerçek karta yeniden verilmesi (06 §2.9 ve 08 §2.6.2'deki "karta besleme" tanımı) 1.0'da desteklenmez; A3'te bunun için bir tekrar düzeyi yoktur (8. başlık, açık).
 - **A6-K59** A6 okuyucusu (izleme, tekrar sürücüsü, kayıt listesi ve dışa aktarıcı) her parçayı açarken sıkıştırmasız verinin CRC-32'sini kendisi hesaplar ve `uncompressed_crc` ile karşılaştırır; MCAP kitaplığının bunu yaptığını varsaymaz (`foxglove/mcap` C++ okuyucusu `uncompressedCrc`'yi ayrıştırır ama doğrulamaz: `cpp/mcap/include/mcap/reader.inl`, `main` dalı, 2026-11-20). A6-K51 gereği `uncompressed_crc = 0` değeri de "doğrulama yok" sayılmaz, hesaplanan değerle karşılaştırılır. CRC'si tutmayan, açılamayan ya da çözülemeyen parçadan hiçbir ileti yayınlanmaz ve tekrar sürücüsüne verilmez; dosya `bozuk` işaretlenir; o dosyadan hiçbir tekrar güvencesi (`fizik`, `girdi`) verilmez ve tekrar isteği 422 `kayit_okunamadi` ile reddedilir; izleme yalnız ilk bozuk parçadan önceki parçalarla yapılır. Eklerin `crc`'si de aynı biçimde doğrulanır; tutmayan ek kullanılmaz ve dosya `bozuk` işaretlenir.
 - **A6-K60** Footer'ı, özeti ya da Data End kaydı okunamayan (kapanmamış) dosya A6'nın **kurtarma okumasıyla** okunur; kitaplığın özetsiz tarama yoluna (`AllowFallbackScan`) bırakılmaz (o yol Footer bulunmayan dosyada veri sonunu dosya boyu eksi Footer boyu varsayar ve son tam parçanın bir kısmını dışarıda bırakabilir; `reader.inl`, aynı kaynak). Kurtarma okuması: baştaki sihirli baytları ve Header'ı doğrular; dosyanın başından fiziksel dosya sonuna kadar kayıtları sırayla (`opcode` `u8` + uzunluk `u64` + gövde) okur; gövdesi dosya sonunu aşan kayıtta durur; yalnız tam kayıtları kabul eder; her Chunk'ı A6-K59'a göre doğrular ve ilk CRC hatasında durur. **Kurtarma sonu** son tam ve CRC'si tutan parçanın sonudur: o noktaya kadarki parçaların iletileri ile o noktaya kadarki tam Schema, Channel, Metadata ve (CRC'si tutan) Attachment kayıtları kullanılır; sonrasındaki hiçbir ileti kullanılmaz. Kurtarılan dosya `kapanmis: false` olarak listelenir ve yalnız `izleme` verir (kapanış üst verisi ve eksiklik bildirimi olmadan önek belirlenemez).
@@ -578,11 +662,14 @@ Emniyet kabulü kademeden bağımsızdır (iskelet §6): emniyet girdisi değiş
 | K21–K29 | SIL + kartlı | Hata enjektörüyle geciktirilen ve yinelenen yanıtlar, kaçırılan partiler, düşürülen profiller, kart sıfırlaması: her olayın ilgili kanalda doğru adım ve nedenle bulunması; A1 bloklarının taşımaya verilen ve alınan baytlarla eşitliği |
 | K33–K38 | SIL | Aynı ikili ve platformda iki SIL koşusu ile kayıttan `fizik` tekrarı: kanonik fizik izinin bit düzeyinde eşitliği; `telemetri` kaydından `girdi` tekrarı isteğinin reddi; önek güvencesi olan kayıtta tekrarın önek adımında durması; farklı `sim_surumu` ile güvencenin "yok" yazılması |
 | K33–K38, K56, K57 | kartlı | Bariyerli HIL kaydından `fizik` tekrarı: kanonik fizik izinin eşitliği; `tam` HIL kaydından `yeniden_kurma`: koşunun el sıkışmasız başlaması, kart çıktısıyla karşılaştırma raporunun üretilmesi ve kayda güvence yazılmaması; aynı kayıttan `girdi` isteğinin reddi |
+| K27, K57 (çok oturum) | kartlı | Ortasında bir sıfırlama (çalıştırma nesli değişimi) bulunan HIL kaydında iki oturumun `hil/oturum` ve `hil/kart_acilis` kayıtları; yeniden kurmada her oturum için ayrı `init_kusagi` ile yeniden başlatma ve oturum sonu çağrısı |
 | K39–K43 | birim + kartlı | Açılış sayacı farklı iki HIL koşusunda normalleştirilmiş olay sırasının eşleşmesi; duvar saati alanlarının ize girmemesi |
 | K44–K46 | birim | Olağan kapanışta kapanış üst verisinin ve özetin bulunması |
 | K54, K55 | SIL | Aynı yapı ve platformda SIL koşusunun `tam` kaydından `girdi` tekrarı: her init ve çağrının dönüş kodu ve çıktısının bayt eşitliği; `bg_slices` ve background çağrılarının kayıtlı sayı ve `now_w` ile yinelenmesi; çalıştırma ortasında yeniden init içeren kayıtta (`init A → çağrı → init B → çağrı`) `cagri_sirasi`'nın init'te sıfırlanmaması, `init_kusagi`'nin 1 → 2 olması ve tekrarın B'yi doğru yerde yeniden başlatması; `cagri_sirasi` boşluğunda ve kuşak uyuşmazlığında tekrarın durması; farklı `cekirdek_bilgisi` ile isteğin reddi |
+| K54, K55 (U10) | SIL | Canlı SIL kaydında her step ve tick'ten önce tam `sil_n_bg` arka plan çağrısı, oturum sonu çağrısından önce hiç bulunması; tekrarda sürücünün kayıt dışı arka plan çağrısı yapmaması; bir step kaydının `bg_slices`'ı elle bir artırılmış kayıttan tekrarın `bg_slices` uyuşmazlığıyla durması; oturum sonu çağrısının `islev = oturum_sonu` ile kaydı |
+| K52 (P4-1) | birim | `port.h`'den üretilen kodlayıcıyla: her seçici değeri için (A4 §3.14) yalnız etkin üyenin yazıldığı; `n_*` dışındaki öğelerin ve geçersiz koşullu alanların yazılmadığı; `i32` alanların ikiye tümleyenle gidip döndüğü; `PARAM_SAVE` blobunun `len` + `len` bayt olarak gidip döndüğü; tanımsız seçici değerli kaydın `bozuk` sayıldığı; U1'de kaldırılan alan adlarının kodlayıcıda bulunmadığı |
 | K37 | SIL | Kayıttan tekrar koşusunda `a3/komut_sonucu`'ndaki `komut_no`'ların güncel süreçten yeni numaralar olması, `kaynak_run_id`/`kaynak_komut_no`'nun kaynak kayıttakilerle eşleşmesi ve aynı süreçteki canlı bir komutun numarasıyla çakışmaması |
-| K46 | birim | Açılışta boş bırakılan `kart_yazilimi_ozeti`'nin güncelleme kaydıyla doldurulması; kapalı liste dışında anahtar taşıyan güncellemenin şemadan geçmemesi; dolu anahtarı farklı değerle değiştiren güncellemenin dosyayı `bozuk` yapması; ikinci açılış kaydının dosyayı `bozuk` yapması |
+| K46 | birim | Açılışta boş bırakılan `kart_fw_version`'ın güncelleme kaydıyla doldurulması; kapalı liste dışında anahtar taşıyan güncellemenin şemadan geçmemesi; dolu anahtarı farklı değerle değiştiren güncellemenin dosyayı `bozuk` yapması; ikinci açılış kaydının dosyayı `bozuk` yapması |
 | K59 | birim | Sıkıştırmasız yazılmış bir dosyada bir parçanın içindeki tek bir ileti baytı değiştirilir (yapı geçerli kalır): okuyucunun dosyayı `bozuk` işaretlemesi, o parçadan hiçbir iletinin yayınlanmaması, tekrar isteğinin reddi; ek CRC'si bozulmuş dosyada aynısı; zstd parçası bozulduğunda aynısı |
 | K60 | birim | Üç ayrı durum: (1) **kesik indeks** — dosya Data End'den sonra, özet bölümünün ortasında kesilir: kurtarma bütün parçaları verir; (2) **kesik parça** — dosya bir parçanın ortasında kesilir: kurtarma o parçadan önceki son tam parçada biter, kesik parçadan ileti gelmez; (3) **tam parça sonunda çökme** — dosya bir parçanın son baytında biter (Data End ve Footer yok): kurtarma o parça dahil bütün parçaları verir. Her durumda kurtarılan ileti sayısının beklenenle eşitliği, `kapanmis: false` ve güvencenin `izleme` olması |
 | K47–K50 | birim | Sonuna alan eklenmiş (`kanal_surumu` + 1) iletinin eski okuyucuda okunması; farklı büyük sürümün reddi; şema `data` uyuşmazlığında kanalın okunmaması; ekteki katalogla dışa aktarım |
@@ -594,13 +681,13 @@ Emniyet kabulü kademeden bağımsızdır (iskelet §6): emniyet girdisi değiş
 Yöntem: kurulu bir JSON Schema doğrulayıcısı yoktu; Python 3.12 standart kitaplığıyla yazılmış bir yapısal denetim betiği kullanıldı (betik depoya girmez). Betik, bilerek bozulmuş kopyalarda yapılan bozulmaların hepsini yakaladı: A6 tarafında bir ortak yük alanının tipi değiştirildi, bir `$ref` kırıldı, bir `kanal_id` yinelendi (2026-11-19); ek nesnenin tamsayı değerinin üst sınırı silindi ve betik sınırsız sayısal alanı yakaladı (2026-11-20, düzeltme turu 2). Şemaların JSON Schema 2020-12 meta-şemasına karşı resmî bir doğrulayıcıyla denetimi yapılmadı (doğrulanmadı). Sonuç (2026-11-20):
 
 - İki dosya geçerli UTF-8 ve geçerli JSON (Python 3.12 `json`).
-- `$defs` altındaki şemalar: a3'te 88, a6'da 3 tanım; kullanılan anahtar sözcükler JSON Schema 2020-12 sözlüğünde, bütün `$ref`'ler dosya içinde çözüldü, `pattern`'ler derlendi.
-- A3: 24 kanal (kimlik ve ad tekil; yükler, anahtar alanları, sınıf, hız ve kuyruk kuralları tutarlı), 23 yük, 23 olay türü (her birinin ayrıntı şeması var), 46 uç (yinelenen yok; durum değiştiren her uçta `istek_kimligi` zorunlu; yolunda `ates`/`fire`/`tetik` geçen uç yok), 29 hata kodu; çerçeve başlığı 24 bayt.
-- A6: 54 kanal (ad tekil; yük, kademe ve tekrar düzeyi değerleri geçerli; `fizik` düzeyinin gerektirdiği hiçbir kanal `tam` kademesinde değil), 36 yük.
-- Ortak kanal karşılaştırması: A6'da `a3_ortak: true` olan 20 kanalın 20'i A3'te aynı adla, aynı `yuk`, `kanal_surumu` ve `zaman_anlami` ile ve derin eşit yük tanımıyla bulundu. İki dosyada aynı adı taşıyan 19 yükün hepsi derin eşit. A3'e özgü (kaydedilmeyen) kanallar: `baglanti/durum`, `kayit/durum`, `surec/durum`, `yer_istasyonu/mavlink`.
+- `$defs` altındaki şemalar: a3'te 97, a6'da 3 tanım; kullanılan anahtar sözcükler JSON Schema 2020-12 sözlüğünde, bütün `$ref`'ler dosya içinde çözüldü, `pattern`'ler derlendi.
+- A3: 29 kanal (kimlik ve ad tekil; yükler, anahtar alanları, sınıf, hız ve kuyruk kuralları tutarlı), 28 yük, 30 olay türü (her birinin ayrıntı şeması var), 46 uç (yinelenen yok; durum değiştiren her uçta `istek_kimligi` zorunlu; yolunda `ates`/`fire`/`tetik` geçen uç yok), 30 hata kodu; çerçeve başlığı 24 bayt.
+- A6: 62 kanal (ad tekil; yük, kademe ve tekrar düzeyi değerleri geçerli; `fizik` düzeyinin gerektirdiği hiçbir kanal `tam` kademesinde değil), 44 yük.
+- Ortak kanal karşılaştırması: A6'da `a3_ortak: true` olan 25 kanalın 25'i A3'te aynı adla, aynı `yuk`, `kanal_surumu` ve `zaman_anlami` ile ve derin eşit yük tanımıyla bulundu. İki dosyada aynı adı taşıyan 24 yükün hepsi derin eşit. A3'e özgü (kaydedilmeyen) kanallar: `baglanti/durum`, `kayit/durum`, `surec/durum`, `yer_istasyonu/mavlink`.
 - Hesap denetimi: `yuk_fizik_durum` 4 gövde ve 8 iticiyle 647 bayt (A6 §6'daki hesap).
-- Olay ayrıntısı boyutu (A3-K121 politikası: boşluksuz JSON, ASCII dışı ham UTF-8, `\u` kaçışı yok, denetim karakteri yasak): her sayısal alan sınırlı, her dize ve dizi sınırlı; 23 olay türünün her biri için şemanın izin verdiği en kötü örnek üretildi, serileştirilmiş boyu hesapla aynı ve 8192 baytın içinde; en büyüğü `komut_sonucu` 4966 bayt, `on_denetim_sonucu` 2104 bayt.
-- Belge ↔ şema eşleşmesi: iki belgede ters tırnakla geçen her kanal adı, yük adı, `$defs` adı ve HTTP koduyla verilen hata kodu şemalarda var; şemalardaki 58 kanalın ve 40 yükün her biri belgelerde geçiyor.
+- Olay ayrıntısı boyutu (A3-K121 politikası: boşluksuz JSON, ASCII dışı ham UTF-8, `\u` kaçışı yok, denetim karakteri yasak): her sayısal alan sınırlı, her dize ve dizi sınırlı; 30 olay türünün her biri için şemanın izin verdiği en kötü örnek üretildi, serileştirilmiş boyu hesapla aynı ve 8192 baytın içinde; en büyüğü `komut_sonucu` 4966 bayt, `on_denetim_sonucu` 2104 bayt.
+- Belge ↔ şema eşleşmesi: iki belgede ters tırnakla geçen her kanal adı, yük adı, `$defs` adı ve HTTP koduyla verilen hata kodu şemalarda var; şemalardaki 66 kanalın ve 48 yükün her biri belgelerde geçiyor.
 
 ## 8. Açık kalanlar
 
@@ -636,25 +723,27 @@ Bilgi için: AB-022 (A1 başlığında, "A6 yan verisi" notlu) A6 tarafında A6-
 ## 10. Başka sözleşmelerden beklenenler
 
 **A1'den beklenen:**
-1. A1 sürüm alanları (`proto_major`, `proto_minor`, `hash_base`, `hash_full`) ve dialect XML'i (`a1_dialect.xml` eki; MAVLink kullanılıyorsa).
+1. Tek `dialect_hash` (`a1_dialect_hash` üst verisi) ve `protocol/ida.xml` (`a1_dialect.xml` eki); `IDAW_` önekli enum adları (W1-uyum U15; A6 enum değerlerine adla değil değerle bağlıdır); `protocol/komutlar.json` (`a1_komutlar.json` eki; U16).
 2. Tek seferlik olay kimliğinin bit düzeni (açılış sayacı + olay sayacı) ve `u64`'e sığması; olay türü kodları.
 3. Kanonik iz için A1 alanlarının işlevsel/tanısal sınıflaması (A6-K40).
 4. Bekleme sınırı ve sürekli komut kullanım süresi değerleri (üst veri anahtarları).
-5. Kart yazılımı özetinin (`BOOT_RECORD`) biçimi.
-6. HIL'de `bg_slices`'ın ve kart içi çağrı girdilerinin PC'ye taşınması **gerekmez** (HIL kaydından girdi güvencesi verilmez; A6-K56).
-7. Yeniden kurma tekrarı için `ida_link`'in el sıkışmasız başlatma kipi: kayıtlı ilk `KOŞUYOR` geçişinden itibaren oturumu kurulmuş sayan, nonce denetimi yapmayan PC'ye özgü bir giriş (A6-K57).
+5. `IDA_BOARD_HELLO` alanlarının (`hil/kart_acilis`; `kart_fw_version`, `kart_fw_git`, `kart_core_version` üst verisi) ve Tablo 3.11a/3.11b sayaç adlarının bu sözleşmedeki yüklerle aynı kalması; A1-K79 nedenlerinin A3 Tablo 4.8 bit 0–11 ile bire bir kalması; `run_id` (u32) türetimi (U17; A1-K126; `a1_run_id`); komut kataloğu A1-K125.
+6. HIL'de kartın çağrı izinin (`IDA_CALL_TRACE`: `now_w_ns`, `bg_slices`, `rx_age_ns`) A1 trafiğinde taşınması (A1-K95, K127); A6 bunu ham A1 baytlarıyla saklar, ayrıca çözmez. HIL kaydından girdi güvencesi yine verilmez (A6-K56).
+7. Yeniden kurma girişinin (A1-K127) ve çalıştırma nesli değişiminin oturum kapanışı + yeni oturum olmasının (A1-K128) bu biçimde kalması (A6-K27, K56, K57).
+8. A1-K121'in `N_bg` tanımı ve oturum sonu çağrısının zamanlaması (A1-K107); A6 `sil_n_bg`'yi saklar (U10).
 
 **A4'ten beklenen:**
-1. SIL platform katmanının (SIL koşucusu) her çekirdek çağrısının girdisini, dönüş kodunu ve çıktısını, `ida_core_init` girdisini ve `ida_core_info` çıktısını A6 kayıt yazıcısına vermesi (A6-K54).
-2. `ida_init_in_t`, `ida_in_t`, `ida_out_t` ve `ida_core_info_t` için alan sırasının A4 §3 tablolarındaki gibi sabit olması; A6 bu sırayla alan alan kodlar (A6-K52; A4-K03).
-3. A4-K24'ün (aynı ikili, aynı init girdisi ve `bg_slices` dahil aynı çağrı dizisi → bit düzeyinde aynı çıktı) background çağrılarının `now_w` değerlerini de kapsaması.
-4. HIL'de `bg_slices`'ın PC'ye taşınması gerekmez (A6-K56).
+1. SIL platform katmanının (SIL koşucusu) her çekirdek çağrısının girdisini, dönüş kodunu ve çıktısını, `ida_core_init` girdisini ve `ida_core_info` çıktısını A6 kayıt yazıcısına vermesi; oturum sonu çağrısının (A4-K122) türünün ayırt edilebilmesi (A6-K54).
+2. `port.h`'deki alan sırasının ve A4 §3.14'teki (A4-K121) her birlik ve koşullu alan için seçici ve etkin üye tablosunun sabit kalması; A6 bu sırayla ve bu seçicilerle kodlar (A6-K52; A4-K03). U1'de kaldırılan alanlar (`IDA_FC_SELECT`, `IDA_MI_TARGET_ALIGN`, `fc_ref`, `ext_len`/`ext[]`) kayda girmez.
+3. A4-K24'ün (aynı ikili, aynı init girdisi ve `bg_slices` dahil aynı çağrı dizisi → bit düzeyinde aynı çıktı) background çağrılarının `now_w` değerlerini de kapsaması; A4-K95 ve A4-K109'un U10 ile aynı kalması.
+4. HIL'de çağrı girdilerinin PC'ye taşınması A1'in çağrı iziyle sınırlıdır (A1-K127); A4'ten ek bir taşıma beklenmez (A6-K56).
+5. `fc.state` ve `inhibit_mask` değerlerinin (A4 §3.16) ve günlük kodlarının (A4 §3.15) kapalı tablolarının kararlı kalması; A3/A6 bu alanları değerle taşır, anlamlarını A4'e bırakır.
 
-**A5'ten beklenen:** kayıt kademesi anahtarı (`olaylar`/`telemetri`/`tam`); `kamera_kareleri` anahtarı ve varsayılanı `kapali`; çözümlenmiş senaryonun kanonik biçimi ve `sha256:<hex>` özeti; araç dosyasının özeti; `schema_version`.
+**A5'ten beklenen:** kayıt kademesi anahtarı (`olaylar` | `telemetri` | `tam`; "kapalı" yok); `kamera_kareleri` anahtarı (`kapali` | `pencereli` | `surekli`) ve varsayılanı `kapali`; çözümlenmiş senaryonun kanonik JSON baytları (A5-K17; `cozumlenmis_senaryo.json`), davranış özeti ve ayrı kaynak dosya özetleri (`senaryo_kaynak_ozetleri`); doğrulama raporu (A5 §3.14; `dogrulama_raporu.json`); `atama_celiskisi`, `gevsetme_reddedildi`, `donma_onceki_cikti_yok` olaylarının ve olay sonucunun (`uygulanmadi` dahil) A5 §3.15 alan adlarının kararlı kalması; A7 küme kimliği ve sürümü (A5-K115; `a7_kume`, `a7_kume_surumu`); `hedefler.<ad>.sinif` kapalı tablosu (A5-K113; algılama kaydındaki `class_id`); a1/run_id (A5 Ek D) etiketi (U17); `schema_version`.
 
-**A2'den beklenen:** kamera karesinin piksel biçimi kodu, kare kimliği ve A2 sürüm numarası (`yuk_kamera_kare`).
+**A2'den beklenen:** kamera karesinin piksel biçimi kodu, `istek_kimligi`, `kare_sirasi`, `kamera_kimligi`, `calisma_nesli`, `halka_nesli`, `yapilandirma_surumu`, pozlama alanları ve A2 sürüm numarası (`yuk_kamera_kare`); `SimKareDusmeNedeni` kodlarının (1–8, 33–39) ve §5 sayaçlarının kararlı kalması; A2-K93 sim yapılandırmasının (`a2_port`, `a2_yuva_sayisi`, `a2_operator_gecikme_us`) sim'e bildirilmesi (görselleştiricinin `D_op`'u dahil).
 
-**A8'den beklenen:** algılama kaydının tel düzeni, sürümü ve en büyük boyutu (`yuk_algilama_kayit`).
+**A8'den beklenen:** algılama kaydının tel düzeni (80 bayt) ve en büyük boyutu (`yuk_algilama_kayit`); sürümün `major`/`minor` iki alan olarak kalması; `run_gen`'in A2 `calisma_nesli` ile aynı kalması; parti başlığı alanlarının, durum (0–8) ve ret nedeni (1–10) kodlarının kararlı kalması (A8-K30, K63, K65, K76, K79).
 
 **A7'den beklenen:** manifest özetinin metin biçimi (`a7_manifest_ozeti`).
 
@@ -666,3 +755,17 @@ Bilgi için: AB-022 (A1 başlığında, "A6 yan verisi" notlu) A6 tarafında A6-
 
 - **06 §2.9 ve §2.13, 08 §2.6.2 (c) ile fark:** bölümler girdi tekrarını "kayıtlı sim → kart çerçevelerini SIL çekirdeğine ya da karta beslemek" olarak anlatır ve 06 §2.9, çalıştırma başında kartı `REBOOT` ile yeni oturuma alan akışı tanımlar. Bu sözleşmede (mimar kararı, 2026-11-20) güvenceli girdi tekrarının sınırı A1 bayt akışı değil A4 port sınırıdır: SIL'de çekirdek çağrıları doğrudan kaydedilir ve PC'deki çekirdeğe verilir (A6-K54, K55); HIL kaydından yalnız güvencesiz yeniden kurma yapılır ve oturum el sıkışması tekrar edilmez (A6-K56, K57); kayıtlı akışın gerçek karta verilmesi 1.0'da yoktur (A6-K58). Bölümler yeniden yazılmaz; bu not mimarın kaydı içindir.
 - **İskelet A6 satırı** "girdi tekrarı (kayıtlı sensör akışını çekirdeğe verme)" ifadesiyle uyumludur; "çekirdeğe" burada PC'deki çekirdek olarak okunmuştur.
+
+## 12. W1 çapraz uyum turu (2026-11-20)
+
+Bu turda `docs/gorevler/W1-uyum.md`'nin A6'ya düşen maddeleri işlendi; kural numaraları korundu, yeni kural eklenmedi.
+
+| Madde | Yer |
+|---|---|
+| U2, U6 | Ortak yükler A3'le aynı tanımdan gelir (`emniyet/girdiler`: `emniyet_rev` `u32`, fiş ve pim tüp başına) |
+| U3 | A6-K35 sırayı iskelet §3.2'ye ve A3-K95'e bağlar; A6 sırayı yinelemez |
+| U4a | `yer_istasyonu/emulator.karar = bayat_yetki` |
+| U10 | A6-K54, K55 (arka plan çağrıları yalnız kayıttan; `bg_slices` tutarlılık denetimi); üst veri `sil_n_bg` |
+| U17 | Üst veri `run_id`, `a1_run_id` |
+| U18 | A6-K18, K27, K28; kanallar `kart/baglanti_sayaclari`, `kart/cekirdek_sayaclari`, `kamera/halka_sayaclari`, `kamera/kare_dusme`, `algilama/sayaclar`, `algilama/parti`, `hil/kart_acilis`, `hil/tf_yazim`; ekler `cozumlenmis_senaryo.json`, `dogrulama_raporu.json`, `a1_komutlar.json`; üst veri `a1_dialect_hash`, `a8_surumu_major`/`minor`, `senaryo_kaynak_ozetleri`, A2-K93 ayarları; A6-K56, K57 (yeniden kurma girişi, çok oturumlu kayıt) |
+| P4-1 | A6-K52 (`i32`, birlikler A4 §3.14'e göre, kullanılmayan alan yazılmaz, `PARAM_SAVE` blobu); `cekirdek/cagri.islev = oturum_sonu` (A4-K122) |
