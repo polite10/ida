@@ -53,8 +53,8 @@ static void test_belirsiz_B1_baslik_reddi_sonrasi_tarama(void)
         const kabul_mesaj_t *m = kabul_mesaj_bul(46030u); /* uzun yüklü mesaj: içine çerçeve sığar */
         uint8_t ic[32];
         size_t ic_n = kabul_temiz_kur(ic, &r, 46003u, 77u, 250u, 25u, 3u, 1, NULL);
-        uint8_t len = t == 2 ? (uint8_t)(m->yuk_azami + 1u) : (uint8_t)100u;
-        uint8_t incompat = t == 0 ? 1u : 0u;
+        uint8_t len = (uint8_t)(t == 2 ? m->yuk_azami + 1u : 100u);
+        uint8_t incompat = (uint8_t)(t == 0 ? 1u : 0u);
         uint32_t id = t == 1 ? 46050u : m->msgid;
         uint8_t yuk[IDA_LINK_YUK_AZAMI];
         size_t n = 0;
@@ -116,8 +116,8 @@ static void test_belirsiz_B2_mavlink1_sayimi(void)
         /* MAVLink 1 sağlaması bu katmanda denetlenmez; 0xFD/0xFE çıkarsa 0 yazılır (temizlik). */
         uint8_t c0 = (uint8_t)(crc & 0xFFu);
         uint8_t c1 = (uint8_t)(crc >> 8);
-        akis[n++] = (c0 == 0xFDu || c0 == 0xFEu) ? 0x00u : c0;
-        akis[n++] = (c1 == 0xFDu || c1 == 0xFEu) ? 0x00u : c1;
+        akis[n++] = (uint8_t)((c0 == 0xFDu || c0 == 0xFEu) ? 0x00u : c0);
+        akis[n++] = (uint8_t)((c1 == 0xFDu || c1 == 0xFEu) ? 0x00u : c1);
         size_t m1 = n;
         n += kabul_temiz_kur(&akis[n], &r, 46010u, 6u, 250u, 25u, 17u, 1, NULL);
         kabul_besle_yeni(IDA_LINK_ROL_KART, akis, n, &sonuc);
@@ -212,9 +212,9 @@ static void test_belirsiz_B4_B5_denetim_sirasi_ve_bilinmeyen_kimlik(void)
     kabul_rng_kur(&r, 0xB4ull);
     for (size_t i = 0; i < sizeof V / sizeof V[0]; ++i) {
         const kabul_mesaj_t *m = kabul_mesaj_bul(V[i].msgid);
-        uint8_t crc_extra = m != NULL ? m->crc_extra : 0x33u;
-        uint8_t azami = m != NULL ? m->yuk_azami : 20u;
-        uint8_t len = V[i].len_kaydir ? (uint8_t)(azami + 1u) : azami;
+        uint8_t crc_extra = (uint8_t)(m != NULL ? m->crc_extra : 0x33u);
+        uint8_t azami = (uint8_t)(m != NULL ? m->yuk_azami : 20u);
+        uint8_t len = (uint8_t)(V[i].len_kaydir ? azami + 1u : azami);
         size_t n = kabul_temiz_ham(akis, &r, len, V[i].incompat, 0u, 3u, V[i].sysid, V[i].compid, V[i].msgid,
                                    crc_extra, 0u);
         if (V[i].crc_boz) {
@@ -326,7 +326,9 @@ static void test_belirsiz_B8_rastgele_akislarda_model_okumasi(void)
                 ++akis_sayisi;
                 int herhangi_teslim = 0;
                 for (int k = 0; k < 8; ++k) {
-                    kabul_okuma_t o = {k & 1, (k >> 1) & 1};
+                    kabul_okuma_t o;
+                    o.bas_okuma = k & 1;
+                    o.mav1_okuma = (k >> 1) & 1;
                     kabul_model_ayristir(ROLLER[ri], o, akis, n, &model);
                     if (model_ayni(&model, &sonuc, (k >> 2) & 1)) {
                         ++eslesen[k];

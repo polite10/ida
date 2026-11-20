@@ -126,6 +126,9 @@ typedef struct {
     kabul_rng_t        rng;   /* KABUL_PARCA_RASTGELE için */
 } kabul_parcalayici_t;
 
+/* Parçalayıcı kurar (sabit olmayan toplu ilkleyici yerine; MSVC C4204). */
+kabul_parcalayici_t kabul_parcalayici(kabul_parca_turu_t tur, size_t k, uint64_t tohum);
+
 /* Akışı parçalar halinde ida_link_al'a verir; her teslimi `out`'a ekler (out->sayi sıfırlanmaz,
    çağıran sıfırlar). Her çağrıda dönüş kodunu, *tuketilen'in sınırlarını (BEKLE'de = n,
    CERCEVE'de 1..n) ve teslim edilen yükün len sonrasının sıfır olduğunu Unity ile denetler.

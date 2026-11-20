@@ -107,7 +107,9 @@ static void yanlis_kimlikler(ida_link_rol_t rol, const kimlik_t *k, size_t sayi,
     kabul_rng_kur(&r, tohum);
     /* Rolün alabileceği bir mesaj: kart için IDA_IMU (sim -> kart), sim için IDA_NAV
        (kart -> sim); iki yönlü IDA_KEEPALIVE de denenir. */
-    const uint32_t mesaj[2] = {rol == IDA_LINK_ROL_KART ? 46020u : 46063u, 46003u};
+    uint32_t mesaj[2];
+    mesaj[0] = rol == IDA_LINK_ROL_KART ? 46020u : 46063u;
+    mesaj[1] = 46003u;
     for (size_t mi = 0; mi < 2; ++mi) {
         for (size_t i = 0; i < sayi; ++i) {
             const kabul_mesaj_t *m = kabul_mesaj_bul(mesaj[mi]);

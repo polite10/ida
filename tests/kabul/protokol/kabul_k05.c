@@ -88,7 +88,7 @@ static void test_A1_K05_ab_gonderen_kirpar_ilk_bayti_korur(void)
                 memset(yuk, 0, sizeof yuk);
                 size_t son = kabul_rng_aralik(&r, m->yuk_azami);
                 for (size_t k = 0; k <= son; ++k) {
-                    yuk[k] = (kabul_rng_aralik(&r, 3u) == 0u) ? 0u : kabul_rng_bayt(&r);
+                    yuk[k] = (uint8_t)((kabul_rng_aralik(&r, 3u) == 0u) ? 0u : kabul_rng_bayt(&r));
                 }
                 yuk[son] = (uint8_t)(1u + kabul_rng_aralik(&r, 255u));
                 gonder_ve_karsilastir(&g, rol, m, yuk, son + 1u);
@@ -133,7 +133,12 @@ static void test_A1_K05_cde_kirpilmis_ve_kirpilmamis_kabul(void)
             if ((m->yon & kabul_rol_alir_yon(rol)) == 0u) {
                 continue;
             }
-            const size_t boylar[5] = {1u, 2u, m->yuk_azami / 2u, m->yuk_azami - 1u, m->yuk_azami};
+            size_t boylar[5];
+            boylar[0] = 1u;
+            boylar[1] = 2u;
+            boylar[2] = m->yuk_azami / 2u;
+            boylar[3] = m->yuk_azami - 1u;
+            boylar[4] = m->yuk_azami;
             for (size_t b = 0; b < 5; ++b) {
                 size_t dolu = boylar[b] == 0u ? 1u : boylar[b];
                 if (dolu > m->yuk_azami) {

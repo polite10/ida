@@ -84,34 +84,34 @@ const kabul_mesaj_t *kabul_mesaj_bul(uint32_t msgid)
 
 uint8_t kabul_rol_alir_yon(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)KABUL_YON_SIM_KART : (uint8_t)KABUL_YON_KART_SIM;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? KABUL_YON_SIM_KART : KABUL_YON_KART_SIM);
 }
 
 uint8_t kabul_rol_gonderir_yon(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)KABUL_YON_KART_SIM : (uint8_t)KABUL_YON_SIM_KART;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? KABUL_YON_KART_SIM : KABUL_YON_SIM_KART);
 }
 
 /* A1 §3.1: sim 250/25; kart ve SIL koşucusu 1/1. Sayılar burada sözleşmeden yazılır;
    kitaplığın sabitleri kullanılmaz. */
 uint8_t kabul_karsi_sysid(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)250u : (uint8_t)1u;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? 250u : 1u);
 }
 
 uint8_t kabul_karsi_compid(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)25u : (uint8_t)1u;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? 25u : 1u);
 }
 
 uint8_t kabul_kendi_sysid(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)1u : (uint8_t)250u;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? 1u : 250u);
 }
 
 uint8_t kabul_kendi_compid(ida_link_rol_t rol)
 {
-    return rol == IDA_LINK_ROL_KART ? (uint8_t)1u : (uint8_t)25u;
+    return (uint8_t)(rol == IDA_LINK_ROL_KART ? 1u : 25u);
 }
 
 /* ---- Referans çerçeve kurucu -------------------------------------------------------------- */
@@ -130,7 +130,7 @@ size_t kabul_cerceve_ham(uint8_t *cikis, uint8_t len, uint8_t incompat, uint8_t 
     cikis[8] = (uint8_t)((msgid >> 8) & 0xFFu);
     cikis[9] = (uint8_t)((msgid >> 16) & 0xFFu);
     for (size_t i = 0; i < len; ++i) {
-        cikis[10u + i] = (yuk != NULL && i < yuk_boyu) ? yuk[i] : 0u;
+        cikis[10u + i] = (uint8_t)((yuk != NULL && i < yuk_boyu) ? yuk[i] : 0u);
     }
     uint16_t crc = kabul_crc(&cikis[1], 9u + (size_t)len, 0xFFFFu);
     crc = kabul_crc_bayt(crc, crc_extra);
@@ -189,7 +189,8 @@ size_t kabul_temiz_ham(uint8_t *cikis, kabul_rng_t *r, uint8_t len, uint8_t inco
                        uint8_t crc_extra, size_t sifir_kuyruk)
 {
     uint8_t yuk[IDA_LINK_YUK_AZAMI];
-    for (int deneme = 0; deneme < 4096; ++deneme) {
+    size_t bulunan = 0u;
+    for (int deneme = 0; deneme < 4096 && bulunan == 0u; ++deneme) {
         memset(yuk, 0, sizeof yuk);
         for (size_t i = 0; i + sifir_kuyruk < len; ++i) {
             yuk[i] = sifirdan_farkli_temiz(r);
@@ -197,11 +198,12 @@ size_t kabul_temiz_ham(uint8_t *cikis, kabul_rng_t *r, uint8_t len, uint8_t inco
         size_t n = kabul_cerceve_ham(cikis, len, incompat, compat, seq, sysid, compid, msgid, yuk,
                                      len, crc_extra);
         if (temiz_mi(cikis, n)) {
-            return n;
+            bulunan = n;
         }
     }
-    TEST_FAIL_MESSAGE("kabul_temiz_ham: temiz çerçeve kurulamadı (başlıkta 0xFD/0xFE var mı?)");
-    return 0u;
+    TEST_ASSERT_TRUE_MESSAGE(bulunan != 0u,
+                             "kabul_temiz_ham: temiz çerçeve kurulamadı (başlıkta 0xFD/0xFE var mı?)");
+    return bulunan;
 }
 
 size_t kabul_temiz_kur(uint8_t *cikis, kabul_rng_t *r, uint32_t msgid, uint8_t seq,
@@ -213,21 +215,22 @@ size_t kabul_temiz_kur(uint8_t *cikis, kabul_rng_t *r, uint32_t msgid, uint8_t s
         dolu = m->yuk_azami;
     }
     uint8_t yuk[IDA_LINK_YUK_AZAMI];
-    for (int deneme = 0; deneme < 4096; ++deneme) {
+    size_t bulunan = 0u;
+    for (int deneme = 0; deneme < 4096 && bulunan == 0u; ++deneme) {
         memset(yuk, 0, sizeof yuk);
         for (size_t i = 0; i < dolu; ++i) {
             yuk[i] = sifirdan_farkli_temiz(r);
         }
         size_t n = kabul_cerceve_kur(cikis, msgid, seq, sysid, compid, yuk, m->yuk_azami, kirp);
         if (temiz_mi(cikis, n)) {
-            if (yuk_cikis != NULL) {
-                memcpy(yuk_cikis, yuk, sizeof yuk);
-            }
-            return n;
+            bulunan = n;
         }
     }
-    TEST_FAIL_MESSAGE("kabul_temiz_kur: temiz çerçeve kurulamadı");
-    return 0u;
+    TEST_ASSERT_TRUE_MESSAGE(bulunan != 0u, "kabul_temiz_kur: temiz çerçeve kurulamadı");
+    if (yuk_cikis != NULL) {
+        memcpy(yuk_cikis, yuk, sizeof yuk);
+    }
+    return bulunan;
 }
 
 void kabul_yapi_hazirla(kabul_yapi_t *y, const kabul_mesaj_t *m, const uint8_t *yuk)
@@ -308,6 +311,16 @@ static void teslim_kaydet(const ida_link_cerceve_t *c, kabul_sonuc_t *out)
     t->len = c->len;
     t->yuk_azami = c->yuk_azami;
     memcpy(t->yuk, c->yuk, sizeof t->yuk);
+}
+
+kabul_parcalayici_t kabul_parcalayici(kabul_parca_turu_t tur, size_t k, uint64_t tohum)
+{
+    kabul_parcalayici_t p;
+    memset(&p, 0, sizeof p);
+    p.tur = tur;
+    p.k = k;
+    kabul_rng_kur(&p.rng, tohum);
+    return p;
 }
 
 static size_t parca_boyu(kabul_parcalayici_t *p, size_t verilen, size_t kalan)
@@ -628,7 +641,7 @@ size_t kabul_akis_uret(kabul_akis_turu_t tur, ida_link_rol_t rol, uint64_t tohum
     case KABUL_AKIS_FD_YOGUN:
         for (; n < hedef_boy; ++n) {
             uint32_t z = kabul_rng_aralik(&r, 100u);
-            s[n] = z < 12u ? 0xFDu : (z < 16u ? 0xFEu : kabul_rng_bayt(&r));
+            s[n] = (uint8_t)(z < 12u ? 0xFDu : (z < 16u ? 0xFEu : kabul_rng_bayt(&r)));
         }
         break;
     case KABUL_AKIS_GOMULU_RASTGELE:
@@ -698,7 +711,8 @@ size_t kabul_akis_uret(kabul_akis_turu_t tur, ida_link_rol_t rol, uint64_t tohum
                 n += boy;
             } else if (z < 48u) { /* sağlaması bozuk */
                 size_t boy = kabul_cerceve_kur(&s[n], m->msgid, seq, ks, kc, yuk, sizeof yuk, 1);
-                s[n + 10u + kabul_rng_aralik(&r, (uint32_t)(boy - 10u))] ^= (uint8_t)(1u + kabul_rng_aralik(&r, 255u));
+                size_t j = n + 10u + kabul_rng_aralik(&r, (uint32_t)(boy - 10u));
+                s[j] = (uint8_t)(s[j] ^ (1u + kabul_rng_aralik(&r, 255u)));
                 n += boy;
             } else if (z < 54u) { /* kesik */
                 size_t boy = kabul_cerceve_kur(&s[n], m->msgid, seq, ks, kc, yuk, sizeof yuk, 1);
@@ -707,8 +721,8 @@ size_t kabul_akis_uret(kabul_akis_turu_t tur, ida_link_rol_t rol, uint64_t tohum
                 n += kabul_cerceve_ham(&s[n], m->yuk_azami, (uint8_t)(1u + kabul_rng_aralik(&r, 255u)), 0u,
                                        seq, ks, kc, m->msgid, yuk, sizeof yuk, m->crc_extra);
             } else if (z < 66u) { /* kötü len */
-                uint8_t len = kabul_rng_aralik(&r, 2u) ? 0u
-                    : (uint8_t)(m->yuk_azami + 1u + kabul_rng_aralik(&r, 255u - m->yuk_azami));
+                uint8_t len = (uint8_t)(kabul_rng_aralik(&r, 2u) ? 0u
+                    : m->yuk_azami + 1u + kabul_rng_aralik(&r, 255u - m->yuk_azami));
                 n += kabul_cerceve_ham(&s[n], len, 0u, 0u, seq, ks, kc, m->msgid, yuk, sizeof yuk, m->crc_extra);
             } else if (z < 72u) { /* bilinmeyen kimlik */
                 uint32_t id = 46000u + 71u + kabul_rng_aralik(&r, 29u);

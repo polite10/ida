@@ -90,21 +90,20 @@ static void parcalama_degismez(ida_link_rol_t rol, const uint8_t *s, size_t n, c
     teslimler_gecerli(rol, s, n, &tek, baglam);
     static const size_t K[] = {1u, 2u, 3u, 7u, 13u, 64u, 255u, 256u, 1000u};
     for (size_t i = 0; i < sizeof K / sizeof K[0]; ++i) {
-        kabul_parcalayici_t ps = {KABUL_PARCA_SABIT, K[i], {0u}};
+        kabul_parcalayici_t ps = kabul_parcalayici(KABUL_PARCA_SABIT, K[i], 0u);
         parcali(rol, s, n, &ps, &diger);
         snprintf(ileti, sizeof ileti, "%s, %u baytlık parçalar", baglam, (unsigned)K[i]);
         kabul_sonuc_esit(&tek, &diger, ileti);
     }
     for (uint64_t t = 1; t <= 8u; ++t) {
-        kabul_parcalayici_t pr = {KABUL_PARCA_RASTGELE, (size_t)(t * 37u), {0u}};
-        kabul_rng_kur(&pr.rng, 0x50415243ull + t);
+        kabul_parcalayici_t pr = kabul_parcalayici(KABUL_PARCA_RASTGELE, (size_t)(t * 37u), 0x50415243ull + t);
         parcali(rol, s, n, &pr, &diger);
         snprintf(ileti, sizeof ileti, "%s, rastgele parçalama %u", baglam, (unsigned)t);
         kabul_sonuc_esit(&tek, &diger, ileti);
     }
     if (her_bolme) {
         for (size_t k = 0; k <= n; ++k) {
-            kabul_parcalayici_t pi = {KABUL_PARCA_IKI, k, {0u}};
+            kabul_parcalayici_t pi = kabul_parcalayici(KABUL_PARCA_IKI, k, 0u);
             parcali(rol, s, n, &pi, &diger);
             snprintf(ileti, sizeof ileti, "%s, %u. bayttan bölme", baglam, (unsigned)k);
             kabul_sonuc_esit(&tek, &diger, ileti);
