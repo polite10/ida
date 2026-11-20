@@ -31,6 +31,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -81,6 +83,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -143,6 +147,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -203,6 +209,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -267,6 +275,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -318,37 +328,49 @@
             },
             "uniqueItems": true,
             "minItems": 1,
+            "maxItems": 7,
             "description": "IDAW_SP_MASK girdilerinin oneksiz adlari"
           },
           "pos_ne": {
             "type": "array",
             "items": {
-              "type": "number"
+              "type": "number",
+              "minimum": -3.4028234663852886e+38,
+              "maximum": 3.4028234663852886e+38
             },
             "minItems": 2,
             "maxItems": 2
           },
           "depth": {
-            "type": "number"
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
           },
           "altitude": {
-            "type": "number"
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
           },
           "vel_ned": {
             "type": "array",
             "items": {
-              "type": "number"
+              "type": "number",
+              "minimum": -3.4028234663852886e+38,
+              "maximum": 3.4028234663852886e+38
             },
             "minItems": 3,
             "maxItems": 3
           },
           "yaw": {
             "type": "number",
-            "exclusiveMinimum": -3.141592653589793,
-            "maximum": 3.141592653589793
+            "minimum": -3.141592653589793,
+            "maximum": 3.141592653589793,
+            "exclusiveMinimum": -3.141592653589793
           },
           "yaw_rate": {
-            "type": "number"
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
           }
         }
       },
@@ -368,6 +390,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -444,12 +468,16 @@
                   ]
                 },
                 "depth": {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
                 },
                 "p": {
                   "type": "array",
                   "items": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": -3.4028234663852886e+38,
+                    "maximum": 3.4028234663852886e+38
                   },
                   "minItems": 4,
                   "maxItems": 4
@@ -581,8 +609,9 @@
                         },
                         "depth": {
                           "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 100
+                          "minimum": 0,
+                          "maximum": 100,
+                          "exclusiveMinimum": 0
                         },
                         "p": {
                           "type": "array",
@@ -669,8 +698,9 @@
                           "prefixItems": [
                             {
                               "type": "number",
-                              "exclusiveMinimum": 0,
-                              "maximum": 3600
+                              "minimum": 0,
+                              "maximum": 3600,
+                              "exclusiveMinimum": 0
                             },
                             {
                               "type": "number",
@@ -727,8 +757,9 @@
                             },
                             {
                               "type": "number",
-                              "exclusiveMinimum": -3.141592653589793,
-                              "maximum": 3.141592653589793
+                              "minimum": -3.141592653589793,
+                              "maximum": 3.141592653589793,
+                              "exclusiveMinimum": -3.141592653589793
                             }
                           ],
                           "items": false,
@@ -758,8 +789,9 @@
                           "prefixItems": [
                             {
                               "type": "number",
-                              "exclusiveMinimum": 0,
-                              "maximum": 3600
+                              "minimum": 0,
+                              "maximum": 3600,
+                              "exclusiveMinimum": 0
                             },
                             {
                               "type": "number",
@@ -797,8 +829,9 @@
                           "prefixItems": [
                             {
                               "type": "number",
-                              "exclusiveMinimum": 0,
-                              "maximum": 3600
+                              "minimum": 0,
+                              "maximum": 3600,
+                              "exclusiveMinimum": 0
                             },
                             {
                               "type": "number",
@@ -847,6 +880,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -865,6 +900,7 @@
               "null"
             ],
             "minimum": 0,
+            "maximum": 129,
             "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
           }
         },
@@ -918,6 +954,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -980,6 +1018,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1006,7 +1046,10 @@
             "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
           },
           "value": {
-            "type": "number"
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38,
+            "description": "f32 araligi; I32/U32 degerleri tamsayi olarak bu araligin icindedir"
           }
         },
         "description": "ACCEPTED'te param_id, param_type ve value bulunur (IDA_CMD_RESULT kind = PARAM_VALUE)"
@@ -1056,7 +1099,9 @@
                   "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
                 },
                 "value": {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": -3.4028234663852886e+38,
+                  "maximum": 3.4028234663852886e+38
                 }
               },
               "oneOf": [
@@ -1098,7 +1143,8 @@
                 }
               ]
             },
-            "minItems": 1
+            "minItems": 1,
+            "maxItems": 997
           }
         },
         "required": [
@@ -1121,6 +1167,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1139,6 +1187,7 @@
               "null"
             ],
             "minimum": 0,
+            "maximum": 997,
             "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
           }
         },
@@ -1195,7 +1244,9 @@
                   "description": "IDAW_PARAM_TYPE girdisinin oneksiz adi"
                 },
                 "value": {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": -3.4028234663852886e+38,
+                  "maximum": 3.4028234663852886e+38
                 }
               },
               "oneOf": [
@@ -1237,7 +1288,8 @@
                 }
               ]
             },
-            "minItems": 0
+            "minItems": 0,
+            "maxItems": 997
           }
         },
         "required": [
@@ -1265,6 +1317,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1283,6 +1337,7 @@
               "null"
             ],
             "minimum": 0,
+            "maximum": 998,
             "description": "Ilk ACCEPTED olmayan sonucun bilesik komuttaki adim sirasi (0'dan); hepsi kabul edildiyse null"
           },
           "save_gen": {
@@ -1335,6 +1390,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1393,6 +1450,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1451,6 +1510,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1501,6 +1562,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1551,6 +1614,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1609,6 +1674,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1667,6 +1734,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
@@ -1725,6 +1794,8 @@
           },
           "reason": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 131,
             "anyOf": [
               {
                 "minimum": 0,
