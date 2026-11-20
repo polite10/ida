@@ -42,8 +42,12 @@
 #define IDA_DET_PI_F32 3.14159265358979323846f
 #define IDA_DET_HALF_PI_F32 1.57079632679489661923f
 
-/* Sonar kaydının zamanının parti zamanına göre izinli aralığı (A8-K13):
- * batch.t_meas_ns - BACK <= rec.t_meas_ns <= batch.t_meas_ns + FWD.
+/* Zaman alanlarının geçerli aralığı: 0 … 2^62 ns (A8-K81; A4-K08). İki geçerli
+ * zamanın farkı i64'te taşmaz; karşılaştırmalar farkla yapılır. */
+#define IDA_DET_TIME_MAX_NS INT64_C(4611686018427387904)
+
+/* Sonar kaydının zamanının parti zamanına göre izinli aralığı (A8-K13, K81):
+ * -BACK <= rec.t_meas_ns - batch.t_meas_ns <= FWD.
  * Mimari seçimi (tahmin); FWD, IDA_DET_RANGE_MAX_M / 1400 m/s ≈ 0,71 s'yi
  * kapsar (hesap). */
 #define IDA_DET_SONAR_REC_BACK_MAX_NS INT64_C(30000000000)
@@ -95,6 +99,15 @@
 #define IDA_DET_L_DIAG_MIN_ANG_RAD 1.0e-6f
 #define IDA_DET_L_ABS_MAX_R_M 1000.0f
 #define IDA_DET_L_ABS_MAX_ANG_RAD 10.0f
+
+/* ---- Hedef sınıfı: class_id (A8-K23; A5'in kapalı tablosu) --------------- */
+/* Yalnız algılanan nesnenin kaba türünün kodlamasıdır; seçim anlamı yoktur.
+ * 4–255 ayrılmıştır; geçersizdir (IDA_DET_RJ_VALUE). */
+#define IDA_DET_CLASS_UNKNOWN 0u      /* A5: bilinmiyor */
+#define IDA_DET_CLASS_STATIC 1u       /* A5: sabit_nesne */
+#define IDA_DET_CLASS_MOVING 2u       /* A5: hareketli_nesne */
+#define IDA_DET_CLASS_STRUCTURE 3u    /* A5: yapi */
+#define IDA_DET_CLASS_MAX 3u
 
 /* ---- Çerçeve: frame (A8-K01) --------------------------------------------- */
 
@@ -149,7 +162,7 @@
 /* ---- Algılama kaydı (A8 §3.2) -------------------------------------------- */
 
 typedef struct ida_det_record {
-    int64_t t_meas_ns;     /* ölçüm zamanı (iskelet §3.1); A8-K10, K12, K13 */
+    int64_t t_meas_ns;     /* ölçüm zamanı (iskelet §3.1); A8-K10, K12, K13, K81 */
     uint32_t det_seq;      /* kayıt kimliği; akışta kesin artar; A8-K15 */
     uint32_t batch_seq;    /* ait olduğu parti; A8-K19 */
     uint32_t window_ns;    /* ölçüm aralığı süresi; anlıkta 0; A8-K10 */
@@ -164,7 +177,7 @@ typedef struct ida_det_record {
     uint8_t inst;          /* sensör örneği (kamerada camera_id) */
     uint8_t kind;          /* IDA_DET_KIND_* */
     uint8_t frame;         /* IDA_DET_FRAME_*; A8-K01 */
-    uint8_t class_id;      /* 0 = bilinmiyor; anlamı A5'te; A8-K23 */
+    uint8_t class_id;      /* IDA_DET_CLASS_*; A8-K23 */
     uint8_t producer_id;   /* 0 geçersiz; A8-K24 */
     uint8_t batch_index;   /* partideki sıra, 0'dan; A8-K18 */
     uint8_t batch_count;   /* partideki kayıt sayısı; A8-K18 */
@@ -175,7 +188,7 @@ typedef struct ida_det_record {
 
 typedef struct ida_det_batch {
     int64_t t_meas_ns;     /* girdi biriminin ölçüm zamanı; A8-K11, K64 */
-    uint32_t batch_seq;    /* akışta kesin artar; NO_FRAME'de 0; A8-K16 */
+    uint32_t batch_seq;    /* akışta kesin artar; kamerada kare_sirasi; NO_FRAME'de 0; A8-K16, K80 */
     uint32_t window_ns;    /* girdi biriminin aralık süresi; A8-K11 */
     uint16_t calib_ver;    /* A8-K20, K62 */
     uint16_t producer_ver; /* bileşen yoksa 0 */
