@@ -384,6 +384,14 @@ int main(int argc, char** argv)
                 static_cast<unsigned long long>(z.rx_crc_kosu), static_cast<unsigned long long>(z.rx_resync_kosu),
                 static_cast<unsigned long long>(z.rx_seq_gap_kosu), s.kart.fc_var ? 1 : 0,
                 static_cast<unsigned>(s.kart.fc_state), static_cast<unsigned>(s.kart.fc_inhibit_mask));
+    std::printf("oturum ici sira boslugu zamanlari (s):");
+    for (const std::int64_t t : z.sira_boslugu_t_ns) {
+        std::printf(" %.3f", 1e-9 * static_cast<double>(t));
+    }
+    std::printf("\n");
+    if (!s.evre_ozeti.empty()) {
+        std::printf("evre ozeti: %s\n", s.evre_ozeti.c_str());
+    }
     std::printf("ida_z2 %s: %d kalan\n", kalan == 0 ? "GECTI" : "KALDI", kalan);
     if (!json_yolu.empty()) {
         Metin f;
