@@ -14,7 +14,7 @@ Okunacaklar: iskelet §3.1 (çerçeveler, birimler, kuaterniyon), §4 (zaman), �
 2. **Hidrostatik ve yüzey geçişi:** düz su yüzeyi; batık hacmin derinlikle değişimi ve buna bağlı kaldırma kuvveti ile kaldırma merkezi (04 §2.4'ün dalgasız hâli). Araç yüzeyde yarı batık dengede durabilmeli ve dikey itkiyle dalabilmelidir.
 3. **İticiler ve motor sürücü:** sekiz iticinin konum ve yönlerinden kuvvet-moment; darbe genişliği (µs) → itki eğrisi, ölü bölge, doyma, birinci dereceden gecikme; ileri-geri asimetrisi (04 §2.7). Komut, uygulanacağı fizik adımıyla birlikte verilir.
 4. **Çevre:** sabit ve düzgün akıntı (araç hızı akıntıya göre bağıl alınır). Dalga ve rüzgâr arayüzde yer tutar, gövdesi sonraki dilimdir.
-5. **Sayısal çözüm:** sabit adım (varsayılan 400 Hz), 04 §2.10'daki şema; adım içinde sıra 04 §2.1 ve iskelet §3.2'deki gibi.
+5. **Sayısal çözüm:** sabit adım (1,25 ms; A1 §2 `h`, A5-K77, iskelet §4. Bu belgenin ilk hâlindeki "400 Hz" yanlıştı; uygulayıcı sözleşmeye uydu), 04 §2.10'daki şema; adım içinde sıra 04 §2.1 ve iskelet §3.2'deki gibi.
 6. **Parametreler:** `AracParametreleri` ve `OrtamParametreleri` yapıları; İDA-0 varsayılanları A5 Ek E ve 04 §2.6'dan, üç kütle durumuyla (A5 Ek A). Alan adları A5 ile bire bir eşlenir (TOML okuyucu bu işte yoktur; sonraki iş aynı yapıları doldurur).
 7. **Arayüz:** tek bir `Dunya` sınıfı: kurulum (parametreler, başlangıç durumu), `adim()`, itici komutu verme, durum anlık görüntüsü (konum, yönelim, doğrusal ve açısal hız, gövde çerçevesinde özgül kuvvet ve açısal ivme, itici başına gerçekleşen itki, batık oran). İş parçacığı, dosya, saat ve ağ kullanılmaz.
 8. **Deneme aracı:** `ida_fizik_deneme`: açık çevrim bir darbe genişliği profilini koşturur ve durumu CSV olarak yazar (mimarın gözle bakması için).
