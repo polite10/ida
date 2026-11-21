@@ -57,7 +57,7 @@ LINK_STATS_ADLARI = [
     "tx_frames", "tx_dropped", "tx_crit_stall", "events_sent", "events_resent", "sessions",
 ]
 # Ölçüm bloğunda koşu boyunca artmaması gereken sayaçlar (--olcum).
-OLCUM_SAYACLARI = ["izgara_kacirma", "izgara10_kacirma", "ore", "fe", "ne", "pe", "dma_rx_hata",
+OLCUM_SAYACLARI = ["izgara_kacirma", "ore", "fe", "ne", "pe", "dma_rx_hata",
                    "rx_belirsiz", "rx_tasma", "rx_durdu", "rx_yeniden", "besleme_ret"]
 HATA_SAYACLARI = ["rx_crc_err", "rx_unknown_msgid", "rx_iflag", "rx_bad_len", "rx_wrong_sys",
                   "rx_mav1", "rx_overflow", "rx_resync_bytes"]
@@ -89,7 +89,9 @@ def tablo_oku():
     havuz = []
     for c in d["cerceveler"]:
         bilgi[c["msgid"]] = (c["crc_extra"], c["yuk_azami"])
-        if c["sysid"] == SIM_SYSID and c["compid"] == SIM_COMPID:
+        # Oturum çerçeveleri (46000–46004) yük havuzuna girmez: kart IDLE'da el sıkışmaya
+        # girmesin (dilim 2'de oturum ida_link üst katmanındadır).
+        if c["sysid"] == SIM_SYSID and c["compid"] == SIM_COMPID and not 46000 <= c["msgid"] <= 46004:
             b = bytes.fromhex(c["bayt"].replace(" ", ""))
             havuz.append((c["msgid"], c["crc_extra"], b[10:10 + b[1]], c["ad"]))
     return bilgi, havuz
@@ -262,6 +264,14 @@ def kos(arg):
     yuk_modu = arg.kip == "yuk"
     # yük kipinde: önce taban için bir LINK_STATS beklenir (en çok 3 s), sonra yük başlar
     durum = "taban" if yuk_modu else "izle"
+    # Ölçüm bloğu kipi (--olcum): sayaçlar SWD ile okunur; kart IDLE'da LINK_STATS göndermez
+    # (dilim 2), bu yüzden taban beklenmez.
+    olcum_modu = yuk_modu and arg.olcum is not None
+    if olcum_modu:
+        durum = "yuk"
+        yuk_bas = time.monotonic()
+        yuk_son = yuk_bas + arg.sure
+        sonraki = yuk_bas
     t_izle_son = t_bas + arg.sure
     while True:
         simdi = time.monotonic()
@@ -305,6 +315,8 @@ def kos(arg):
                     gec_yazma += 1
             if len(bekleyen) > en_buyuk_bekleyen:
                 en_buyuk_bekleyen = len(bekleyen)
+        if durum == "son" and olcum_modu and time.monotonic() - t_son >= 1.5:
+            break
         if durum == "son" and time.monotonic() - t_son > 15.0:
             print("duman: yük sonrası IDA_LINK_STATS gelmedi", file=sys.stderr)
             break
@@ -366,6 +378,12 @@ def kos(arg):
         araliklar = [stats[i + 1][0] - stats[i][0] for i in range(len(stats) - 1)]
         ozet["yayin_araligi_en_kucuk_s"] = min(araliklar)
         ozet["yayin_araligi_en_buyuk_s"] = max(araliklar)
+    if olcum_modu and olcum_sonra is not None:
+        esle = {a: "say_" + a for a in LINK_STATS_ADLARI}
+        esle["rx_stale_session"] = "say_stale_session"
+        esle["rx_outside_session"] = "say_outside_session"
+        taban = (0.0, {a: olcum_once.get(esle[a], 0) for a in LINK_STATS_ADLARI})
+        bitis_stats = (0.0, {a: olcum_sonra.get(esle[a], 0) for a in LINK_STATS_ADLARI})
     if yuk_modu and taban is not None:
         ozet["yuk_bayt_periyot"] = arg.bayt
         ozet["yuk_sure_s"] = arg.sure

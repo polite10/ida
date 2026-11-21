@@ -185,6 +185,12 @@ uint32_t ida_bsp_saat_kur(void)
     return 0u;
 }
 
+void ida_bsp_yeniden_baslat(void)
+{
+    __DSB();
+    NVIC_SystemReset();
+}
+
 /* ---- LED ----------------------------------------------------------------------------------- */
 
 static void led_baslat(void)
@@ -230,12 +236,22 @@ static void rng_baslat(void)
 
 uint32_t ida_bsp_rastgele(void)
 {
+    /* Yazmaç düzeyinde, sınırlı yoklama (SysTick durduktan sonra da çağrılır; HAL'in zaman
+       aşımı HAL_GetTick'e dayanır). Saat ya da tohum hatasında 0 döner. */
     for (uint32_t deneme = 0u; deneme < 4u; deneme++) {
-        uint32_t s = 0u;
-        if (HAL_RNG_GenerateRandomNumber(&rng, &s) != HAL_OK) {
-            rng_hata++;
-            continue;
+        uint32_t i = 0u;
+        while ((RNG->SR & RNG_SR_DRDY) == 0u && i < 200000u) {
+            if ((RNG->SR & (RNG_SR_SECS | RNG_SR_CECS)) != 0u) {
+                rng_hata++;
+                return 0u;
+            }
+            i++;
         }
+        if ((RNG->SR & RNG_SR_DRDY) == 0u) {
+            rng_hata++;
+            return 0u;
+        }
+        const uint32_t s = RNG->DR;
         if (s != 0u) {
             return s;
         }

@@ -9,8 +9,9 @@ add_library(ida_fw_saf_host STATIC
   "${_fw}/link/alim.c"
   "${_fw}/bsp/acilis_kaydi.c"
   "${_fw}/app/istatistik.c"
-  "${_fw}/app/tanilama.c"
-  "${_fw}/app/saglik.c")
+  "${_fw}/app/saglik.c"
+  "${_fw}/app/gonderim.c"
+  "${_fw}/app/kalici.c")
 target_include_directories(ida_fw_saf_host PUBLIC "${_fw}/link" "${_fw}/bsp" "${_fw}/app")
 target_link_libraries(ida_fw_saf_host PUBLIC ida_link ida_core)
 ida_ayar_uygula(ida_fw_saf_host CEKIRDEK)
@@ -26,7 +27,8 @@ endfunction()
 _ida_fw_birim(alim)
 _ida_fw_birim(acilis)
 _ida_fw_birim(istatistik)
-_ida_fw_birim(tanilama)
+_ida_fw_birim(gonderim)
+_ida_fw_birim(kalici)
 _ida_fw_birim(saglik)
 
 # Ölçüm bloğu okuyucusunun tutarlılık denetimi (Python, kart gerekmez).

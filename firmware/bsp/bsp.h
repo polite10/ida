@@ -58,6 +58,10 @@ void ida_bsp_cevrim_ve_zaman(uint32_t *cevrim, uint64_t *t_us);
 /* ---- gözetim (01 §2.8) -------------------------------------------------------------------- */
 void ida_bsp_iwdg_besle(void);
 
+/* Planlı yeniden başlatma (A1-K17 REBOOT): sistem sıfırlaması; sonraki açılışın nedeni
+   SOFTWARE'dir ve ardışık arıza sayacı sıfırlanır (01 §2.8). Dönmez. */
+void ida_bsp_yeniden_baslat(void);
+
 /* ---- LED (PE0 yeşil, PE1 kırmızı) --------------------------------------------------------- */
 void ida_bsp_led_yesil(bool yak);
 void ida_bsp_led_kirmizi(bool yak);

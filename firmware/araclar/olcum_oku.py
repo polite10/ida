@@ -28,7 +28,7 @@ KOK = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 ARAC = os.path.join(KOK, "firmware", "araclar", "arac.sh")
 OLCUM_H = os.path.join(KOK, "firmware", "app", "olcum.h")
 KUTU_UST_US = [10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 3500, 5000, None]
-SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441}
+SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744}
 
 
 def duzen():
@@ -128,70 +128,96 @@ def coz(adlar, s):
     return d
 
 
-def ozet(d):
+def _hist(d, onek):
+    kutu = [d["%s_kutu[%d]" % (onek, i)] for i in range(16)]
+    h = {}
+    alt = 0
+    for i, n in enumerate(kutu):
+        ust = KUTU_UST_US[i]
+        if n:
+            h["[%d, %s) us" % (alt, ust if ust is not None else "inf")] = n
+        alt = ust if ust is not None else alt
+    return h
+
+
+def _sure(d, onek, sayi_ad=None):
     us = lambda c: c / 160.0  # noqa: E731  (DWT çevrimi -> µs, 160 MHz)
+    n = d[sayi_ad or onek + "_sayisi"]
+    g = {"sayi": n, "en_kotu_us": us(d[onek + "_en_kotu_cevrim"])}
+    if onek + "_en_iyi_cevrim" in d:
+        g["en_iyi_us"] = us(d[onek + "_en_iyi_cevrim"])
+    if onek + "_toplam_cevrim" in d and n:
+        g["ortalama_us"] = us(d[onek + "_toplam_cevrim"]) / n
+    if onek + "_kutu[0]" in d:
+        g["histogram"] = _hist(d, onek)
+    return g
+
+
+def ozet(d):
+    us = lambda c: c / 160.0  # noqa: E731
     o = {}
     o["magic_ok"] = d["magic"] == 0x4F414449
+    o["surum"] = d["surum"]
     o["calisma_s"] = d["zaman_us"] / 1e6
     o["sysclk_hz"] = d["sysclk_hz"]
     o["baud_brr"] = d["baud_brr"]
     o["capraz"] = {"ornek": d["capraz_ornek"], "sapma_en_kucuk_cevrim": d["capraz_sapma_en_kucuk_i"],
-                   "sapma_en_buyuk_cevrim": d["capraz_sapma_en_buyuk_i"],
-                   "son_aralik_us": d["capraz_son_aralik_us"]}
-    for grup, onek in (("tick", "tick"), ("blok", "blok"), ("periyot", "periyot")):
-        kutu = [d["%s_kutu[%d]" % (onek, i)] for i in range(16)]
-        g = {"sayi": d.get(onek + "_sayisi"), "en_kotu_us": us(d[onek + "_en_kotu_cevrim"])}
-        if onek + "_en_iyi_cevrim" in d:
-            g["en_iyi_us"] = us(d[onek + "_en_iyi_cevrim"])
-        if onek + "_toplam_cevrim" in d and g["sayi"]:
-            g["ortalama_us"] = us(d[onek + "_toplam_cevrim"]) / g["sayi"]
-        if onek + "_son_cevrim" in d:
-            g["son_us"] = us(d[onek + "_son_cevrim"])
-        g["histogram"] = {}
-        alt = 0
-        for i, n in enumerate(kutu):
-            ust = KUTU_UST_US[i]
-            etiket = "[%d, %s) us" % (alt, ust if ust is not None else "inf")
-            if n:
-                g["histogram"][etiket] = n
-            alt = ust if ust is not None else alt
-        o[grup] = g
+                   "sapma_en_buyuk_cevrim": d["capraz_sapma_en_buyuk_i"]}
+    o["step"] = _sure(d, "step")
+    o["step"]["butce_asimi"] = d["step_butce_asimi"]
+    o["tick"] = _sure(d, "tick")
+    o["tick"]["butce_asimi"] = d["tick_butce_asimi"]
+    o["skart"] = _sure(d, "skart")
+    o["cagri"] = {"rc_hata": d["cagri_rc_hata"], "son_rc": d["cagri_son_rc"],
+                  "tur_en_kotu_us": us(d["cagri_tur_en_kotu_cevrim"])}
+    o["blok"] = _sure(d, "blok")
     o["blok"]["en_kotu_blok_bayt"] = d["blok_en_kotu_bayt"]
     if d.get("blok_bayt"):
         o["blok"]["toplam_bayt"] = d["blok_bayt"]
         o["blok"]["ns_bayt"] = d["blok_toplam_cevrim"] * 6.25 / d["blok_bayt"]
+    bb = {}
+    for i in range(16):
+        n = d["bb_sayi[%d]" % i]
+        if n:
+            b = d["bb_bayt[%d]" % i]
+            c = d["bb_cevrim[%d]" % i]
+            bb["[%d, %d) B" % (1 << i, 1 << (i + 1))] = {
+                "blok": n, "ort_bayt": b / n, "ort_us": c / 160.0 / n,
+                "ns_bayt": c * 6.25 / b if b else None}
+    o["blok_boyuna_gore"] = bb
+    o["periyot"] = _sure(d, "periyot")
     o["periyot"]["en_kotu_periyot_bayt"] = d["periyot_en_kotu_bayt"]
     o["izgara"] = {"islenen": d["izgara_sayisi"], "kacirma_200hz": d["izgara_kacirma"],
-                   "gecikme_en_kotu_us": d["izgara_gecikme_en_kotu_us"],
-                   "kacirma_10ms": d["izgara10_kacirma"]}
+                   "gecikme_en_kotu_us": d["izgara_gecikme_en_kotu_us"]}
     o["dongu"] = {"tur": d["tur_sayisi"], "tur_en_kotu_us": us(d["tur_en_kotu_cevrim"]),
                   "besleme": d["besleme_sayisi"], "besleme_aralik_en_kotu_us":
                   d["besleme_aralik_en_kotu_us"], "besleme_ret": d["besleme_ret"],
-                  "besleme_ret_bitleri": d["besleme_ret_bitleri"]}
+                  "besleme_ret_bitleri": d["besleme_ret_bitleri"],
+                  "rx_bekleme_en_uzun_us": d["rx_bekleme_en_uzun_us"]}
     o["cekirdek"] = {"durum": d["cekirdek_durum"] & 0xFF, "neden": d["cekirdek_durum"] >> 8,
                      "init_rc": d["init_rc"], "core_size": d["core_size"], "core_ok": d["core_ok"],
-                     "tick_rc_hata": d["tick_rc_hata"], "tick_son_rc": d["tick_son_rc"],
-                     "tick_butce_asimi": d["tick_butce_asimi"], "bg_sayisi": d["bg_sayisi"],
-                     "bg_en_kotu_us": us(d["bg_en_kotu_cevrim"])}
+                     "bg_sayisi": d["bg_sayisi"], "bg_en_kotu_us": us(d["bg_en_kotu_cevrim"])}
     o["surucu"] = {k: d[k] for k in ("ore", "fe", "ne", "pe", "dma_rx_hata", "dma_tx_hata",
                                      "rx_kararsiz", "rx_belirsiz", "rx_gecersiz", "rx_geri",
-                                     "rx_olay_birlesme", "olay_eslesme", "olay_bosta",
-                                     "olay_yarim", "olay_tam", "rx_tasma", "rx_tasma_bayt",
+                                     "rx_olay_birlesme", "rx_tasma", "rx_tasma_bayt",
                                      "rx_halka_azami", "uart_bekle_hata", "tx_bayt", "tx_ret",
-                                     "tx_doluluk_azami", "tx_cerceve", "tx_atilan")}
-    o["cerceve_sayisi"] = d["cerceve_sayisi"]
-    o["nvic_yeniden"] = d["nvic_yeniden"]
-    o["rx_yeniden"] = d["rx_yeniden"]
-    o["rx_durdu"] = d["rx_durdu"]
-    o["stamp_coarse"] = d["stamp_coarse"]  # programlayıcının bağlanışta kapattığı kesmeler
+                                     "tx_doluluk_azami", "rx_yeniden", "rx_durdu")}
+    o["gonderim"] = {k[4:]: d[k] for k in d if k.startswith("gon_")}
+    o["link"] = {"durum": d["link_durum"], "sess": d["link_sess"]}
+    o["sayac"] = {k[4:]: d[k] for k in d if k.startswith("say_")}
+    o["kalici"] = {k[4:]: d[k] for k in d if k.startswith("kal_")}
+    o["kalici"]["acilis_us"] = us(d["kal_acilis_cevrim"])
+    o["kalici"]["kayit_en_kotu_tur_us"] = us(d["kal_kayit_en_kotu_tur_cevrim"])
+    o["flash"] = {k[3:]: d[k] for k in d if k.startswith("fl_")}
+    o["flash"]["silme_en_kotu_us"] = us(d["fl_silme_en_kotu_cevrim"])
+    o["flash"]["yazma_en_kotu_us"] = us(d["fl_yazma_en_kotu_cevrim"])
     o["yigin"] = {"boyu": d["yigin_boyu"], "en_yuksek": d["yigin_en_yuksek"]}
     o["sifirlama"] = {"reset_cause": d["reset_cause"], "reset_flags": "0x%08X" % d["reset_flags"],
-                      "ardisik_ariza": d["ardisik_ariza"], "kayit_gecerliydi": d["kayit_gecerliydi"],
-                      "fpscr": "0x%08X" % d["fpscr"]}
+                      "ardisik_ariza": d["ardisik_ariza"]}
     o["ariza_kaydi"] = {"onceki_ariza": d["onceki_ariza"], "ariza_sayisi": d["ariza_sayisi"],
-                        "cfsr": "0x%08X" % d["ariza_cfsr"], "hfsr": "0x%08X" % d["ariza_hfsr"],
-                        "pc": "0x%08X" % d["ariza_pc"], "lr": "0x%08X" % d["ariza_lr"],
-                        "yigin_gecerli": d["ariza_yigin_gecerli"], "istisna": d["ariza_istisna"]}
+                        "cfsr": "0x%08X" % d["ariza_cfsr"], "pc": "0x%08X" % d["ariza_pc"],
+                        "istisna": d["ariza_istisna"]}
+    o["nvic_yeniden"] = d["nvic_yeniden"]
     o["derleme_olcum"] = d["derleme_olcum"]
     o["fw_git"] = "0x%08X" % d["fw_git"]
     return o
