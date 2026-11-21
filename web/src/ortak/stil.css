@@ -1,0 +1,4 @@
+/* Panellerin tek stil girişi: sıra önemlidir (sonraki öncekini ezer). */
+@import 'uplot/dist/uPlot.min.css';
+@import './tema.css';
+@import './paneller.css';
