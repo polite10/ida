@@ -108,7 +108,8 @@ static uint64_t olay_uret(uint16_t sess, uint32_t tf_seq, uint32_t apply_by, siz
         if (f->msgid == MAVLINK_MSG_ID_IDA_ACTUATOR) {
             mavlink_ida_actuator_t a;
             ko_coz(f, MAVLINK_MSG_ID_IDA_ACTUATOR, &a, sizeof a);
-            if (a.batch_seq == tf_seq && (a.act_flags & IDAW_ACT_FLAGS_ASYNC) == 0u) {
+            if (a.batch_seq == tf_seq &&
+                ((uint32_t)a.act_flags & (uint32_t)IDAW_ACT_FLAGS_ASYNC) == 0u) {
                 TEST_ASSERT_TRUE_MESSAGE(i > g.sira[0], "yeni olay ACTUATOR'dan önce gider (A1-K73, K90)");
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(1u, a.n_events, "n_events (A1-K73)");
                 act = true;

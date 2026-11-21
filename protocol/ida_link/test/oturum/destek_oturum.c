@@ -157,13 +157,16 @@ const dt_cerceve_t *dt_bul(uint32_t msgid, unsigned k)
 
 const void *dt_son(uint32_t msgid)
 {
-    for (unsigned i = DT.n; i > 0u; --i) {
+    const void *bulunan = NULL;
+    for (unsigned i = DT.n; i > 0u && bulunan == NULL; --i) {
         if (DT.kayit[i - 1u].msgid == msgid) {
-            return DT.kayit[i - 1u].yuk;
+            bulunan = DT.kayit[i - 1u].yuk;
         }
     }
-    TEST_FAIL_MESSAGE("beklenen çerçeve gönderilmedi");
-    return DT.kayit[0].yuk;   /* kartta Unity kesmez; geçerli bellek döner */
+    /* Koşulsuz TEST_FAIL'den sonra kod bırakılmaz (PC'de longjmp: MSVC C4702). Kartta Unity
+       kesmediği için bulunamazsa geçerli bellek döner. */
+    TEST_ASSERT_NOT_NULL_MESSAGE(bulunan, "beklenen çerçeve gönderilmedi");
+    return bulunan != NULL ? bulunan : (const void *)DT.kayit[0].yuk;
 }
 
 const mavlink_ida_cmd_result_t *dt_sonuc(uint32_t cmd_id)

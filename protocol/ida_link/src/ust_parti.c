@@ -580,6 +580,9 @@ ida_link_cagri_t ida_link_ust_take(ida_link_ust_t *l, ida_in_t *in)
         dustu_var = l->ozel_bek.dustu;
         bekleyen_bosalt(l);
         break;
+    case IDA_LINK_CAGRI_STEP:
+    case IDA_LINK_CAGRI_TICK_TF:
+    case IDA_LINK_CAGRI_YOK:   /* buraya gelmez (yukarıda döndü); zaman çerçeveli dalla aynı */
     default:
         in->tf = l->ozel_bek_tf;
         if (l->ozel_ayar.rol == IDA_LINK_UST_ROL_SIL) {

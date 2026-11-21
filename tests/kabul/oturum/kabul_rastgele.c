@@ -41,6 +41,13 @@ typedef struct {
 } meta_t;
 
 static meta_t mt[KO_KIMLIK_AZAMI];
+
+/* Sınırı denetlenen erişim (MSVC /analyze C6385/C6386 için tek giriş noktası). */
+static meta_t *meta(uint32_t id)
+{
+    TEST_ASSERT_TRUE(id < KO_KIMLIK_AZAMI);
+    return &mt[id];
+}
 static uint32_t atilan[4096];
 static size_t n_atilan;
 
@@ -90,7 +97,7 @@ static void cagrilari_denetle(uint32_t tohum, uint32_t adim)
         TEST_ASSERT_TRUE_MESSAGE(c->n_cmds <= IDA_PORT_MAX_CMDS, "n_cmds ≤ 8 (A4-K105)");
         for (uint8_t j = 0; j < c->n_cmds; ++j) {
             uint32_t id = c->cmds[j].cmd_id;
-            if (id < KO_KIMLIK_AZAMI && mt[id].yasak) {
+            if (id < KO_KIMLIK_AZAMI && meta(id)->yasak) {
                 char ileti[200];
                 (void)snprintf(ileti, sizeof ileti,
                                "tohum %u adım %u: yasak kimlik %u çağrı %u girdisinde "
@@ -102,7 +109,7 @@ static void cagrilari_denetle(uint32_t tohum, uint32_t adim)
         for (uint32_t b = 0; b < IDA_PORT_N_NARROW; ++b) {
             if ((c->narrow.mask & (1u << b)) != 0u) {
                 uint32_t id = c->narrow.cmd_id[b];
-                if (id < KO_KIMLIK_AZAMI && mt[id].tur != T_DAR && mt[id].yasak) {
+                if (id < KO_KIMLIK_AZAMI && meta(id)->tur != T_DAR && meta(id)->yasak) {
                     TEST_FAIL_MESSAGE("yasak kimlik mandal yuvasında");
                 }
             }
@@ -141,7 +148,7 @@ static void yeni_komut(ko_rng_t *r, uint8_t tur)
 {
     uint32_t id = sonraki_id++;
     TEST_ASSERT_TRUE(id < KO_KIMLIK_AZAMI);
-    meta_t *m = &mt[id];
+    meta_t *m = meta(id);
     memset(m, 0, sizeof *m);
     m->tur = tur;
     m->sess = sess;
@@ -167,7 +174,7 @@ static void yeni_komut(ko_rng_t *r, uint8_t tur)
     size_t n_aday = 0;
     if (tur == T_DAR) {
         for (uint32_t k = oturum_ilk_id; k < id; ++k) {
-            const meta_t *a = &mt[k];
+            const meta_t *a = meta(k);
             if (a->tur == T_GENIS && a->sess == sess && a->alindi && !a->yasak && !a->eski_sess &&
                 ko_kimlik(k)->girdi == 0u && ko_kimlik(k)->n_sonuc == 0u && n_aday < 256u) {
                 aday[n_aday++] = k;
@@ -187,7 +194,7 @@ static void yeni_komut(ko_rng_t *r, uint8_t tur)
                        (unsigned)k, (unsigned)id);
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, ko_sonuc_say(k, IDAW_ACK_REJECTED, IDAW_REASON_NARROWED),
                                          ileti);
-        mt[k].yasak = true;
+        meta(k)->yasak = true;
         if (n_atilan < sizeof atilan / sizeof atilan[0]) {
             atilan[n_atilan++] = k;
         }
@@ -195,7 +202,7 @@ static void yeni_komut(ko_rng_t *r, uint8_t tur)
     if (tur == T_DAR) {
         /* Nötr bekleyenler etkilenmez. */
         for (uint32_t k = oturum_ilk_id; k < id; ++k) {
-            if (mt[k].tur == T_NOTR && mt[k].sess == sess && !mt[k].eski_sess) {
+            if (meta(k)->tur == T_NOTR && meta(k)->sess == sess && !meta(k)->eski_sess) {
                 TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u,
                     ko_sonuc_say(k, IDAW_ACK_REJECTED, IDAW_REASON_NARROWED),
                     "nötr komut daraltıcıdan etkilenmez (A1-K63)");
@@ -218,8 +225,8 @@ static void oturum_degistir(ko_rng_t *r)
     /* Oturum bitti: eski oturumun çağrıya girmemiş daraltıcı olmayan komutları yasak
        (A4-K74, A1-K22 (1)); mandal silinmez. */
     for (uint32_t k = oturum_ilk_id; k < sonraki_id; ++k) {
-        if (mt[k].sess == eski && mt[k].tur != T_DAR && ko_kimlik(k)->girdi == 0u) {
-            mt[k].yasak = true;
+        if (meta(k)->sess == eski && meta(k)->tur != T_DAR && ko_kimlik(k)->girdi == 0u) {
+            meta(k)->yasak = true;
         }
     }
     if (n_eski < sizeof eski_sessler / sizeof eski_sessler[0]) {
@@ -283,14 +290,15 @@ static void kos(ida_link_ust_rol_t rol, uint32_t tohum)
             if (n_atilan > 0u && parti_notr < 4u) {
                 size_t pencere = n_atilan < 32u ? n_atilan : 32u;
                 uint32_t k = atilan[n_atilan - 1u - ko_rng_aralik(&r, (uint32_t)pencere)];
-                bicimle_gonder(sess, k, mt[k].bicim, mt[k].tube);
-                mt[k].yinelendi++;
+                bicimle_gonder(sess, k, meta(k)->bicim, meta(k)->tube);
+                meta(k)->yinelendi++;
                 parti_notr++;
             }
         } else if (w < 95u) {
             if (n_eski > 0u) {
                 uint32_t id = sonraki_id++;
-                meta_t *m = &mt[id];
+                TEST_ASSERT_TRUE(id < KO_KIMLIK_AZAMI);
+                meta_t *m = meta(id);
                 memset(m, 0, sizeof *m);
                 m->tur = (uint8_t)(ko_rng_aralik(&r, 2u) == 0u ? T_GENIS : T_NOTR);
                 m->bicim = (uint8_t)(m->tur == T_GENIS ? 0u : 8u);
@@ -317,7 +325,7 @@ static void kos(ida_link_ust_rol_t rol, uint32_t tohum)
 
     uint32_t n_dar = 0, n_atil = 0, n_yin = 0;
     for (uint32_t id = ILK_KIMLIK; id < sonraki_id; ++id) {
-        const meta_t *m = &mt[id];
+        const meta_t *m = meta(id);
         const ko_kimlik_t *k = ko_kimlik(id);
         char ileti[200];
         if (m->yasak) {
