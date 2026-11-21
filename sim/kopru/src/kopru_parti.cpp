@@ -29,8 +29,8 @@ bool gevsetiyor(const sensor::EmniyetOlcumu& a, const sensor::EmniyetOlcumu& b)
     return false;
 }
 
-// İki kaydın en kısıtlayıcı birleşimi (alan alan): estop VEYA, gevşek bitler VE; LOADED
-// sonrakinin; revizyon sonrakinin.
+// İki kaydın en kısıtlayıcı birleşimi (alan alan): estop VEYA, gevşek bitler ve LOADED VE;
+// revizyon sonrakinin (gönderimde W4-K12 (3) ile yeniden seçilir).
 sensor::EmniyetOlcumu en_kisitlayici(const sensor::EmniyetOlcumu& eski, const sensor::EmniyetOlcumu& yeni_)
 {
     sensor::EmniyetOlcumu r = yeni_;
@@ -39,13 +39,38 @@ sensor::EmniyetOlcumu en_kisitlayici(const sensor::EmniyetOlcumu& eski, const se
                                                                IDAW_TUBE_FLAGS_PERMIT_OPEN);
     for (std::size_t t = 0; t < 2; ++t) {
         const std::uint8_t gevsek = static_cast<std::uint8_t>(eski.tube[t] & yeni_.tube[t] & kGevsek);
-        const std::uint8_t dolu = static_cast<std::uint8_t>(yeni_.tube[t] & IDAW_TUBE_FLAGS_LOADED);
+        const std::uint8_t dolu = static_cast<std::uint8_t>(eski.tube[t] & yeni_.tube[t] & IDAW_TUBE_FLAGS_LOADED);
         r.tube[t] = static_cast<std::uint8_t>(gevsek | dolu);
     }
     return r;
 }
 
 }  // namespace
+
+// Emniyet örneğinin alan kodu (W4-K12): bit 0 estop, bit 1–2 fiş takılı, bit 3–4 pim çıkık,
+// bit 5–6 izin açık (tüp 0, 1).
+std::uint8_t emniyet_kodu(const sensor::EmniyetOlcumu& y)
+{
+    std::uint8_t kod = y.estop != 0u ? 1u : 0u;
+    for (std::size_t k = 0; k < 2; ++k) {
+        kod = static_cast<std::uint8_t>(kod | ((y.tube[k] & IDAW_TUBE_FLAGS_PLUG_IN) != 0u ? (2u << k) : 0u) |
+                                        ((y.tube[k] & IDAW_TUBE_FLAGS_PIN_OUT) != 0u ? (8u << k) : 0u) |
+                                        ((y.tube[k] & IDAW_TUBE_FLAGS_PERMIT_OPEN) != 0u ? (32u << k) : 0u));
+    }
+    return kod;
+}
+
+// kod, revizyonun yetkili durumundan alan alan en az o kadar kısıtlayıcı mı: yetkili estop
+// basılıysa kod da basılı; koddaki her gevşek bit (fiş takılı, pim çıkık, izin açık) yetkili
+// durumda da gevşek (izin için: o revizyonda açılmış).
+bool en_az_kisitlayici(std::uint8_t kod, const RevDurum& r)
+{
+    const std::uint8_t yetkili = static_cast<std::uint8_t>((r.girdi & 0x1Fu) | (r.izin_acilan & 0x60u));
+    if ((yetkili & 1u) != 0u && (kod & 1u) == 0u) {
+        return false;
+    }
+    return ((kod & 0x7Eu) & static_cast<std::uint8_t>(~yetkili)) == 0u;
+}
 
 // ---------------------------------------------------------------- Parti
 
@@ -62,24 +87,31 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         (void)e;
         // A1-K56: partide ≤ 1; kapanma o partide, sonraki açılma sonraki partide. Kayıt pencere
         // kapanışında yazılır (Okumalar, EMNİYET).
+        // W4-K12 (1): kısıtlayan alan hiçbir zaman ertelenmez. Yeni kayıt penceredekiyle alan alan
+        // en kısıtlayıcı biçimde birleştirilir; kayıt bir alanı gevşetiyorsa yalnız gevşetme
+        // (kaydın kendisi, kendi seq'iyle) sonraki partiye kalır. Birleşim, penceredeki kaydın
+        // seq ve ölçüm zamanını korur (kısıtlama daha erken bildirilir: kısıtlayan yön).
         if (!i.pen_emniyet) {
             i.pen_emniyet = o;
             return;
         }
         const auto& onceki = std::get<sensor::EmniyetOlcumu>(i.pen_emniyet->yuk);
         const auto& yeni_ = std::get<sensor::EmniyetOlcumu>(o.yuk);
+        const sensor::EmniyetOlcumu birlesik = en_kisitlayici(onceki, yeni_);
+        ++i.say.emniyet_birlesti;
         if (gevsetiyor(yeni_, onceki)) {
-            // Penceredeki kayıt daha kısıtlayıcı: o gider; yeni kayıt sonraki pencereye.
-            if (i.sonraki_emniyet) {
-                ++i.say.emniyet_birlesti;
-            }
-            i.sonraki_emniyet = o;
+            auto& y = std::get<sensor::EmniyetOlcumu>(i.pen_emniyet->yuk);
+            y = birlesik;
+            y.safety_rev = std::min(onceki.safety_rev, yeni_.safety_rev);
+            i.sonraki_emniyet = o;   // gevşetme sonraki partide (A1-K56)
             ++i.say.emniyet_ertelendi;
         } else {
+            // Yeni kayıt penceredekinden gevşek değil: birleşim yeni kaydın durumudur ve en yeni
+            // gerçektir; ertelenmiş eski gevşetme artık geçersizdir.
             Olcum b = o;
-            b.yuk = en_kisitlayici(onceki, yeni_);
+            b.yuk = birlesik;
             i.pen_emniyet = b;
-            ++i.say.emniyet_birlesti;
+            i.sonraki_emniyet.reset();
         }
         return;
     }
@@ -291,32 +323,69 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         m.t_meas_ns = o.hdr.t_meas_ns;
         m.seq = o.hdr.seq;
         m.safety_rev = y.safety_rev;
-        // W4-K4 (EMNİYET): örneğin girdi değerleri (acil durdurma, fiş, pim) o revizyonda sim'de
-        // var olmamışsa (gevşetmenin bildirimi sensörde gecikti, revizyonu gecikmedi) revizyon,
-        // aynı girdi değerlerinin yetkili olduğu en son revizyona geri alınır. Geri alınan
-        // revizyonla damgalanan izin açan olay reddedilir: kısıtlayan yön.
+        // W4-K12 (2), (3) (EMNİYET): gönderilen durum, gönderilen revizyonun yetkili durumundan
+        // alan alan en az o kadar kısıtlayıcı olmalıdır. Revizyon, kaydın kendi revizyonu ve
+        // öncekiler arasından seçilir: tam eşleşen en yeni; yoksa durumun en az o kadar
+        // kısıtlayıcı olduğu en yeni. Hiçbiri yoksa kaydın revizyonu kalır ve sayılır.
         {
-            std::uint8_t kod = y.estop != 0u ? 1u : 0u;
-            for (std::size_t k = 0; k < 2; ++k) {
-                kod = static_cast<std::uint8_t>(kod | ((y.tube[k] & IDAW_TUBE_FLAGS_PLUG_IN) != 0u ? (2u << k) : 0u) |
-                                                ((y.tube[k] & IDAW_TUBE_FLAGS_PIN_OUT) != 0u ? (8u << k) : 0u));
+            const std::uint8_t kod = emniyet_kodu(y);
+            std::uint32_t secilen = m.safety_rev;
+            bool tam = false;
+            bool bulundu = false;
+            std::uint32_t kisit_rev = 0;
+            for (auto r = i.rev_girdi.rbegin(); r != i.rev_girdi.rend(); ++r) {
+                if (r->first > m.safety_rev) {
+                    continue;
+                }
+                if ((kod & 0x1Fu) == (r->second.girdi & 0x1Fu) &&
+                    ((kod & 0x60u) & static_cast<std::uint8_t>(~r->second.izin_acilan)) == 0u) {
+                    secilen = r->first;
+                    tam = true;
+                    break;
+                }
+                if (!bulundu && en_az_kisitlayici(kod, r->second)) {
+                    kisit_rev = r->first;
+                    bulundu = true;
+                }
             }
-            const auto it = i.rev_girdi.find(m.safety_rev);
-            if (it != i.rev_girdi.end() && it->second != kod) {
-                for (auto r = std::make_reverse_iterator(it); r != i.rev_girdi.rend(); ++r) {
-                    if (r->second == kod) {
-                        m.safety_rev = r->first;
-                        ++i.say.emniyet_rev_geri;
-                        break;
+            if (!tam && bulundu) {
+                secilen = kisit_rev;
+            }
+            m.estop = y.estop;
+            m.tube[0] = y.tube[0];
+            m.tube[1] = y.tube[1];
+            if (!tam && !bulundu) {
+                // Hiçbir revizyon uymuyor: değişmez (2) korunur, durum kaydın revizyonunun
+                // yetkili durumuyla alan alan en kısıtlayıcı biçimde birleştirilir.
+                ++i.say.emniyet_rev_eslesmedi;
+                const auto rv = i.rev_girdi.find(m.safety_rev);
+                if (rv != i.rev_girdi.end()) {
+                    const std::uint8_t yet = static_cast<std::uint8_t>((rv->second.girdi & 0x1Fu) | rv->second.izin_acilan);
+                    if ((yet & 1u) != 0u) {
+                        m.estop = 1u;
+                    }
+                    for (std::size_t k = 0; k < 2; ++k) {
+                        std::uint8_t tb = m.tube[k];
+                        if ((yet & (2u << k)) == 0u) {
+                            tb = static_cast<std::uint8_t>(tb & static_cast<std::uint8_t>(~IDAW_TUBE_FLAGS_PLUG_IN));
+                        }
+                        if ((yet & (8u << k)) == 0u) {
+                            tb = static_cast<std::uint8_t>(tb & static_cast<std::uint8_t>(~IDAW_TUBE_FLAGS_PIN_OUT));
+                        }
+                        if ((yet & (32u << k)) == 0u) {
+                            tb = static_cast<std::uint8_t>(tb & static_cast<std::uint8_t>(~IDAW_TUBE_FLAGS_PERMIT_OPEN));
+                        }
+                        m.tube[k] = tb;
                     }
                 }
+            }
+            if (secilen != m.safety_rev) {
+                m.safety_rev = secilen;
+                ++i.say.emniyet_rev_geri;
             }
         }
         m.flags = o.hdr.flags;
         m.inst = o.hdr.inst;
-        m.estop = y.estop;
-        m.tube[0] = y.tube[0];
-        m.tube[1] = y.tube[1];
         i.cerceve(MAVLINK_MSG_ID_IDA_SAFETY, &m, sizeof m, &n);
         ++i.pen_uye;
         i.pen_bayt += n;

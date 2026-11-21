@@ -51,7 +51,7 @@ void Kopru::Ic::yuva_tamamlandi_mi(std::uint32_t seq)
     }
 }
 
-void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
+bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
 {
     const std::uint16_t f = m.act_flags;
     const bool thr = (f & F(IDAW_ACT_FLAGS_THR_VALID)) != 0u;
@@ -77,12 +77,12 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     }
     if (!v2) {
         ++say.alan_ret;
-        return;
+        return false;
     }
     // V3
     if (esz ? (m.batch_seq != 0u && !tf_gonderildi(m.batch_seq)) : !tf_gonderildi(m.batch_seq)) {
         ++say.bag_ret;
-        return;
+        return false;
     }
     // V4 (Tablo 4.6a)
     bool v4 = true;
@@ -117,16 +117,13 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     }
     if (!v4) {
         ++say.alan_ret;
-        return;
+        return false;
     }
     // V5 (A1-K105)
     if (out_seq_var && !yeni(m.out_seq, son_out_seq)) {
         ++say.yanit_ret_eski_uretim;
-        return;
+        return false;
     }
-    out_seq_var = true;
-    son_out_seq = m.out_seq;
-
     if ((f & F(IDAW_ACT_FLAGS_BATCH_INCOMPLETE)) != 0u) {
         ++say.batch_incomplete;
     }
@@ -141,10 +138,29 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         if (m.batch_seq == 0u && !ilk_yanit_alindi) {
             esz_muaf.insert(m.out_seq);
         }
+        out_seq_var = true;
+        son_out_seq = m.out_seq;
         esz_bekleyen.push_back(m);
-        return;
+        return true;
     }
-    gecen_yanit[m.batch_seq] = m;
+    // A1-K72: yuva doluysa ya da uygulama anı geçtiyse reddedilir. Reddedilen yanıt hiçbir
+    // geçmişi (üretim sırası, olay doğrulamasının dayanağı, yanıt süresi) değiştirmez (sol #2).
+    const auto yv = yuvalar.find(m.batch_seq);
+    if (yv != yuvalar.end() && yv->second.act_var) {
+        ++say.yanit_ret_yinelenen;
+        return false;
+    }
+    if (yv == yuvalar.end() || yv->second.islendi || (sinir_var && son_sinir >= yv->second.adim)) {
+        ++say.yanit_ret_gec;
+        say.calistirma_gecersiz |= kGecGecYanit;
+        return false;
+    }
+    out_seq_var = true;
+    son_out_seq = m.out_seq;
+    gecen_yanit[m.batch_seq] = m;   // olay doğrulamasının dayanağı: yalnız kabul edilen yanıt
+    while (gecen_yanit.size() > 64u) {
+        gecen_yanit.erase(gecen_yanit.begin());
+    }
     const auto tw = tf_yazim.find(m.batch_seq);
     if (tw != tf_yazim.end()) {
         yanit_sure[m.batch_seq] = duvar - tw->second;
@@ -153,37 +169,26 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
             yanit_sure.erase(yanit_sure.begin());
         }
     }
-    while (gecen_yanit.size() > 64u) {
-        gecen_yanit.erase(gecen_yanit.begin());
-    }
     // Birleştirilen eski partiler (A1-K40, K75).
     for (std::uint32_t k = 1; k <= m.n_merged; ++k) {
-        const std::uint32_t s = m.batch_seq - k;
-        const auto it = yuvalar.find(s);
+        const std::uint32_t sq = m.batch_seq - k;
+        const auto it = yuvalar.find(sq);
         if (it != yuvalar.end() && it->second.islendi && !it->second.birlesik && !it->second.act_var) {
             ++say.parti_kacirildi_birlesik;
         }
-        birlesik_seq.insert(s);
+        birlesik_seq.insert(sq);
     }
-    Yuva& y = yuvalar[m.batch_seq];
-    if (y.act_var) {
-        ++say.yanit_ret_yinelenen;   // A1-K72
-        return;
-    }
-    if (y.islendi || (sinir_var && son_sinir >= y.adim)) {
-        ++say.yanit_ret_gec;
-        say.calistirma_gecersiz |= kGecGecYanit;
-        return;
-    }
+    Yuva& y = yv->second;
     y.act_var = true;
     ilk_yanit_alindi = true;
     y.act = m;
     yuva_tamamlandi_mi(m.batch_seq);
+    return true;
 }
 
 // ---------------------------------------------------------------- Olay (IDA_EVENT)
 
-void Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
+bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
 {
     // V2
     const std::int64_t ab = static_cast<std::int64_t>(m.apply_by_ns);
@@ -198,30 +203,33 @@ void Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
     }
     if (!v2) {
         ++say.alan_ret;
-        return;
+        return false;
     }
     // V3
     const bool kapanis_sifir = m.kind == IDA_EVT_SAFETY_CLOSE && m.batch_seq == 0u && m.t_decide_ns == 0;
     if (!kapanis_sifir && (!tf_gonderildi(m.batch_seq) || tf_zamani(m.batch_seq) != m.t_decide_ns)) {
         ++say.bag_ret;
-        return;
+        return false;
     }
     // V4 ve Tablo 4.6b
     const bool acan = m.kind == IDA_EVT_SAFETY_OPEN || m.kind == IDA_EVT_FIRE;
     if (acan && (m.safety_rev == 0u || m.call_kind != IDAW_CALL_KIND_STEP)) {
         ++say.alan_ret;
-        return;
+        return false;
     }
     // A1-K81: yineleme.
     if (sakli.count(m.event_id) != 0u) {
         sakli_talep.push_back(m.event_id);
-        return;
+        return true;   // geçerli yineleme
     }
     if (karari_bekleyen.count(m.event_id) != 0u) {
-        return;
+        return true;
     }
     karari_bekleyen.insert(m.event_id);
     ++say.olay_alinan;
+    if (m.kind == IDA_EVT_SAFETY_OPEN || m.kind == IDA_EVT_FIRE) {
+        parti_acan_ekle(m.batch_seq, m.kind == IDA_EVT_FIRE ? 2u : 1u);
+    }
     BekleyenOlay o;
     o.ev = m;
     // A1-K83: zamanında gelen olay yuvasıyla aynı sınırda; geç gelen ya da ızgara olayı
@@ -239,6 +247,7 @@ void Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
         say.calistirma_gecersiz |= kGecGecOlay;
     }
     olay_bekleyen.push_back(o);
+    return true;
 }
 
 // ---------------------------------------------------------------- Emniyet
@@ -255,7 +264,7 @@ void Kopru::Ic::rev_artir()
     }
     say.emniyet_revizyonu = emn.emniyet_revizyonu;
     // W4-K4: bu revizyonun girdi değeri (artış, işlemin durumu değiştirmesinden sonra yapılır).
-    rev_girdi[emn.emniyet_revizyonu] = girdi_kodu();
+    rev_girdi[emn.emniyet_revizyonu] = RevDurum{girdi_kodu(), izin_kodu()};
     while (rev_girdi.size() > 256u) {
         rev_girdi.erase(rev_girdi.begin());
     }
@@ -317,19 +326,24 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
         karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
         return;
     }
-    // İzin açan olaylar: A1-K118 tutarlılığı.
+    // İzin açan olaylar: A1-K118 ve Tablo 4.6b tutarlılığı (sol #3). Yanıt, partisinin bütün
+    // izin açan olaylarıyla birlikte (ör. aynı partide FIRE varsa ARMED = 1, IS_SAFE = 0)
+    // denetlenir; tutarsızsa yanıt reddedilir ve o partinin hiçbir olayı izin açamaz. Karar
+    // yalnız kabul edilmiş, değişmez yuva yanıtına dayanır (sol #2).
     const auto gy = gecen_yanit.find(e.batch_seq);
-    bool tutarli = gy != gecen_yanit.end();
+    bool tutarli = gy != gecen_yanit.end() && reddedilen_yanit.count(e.batch_seq) == 0u;
     if (tutarli) {
         const mavlink_ida_actuator_t& m = gy->second;
         const std::uint16_t f = m.act_flags;
         tutarli = m.core_rc == IDA_RC_OK && (f & F(IDAW_ACT_FLAGS_SRC_TICK)) == 0u;
-        if (e.kind == IDA_EVT_FIRE) {
+        const auto pa = parti_acan.find(e.batch_seq);
+        const bool partide_fire = e.kind == IDA_EVT_FIRE || (pa != parti_acan.end() && (pa->second & 2u) != 0u);
+        if (partide_fire) {
             tutarli = tutarli && (f & F(IDAW_ACT_FLAGS_ARMED)) != 0u && (f & F(IDAW_ACT_FLAGS_IS_SAFE)) == 0u;
         }
         if (!tutarli) {
-            // Tutarsız yanıt da reddedilir (A1-K118).
             ++say.alan_ret;
+            reddedilen_yanit.insert(e.batch_seq);
             const auto yv = yuvalar.find(e.batch_seq);
             if (yv != yuvalar.end() && !yv->second.islendi) {
                 yv->second.reddedildi = true;
@@ -349,6 +363,8 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
         }
         emn.izin_acik[tup] = true;
         izin_bitis[tup] = t + static_cast<std::int64_t>(e.hold_ns);   // A1-K86
+        rev_girdi[emn.emniyet_revizyonu].izin_acilan =
+            static_cast<std::uint8_t>(rev_girdi[emn.emniyet_revizyonu].izin_acilan | izin_kodu());   // W4-K12
         karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
         return;
     }
@@ -574,6 +590,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
             continue;
         }
         i.uygulanan_var = true;
+        i.uygulanan_boot = i.kart.boot_count;
         i.son_uygulanan_out_seq = ad.m.out_seq;
         if (ad.esz) {
             ++i.say.esz_guvenli_uygulanan;

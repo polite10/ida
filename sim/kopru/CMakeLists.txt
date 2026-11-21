@@ -46,6 +46,7 @@ add_executable(ida_kopru_test
   test/test_oturum.cpp
   test/test_yuva.cpp
   test/test_emniyet.cpp
+  test/test_emniyet2.cpp
   test/test_tasima.cpp)
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
 target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
@@ -66,6 +67,12 @@ set(_ida_kopru_testleri
   olay_fire_kabul        # kabul 4: yetkili durumda FIRE yalnız tüpü boşaltır
   emniyet_ornegi         # A1-K56: partide ≤ 1, kapanma önce
   emniyet_rev_durum      # W4-K4: revizyon girdi değerleriyle birlikte
+  emniyet_capraz_alan    # sol #1, W4-K12 (1)
+  emniyet_izin_acik      # sol #1, W4-K12 (2)
+  yinelenen_yanit_olay   # sol #2, A1-K72, K118
+  toplu_tutarlilik       # sol #3, Tablo 4.6b
+  yeni_acilis_out_seq    # sol #4, A1-K105
+  gecersiz_cerceve_etkisiz  # sol #11, A1-K109
   bellek_tasima
   tcp_tasima
   pty_tasima)

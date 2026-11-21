@@ -68,6 +68,17 @@ struct BekleyenOlay {
     std::uint64_t adim = 0;                // uygulamaya çalışılacağı sınır
 };
 
+// W4-K12: bir revizyonun yetkili emniyet durumu. girdi: bit 0 estop, 1–2 fiş takılı, 3–4 pim
+// çıkık; izin_acilan: bit 5–6, bu revizyon sürerken açılmış izinler (izin açılması revizyonu
+// artırmaz, kapanması artırır).
+struct RevDurum {
+    std::uint8_t girdi = 0;
+    std::uint8_t izin_acilan = 0;
+};
+
+std::uint8_t emniyet_kodu(const sensor::EmniyetOlcumu& y);
+bool en_az_kisitlayici(std::uint8_t kod, const RevDurum& r);
+
 struct SakliSonuc {
     std::uint8_t sonuc = 0;
     std::int64_t t_apply = 0;
@@ -136,6 +147,7 @@ struct Kopru::Ic {
     std::uint32_t son_out_seq = 0;          // V5
     bool uygulanan_var = false;
     std::uint32_t son_uygulanan_out_seq = 0;
+    std::uint32_t uygulanan_boot = 0;       // son uygulanan çıktının kart açılışı (sol #4)
     bool yururluk = false;
     std::array<double, 8> pwm{};
     std::int64_t yururluk_bitis = 0;
@@ -145,6 +157,23 @@ struct Kopru::Ic {
     std::vector<BekleyenOlay> olay_bekleyen;
     std::set<std::uint64_t> karari_bekleyen;
     std::map<std::uint64_t, SakliSonuc> sakli;         // A1-K81 (çalıştırma boyunca)
+    // sol #3: partideki izin açan olay türleri (bit 0 SAFETY_OPEN, bit 1 FIRE) ve tutarsız
+    // bulunup reddedilen yanıtlar; ekleme sırasıyla son 256 parti tutulur.
+    std::map<std::uint32_t, std::uint8_t> parti_acan;
+    std::set<std::uint32_t> reddedilen_yanit;
+    std::deque<std::uint32_t> parti_acan_sira;
+    void parti_acan_ekle(std::uint32_t seq, std::uint8_t bit)
+    {
+        if (parti_acan.count(seq) == 0u) {
+            parti_acan_sira.push_back(seq);
+            if (parti_acan_sira.size() > 256u) {
+                parti_acan.erase(parti_acan_sira.front());
+                reddedilen_yanit.erase(parti_acan_sira.front());
+                parti_acan_sira.pop_front();
+            }
+        }
+        parti_acan[seq] = static_cast<std::uint8_t>(parti_acan[seq] | bit);
+    }
     std::deque<mavlink_ida_event_result_t> sonuc_kuyrugu;
     std::deque<std::uint64_t> sakli_talep;
 
@@ -155,7 +184,7 @@ struct Kopru::Ic {
     std::uint32_t dar_komut_bekleyen = 0;
     // W4-K4: her revizyonda emniyet girdilerinin (acil durdurma, fiş, pim) yetkili değeri;
     // bit 0 estop, bit 1–2 fiş takılı, bit 3–4 pim çıkık. Son 256 revizyon.
-    std::map<std::uint32_t, std::uint8_t> rev_girdi;
+    std::map<std::uint32_t, RevDurum> rev_girdi;
     std::uint8_t girdi_kodu() const
     {
         std::uint8_t g = emn.acil_durdurma ? 1u : 0u;
@@ -163,6 +192,10 @@ struct Kopru::Ic {
             g = static_cast<std::uint8_t>(g | (emn.fis[k] ? (2u << k) : 0u) | (!emn.pim[k] ? (8u << k) : 0u));
         }
         return g;
+    }
+    std::uint8_t izin_kodu() const
+    {
+        return static_cast<std::uint8_t>((emn.izin_acik[0] ? 32u : 0u) | (emn.izin_acik[1] ? 64u : 0u));
     }
     bool estop_onceki = false;              // W4-K3
     bool estop_esik_var = false;
@@ -189,9 +222,9 @@ struct Kopru::Ic {
     void kart_cercevesi(const ida_link_cerceve_t& c);
     bool tf_gonderildi(std::uint32_t seq) const;
     std::int64_t tf_zamani(std::uint32_t seq) const;
-    void yanit_al(const mavlink_ida_actuator_t& m);
-    void olay_al(const mavlink_ida_event_t& m);
-    void sonuc_al(const mavlink_ida_cmd_result_t& m);
+    bool yanit_al(const mavlink_ida_actuator_t& m);   // false: reddedildi (A1-K109, K72)
+    bool olay_al(const mavlink_ida_event_t& m);   // false: reddedildi (A1-K109, K72)
+    bool sonuc_al(const mavlink_ida_cmd_result_t& m);   // false: reddedildi (A1-K109, K72)
     void yerel_sonuc(std::uint32_t cmd_id, std::uint8_t ack, std::uint16_t reason);
     void komut_yaz(Komut& k);
     std::uint32_t komut_ekle(Komut k);

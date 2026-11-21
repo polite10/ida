@@ -150,6 +150,9 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     esz_bekleyen.clear();
     esz_muaf.clear();
     ilk_yanit_alindi = false;
+    parti_acan.clear();
+    parti_acan_sira.clear();
+    reddedilen_yanit.clear();
     olay_bekleyen.clear();
     karari_bekleyen.clear();
     sonuc_kuyrugu.clear();
@@ -285,6 +288,11 @@ void Kopru::Ic::hello_isle(const mavlink_ida_board_hello_t& h)
     ka.result = sonuc;
     kart.son_oturum_reddi = sonuc;
     if (sonuc == static_cast<std::uint8_t>(IDAW_SESSION_RESULT_OK)) {
+        // A1-K105 (sol #4): out_seq kartın açılışından başlar; doğrulanmış yeni açılışta
+        // karşılaştırma tabanı yeniden kurulur, aynı açılıştaki yeniden bağlantıda korunur.
+        if (uygulanan_var && uygulanan_boot != h.boot_count) {
+            uygulanan_var = false;
+        }
         sess_ = sess_sec(h.prev_sess);
         ka.sess = sess_;
         cerceve(MAVLINK_MSG_ID_IDA_SESSION_ACCEPT, &ka, sizeof ka);
@@ -342,8 +350,15 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         }
         return;
     }
-    son_rx_gecerli = duvar;
-
+    // A1-K109 (sol #11): canlılık (T_bağ) ve HAZIR → KOSUYOR yalnız doğrulamadan geçen
+    // çerçeveyle güncellenir; reddedilen çerçevenin sayaç dışında etkisi yoktur.
+    auto gecerli = [this](bool sess_tasir) {
+        son_rx_gecerli = duvar;
+        if (sess_tasir && durum == OturumDurumu::hazir) {
+            durum = OturumDurumu::kosuyor;   // A1-K27
+            ++say.oturum_kurulan;
+        }
+    };
     switch (fr.msgid) {
     case MAVLINK_MSG_ID_IDA_BOARD_HELLO: {
         if (durum == OturumDurumu::kosuyor) {
@@ -377,6 +392,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
+        son_rx_gecerli = duvar;
         kart.son_kapanis_nedeni = m.reason;
         oturum_bitti(false, true);   // A1-K21, K23
         return;
@@ -388,11 +404,9 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
-        if (durum == OturumDurumu::hazir) {
-            durum = OturumDurumu::kosuyor;
-            ++say.oturum_kurulan;
+        if (yanit_al(m)) {
+            gecerli(true);
         }
-        yanit_al(m);
         return;
     }
     case MAVLINK_MSG_ID_IDA_EVENT: {
@@ -402,11 +416,9 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
-        if (durum == OturumDurumu::hazir) {
-            durum = OturumDurumu::kosuyor;
-            ++say.oturum_kurulan;
+        if (olay_al(m)) {
+            gecerli(true);
         }
-        olay_al(m);
         return;
     }
     case MAVLINK_MSG_ID_IDA_CMD_RESULT: {
@@ -416,11 +428,9 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
-        if (durum == OturumDurumu::hazir) {
-            durum = OturumDurumu::kosuyor;
-            ++say.oturum_kurulan;
+        if (sonuc_al(m)) {
+            gecerli(true);
         }
-        sonuc_al(m);
         return;
     }
     case MAVLINK_MSG_ID_IDA_STATUS: {
@@ -466,6 +476,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         for (std::size_t i = 0; i < 4; ++i) {
             kart.nav.q_nb[i] = m.q_nb[i];
         }
+        gecerli(false);
         return;
     }
     case MAVLINK_MSG_ID_IDA_FC_STATUS: {
@@ -482,6 +493,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         kart.fc_state = m.state;
         kart.fc_inhibit_mask = m.inhibit_mask;
         kart.fc_son_olay_sonucu = m.last_event_result;
+        gecerli(false);
         return;
     }
     case MAVLINK_MSG_ID_IDA_LOG: {
@@ -489,7 +501,9 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         (void)ida_link_coz(&fr, fr.msgid, &m, sizeof m);
         if (m.code < 1u || m.code > 23u || m.severity > 7u) {
             ++say.alan_ret;
+            return;
         }
+        gecerli(false);
         return;
     }
     case MAVLINK_MSG_ID_IDA_CALL_TRACE: {
@@ -501,6 +515,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             return;
         }
         ++say.cagri_izi;
+        gecerli(false);
         return;
     }
     case MAVLINK_MSG_ID_IDA_CORE_COUNTERS: {
@@ -523,21 +538,20 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         s.evres_ignored = m.evres_ignored;
         s.event_unknown = m.event_unknown;
         s.step_miss = m.step_miss;
+        gecerli(false);
         return;
     }
     default:
         // LINK_STATS, FAULT_RECORD, DET_RECORD: aralık denetimi yok (Tablo 4.6); bu dilimde
         // yalnız alınır.
+        gecerli(false);
         return;
     }
-    // sess taşıyan ve güncel oturumu gösteren çerçeve: HAZIR → KOSUYOR (A1-K27).
-    if (durum == OturumDurumu::hazir) {
-        durum = OturumDurumu::kosuyor;
-        ++say.oturum_kurulan;
-    }
+    // sess taşıyan, doğrulamadan geçen çerçeve (KEEPALIVE, STATUS).
+    gecerli(true);
 }
 
-void Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
+bool Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
 {
     // V2
     const bool reason_ok = m.reason <= 15u || (m.reason >= 128u && m.reason <= 131u);
@@ -551,16 +565,16 @@ void Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
     }
     if (!ok) {
         ++say.alan_ret;
-        return;
+        return false;
     }
     // V3
     if (oturum_komutlari.count(m.cmd_id) == 0u) {
         ++say.bag_ret;
-        return;
+        return false;
     }
     sonuc_bekleyen.erase(m.cmd_id);
     if (sonuclar.count(m.cmd_id) != 0u) {
-        return;   // A1-K67: ilk sonuç iletilir, sonrakiler yalnız kaydedilir
+        return true;   // A1-K67: ilk sonuç iletilir, sonrakiler yalnız kaydedilir
     }
     KomutSonucu s;
     s.ack = m.ack;
@@ -570,6 +584,7 @@ void Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
     s.save_crc = m.save_crc;
     s.t_ns = tf_var ? tf_zamani(son_seq) : 0;
     sonuclar[m.cmd_id] = s;
+    return true;
 }
 
 // ---------------------------------------------------------------- Kopru
@@ -595,7 +610,7 @@ Kopru::Kopru(const KopruAyari& ayar) : ic_(std::make_unique<Ic>())
     i.pwm.fill(static_cast<double>(i.a.esc_notr_us));
     i.emn = sensor::EmniyetDurumu{};
     i.izin_bitis.fill(0);
-    i.rev_girdi[i.emn.emniyet_revizyonu] = i.girdi_kodu();   // W4-K4
+    i.rev_girdi[i.emn.emniyet_revizyonu] = RevDurum{i.girdi_kodu(), i.izin_kodu()};   // W4-K12
 }
 
 Kopru::~Kopru() = default;
