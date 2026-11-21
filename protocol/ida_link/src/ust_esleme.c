@@ -100,7 +100,7 @@ bool ust_esl_ornek(uint32_t msgid, const void *mp, ida_wtime_t t_rx, ida_sample_
         const mavlink_ida_gnss_t *m = (const mavlink_ida_gnss_t *)mp;
         uint16_t f = m->flags;
         if (m->fix_type > IDA_GNSS_FIX_RTK) {
-            f = (uint16_t)(f & (uint16_t)~IDA_HF_VALID);   /* Tablo 3.4b; A1-K47 */
+            f = (uint16_t)(f & UST_HF_VALID_SIL);   /* Tablo 3.4b; A1-K47 */
         }
         baslik(&s.hdr, m->t_meas_ns, t_rx, m->seq, 0u, f, (uint8_t)IDA_SENS_GNSS, m->inst);
         s.u.gnss.lat_e7 = m->lat_e7;
@@ -156,7 +156,7 @@ bool ust_esl_ornek(uint32_t msgid, const void *mp, ida_wtime_t t_rx, ida_sample_
         const mavlink_ida_safety_t *m = (const mavlink_ida_safety_t *)mp;
         uint16_t f = m->flags;
         if (m->estop > 1u) {
-            f = (uint16_t)(f & (uint16_t)~IDA_HF_VALID);   /* Tablo 3.4b; A1-K47 */
+            f = (uint16_t)(f & UST_HF_VALID_SIL);   /* Tablo 3.4b; A1-K47 */
         }
         baslik(&s.hdr, m->t_meas_ns, t_rx, m->seq, 0u, f, (uint8_t)IDA_SENS_SAFETY, m->inst);
         s.u.safety.estop = m->estop;

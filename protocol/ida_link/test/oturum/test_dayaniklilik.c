@@ -41,7 +41,7 @@ static void girdi_degismezleri(const ida_in_t *in, ida_link_cagri_t tur)
     TEST_ASSERT_TRUE(in->plat.link_state <= IDA_LINK_RUNNING);
     TEST_ASSERT_EQUAL(tur == IDA_LINK_CAGRI_STEP || tur == IDA_LINK_CAGRI_TICK_TF, in->tf.present);
     TEST_ASSERT_EQUAL(tur == IDA_LINK_CAGRI_STEP, in->imu_present);
-    TEST_ASSERT_EQUAL_UINT8(0u, in->narrow.mask & (uint8_t)~IDA_NARROW_DEFINED);
+    TEST_ASSERT_EQUAL_UINT8(0u, in->narrow.mask & (uint8_t)(0xFFu ^ IDA_NARROW_DEFINED));
     {
         bool emn_bitti = false;
         for (unsigned i = 0; i < in->n_samples; ++i) {

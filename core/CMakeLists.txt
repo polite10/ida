@@ -20,6 +20,7 @@ foreach(_modul IN LISTS IDA_CEKIRDEK_MODULLERI)
 endforeach()
 
 ida_ayar_uygula(ida_core CEKIRDEK)
+target_link_libraries(ida_core INTERFACE $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>)  # float aşkın işlevleri (fmodf; newlib libm), çekirdeği bağlayan her hedefe
 if(CMAKE_CROSSCOMPILING)
   # Yığın kullanımı raporu (09 §2.8); .su dosyaları nesnelerin yanında üretilir.
   target_compile_options(ida_core PRIVATE -fstack-usage)

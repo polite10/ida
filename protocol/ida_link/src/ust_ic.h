@@ -20,6 +20,10 @@ extern mavlink_message_t m_mavlink_buffer[MAVLINK_COMM_NUM_BUFFERS];
 
 #include "ida_link/ust.h"
 
+/* hdr.flags'ten VALID'i silen maske. `~` int üzerinde çalışıp 16 bite sığmayan sabit üretir
+   (MSVC C4310); XOR ile değer 0xFFFE'dir ve daraltma yoktur. */
+#define UST_HF_VALID_SIL ((uint16_t)(0xFFFFu ^ IDA_HF_VALID))
+
 /* ---- ust_oturum.c ---- */
 
 /* Platform saati, A4-K08 aralığına (0 … 2^62 ns) sınırlanmış (zaman tabanı doğrulaması). */

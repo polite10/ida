@@ -320,7 +320,7 @@ static bool emn_ekle(ida_link_ust_t *l, const ida_sample_t *s, uint32_t rev, boo
     if (gecersiz_yap) {
         /* A4-K130: öteki alanlar değişmez, yalnız VALID = 0 (gevşetemez). */
         p->emn[p->n_emn].hdr.flags = (uint16_t)(p->emn[p->n_emn].hdr.flags &
-                                                (uint16_t)~IDA_HF_VALID);
+                                                UST_HF_VALID_SIL);
     }
     p->emn_rev[p->n_emn] = rev;
     p->n_emn = (uint8_t)(p->n_emn + 1u);
@@ -356,7 +356,7 @@ static void birlestir(ida_link_ust_t *l, const ida_time_frame_t *tf, bool eksik,
     if (l->ozel_bek_tf_var) {
         /* A4-K102: en yeni parti dışındaki emniyet örnekleri VALID = 0 (A1-K124). */
         for (unsigned i = 0; i < p->n_emn; ++i) {
-            p->emn[i].hdr.flags = (uint16_t)(p->emn[i].hdr.flags & (uint16_t)~IDA_HF_VALID);
+            p->emn[i].hdr.flags = (uint16_t)(p->emn[i].hdr.flags & UST_HF_VALID_SIL);
         }
         l->ozel_bek_birlesen = (uint8_t)(l->ozel_bek_birlesen < 255u ? l->ozel_bek_birlesen + 1u
                                                                      : 255u);
