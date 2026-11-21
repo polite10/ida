@@ -50,7 +50,7 @@ bool var(const Kosu& k, const std::string& kural, const std::string& yol, Onem o
 
 const Deger* cz(const Kosu& k, std::string_view yol)
 {
-    return k.s.cozumlenmis ? k.s.cozumlenmis->yol_bul(yol) : nullptr;
+    return k.s.cozumlenmis ? k.s.cozumlenmis->agac().yol_bul(yol) : nullptr;
 }
 
 double sayi(const Kosu& k, std::string_view yol)
@@ -129,12 +129,12 @@ int test_anlamsal_kurallar(const TestBaglami& tb)
     HATA_BEKLE(d, kos(tb, {{S, "[ortam.orijin]", "[ortam.x_orijin]"}, {S, "", "\n[arac.sensorler.mag0]\netkin = false\n"}}), "A5-K45", "ortam.orijin", "orijinsiz, dünya dönüşü açık");
     HATA_BEKLE(d, kos(tb, {{S, "", "\n[arac.sensorler.imu0.ayar]\nsuzgec_etkin = true\n"}}), "A5-K46", "arac.sensorler.imu0.ayar.suzgec_tau_ns", "süzgeç");
     // ---------------------------------------------------------------- §4.6 otopilot
-    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1, tip = \"f32\", deger = 1.0}, {kimlik = 1, tip = \"f32\", deger = 2.0}]\n"}}), "A5-K52", "otopilot.parametreler[1].kimlik", "kimlik tekil");
-    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1, tip = \"i32\", deger = 3.5}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "i32 kesirli");
-    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1, tip = \"i32\", deger = 2147483648}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "i32 taşma");
-    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1, tip = \"f32\", deger = 3.5e38}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "f32 sonsuz");
+    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1281, tip = \"f32\", deger = 1.0}, {kimlik = 1281, tip = \"f32\", deger = 2.0}]\n"}}), "A5-K52", "otopilot.parametreler[1].kimlik", "kimlik tekil");
+    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 257, tip = \"u32\", deger = 20.5}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "u32 kesirli");
+    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 258, tip = \"u32\", deger = 450000001}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "u32 katalog aralığı");
+    HATA_BEKLE(d, kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 1281, tip = \"f32\", deger = 3.5e38}]\n"}}), "A5-K52", "otopilot.parametreler[0].deger", "f32 sonsuz");
     {
-        const Kosu k = kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 7, tip = \"u32\", deger = 4294967295}, {kimlik = 8, tip = \"f32\", deger = 3.4e38}, {kimlik = 9, tip = \"i32\", deger = -2147483648.0}]\n"}});
+        const Kosu k = kos(tb, {{S, "", "\n[otopilot]\nparametreler = [{kimlik = 257, tip = \"u32\", deger = 30}, {kimlik = 1281, tip = \"f32\", deger = -2.0}, {kimlik = 258, tip = \"u32\", deger = 60000000.0}]\n"}});
         GECERLI_BEKLE(d, k, "otopilot sınırları");
         const Deger* p = cz(k, "otopilot.parametreler");
         DOGRULA(d, p != nullptr && p->dizi.size() == 3, "otopilot çiftleri aynen yazılmalı");

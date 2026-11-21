@@ -15,6 +15,8 @@ namespace ida::senaryo::ic {
 
 namespace {
 
+constexpr std::int64_t kTamsayiSiniri = 9007199254740991;  // 2^53 − 1
+
 class Kurucu {
 public:
     using number_integer_t = std::int64_t;
@@ -30,12 +32,20 @@ public:
 
     bool null() { return deger(Deger{}); }
     bool boolean(bool v) { return deger(Deger::yeni_mantiksal(v)); }
-    bool number_integer(number_integer_t v) { return deger(Deger::yeni_tamsayi(v)); }
+    // JSON'da (RFC 8785 çıktısında) tamsayı biçimli belirteç bir binary64 sayısının
+    // dizilimidir: |v| > 2^53 − 1 ise kayıpsız TOML tamsayısı değil, binary64 sayı olarak
+    // tutulur (ör. 1e19 → "10000000000000000000"). Tamsayı tipli alanların sınırı şemada.
+    bool number_integer(number_integer_t v)
+    {
+        if (v > kTamsayiSiniri || v < -kTamsayiSiniri) {
+            return deger(Deger::yeni_sayi(static_cast<double>(v)));
+        }
+        return deger(Deger::yeni_tamsayi(v));
+    }
     bool number_unsigned(number_unsigned_t v)
     {
-        if (v > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-            hata = "64 bite sığmayan tamsayı";
-            return false;
+        if (v > static_cast<std::uint64_t>(kTamsayiSiniri)) {
+            return deger(Deger::yeni_sayi(static_cast<double>(v)));
         }
         return deger(Deger::yeni_tamsayi(static_cast<std::int64_t>(v)));
     }

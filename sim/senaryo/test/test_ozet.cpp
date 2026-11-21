@@ -121,9 +121,9 @@ int test_yeniden_yukleme(const TestBaglami& tb)
     {
         const YenidenYukleme y = cozumlenmis_yukle(altin, ozet);
         DOGRULA(d, y.tamam && y.cozumlenmis.has_value(), "altın dosya yeniden yüklenmeli");
-        DOGRULA(d, y.cozumlenmis && kanonik_json(*y.cozumlenmis) == altin, "yeniden yüklenen ağaç aynı baytları üretmeli");
+        DOGRULA(d, y.cozumlenmis && kanonik_json(y.cozumlenmis->agac()) == altin, "yeniden yüklenen ağaç aynı baytları üretmeli");
         const CozumSonucu s = senaryo_coz(temel_kaynak(tb), kSenaryo);
-        DOGRULA(d, y.cozumlenmis && s.cozumlenmis && esit(*y.cozumlenmis, *s.cozumlenmis), "çözümleyicinin ağacına eşit");
+        DOGRULA(d, y.cozumlenmis && s.cozumlenmis && esit(y.cozumlenmis->agac(), s.cozumlenmis->agac()), "çözümleyicinin ağacına eşit");
     }
     // Bir bayt değişince ret (her konumda değil: sabit adımlarla).
     for (std::size_t i = 0; i < altin.size(); i += 97) {

@@ -127,7 +127,7 @@ std::vector<BozukSatir> tablo()
         {"gorev_ogesi", S, "item_type = \"SURFACE\"\nframe = \"NONE\"", "item_type = \"SURFACE\"\nframe = \"LOCAL\"", "A5-K55", 2, "gorev.ogeler[1].frame", "frame = \"LOCAL\"\np = [0.25"},
         {"kamera_kademesi", S, "kamera = \"kapali\"\nsonar", "kamera = \"sade\"\nsonar", "A5-K80", 2, "kalite.kamera", "kamera = \"sade\""},
         {"otopilot_cifti", S, "", "\n[[otopilot.parametreler]]\nkimlik = 1\ntip = \"i32\"\nderinlik = 3\n", "A5-K06", 1, "otopilot.parametreler[0].derinlik", "derinlik = 3\n"},
-        {"otopilot_tipi", S, "", "\n[[otopilot.parametreler]]\nkimlik = 1\ntip = \"u32\"\ndeger = -1\n", "A5-K52", 2, "otopilot.parametreler[0].deger", "deger = -1"},
+        {"otopilot_tipi", S, "", "\n[[otopilot.parametreler]]\nkimlik = 257\ntip = \"u32\"\ndeger = -1\n", "A5-K52", 2, "otopilot.parametreler[0].deger", "deger = -1"},
         {"cakisan_emniyet", S, "", "\n[[olaylar]]\nkimlik = \"bas\"\nsinif = \"emniyet_girdisi\"\nzaman_ns = 1\ngirdi = \"acil_durdurma\"\ndeger = true\n"
                                    "\n[[olaylar]]\nkimlik = \"pim\"\nsinif = \"emniyet_girdisi\"\nzaman_ns = 1_250_000\ngirdi = \"pim\"\nhedef = \"f1\"\ndeger = false\n",
          "A5-K62", 2, "olaylar[3]", "[[olaylar]]\nkimlik = \"pim\""},

@@ -160,12 +160,15 @@ int test_sensor_yukleyici(const TestBaglami& tb)
     }
     DOGRULA(d, k->sensorler.size() == 11, "11 sensör bekleniyordu");
     DOGRULA(d, !k->ortam.su.ses_hizi.has_value(), "A5'te verilmemiş ses hızı çözümlenmiş biçimde yoktur (formülden)");
-    // Örnek senaryoda ses hızı verilmez (A5 §3.9: "formülden"); sensör kümesi DVL için
-    // çözümlenmiş ses hızı ister. Bu bir iş arası açıktır (rapor): burada yalnız gözlenir.
+    // Örnek senaryoda ses hızı verilmez (A5 §3.9: "formülden"); W4-K1 gereği formülü W4-sonar
+    // yazana dek `ornek-havuz` + etkin DVL birleşimi sensör kümesinde reddedilir (bilinen ara
+    // durum). Formül geldiğinde bu beklenti "kurulur" olarak değişir.
     {
         sensor::SensorKumesi kume;
         const sensor::KurulumSonucu r = kume.kur(*k);
-        std::printf("  ses hızı verilmeden SensorKumesi::kur: %s%s\n", r.tamam ? "tamam" : "başarısız: ", r.hata.c_str());
+        DOGRULA(d, !r.tamam && r.hata.find("ses_hizi") != std::string::npos,
+                "W4-K1: ses hızı verilmeden DVL'li küme şimdilik reddedilir (sonuç: " +
+                    std::string(r.tamam ? "kuruldu" : r.hata) + ")");
     }
     // Ses hızı senaryoda verilince sensör kümesi bu ayarla kurulur.
     const auto v = ornekten(tb, true);

@@ -42,6 +42,12 @@ public:
 std::optional<double> ondalik_cevir(std::string_view metin);
 // Yazımın sıfırdan farklı bir anlamlı basamağı var mı (alt taşma ayrımı için).
 bool sifir_olmayan_basamak_var(std::string_view metin);
+// TOML 1.0 kayan noktalı sayı grameri (inf/nan hariç; alt çizgiler yalnız rakamlar arasında).
+bool toml_kayan_gramer(std::string_view s);
+std::string alt_cizgisiz(std::string_view s);
+// A5-K105 Routh–Hurwitz: bütün kökler sol yarı düzlemde mi (katsayılar yüksek dereceden
+// düşüğe). Satırlar her adımda ölçeklenir (işaret korunur), ara işlemler taşmaz.
+bool routh_kararli(const std::vector<double>& payda);
 
 // ------------------------------------------------------------------ TOML
 struct TomlOkuma {
@@ -99,7 +105,27 @@ void desteklenmeyenler(const Deger& birlesik, Bulgucu& b);
 void anlamsal_kurallar(const Deger& s, const Deger* manifest, Bulgucu& b);
 
 // Aşama 2, fizik yükleyici denetimleri (dilim 2): A5-K22 ve A5-K34 (fizik_yukleyici.cpp).
+// Ağaç fizik yapılarına dönüştürülemiyorsa (girdisi kullanılamayan bağımlı denetim) önceki
+// bir hata varsa atlanır, yoksa A5-K16 iç tutarsızlık bulgusu yazılır.
 void fizik_denetimleri(const Deger& s, const Deger* manifest, Bulgucu& b);
+// Yalnız araç dosyası (dosya_dogrula): A5-K22.
+void fizik_arac_denetimleri(const Deger& arac_kok, Bulgucu& b);
+
+// Araç dosyasının tek başına doğrulanması: yalnız `arac.*` ve `otopilot.*` varsayılanları
+// (Ek E koşulsuz, ürün profilleri, kopya, kalibre edilmeyen sensör değerleri) yazılır.
+void cozumle_arac(Deger& t, Bulgucu& b);
+// Araç dosyasına ait aşama 2 kuralları (ortam ve senaryo gerektirmeyenler).
+void arac_dosyasi_kurallari(const Deger& t, Bulgucu& b);
+// Sürüm denetimi (A5-K04): minor okuyucununkinden büyükse hata.
+void surum_denetle(const Deger& kok, Bulgucu& b);
+
+// İç oluşturucu: DogrulanmisSenaryo yalnız doğrulama akışında üretilir.
+struct Yapici {
+    static DogrulanmisSenaryo yap(Deger agac, std::string kanonik, std::string ozet)
+    {
+        return DogrulanmisSenaryo(std::move(agac), std::move(kanonik), std::move(ozet));
+    }
+};
 
 // Yol yardımcıları
 std::string yol_birlestir(std::string_view dizin, std::string_view goreli);

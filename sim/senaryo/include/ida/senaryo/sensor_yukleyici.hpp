@@ -9,7 +9,7 @@
 // verilmemişse boş bırakılır (formül sonar işindedir; A5 §3.9 "formülden").
 #pragma once
 
-#include "ida/senaryo/deger.hpp"
+#include "ida/senaryo/senaryo.hpp"
 #include "ida/senaryo/fizik_yukleyici.hpp"
 #include "ida/sensor/ayarlar.hpp"
 
@@ -20,7 +20,7 @@ namespace ida::senaryo {
 
 // Çözümlenmiş senaryodan sensör kümesi ayarı. Güç girdisi fizik araç parametrelerinden
 // (`ida::sensor::guc_parametreleri`), adım ve kontrol periyodu iskelet §4 sabitleridir.
-std::optional<sensor::SensorKumesiAyari> sensor_kur(const Deger& cozumlenmis,
+std::optional<sensor::SensorKumesiAyari> sensor_kur(const DogrulanmisSenaryo& cozumlenmis,
                                                     std::string* hata = nullptr);
 
 }  // namespace ida::senaryo

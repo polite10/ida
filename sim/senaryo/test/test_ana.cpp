@@ -24,6 +24,19 @@ int test_fizik_yukleyici(const TestBaglami&);
 int test_ek_a_vektorleri(const TestBaglami&);
 int test_fizik_kurallari(const TestBaglami&);
 int test_fizik_karsilastirma(const TestBaglami&);
+int test_sol_1_yeniden_yukleme_anlamsal(const TestBaglami&);
+int test_sol_1_tur_zorlamasi(const TestBaglami&);
+int test_sol_2_baslik_yorumu(const TestBaglami&);
+int test_sol_3_bozuk_sayi(const TestBaglami&);
+int test_sol_4_buyuk_tamsayi(const TestBaglami&);
+int test_sol_5_hedefler(const TestBaglami&);
+int test_sol_6_acil_durdurma_uyarisi(const TestBaglami&);
+int test_sol_7_parametre_katalogu(const TestBaglami&);
+int test_sol_8_yol_siniri(const TestBaglami&);
+int test_sol_9_routh_olcegi(const TestBaglami&);
+int test_sol_10_bulgu_toplama(const TestBaglami&);
+int test_sol_11_tek_gecis(const TestBaglami&);
+int test_sol_12_arac_dosyasi(const TestBaglami&);
 }  // namespace ida::senaryo::test
 
 int main(int argc, char** argv)
@@ -54,6 +67,19 @@ int main(int argc, char** argv)
         {"ek_a_vektorleri", test_ek_a_vektorleri},
         {"fizik_kurallari", test_fizik_kurallari},
         {"fizik_karsilastirma", test_fizik_karsilastirma},
+        {"sol_1_yeniden_yukleme_anlamsal", test_sol_1_yeniden_yukleme_anlamsal},
+        {"sol_1_tur_zorlamasi", test_sol_1_tur_zorlamasi},
+        {"sol_2_baslik_yorumu", test_sol_2_baslik_yorumu},
+        {"sol_3_bozuk_sayi", test_sol_3_bozuk_sayi},
+        {"sol_4_buyuk_tamsayi", test_sol_4_buyuk_tamsayi},
+        {"sol_5_hedefler", test_sol_5_hedefler},
+        {"sol_6_acil_durdurma_uyarisi", test_sol_6_acil_durdurma_uyarisi},
+        {"sol_7_parametre_katalogu", test_sol_7_parametre_katalogu},
+        {"sol_8_yol_siniri", test_sol_8_yol_siniri},
+        {"sol_9_routh_olcegi", test_sol_9_routh_olcegi},
+        {"sol_10_bulgu_toplama", test_sol_10_bulgu_toplama},
+        {"sol_11_tek_gecis", test_sol_11_tek_gecis},
+        {"sol_12_arac_dosyasi", test_sol_12_arac_dosyasi},
     };
     if (argc < 3) {
         std::printf("kullanım: %s <test> <depo kökü>\n", argv[0]);

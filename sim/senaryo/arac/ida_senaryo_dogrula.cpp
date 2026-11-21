@@ -1,4 +1,8 @@
-// ida_senaryo_dogrula: A5 senaryosunu doğrular ve çözümler.
+// ida_senaryo_dogrula: A5 senaryosunu doğrular ve çözümler; araç dosyasını tek başına doğrular.
+//
+// Dosya türü `meta.tur`dan otomatik algılanır: senaryo çözümlenir; araç dosyası (`arac`)
+// aşama 1 ve araca ait aşama 2 kurallarıyla doğrulanır (çözümlenmiş senaryo ve davranış özeti
+// yoktur, `--cozumlenmis` bir şey yazmaz).
 //
 //   ida_senaryo_dogrula <senaryo.toml> [--cozumlenmis <çıktı.json>] [--rapor <çıktı.json>]
 //                       [--kok <depo kökü>]
@@ -116,7 +120,7 @@ int main(int argc, char** argv)
     const ida::senaryo::DiskKaynagi kaynak(kok);
     const std::u8string goreli_u8 = goreli.generic_u8string();
     const ida::senaryo::CozumSonucu s =
-        ida::senaryo::senaryo_coz(kaynak, std::string(goreli_u8.begin(), goreli_u8.end()));
+        ida::senaryo::dosya_dogrula(kaynak, std::string(goreli_u8.begin(), goreli_u8.end()));
     const auto& r = s.rapor;
 
     for (const auto& b : r.bulgular) {
@@ -137,7 +141,7 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_senaryo_dogrula: rapor yazılamadı: %s\n", rapor_cikti.c_str());
         return kGc;
     }
-    if (!cozumlenmis_cikti.empty() && r.gecerli && !yaz(cozumlenmis_cikti, s.kanonik)) {
+    if (!cozumlenmis_cikti.empty() && s.cozumlenmis && !yaz(cozumlenmis_cikti, s.kanonik)) {
         std::fprintf(stderr, "ida_senaryo_dogrula: çözümlenmiş senaryo yazılamadı: %s\n",
                      cozumlenmis_cikti.c_str());
         return kGc;

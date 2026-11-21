@@ -8,6 +8,8 @@
 
 #include <Eigen/Dense>
 
+#include "ida/port.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -71,6 +73,7 @@ double kare_toplami(const std::vector<double>& v)
 struct Baglam {
     const Deger& s;
     Bulgucu& b;
+    bool ortam_var = true;  // araç dosyası tek başına doğrulanırken false
 };
 
 // Etkin ve anahtarlı-koleksiyon girdisi olan sensörler (ad, tablo).
@@ -293,31 +296,7 @@ void arac_kurallari(Baglam& c)
                     c.b.hata("A5-K105", pd->konum, yp("arac.itici_modeli.transfer_pay"),
                              "DC kazanç pay[son]/payda[son] 1 olmalı (±1e-12)");
                 }
-                // Routh–Hurwitz: ilk sütunun bütün elemanları baş katsayıyla aynı işaretli
-                // ve sıfırdan farklı.
-                const std::size_t n = payda.size();
-                std::vector<std::vector<double>> R(n, std::vector<double>((n + 1) / 2 + 1, 0.0));
-                for (std::size_t i = 0; i < n; ++i) {
-                    R[i % 2][i / 2] = payda[i];
-                }
-                bool kararli = true;
-                for (std::size_t r = 2; r < n && kararli; ++r) {
-                    const double a = R[r - 1][0];
-                    if (a == 0.0) {
-                        kararli = false;
-                        break;
-                    }
-                    for (std::size_t k = 0; k + 1 < R[r].size(); ++k) {
-                        R[r][k] = (a * R[r - 2][k + 1] - R[r - 2][0] * R[r - 1][k + 1]) / a;
-                    }
-                }
-                const double isaret = payda.front() > 0.0 ? 1.0 : -1.0;
-                for (std::size_t r = 0; r < n && kararli; ++r) {
-                    if (!(R[r][0] * isaret > 0.0) || !std::isfinite(R[r][0])) {
-                        kararli = false;
-                    }
-                }
-                if (!kararli) {
+                if (!routh_kararli(payda)) {
                     c.b.hata("A5-K105", qd->konum, y,
                              "payda Routh–Hurwitz ölçütüne göre kararlı değil");
                 }
@@ -470,6 +449,9 @@ void sensor_kurallari(Baglam& c)
             }
         }
     }
+    if (!c.ortam_var) {
+        return;  // A5-K44, K45 senaryonun ortamını ister
+    }
     const Konum ok{s.bul("ortam") ? s.bul("ortam")->konum.dosya : 0, 0};
     if (mag && s.yol_bul("ortam.manyetik_alan") == nullptr) {
         c.b.hata("A5-K44", ok, yp("ortam.manyetik_alan"),
@@ -483,12 +465,31 @@ void sensor_kurallari(Baglam& c)
 }
 
 // ------------------------------------------------------------------ §4.6 otopilot
+// A5-K52: çekirdeğin parametre kataloğu (A4-K85 genel arayüzü `ida_core_param_*`; derlenen
+// çekirdekten, elle kopya tablo değil).
+const std::map<std::uint16_t, ida_param_desc_t>& parametre_katalogu()
+{
+    static const std::map<std::uint16_t, ida_param_desc_t> k = [] {
+        std::map<std::uint16_t, ida_param_desc_t> o;
+        const std::uint16_t n = ida_core_param_count();
+        for (std::uint16_t i = 0; i < n; ++i) {
+            ida_param_desc_t d{};
+            if (ida_core_param_desc(i, &d) == IDA_RC_OK) {
+                o[d.id] = d;
+            }
+        }
+        return o;
+    }();
+    return k;
+}
+
 void otopilot_kurallari(Baglam& c)
 {
     const Deger* p = c.s.yol_bul("otopilot.parametreler");
     if (p == nullptr || !p->dizi_mi()) {
         return;
     }
+    const auto& katalog = parametre_katalogu();
     std::set<std::int64_t> gorulen;
     for (std::size_t i = 0; i < p->dizi.size(); ++i) {
         const Deger& e = p->dizi[i];
@@ -499,22 +500,84 @@ void otopilot_kurallari(Baglam& c)
         if (k != nullptr && k->tur == Tur::tamsayi && !gorulen.insert(k->tam).second) {
             c.b.hata("A5-K52", k->konum, y.ekle("kimlik"), "parametre kimliği dizide tekil olmalı");
         }
-        if (t == nullptr || d == nullptr || !t->dizgi_mi() || !d->sayisal_mi()) {
+        if (k == nullptr || t == nullptr || d == nullptr || k->tur != Tur::tamsayi || !t->dizgi_mi() ||
+            !d->sayisal_mi()) {
+            continue;
+        }
+        const auto it = (k->tam >= 0 && k->tam <= 65535) ? katalog.find(static_cast<std::uint16_t>(k->tam))
+                                                          : katalog.end();
+        if (it == katalog.end()) {
+            // A5-K52: katalog var (çekirdek derlenmiş tablosu); kimliğin katalogda bulunması
+            // denetlenir. Bilinmeyen kimlik reddedilir (kısıtlayan okuma).
+            c.b.hata("A5-K52", k->konum, y.ekle("kimlik"),
+                     "parametre kimliği çekirdeğin parametre kataloğunda yok: " + std::to_string(k->tam));
+            continue;
+        }
+        const ida_param_desc_t& pd = it->second;
+        const std::uint8_t tip = t->dizgi == "i32" ? IDA_PT_I32 : t->dizgi == "u32" ? IDA_PT_U32 : IDA_PT_F32;
+        if (tip != pd.type) {
+            c.b.hata("A5-K52", t->konum, y.ekle("tip"),
+                     "tip katalogdakiyle uyuşmuyor (" + std::string(pd.name) + ")");
             continue;
         }
         const double v = d->cift();
         bool tamam = true;
-        if (t->dizgi == "i32" || t->dizgi == "u32") {
-            const double alt = t->dizgi == "i32" ? -2147483648.0 : 0.0;
-            const double ust = t->dizgi == "i32" ? 2147483647.0 : 4294967295.0;
-            tamam = std::floor(v) == v && v >= alt && v <= ust;
-        } else if (t->dizgi == "f32") {
-            // binary32'ye en yakına çevrildiğinde sonlu: |v| < 2^128 − 2^103.
+        if (tip == IDA_PT_I32) {
+            tamam = std::floor(v) == v && v >= static_cast<double>(pd.min.v.i32) && v <= static_cast<double>(pd.max.v.i32);
+        } else if (tip == IDA_PT_U32) {
+            tamam = std::floor(v) == v && v >= static_cast<double>(pd.min.v.u32) && v <= static_cast<double>(pd.max.v.u32);
+        } else {
+            // binary32'ye en yakına çevrildiğinde sonlu (|v| < 2^128 − 2^103) ve aralıkta.
             tamam = std::abs(v) < 0x1.ffffffp127;
+            if (tamam) {
+                const float f = static_cast<float>(v);
+                tamam = std::isfinite(f) && f >= pd.min.v.f32 && f <= pd.max.v.f32;
+            }
         }
         if (!tamam) {
             c.b.hata("A5-K52", d->konum, y.ekle("deger"),
-                     "değer `" + t->dizgi + "` tipinin aralığında değil");
+                     "değer katalogdaki tipin ve aralığın dışında (" + std::string(pd.name) + ")");
+        }
+    }
+}
+
+// ------------------------------------------------------------------ §3.10 hedefler
+void hedef_kurallari(Baglam& c)
+{
+    const Deger* h = c.s.bul("hedefler");
+    if (h == nullptr || !h->tablo_mu()) {
+        return;
+    }
+    std::map<std::int64_t, std::string> kimlikler;
+    for (const auto& [ad, hd] : h->tablo) {
+        if (deneysel_mi(ad) || !hd.tablo_mu()) {
+            continue;
+        }
+        const Yol y = Yol().ekle("hedefler").ekle(ad);
+        if (const Deger* k = hd.bul("kimlik"); k != nullptr && k->tur == Tur::tamsayi &&
+                                               !kimlikler.emplace(k->tam, ad).second) {
+            c.b.hata("A5-K10", k->konum, y.ekle("kimlik"),
+                     "hedef kimliği tekil olmalı (" + kimlikler[k->tam] + " ile aynı; A5 §3.10)");
+        }
+        const Deger* hr = hd.bul("hareket");
+        if (hr == nullptr || !hr->tablo_mu()) {
+            continue;
+        }
+        // A5 §3.10: hareket türüne bağlı koşullu zorunlu alanlar (A5-K05).
+        std::vector<const char*> gerekli;
+        const Deger* tur = hr->bul("tur");
+        if (dizgi_esit(tur, "sabit_hiz")) {
+            gerekli = {"hiz_ned"};
+        } else if (dizgi_esit(tur, "rastgele_yuruyus")) {
+            gerekli = {"yuruyus_yogunlugu", "azami_hiz"};
+        } else if (dizgi_esit(tur, "sinus")) {
+            gerekli = {"genlik_ned", "periyot_ns", "faz"};
+        }
+        for (const char* g : gerekli) {
+            if (hr->bul(g) == nullptr) {
+                c.b.hata("A5-K05", Konum{hr->konum.dosya, 0}, y.ekle("hareket").ekle(g),
+                         "hareket türü `" + tur->dizgi + "` için zorunlu: " + g);
+            }
         }
     }
 }
@@ -1164,7 +1227,18 @@ void kalite_kurallari(Baglam& c)
         c.b.hata("A5-K80", s.yol_bul("kalite.kamera_gerekli")->konum, yp("kalite.kamera_gerekli"),
                  "kamera_gerekli = true iken kamera kademesi açık ve bir etkin kamera olmalı");
     }
-    // A5-K114
+}
+
+// A5-K114: kamera sensörlerinin kendi kuralları (senaryo ve araç dosyası).
+void kamera_kurallari(Baglam& c)
+{
+    const Deger& s = c.s;
+    std::vector<std::pair<std::string, const Deger*>> etkin_kameralar;
+    for (const auto& x : sensorler(s, true)) {
+        if (dizgi_esit(x.second->bul("tur"), "kamera")) {
+            etkin_kameralar.push_back(x);
+        }
+    }
     if (etkin_kameralar.size() > 1) {
         for (std::size_t i = 1; i < etkin_kameralar.size(); ++i) {
             c.b.hata("A5-K114", etkin_kameralar[i].second->konum, sensor_yolu(etkin_kameralar[i].first),
@@ -1255,6 +1329,12 @@ void baslangic_kurallari(Baglam& c)
                 c.b.hata("A5-K86", yt->dizi[i].konum, yp("baslangic.yuklu_tupler").ekle(i), "yinelenen tüp");
             }
         }
+    }
+    if (const Deger* ad = s.yol_bul("emniyet_girdileri.acil_durdurma");
+        ad != nullptr && ad->mantiksal_mi() && !ad->mantik) {
+        // Varsayılandan geliyorsa konumu yoktur: satır null (A5-K94).
+        c.b.uyari("A5-K71", ad->konum, yp("emniyet_girdileri.acil_durdurma"),
+                  "emniyeti azaltan başlangıç durumu: acil durdurma bırakılmış");
     }
     for (const char* f : {"f1", "f2"}) {
         const Deger* fis = s.yol_bul(std::string("emniyet_girdileri.fis.") + f);
@@ -1402,10 +1482,64 @@ void desteklenmeyenler(const Deger& s, Bulgucu& b)
     }
 }
 
+bool routh_kararli(const std::vector<double>& payda)
+{
+    // Routh tablosu; her satır en büyük mutlak elemanına bölünür (pozitif ölçek ilk sütunun
+    // işaretlerini değiştirmez), oran biçimindeki satır yinelemesi taşmayı önler.
+    const std::size_t n = payda.size();
+    if (n < 2) {
+        return false;
+    }
+    const std::size_t g = (n + 1) / 2 + 1;
+    std::vector<std::vector<double>> R(n, std::vector<double>(g, 0.0));
+    for (std::size_t i = 0; i < n; ++i) {
+        R[i % 2][i / 2] = payda[i];
+    }
+    auto olcekle = [&](std::vector<double>& satir) {
+        double m = 0.0;
+        for (const double x : satir) {
+            if (!std::isfinite(x)) {
+                return false;
+            }
+            m = std::max(m, std::abs(x));
+        }
+        if (m > 0.0) {
+            for (double& x : satir) {
+                x /= m;
+            }
+        }
+        return true;
+    };
+    if (!olcekle(R[0]) || !olcekle(R[1])) {
+        return false;
+    }
+    for (std::size_t r = 2; r < n; ++r) {
+        const double a = R[r - 1][0];
+        if (!(a != 0.0)) {
+            return false;
+        }
+        for (std::size_t k = 0; k + 1 < g; ++k) {
+            R[r][k] = R[r - 2][k + 1] - R[r - 2][0] * (R[r - 1][k + 1] / a);
+        }
+        if (!olcekle(R[r])) {
+            return false;
+        }
+    }
+    const double isaret = payda.front() > 0.0 ? 1.0 : -1.0;
+    for (std::size_t r = 0; r < n; ++r) {
+        if (!(R[r][0] * isaret > 0.0)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void anlamsal_kurallar(const Deger& s, const Deger* manifest, Bulgucu& b)
 {
     Baglam c{s, b};
     arac_kurallari(c);
+    hedef_kurallari(c);
+    kamera_kurallari(c);
     ortam_kurallari(c);
     sensor_kurallari(c);
     otopilot_kurallari(c);
@@ -1418,6 +1552,16 @@ void anlamsal_kurallar(const Deger& s, const Deger* manifest, Bulgucu& b)
     if (manifest != nullptr) {
         a7_kurallari(c, *manifest);
     }
+}
+
+void arac_dosyasi_kurallari(const Deger& t, Bulgucu& b)
+{
+    Baglam c{t, b};
+    c.ortam_var = false;
+    arac_kurallari(c);
+    sensor_kurallari(c);
+    kamera_kurallari(c);
+    otopilot_kurallari(c);
 }
 
 }  // namespace ida::senaryo::ic

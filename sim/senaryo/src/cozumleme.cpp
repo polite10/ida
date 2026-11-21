@@ -179,7 +179,14 @@ void birlestir(Deger& s, const Deger& arac_dosyasi, Bulgucu& b)
     }
 }
 
-void cozumle(Deger& s, Bulgucu& b)
+namespace {
+
+bool arac_yolu(const std::string& y)
+{
+    return y.rfind("arac.", 0) == 0 || y.rfind("otopilot.", 0) == 0;
+}
+
+void cozumle_ic(Deger& s, Bulgucu& b, bool yalniz_arac)
 {
     const Deger& e = ek_e();
     // (2) kaynak alanları (A5-K100)
@@ -187,7 +194,7 @@ void cozumle(Deger& s, Bulgucu& b)
         a->tablo.erase("dosya");
     }
     // (3) eksik tablolar (A5-K99)
-    if (const Deger* et = e.bul("eksik_tablolar"); et != nullptr) {
+    if (const Deger* et = e.bul("eksik_tablolar"); et != nullptr && !yalniz_arac) {
         for (const auto& [k, v] : et->tablo) {
             yaz_yoksa(s, k, v);
         }
@@ -202,6 +209,9 @@ void cozumle(Deger& s, Bulgucu& b)
             return x->second.konum.satir < y->second.konum.satir;
         });
         for (const auto* kv : sira) {
+            if (yalniz_arac && !arac_yolu(kv->first)) {
+                continue;
+            }
             ebeveynleri_gez(s, parcala(kv->first), 0,
                             [&](Deger& eb, const std::string& son) { yaz_yoksa(eb, son, kv->second); });
         }
@@ -221,7 +231,7 @@ void cozumle(Deger& s, Bulgucu& b)
     }
 
     // (5a) koşullu varsayılanlar (A5-K98)
-    if (const Deger* kl = e.bul("kosullu"); kl != nullptr && kl->dizi_mi()) {
+    if (const Deger* kl = e.bul("kosullu"); kl != nullptr && kl->dizi_mi() && !yalniz_arac) {
         for (const Deger& k : kl->dizi) {
             const Deger* yol = k.bul("yol");
             const Deger* kosul = k.bul("kosul");
@@ -353,7 +363,7 @@ void cozumle(Deger& s, Bulgucu& b)
         }
     }
     // [kalibre_edilmedi_ortam]
-    if (const Deger* ko = e.bul("kalibre_edilmedi_ortam"); ko != nullptr) {
+    if (const Deger* ko = e.bul("kalibre_edilmedi_ortam"); ko != nullptr && !yalniz_arac) {
         for (const auto& [yol, v] : ko->tablo) {
             bool yazildi = false;
             ebeveynleri_gez(s, parcala(yol), 0, [&](Deger& eb, const std::string& son) {
@@ -366,6 +376,9 @@ void cozumle(Deger& s, Bulgucu& b)
                 kalibre_edilmedi.push_back(yol);
             }
         }
+    }
+    if (yalniz_arac) {
+        return;
     }
     // (7) ölçüm kanıtları (A5-K79) ve üst veri
     Deger kanitlar = Deger::yeni_dizi();
@@ -408,6 +421,18 @@ void cozumle(Deger& s, Bulgucu& b)
         meta->tablo["dogrulanmamis_varsayimlar"] = std::move(dv);
         meta->tablo["olcum_kanitlari"] = std::move(kanitlar);
     }
+}
+
+}  // namespace
+
+void cozumle(Deger& s, Bulgucu& b)
+{
+    cozumle_ic(s, b, false);
+}
+
+void cozumle_arac(Deger& t, Bulgucu& b)
+{
+    cozumle_ic(t, b, true);
 }
 
 }  // namespace ic

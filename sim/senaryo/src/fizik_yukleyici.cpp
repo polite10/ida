@@ -177,13 +177,8 @@ Eigen::Matrix<double, 6, 1> temas_vektoru(const Eigen::Vector3d& r, const Eigen:
     return w;
 }
 
-}  // namespace
-
-std::optional<FizikKurulumu> fizik_kur(const Deger& c, std::string* hata)
+void arac_oku(Okuyucu& o, fizik::AracParametreleri& a)
 {
-    Okuyucu o(c);
-    FizikKurulumu k;
-    auto& a = k.arac;
     a.ad = o.dizgi("arac.ad");
     a.varlik = o.dizgi("arac.varlik");
     a.referans_noktasi = o.dizgi("arac.referans_noktasi");
@@ -267,6 +262,17 @@ std::optional<FizikKurulumu> fizik_kur(const Deger& c, std::string* hata)
         a.firlaticilar[i].tup_ekseni = o.vek<3>(f + ".tup_ekseni");
         a.firlaticilar[i].tup_su_kutlesi = o.sayi(f + ".tup_su_kutlesi");
     }
+}
+
+}  // namespace
+
+namespace ic {
+
+std::optional<FizikKurulumu> fizik_kur_agac(const Deger& c, std::string* hata)
+{
+    Okuyucu o(c);
+    FizikKurulumu k;
+    arac_oku(o, k.arac);
 
     auto& e = k.ortam;
     e.tur = o.dizgi("ortam.tur") == "acik_su" ? fizik::OrtamTuru::acik_su : fizik::OrtamTuru::havuz;
@@ -313,6 +319,35 @@ std::optional<FizikKurulumu> fizik_kur(const Deger& c, std::string* hata)
     }
     return k;
 }
+
+}  // namespace ic
+
+std::optional<FizikKurulumu> fizik_kur(const DogrulanmisSenaryo& s, std::string* hata)
+{
+    return ic::fizik_kur_agac(s.agac(), hata);
+}
+
+namespace {
+
+// Kurulumdan bağımsız K22 denetimi (araç parametreleri yeter).
+bool k22_denetle(const FizikKurulumu& k, const Deger& kok, ic::Bulgucu& b)
+{
+    const Deger* kutle = kok.yol_bul("arac.kutle");
+    const Konum kk = kutle != nullptr ? kutle->konum : Konum{};
+    for (int bit = 0; bit < 4; ++bit) {
+        const std::array<bool, 2> yuklu{(bit & 1) != 0, (bit & 2) != 0};
+        const M6 M = kutle_matrisi(k, fizik::kutle_durumu_turet(k.arac, {yuklu[0], yuklu[1]}));
+        const Eigen::LLT<M6> llt(M);
+        if (!M.allFinite() || llt.info() != Eigen::Success || (M - M.transpose()).cwiseAbs().maxCoeff() > 1e-12) {
+            b.hata("A5-K22", kk, Yol().ekle("arac").ekle("kutle"),
+                   "M_RB + M_A simetrik pozitif tanımlı değil (kütle durumu " + std::to_string(bit) + ")");
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
 
 fizik::KutleDurumu kutle_durumu(const FizikKurulumu& k, const std::array<bool, 2>& yuklu)
 {
@@ -362,23 +397,18 @@ namespace ic {
 void fizik_denetimleri(const Deger& s, const Deger* manifest, Bulgucu& b)
 {
     std::string hata;
-    const std::optional<FizikKurulumu> k = fizik_kur(s, &hata);
+    const std::optional<FizikKurulumu> k = fizik_kur_agac(s, &hata);
     if (!k) {
-        b.hata("A5-K16", Konum{}, Yol(), "çözümlenmiş senaryo fizik yapılarına dönüştürülemedi: " + hata);
+        // Girdisi kullanılamayan bağımlı denetim: önceki bir hata bunu açıklar (A5-K91);
+        // yoksa çözümleyici iç tutarsızlığıdır.
+        if (!b.hata_var()) {
+            b.hata("A5-K16", Konum{}, Yol(), "çözümlenmiş senaryo fizik yapılarına dönüştürülemedi: " + hata);
+        }
         return;
     }
-    const Deger* kutle = s.yol_bul("arac.kutle");
-    const Konum kk = kutle != nullptr ? kutle->konum : Konum{};
     // A5-K22: dört yük birleşiminin (boş, f1, f2, iki yüklü) hepsinde M_RB + M_A SPD.
-    for (int bit = 0; bit < 4; ++bit) {
-        const std::array<bool, 2> yuklu{(bit & 1) != 0, (bit & 2) != 0};
-        const M6 M = kutle_matrisi(*k, kutle_durumu(*k, yuklu));
-        const Eigen::LLT<M6> llt(M);
-        if (!M.allFinite() || llt.info() != Eigen::Success || (M - M.transpose()).cwiseAbs().maxCoeff() > 1e-12) {
-            b.hata("A5-K22", kk, Yol().ekle("arac").ekle("kutle"),
-                   "M_RB + M_A simetrik pozitif tanımlı değil (kütle durumu " + std::to_string(bit) + ")");
-            return;
-        }
+    if (!k22_denetle(*k, s, b)) {
+        return;
     }
     // A5-K34: çarpışma şekli A7 araç varlığının sınır kutusu.
     if (manifest == nullptr) {
@@ -420,6 +450,17 @@ void fizik_denetimleri(const Deger& s, const Deger* manifest, Bulgucu& b)
             return;
         }
     }
+}
+
+void fizik_arac_denetimleri(const Deger& t, Bulgucu& b)
+{
+    Okuyucu o(t);
+    FizikKurulumu k;
+    arac_oku(o, k.arac);
+    if (!o.hata.empty()) {
+        return;  // aşama 2'nin başka bulgusu girdiyi açıklar
+    }
+    (void)k22_denetle(k, t, b);
 }
 
 }  // namespace ic

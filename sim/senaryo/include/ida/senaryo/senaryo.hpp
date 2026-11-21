@@ -63,12 +63,21 @@ public:
     virtual ~DosyaKaynagi() = default;
     // Depo köküne göre göreli yoldaki dosyanın baytları; yoksa ya da okunamıyorsa boş.
     virtual std::optional<std::string> oku(const std::string& yol) const = 0;
+    // A5-K12: `yol`un gerçek konumu (simgesel bağlar çözülmüş) `taban_dizin`in gerçek
+    // konumunun içinde mi. Bellekteki kaynakta bağ yoktur; metin düzeyindeki denetim yeter.
+    virtual bool icinde_mi(const std::string& taban_dizin, const std::string& yol) const
+    {
+        (void)taban_dizin;
+        (void)yol;
+        return true;
+    }
 };
 
 class DiskKaynagi final : public DosyaKaynagi {
 public:
     explicit DiskKaynagi(std::filesystem::path kok);
     std::optional<std::string> oku(const std::string& yol) const override;
+    bool icinde_mi(const std::string& taban_dizin, const std::string& yol) const override;
 
 private:
     std::filesystem::path kok_;
@@ -80,24 +89,57 @@ public:
     std::optional<std::string> oku(const std::string& yol) const override;
 };
 
-struct CozumSonucu {
-    DogrulamaRaporu rapor;
-    std::optional<Deger> cozumlenmis;  // yalnız geçerliyse
-    std::string kanonik;               // yalnız geçerliyse: RFC 8785 baytları
+namespace ic {
+struct Yapici;
+}
+
+// Doğrulayıcının geçerli saydığı çözümlenmiş senaryo. Yalnız `senaryo_coz` ve
+// `cozumlenmis_yukle` üretebilir (kurucu kapalıdır); yükleyiciler (`fizik_kur`,
+// `sensor_kur`) yalnız bu türü kabul eder, böylece doğrulanmamış bir ağaç onlara
+// derleme zamanında verilemez.
+class DogrulanmisSenaryo {
+public:
+    const Deger& agac() const { return agac_; }
+    const std::string& kanonik() const { return kanonik_; }
+    const std::string& davranis_ozeti() const { return ozet_; }
+
+private:
+    friend struct ic::Yapici;
+    DogrulanmisSenaryo(Deger agac, std::string kanonik, std::string ozet)
+        : agac_(std::move(agac)), kanonik_(std::move(kanonik)), ozet_(std::move(ozet))
+    {
+    }
+    Deger agac_;
+    std::string kanonik_;
+    std::string ozet_;
 };
 
-// Senaryoyu okur, doğrular ve çözümler. `senaryo_yolu` depo köküne göre göreli.
-CozumSonucu senaryo_coz(const DosyaKaynagi& kaynak, const std::string& senaryo_yolu);
+struct CozumSonucu {
+    DogrulamaRaporu rapor;
+    std::optional<DogrulanmisSenaryo> cozumlenmis;  // yalnız geçerli senaryoda
+    std::string kanonik;                            // yalnız geçerli senaryoda: RFC 8785 baytları
+};
+
+// Senaryoyu okur, doğrular ve çözümler. `senaryo_yolu` depo köküne göre göreli. Girdi
+// senaryo olmalıdır (araç dosyası A5-K02 bulgusuyla reddedilir; onu `dosya_dogrula` sınar).
+CozumSonucu senaryo_coz(const DosyaKaynagi& kaynak, const std::string& yol);
+
+// Dosyayı türüne göre doğrular: `meta.tur = "senaryo"` ise `senaryo_coz`; `"arac"` ise araç
+// dosyasını tek başına doğrular (aşama 1 ve araca ait aşama 2 kuralları; ortam ve senaryo
+// varsayılanı uydurulmaz). Araç dosyası için çözümlenmiş senaryo ve davranış özeti yoktur.
+CozumSonucu dosya_dogrula(const DosyaKaynagi& kaynak, const std::string& yol);
 
 // A5-K02: A6'dan gelen çözümlenmiş senaryonun yeniden yüklenmesi. Baytların SHA-256'sı
-// `davranis_ozeti`'ne eşit değilse, baytlar kanonik değilse ya da çözümlenmiş biçimin
-// şemasına uymuyorsa reddedilir.
+// `davranis_ozeti`'ne eşit değilse, baytlar kanonik değilse, çözümlenmiş biçimin şemasına
+// uymuyorsa ya da baytları değiştirmeden uygulanabilen sürüm ve anlamsal denetimlerden biri
+// hata verirse reddedilir. `kaynak` verilirse A7 atıfları (A5-K18, K19, K36, K115) da sınanır.
 struct YenidenYukleme {
     bool tamam = false;
     std::vector<Bulgu> bulgular;
-    std::optional<Deger> cozumlenmis;
+    std::optional<DogrulanmisSenaryo> cozumlenmis;
 };
-YenidenYukleme cozumlenmis_yukle(std::string_view baytlar, std::string_view davranis_ozeti);
+YenidenYukleme cozumlenmis_yukle(std::string_view baytlar, std::string_view davranis_ozeti,
+                                 const DosyaKaynagi* kaynak = nullptr);
 
 // RFC 8785 (JCS) dizilimi (A5-K17).
 std::string kanonik_json(const Deger& d);

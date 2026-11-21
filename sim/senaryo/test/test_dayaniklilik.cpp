@@ -80,6 +80,11 @@ std::string boz(const std::string& m, Uretec& u)
     return o;
 }
 
+std::string k_ornek(const BellekKaynagi& k)
+{
+    return k.dosyalar.at(kSenaryo);
+}
+
 }  // namespace
 
 int test_dayaniklilik(const TestBaglami& tb)
@@ -151,6 +156,34 @@ int test_dayaniklilik(const TestBaglami& tb)
         tek(s + "1" + std::string(50'001, '}') + "\n", "derin satır içi tablo");
     }
     tek(std::string(kAzamiDosyaBoyu + 1, '#'), "dosya boyu sınırı");
+    // sol #2: yorumdaki tırnaklar ön taramayı atlatmaz (toml++ iddiası ve gizli derin başlık).
+    tek("[x_a] # \"\"\"\n[!]\n# \"\"\"\n", "yorum arkasında geçersiz başlık");
+    tek("[x_a] # '''\n[[\nx_b]]\n# '''\n", "yorum arkasında satır sonlu başlık");
+    {
+        std::string s = "[x_a] # \"\"\"\n[x_b";
+        for (int i = 0; i < 1'000'000; ++i) {
+            s += ".a";
+        }
+        tek(s + "]\n# \"\"\"\n", "yorum arkasına gizlenmiş derin başlık");
+    }
+    // sol #11: çok sayıda dönüşüm hatası ve alt normal değer tek geçişte (süre ölçülür).
+    for (const char* yazim : {"1e400", "1e-400", "4.9e-324"}) {
+        std::string s = k_ornek(temel);
+        std::string dizi = "x_cok = [";
+        for (int i = 0; i < 5000; ++i) {
+            dizi += (i == 0 ? "" : ", ");
+            dizi += yazim;
+        }
+        BellekKaynagi k = temel;
+        k.dosyalar[kSenaryo] = *degistir(s, "ana_tohum = 1", "ana_tohum = 1\n" + dizi + "]");
+        const auto a = std::chrono::steady_clock::now();
+        const CozumSonucu r = senaryo_coz(k, kSenaryo);
+        const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - a).count();
+        const bool beklenen = std::string(yazim) == "4.9e-324" ? r.rapor.gecerli : !r.rapor.gecerli;
+        std::printf("  5 000 × %s: %s, %zu bulgu, %.3f s (ölçüm, bu makine)\n", yazim,
+                    r.rapor.gecerli ? "geçerli" : "geçersiz", r.rapor.bulgular.size(), sure);
+        DOGRULA(d, beklenen, std::string("çok sayıda ") + yazim + ": beklenen sonuç değil");
+    }
     tek(std::string("x = \"") + std::string(2'000'000, 'a') + "\n", "kapanmamış uzun dizgi");
     return d.hata;
 }

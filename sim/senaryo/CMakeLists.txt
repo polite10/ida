@@ -69,7 +69,9 @@ target_include_directories(ida_senaryo
 get_target_property(_toml_baslik tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(ida_senaryo SYSTEM PRIVATE ${_toml_baslik})
 target_compile_definitions(ida_senaryo PRIVATE TOML_HEADER_ONLY=1 TOML_ENABLE_FORMATTERS=0)
-target_link_libraries(ida_senaryo PUBLIC ida_fizik PRIVATE nlohmann_json::nlohmann_json Eigen3::Eigen)
+# A5-K52 parametre kataloğu: çekirdeğin A4-K85 genel arayüzü (ida/port.h, ida_core_param_*);
+# yalnız okunur, çekirdeğe sim'den bağımlılık eklenmez.
+target_link_libraries(ida_senaryo PUBLIC ida_fizik PRIVATE ida_core nlohmann_json::nlohmann_json Eigen3::Eigen)
 ida_senaryo_ayar(ida_senaryo)
 # Üretilen gömülü kaynaklar İDA uyarı politikasına girer ama yalnız sabit dizilerdir.
 
@@ -85,6 +87,7 @@ add_executable(ida_senaryo_test
   test/test_cozumleme.cpp
   test/test_dayaniklilik.cpp
   test/test_ozet.cpp
+  test/test_sol.cpp
   test/test_yukleyici.cpp)
 target_include_directories(ida_senaryo_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_senaryo_test PRIVATE ida_senaryo nlohmann_json::nlohmann_json)
@@ -111,7 +114,21 @@ set(_ida_senaryo_testleri
   fizik_yukleyici          # çözümlenmiş senaryo → ida::fizik yapıları; Dunya::kur
   ek_a_vektorleri          # A5-K23, K24: Ek A (trimli dahil), 1e-4 bağıl
   fizik_kurallari          # A5-K22, K34
-  fizik_karsilastirma)     # madde 11: dosyadan kurulan ↔ ida0_arac(), havuz_ortami() (rapor)
+  fizik_karsilastirma      # madde 11: dosyadan kurulan ↔ ida0_arac(), havuz_ortami() (rapor)
+  # sol incelemesinin karşı örnekleri (docs/gorevler/inceleme/W4-senaryo-sol.md)
+  sol_1_yeniden_yukleme_anlamsal   # EMNİYET
+  sol_1_tur_zorlamasi
+  sol_2_baslik_yorumu
+  sol_3_bozuk_sayi
+  sol_4_buyuk_tamsayi
+  sol_5_hedefler
+  sol_6_acil_durdurma_uyarisi
+  sol_7_parametre_katalogu
+  sol_8_yol_siniri
+  sol_9_routh_olcegi
+  sol_10_bulgu_toplama
+  sol_11_tek_gecis
+  sol_12_arac_dosyasi)
 foreach(_ad IN LISTS _ida_senaryo_testleri)
   add_test(NAME sim.senaryo.${_ad} COMMAND ida_senaryo_test ${_ad} "${PROJECT_SOURCE_DIR}")
 endforeach()
@@ -138,9 +155,12 @@ add_test(NAME sim.senaryo.arac_gecerli
           "-DCIKTI_DIZINI=${_arac_cikti}"
           "-DKARSILASTIR=${PROJECT_SOURCE_DIR}/scenarios/ornek-havuz.cozumlenmis.json"
           -P "${_cikis}")
+add_test(NAME sim.senaryo.arac_arac_dosyasi
+  COMMAND "${CMAKE_COMMAND}" "-DPROGRAM=$<TARGET_FILE:ida_senaryo_dogrula>" -DBEKLENEN=0
+          "-DARGUMANLAR=${PROJECT_SOURCE_DIR}/scenarios/ida0.toml" -P "${_cikis}")
 add_test(NAME sim.senaryo.arac_gecersiz
   COMMAND "${CMAKE_COMMAND}" "-DPROGRAM=$<TARGET_FILE:ida_senaryo_dogrula>" -DBEKLENEN=1
-          "-DARGUMANLAR=${PROJECT_SOURCE_DIR}/scenarios/ida0.toml" -P "${_cikis}")
+          "-DARGUMANLAR=${CMAKE_CURRENT_SOURCE_DIR}/test/veri/bozuk.toml" -P "${_cikis}")
 add_test(NAME sim.senaryo.arac_kullanim
   COMMAND "${CMAKE_COMMAND}" "-DPROGRAM=$<TARGET_FILE:ida_senaryo_dogrula>" -DBEKLENEN=2
           "-DARGUMANLAR=--bilinmeyen" -P "${_cikis}")

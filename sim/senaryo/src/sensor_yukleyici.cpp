@@ -216,12 +216,13 @@ sensor::SensorAyarGovdesi govde(sensor::SensorTuru tur, const Ayar& a)
 
 }  // namespace
 
-std::optional<sensor::SensorKumesiAyari> sensor_kur(const Deger& c, std::string* hata_cikti)
+std::optional<sensor::SensorKumesiAyari> sensor_kur(const DogrulanmisSenaryo& dogrulanmis, std::string* hata_cikti)
 {
     using namespace sensor;
     std::string hata;
     std::string fizik_hatasi;
-    const std::optional<FizikKurulumu> f = fizik_kur(c, &fizik_hatasi);
+    const Deger& c = dogrulanmis.agac();
+    const std::optional<FizikKurulumu> f = fizik_kur(dogrulanmis, &fizik_hatasi);
     if (!f) {
         if (hata_cikti != nullptr) *hata_cikti = fizik_hatasi;
         return std::nullopt;

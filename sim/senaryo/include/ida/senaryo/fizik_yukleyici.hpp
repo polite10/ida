@@ -8,7 +8,7 @@
 
 #include "ida/fizik/kutle_durumu.hpp"
 #include "ida/fizik/parametreler.hpp"
-#include "ida/senaryo/deger.hpp"
+#include "ida/senaryo/senaryo.hpp"
 
 #include <array>
 #include <optional>
@@ -24,7 +24,7 @@ struct FizikKurulumu {
 
 // Çözümlenmiş senaryodan fizik kurulum yapıları. Beklenen bir alan yoksa ya da tipi
 // uymuyorsa boş döner ve `hata`'ya yolunu yazar (geçerli çözümlenmiş senaryoda olmaz).
-std::optional<FizikKurulumu> fizik_kur(const Deger& cozumlenmis, std::string* hata = nullptr);
+std::optional<FizikKurulumu> fizik_kur(const DogrulanmisSenaryo& cozumlenmis, std::string* hata = nullptr);
 
 // A5-K23 kütle durumları (yuklu = {f1, f2}); fizik çekirdeğinin türetimi kullanılır.
 fizik::KutleDurumu kutle_durumu(const FizikKurulumu& k, const std::array<bool, 2>& yuklu);

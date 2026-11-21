@@ -13,8 +13,10 @@
 
 #include <toml++/toml.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -86,6 +88,8 @@ public:
     std::size_t azami = 0;
     std::int64_t azami_satir = 1;
     std::int64_t gecersiz_baslik_satiri = 0;  // ilk anahtar karakteri geçersiz başlık
+    // Değer konumundaki dizgi olmayan belirteçler [baş, son) (sayı kurtarma için).
+    std::vector<std::pair<std::size_t, std::size_t>> skalerler;
 
     void tara()
     {
@@ -174,6 +178,13 @@ private:
     void satir_sonuna_git()
     {
         while (i_ < s_.size() && s_[i_] != '\n') {
+            if (s_[i_] == '#') {
+                // Yorum satır sonunda biter; içindeki tırnaklar dizgi başlatmaz (TOML 1.0).
+                while (i_ < s_.size() && s_[i_] != '\n') {
+                    ++i_;
+                }
+                return;
+            }
             if (s_[i_] == '"' || s_[i_] == '\'') {
                 dizgi_atla();
             } else {
@@ -311,6 +322,7 @@ private:
                 } else if (c == ']' && dizide) {
                     // boş dizi ya da sondaki virgülden sonra kapanış
                 } else {
+                    const std::size_t bas = i_;
                     while (i_ < s_.size()) {
                         c = s_[i_];
                         if (c == ',' || c == ']' || c == '}' || c == '\n' || c == '#' ||
@@ -318,6 +330,9 @@ private:
                             break;
                         }
                         ++i_;
+                    }
+                    if (i_ > bas) {
+                        skalerler.emplace_back(bas, i_);
                     }
                 }
             }
@@ -378,17 +393,30 @@ public:
         if (satir == 0 || satir > bas_.size() || sutun == 0) {
             return std::string_view::npos;
         }
+        // Düğümler satır içinde artan sütunla gezilir: aynı satırda son konumdan sürdürülür
+        // (tek satırlık uzun dizilerde toplam iş doğrusal kalır; sol #11).
         std::size_t i = bas_[satir - 1];
-        for (std::uint32_t k = 1; k < sutun && i < s_.size(); ++k) {
+        std::uint32_t k = 1;
+        if (onbellek_satir_ == satir && onbellek_sutun_ <= sutun) {
+            i = onbellek_bayt_;
+            k = onbellek_sutun_;
+        }
+        for (; k < sutun && i < s_.size(); ++k) {
             const auto c = static_cast<unsigned char>(s_[i]);
             i += (c < 0x80u) ? 1 : (c < 0xE0u) ? 2 : (c < 0xF0u) ? 3 : 4;
         }
+        onbellek_satir_ = satir;
+        onbellek_sutun_ = k;
+        onbellek_bayt_ = i;
         return i <= s_.size() ? i : std::string_view::npos;
     }
 
 private:
     std::string_view s_;
     std::vector<std::size_t> bas_;
+    mutable std::uint32_t onbellek_satir_ = 0;
+    mutable std::uint32_t onbellek_sutun_ = 1;
+    mutable std::size_t onbellek_bayt_ = 0;
 };
 
 bool sayi_karakteri(char c)
@@ -458,7 +486,7 @@ public:
             return;
         }
         case toml::node_type::floating_point:
-            kayan(n.as_floating_point()->get(), src.begin.line, src.begin.column, d, yol);
+            kayan(src.begin.line, src.begin.column, d, yol);
             return;
         case toml::node_type::date:
         case toml::node_type::time:
@@ -479,56 +507,121 @@ private:
     int dosya_;
     Bulgucu& b_;
 
-    void kayan(double toml_degeri, std::uint32_t satir, std::uint32_t sutun, Deger& d,
-               const Yol& yol)
+    void kayan(std::uint32_t satir, std::uint32_t sutun, Deger& d, const Yol& yol)
     {
-        std::string yazim;
+        std::string ham;
         const std::size_t bas = st_.bayt(satir, sutun);
         if (bas != std::string_view::npos) {
             for (std::size_t i = bas; i < ozgun_.size() && sayi_karakteri(ozgun_[i]); ++i) {
-                if (ozgun_[i] != '_') {
-                    yazim += ozgun_[i];
-                }
+                ham += ozgun_[i];
             }
+            kayan_konumlari.insert(bas);
         }
-        std::string_view govde = yazim;
+        std::string_view govde = ham;
         if (!govde.empty() && (govde[0] == '+' || govde[0] == '-')) {
             govde.remove_prefix(1);
         }
         if (govde == "inf" || govde == "nan") {
             d.tur = Tur::gecersiz;
-            b_.hata("A5-K96", d.konum, yol, "`inf` ve `nan` kabul edilmez: " + yazim);
+            b_.hata("A5-K96", d.konum, yol, "`inf` ve `nan` kabul edilmez: " + ham);
             return;
         }
-        std::optional<double> v = ondalik_cevir(yazim);
+        // Değer daima özgün yazımdan çevrilir; yazım TOML 1.0 kayan noktalı sayı gramerine
+        // uymuyorsa ya da çevrilemiyorsa toml++'ın (ya da yer tutucunun) değerine dönülmez.
+        const std::optional<double> v = toml_kayan_gramer(ham) ? ondalik_cevir(alt_cizgisiz(ham)) : std::nullopt;
         if (!v) {
-            // Konum çözülemedi: toml++ değeri (sonlu ise) kullanılır.
-            if (!std::isfinite(toml_degeri)) {
-                d.tur = Tur::gecersiz;
-                b_.hata("A5-K96", d.konum, yol, "sonlu olmayan sayı");
-                return;
-            }
-            v = toml_degeri;
+            d.tur = Tur::gecersiz;
+            b_.hata("A5-K01", d.konum, yol, "TOML 1.0 kayan noktalı sayı yazımı geçersiz: " + ham);
+            return;
         }
         if (std::isinf(*v)) {
             d.tur = Tur::gecersiz;
-            b_.hata("A5-K96", d.konum, yol, "sayısal taşma (binary64'te sonsuz): " + yazim);
+            b_.hata("A5-K96", d.konum, yol, "sayısal taşma (binary64'te sonsuz): " + ham);
             return;
         }
-        if (*v == 0.0 && sifir_olmayan_basamak_var(yazim)) {
+        if (*v == 0.0 && sifir_olmayan_basamak_var(ham)) {
             d.tur = Tur::gecersiz;
-            b_.hata("A5-K96", d.konum, yol, "alt taşma (sıfırdan farklı değer sıfıra yuvarlandı): " +
-                                                yazim);
+            b_.hata("A5-K96", d.konum, yol, "alt taşma (sıfırdan farklı değer sıfıra yuvarlandı): " + ham);
             return;
         }
         d.tur = Tur::sayi;
         d.sayi = (*v == 0.0) ? 0.0 : *v;  // −0 → +0
     }
+
+public:
+    std::set<std::size_t> kayan_konumlari;  // dönüştürülen kayan noktalı değerlerin bayt konumu
 };
 
-constexpr std::string_view kKayanHatasi = "Error while parsing floating-point";
-
 }  // namespace
+
+std::string alt_cizgisiz(std::string_view s)
+{
+    std::string o;
+    for (const char c : s) {
+        if (c != '_') {
+            o += c;
+        }
+    }
+    return o;
+}
+
+bool toml_kayan_gramer(std::string_view s)
+{
+    std::size_t i = 0;
+    const std::size_t n = s.size();
+    auto rakam = [&](std::size_t j) { return j < n && s[j] >= '0' && s[j] <= '9'; };
+    // RAKAM *( RAKAM / "_" RAKAM ); en az bir rakam
+    auto rakamlar = [&]() {
+        if (!rakam(i)) {
+            return false;
+        }
+        ++i;
+        while (i < n) {
+            if (rakam(i)) {
+                ++i;
+            } else if (s[i] == '_' && rakam(i + 1)) {
+                i += 2;
+            } else {
+                break;
+            }
+        }
+        return true;
+    };
+    if (i < n && (s[i] == '+' || s[i] == '-')) {
+        ++i;
+    }
+    if (!rakam(i)) {
+        return false;
+    }
+    if (s[i] == '0') {
+        ++i;  // dec-int "0": ardından rakam ya da alt çizgi gelemez
+        if (i < n && (rakam(i) || s[i] == '_')) {
+            return false;
+        }
+    } else if (!rakamlar()) {
+        return false;
+    }
+    bool kesir = false;
+    bool us = false;
+    if (i < n && s[i] == '.') {
+        ++i;
+        if (!rakamlar()) {
+            return false;
+        }
+        kesir = true;
+    }
+    if (i < n && (s[i] == 'e' || s[i] == 'E')) {
+        ++i;
+        if (i < n && (s[i] == '+' || s[i] == '-')) {
+            ++i;
+        }
+        if (!rakamlar()) {
+            return false;
+        }
+        us = true;
+    }
+    return i == n && (kesir || us);
+}
 
 TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
 {
@@ -543,6 +636,13 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
         b.hata("A5-K01", Konum{dosya_no, s}, kok, "geçerli UTF-8 değil");
         return sonuc;
     }
+    // Tek geçişte: ön tarama derinliği ve değer konumundaki belirteçleri verir. toml++'ın
+    // okuyamadığı (alt normal, taşan, alt taşan) dilbilgisel olarak geçerli kayan noktalı
+    // yazımlar aynı uzunlukta bir yer tutucuyla topluca değiştirilir; değerleri dönüştürmede
+    // özgün metinden çevrilir. Yer tutucunun her konumu bir kayan noktalı düğüme denk
+    // gelmelidir; gelmezse (ön tarama ile ayrıştırıcı arasında uyuşmazlık) dosya reddedilir.
+    std::string calisma(metin);
+    std::vector<std::size_t> yer_tutucular;
     {
         DerinlikTarayici t(metin);
         t.tara();
@@ -557,44 +657,31 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
                        std::to_string(kAzamiDerinlik) + ")");
             return sonuc;
         }
+        for (const auto& [bas, son] : t.skalerler) {
+            const std::string_view y = metin.substr(bas, son - bas);
+            if (y.size() < 3 || !toml_kayan_gramer(y)) {
+                continue;
+            }
+            const std::optional<double> v = ondalik_cevir(alt_cizgisiz(y));
+            const bool sorunlu = v && (std::isinf(*v) || (*v == 0.0 && sifir_olmayan_basamak_var(y)) ||
+                                       (*v != 0.0 && std::abs(*v) < std::numeric_limits<double>::min()));
+            if (sorunlu) {
+                std::string yer = "0.";
+                yer.append(y.size() - 2, '0');
+                std::copy(yer.begin(), yer.end(), calisma.begin() + static_cast<std::ptrdiff_t>(bas));
+                yer_tutucular.push_back(bas);
+            }
+        }
     }
 
     const SatirTablosu st(metin);
-    std::string calisma(metin);
     toml::table tablo;
-    for (std::size_t deneme = 0;; ++deneme) {
-        try {
-            tablo = toml::parse(std::string_view(calisma));
-            break;
-        } catch (const toml::parse_error& e) {
-            const auto& p = e.source().begin;
-            const std::string_view aciklama = e.description();
-            bool duzeltildi = false;
-            if (aciklama.substr(0, kKayanHatasi.size()) == kKayanHatasi && deneme < metin.size()) {
-                // Yazım hata konumundan hemen önce biter.
-                const std::size_t son = st.bayt(p.line, p.column);
-                if (son != std::string_view::npos && son > 0) {
-                    std::size_t bas = son;
-                    while (bas > 0 && sayi_karakteri(calisma[bas - 1])) {
-                        --bas;
-                    }
-                    const std::size_t n = son - bas;
-                    if (n >= 3) {
-                        std::string yer_tutucu = "0.";
-                        yer_tutucu.append(n - 2, '0');
-                        if (calisma.compare(bas, n, yer_tutucu) != 0) {
-                            calisma.replace(bas, n, yer_tutucu);
-                            duzeltildi = true;
-                        }
-                    }
-                }
-            }
-            if (!duzeltildi) {
-                b.hata("A5-K01", Konum{dosya_no, static_cast<std::int64_t>(p.line)}, kok,
-                       "TOML 1.0 sözdizimi hatası: " + std::string(aciklama));
-                return sonuc;
-            }
-        }
+    try {
+        tablo = toml::parse(std::string_view(calisma));
+    } catch (const toml::parse_error& e) {
+        b.hata("A5-K01", Konum{dosya_no, static_cast<std::int64_t>(e.source().begin.line)}, kok,
+               "TOML 1.0 sözdizimi hatası: " + std::string(e.description()));
+        return sonuc;
     }
 
     Deger kokd;
@@ -602,6 +689,13 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
     Yol yol;
     d.donustur(tablo, kokd, yol, 0);
     kokd.konum = Konum{dosya_no, 0};
+    for (const std::size_t k : yer_tutucular) {
+        if (d.kayan_konumlari.count(k) == 0) {
+            b.hata("A5-K01", Konum{dosya_no, 0}, kok,
+                   "sayı yazımı bir kayan noktalı değere eşlenemedi (ön tarama uyuşmazlığı)");
+            return TomlOkuma{};
+        }
+    }
     sonuc.kok = std::move(kokd);
     return sonuc;
 }
