@@ -12,7 +12,8 @@
 void setUp(void);
 void tearDown(void);
 
-static uint8_t bellek[IDA_KAL_SAYFA_N * IDA_KAL_SAYFA_BAYT];
+#define BELLEK_BAYT (IDA_KAL_SAYFA_N * IDA_KAL_SAYFA_BAYT)
+static uint8_t bellek[BELLEK_BAYT];
 static int yazma_hatasi; /* 1: sonraki yaz16 hata verir */
 static uint32_t silme, yazma;
 static ida_kalici_t k;
@@ -23,13 +24,26 @@ static const uint8_t *m_taban(void *ctx)
     return bellek;
 }
 
+/* Modelin bütün erişimleri bu denetimden geçer: [ofs, ofs + n) bellek içinde değilse test
+   başarısızdır (modülün sınır dışı bir adres üretmesi hatadır; MSVC /analyze C6385/C6386). */
+static bool sinirda(uint32_t ofs, uint32_t n)
+{
+    const bool ic = ofs <= BELLEK_BAYT && n <= BELLEK_BAYT - ofs;
+    TEST_ASSERT_TRUE_MESSAGE(ic, "flash modeli: sınır dışı erişim");
+    return ic;
+}
+
 static int m_sil(void *ctx, uint32_t s)
 {
     (void)ctx;
     if (s >= IDA_KAL_SAYFA_N) {
         return -1;
     }
-    memset(bellek + s * IDA_KAL_SAYFA_BAYT, 0xFF, IDA_KAL_SAYFA_BAYT);
+    const uint32_t ofs = s * IDA_KAL_SAYFA_BAYT;
+    if (!sinirda(ofs, IDA_KAL_SAYFA_BAYT) || ofs > BELLEK_BAYT - IDA_KAL_SAYFA_BAYT) {
+        return -1;
+    }
+    memset(&bellek[ofs], 0xFF, IDA_KAL_SAYFA_BAYT);
     silme++;
     return 0;
 }
@@ -37,7 +51,10 @@ static int m_sil(void *ctx, uint32_t s)
 static int m_yaz16(void *ctx, uint32_t ofs, const uint8_t q[IDA_KAL_QW])
 {
     (void)ctx;
-    if (yazma_hatasi || (ofs % IDA_KAL_QW) != 0u || ofs >= sizeof bellek) {
+    if (yazma_hatasi || (ofs % IDA_KAL_QW) != 0u) {
+        return -1;
+    }
+    if (!sinirda(ofs, IDA_KAL_QW) || ofs > BELLEK_BAYT - IDA_KAL_QW) {
         return -1;
     }
     for (uint32_t i = 0u; i < IDA_KAL_QW; i++) {
@@ -45,7 +62,7 @@ static int m_yaz16(void *ctx, uint32_t ofs, const uint8_t q[IDA_KAL_QW])
             return -1;
         }
     }
-    memcpy(bellek + ofs, q, IDA_KAL_QW);
+    memcpy(&bellek[ofs], q, IDA_KAL_QW);
     yazma++;
     return 0;
 }
@@ -122,7 +139,7 @@ static void test_yarim_sayac_kaydi_atlanir(void)
     TEST_ASSERT_EQUAL_UINT32(2u, k.boot_count);
     /* 3. yuvaya yarım yazılmış bir kayıt (magic var, gerisi bozuk). */
     const uint8_t yarim[IDA_KAL_QW] = {0x42, 0x4F, 0x4F, 0x54, 0x03, 0, 0, 0, 0x12, 0x34, 0, 0, 0, 0, 0, 0};
-    memcpy(bellek + 2u * IDA_KAL_QW, yarim, IDA_KAL_QW);
+    memcpy(&bellek[2u * IDA_KAL_QW], yarim, IDA_KAL_QW);
     ac();
     TEST_ASSERT_EQUAL_UINT32(3u, k.boot_count);
     TEST_ASSERT_EQUAL_UINT8(1u, k.boot_count_ok);
@@ -153,7 +170,7 @@ static void test_sayac_tukenir(void)
     memcpy(q + 8, &d, 4);
     const uint32_t c = ida_kal_crc32(q, 12u);
     memcpy(q + 12, &c, 4);
-    memcpy(bellek, q, IDA_KAL_QW);
+    memcpy(&bellek[0], q, IDA_KAL_QW);
     ac();
     TEST_ASSERT_EQUAL_UINT8(0u, k.boot_count_ok);
     TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, k.boot_count);
@@ -180,6 +197,9 @@ static void test_parametre_kaydi_ve_acilis(void)
     uint32_t len = 0u;
     const uint8_t *p = ida_kal_blob(&k, &len);
     TEST_ASSERT_NOT_NULL(p);
+    if (p == NULL) {
+        return;
+    }
     TEST_ASSERT_EQUAL_UINT32(sizeof b, len);
     TEST_ASSERT_EQUAL_MEMORY(b, p, sizeof b);
     TEST_ASSERT_EQUAL_UINT32(5u, k.store_gen); /* init'te kalıcı bloğun kuşağı (A1-K68) */
@@ -200,6 +220,10 @@ static void test_ab_donusumu(void)
         ac();
         uint32_t len = 0u;
         const uint8_t *p = ida_kal_blob(&k, &len);
+        TEST_ASSERT_NOT_NULL(p);
+        if (p == NULL) {
+            return;
+        }
         TEST_ASSERT_EQUAL_UINT32(gen, k.blok_gen);
         TEST_ASSERT_EQUAL_MEMORY(b, p, sizeof b);
     }
@@ -224,6 +248,9 @@ static void test_kesinti_eski_blok_korunur(void)
         uint32_t len = 0u;
         const uint8_t *p = ida_kal_blob(&k, &len);
         TEST_ASSERT_NOT_NULL(p);
+        if (p == NULL) {
+            return;
+        }
         /* Ya eski ya yeni blok, ikisinden biri bütünüyle (tamamlanma kaydı yazıldıysa yeni). */
         if (bitti || k.blok_gen == 8u) {
             TEST_ASSERT_EQUAL_UINT32(8u, k.blok_gen);
@@ -243,7 +270,15 @@ static void test_bozuk_tamamlanma(void)
     ac();
     kaydet_bitir(b, sizeof b, 3u);
     const int8_t s = k.gecerli_sayfa;
-    bellek[(uint32_t)s * IDA_KAL_SAYFA_BAYT + IDA_KAL_CMIT_OFS + 5u] ^= 0x01u;
+    TEST_ASSERT_TRUE(s >= 0 && (uint32_t)s < IDA_KAL_SAYFA_N);
+    if (s < 0 || (uint32_t)s >= IDA_KAL_SAYFA_N) {
+        return;
+    }
+    const uint32_t i = (uint32_t)s * IDA_KAL_SAYFA_BAYT + IDA_KAL_CMIT_OFS + 5u;
+    if (!sinirda(i, 1u) || i >= BELLEK_BAYT) {
+        return;
+    }
+    bellek[i] ^= 0x01u;
     ac();
     TEST_ASSERT_EQUAL_INT8(-1, k.gecerli_sayfa);
 }

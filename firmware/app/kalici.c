@@ -142,7 +142,7 @@ static void sayac_artir(ida_kalici_t *k, void (*bekle)(void *), void *bctx)
             s = oteki;
             y = 0;
         }
-        uint8_t q[IDA_KAL_QW];
+        uint8_t q[IDA_KAL_QW] = {0};
         yaz32(q, IDA_KAL_SAYAC_MAGIC);
         yaz32(q + 4, yeni);
         yaz32(q + 8, 0xFFFFFFFFu ^ yeni);
@@ -270,8 +270,12 @@ static void qw_kur(const ida_kalici_t *k, uint32_t ofs, uint8_t q[IDA_KAL_QW])
     }
     memset(q, 0xFF, IDA_KAL_QW);
     const uint32_t b = ofs - 16u;
+    /* Açık sınır (MSVC /analyze C6385): blob dizisinin ve kayıt boyunun içinde kalınır. */
+    if (ofs < 16u || k->len > sizeof k->blob || b >= k->len) {
+        return;
+    }
     const uint32_t n = k->len - b < IDA_KAL_QW ? k->len - b : IDA_KAL_QW;
-    memcpy(q, k->blob + b, n);
+    memcpy(q, &k->blob[b], n);
 }
 
 static uint32_t yazilacak_son(const ida_kalici_t *k)
@@ -281,8 +285,11 @@ static uint32_t yazilacak_son(const ida_kalici_t *k)
 
 static bool icerik_dogru(const ida_kalici_t *k)
 {
+    if (k->len > sizeof k->blob) {
+        return false;
+    }
     const uint8_t *p = sayfa(k, k->hedef);
-    uint8_t q[IDA_KAL_QW];
+    uint8_t q[IDA_KAL_QW] = {0};
     qw_kur(k, 0u, q);
     return memcmp(p, q, IDA_KAL_QW) == 0 && memcmp(p + 16, k->blob, k->len) == 0 &&
            ida_kal_crc32(p + 16, k->len) == k->crc;
@@ -312,7 +319,7 @@ void ida_kal_adim(ida_kalici_t *k)
         /* fall through */
     case A_YAZ:
         if (k->sonraki_ofs < yazilacak_son(k)) {
-            uint8_t q[IDA_KAL_QW];
+            uint8_t q[IDA_KAL_QW] = {0};
             qw_kur(k, k->sonraki_ofs, q);
             if (k->f.yaz16(k->f.ctx, (uint32_t)k->hedef * IDA_KAL_SAYFA_BAYT + k->sonraki_ofs, q) != 0) {
                 bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_FLASH);
@@ -328,8 +335,8 @@ void ida_kal_adim(ida_kalici_t *k)
         k->adim = A_CMIT;
         /* fall through */
     case A_CMIT: {
-        uint8_t q[IDA_KAL_QW];
-        uint8_t bas[IDA_KAL_QW];
+        uint8_t q[IDA_KAL_QW] = {0};
+        uint8_t bas[IDA_KAL_QW] = {0};
         qw_kur(k, 0u, bas);
         yaz32(q, IDA_KAL_CMIT_MAGIC);
         yaz32(q + 4, k->gen);
