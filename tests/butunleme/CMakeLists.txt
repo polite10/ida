@@ -27,4 +27,6 @@ if(NOT WIN32)
   # koşturulmaz; ölçümün eşiği yoktur).
   add_test(NAME butunleme.hil_pty COMMAND ida_butunleme_test hil_pty)
   set_tests_properties(butunleme.hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  add_test(NAME butunleme.hil_cikarma_takma COMMAND ida_butunleme_test hil_cikarma_takma)
+  set_tests_properties(butunleme.hil_cikarma_takma PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

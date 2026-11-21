@@ -75,6 +75,9 @@ struct KopruAyari {
     std::uint64_t param_schema_hash = 0;  // 0: ida_core_info'dan
     // A1-K18: A5'ten kurulan parametre bloğunun CRC-32/ISO-HDLC değeri.
     std::uint32_t beklenen_blok_crc = 0;
+    // İlk TF'nin batch_seq'i (çalıştırma boyunca kesintisiz artar, 2³²'de sarar; yalnız sınama
+    // için değiştirilir: sol #12).
+    std::uint32_t ilk_batch_seq = 1;
 };
 
 // Sim sayaçları (A1 Tablo 3.11a; bu dilimde tutulanlar).
@@ -104,6 +107,8 @@ struct Sayaclar {
     std::uint64_t komut_oturumsuz = 0;
     std::uint64_t pencere_tasma = 0;
     std::uint64_t kritik_bayt_en_buyuk = 0;
+    std::uint64_t kritik_erteleme = 0;           // A1-K113: kayan kritik üye
+    std::uint64_t kritik_erteleme_en_buyuk = 0;  // en büyük kayma (parti)
     std::uint64_t eszamansiz_ilk_parti_oncesi = 0;  // W4-K6: uygulandı, A1-K79'a sayılmadı
     std::uint64_t estop_iptal = 0;              // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
     std::uint64_t emniyet_rev_eslesmedi = 0;     // W4-K12: uygun revizyon bulunamadı
@@ -284,7 +289,8 @@ public:
     void olcum_ekle(const sensor::Olcum& o);
     // Pencereyi kapatır: emniyet örneği, sonuçlar, TF(n). Dönüş: batch_seq (oturum yoksa 0).
     // w_tn: t_n'in planlanan duvar anı W(t_n) (HIL; A1-K43, K108); SIL'de < 0.
-    std::uint32_t parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn = -1);
+    // Oturum yoksa (A1-K28) parti gönderilmez: std::nullopt. batch_seq 0 geçerli bir değerdir.
+    std::optional<std::uint32_t> parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn = -1);
     // Yuva n tamamlandı mı (A1-K73).
     bool yuva_tamam(std::uint32_t seq) const;
     // Partinin doğrulamadan geçmiş olağan yanıtı (son 64 parti).
@@ -295,9 +301,14 @@ public:
     // fizik sınırının zamanı; köprü kurulduğundan beri, en çok ilk 1024.
     const std::vector<std::int64_t>& sira_boslugu_zamanlari() const;
     std::uint32_t son_parti() const;
+    bool parti_gonderildi() const;   // bu oturumda en az bir TF gönderildi
 
     // ---- Fizik sınırı (A1-K85) ----
     SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
+
+    // A1-K108 (sol #6): sim, a_n'de başlayan fizik adımını W(a_n)'den sonra hesapladı. Ortak
+    // sayaç ve A1-K79 geçersizlik yolu.
+    void sim_gecikmesi_bildir();
 
     // ---- Emniyet (iskelet §3.2, §5) ----
     void emniyet_ata(const EmniyetAtama& a);

@@ -157,17 +157,10 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     }
     out_seq_var = true;
     son_out_seq = m.out_seq;
-    gecen_yanit[m.batch_seq] = m;   // olay doğrulamasının dayanağı: yalnız kabul edilen yanıt
-    while (gecen_yanit.size() > 64u) {
-        gecen_yanit.erase(gecen_yanit.begin());
-    }
-    const auto tw = tf_yazim.find(m.batch_seq);
-    if (tw != tf_yazim.end()) {
-        yanit_sure[m.batch_seq] = duvar - tw->second;
-        yanit_sureleri.push_back(duvar - tw->second);
-        while (yanit_sure.size() > 64u) {
-            yanit_sure.erase(yanit_sure.begin());
-        }
+    gecen_yanit.koy(m.batch_seq, m);   // olay doğrulamasının dayanağı: yalnız kabul edilen yanıt
+    if (const TfKaydi* tw = tf_kayit.bul(m.batch_seq)) {
+        yanit_sure.koy(m.batch_seq, duvar - tw->duvar);
+        yanit_sureleri.push_back(duvar - tw->duvar);
     }
     // Birleştirilen eski partiler (A1-K40, K75).
     for (std::uint32_t k = 1; k <= m.n_merged; ++k) {
@@ -305,8 +298,8 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
     if (!kapanis_sifir) {
         // A1-K84: sim zamanında ve duvar saatinde son geçerlilik.
         bool suresi_gecti = t > e.t_decide_ns + static_cast<std::int64_t>(e.apply_by_ns);
-        const auto it = tf_yazim.find(e.batch_seq);
-        if (it != tf_yazim.end() && duvar - it->second > static_cast<std::int64_t>(e.apply_by_ns) + a.t_bekle_ns) {
+        const TfKaydi* tk = tf_kayit.bul(e.batch_seq);
+        if (tk != nullptr && duvar - tk->duvar > static_cast<std::int64_t>(e.apply_by_ns) + a.t_bekle_ns) {
             suresi_gecti = true;
         }
         if (suresi_gecti) {
@@ -330,10 +323,10 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
     // izin açan olaylarıyla birlikte (ör. aynı partide FIRE varsa ARMED = 1, IS_SAFE = 0)
     // denetlenir; tutarsızsa yanıt reddedilir ve o partinin hiçbir olayı izin açamaz. Karar
     // yalnız kabul edilmiş, değişmez yuva yanıtına dayanır (sol #2).
-    const auto gy = gecen_yanit.find(e.batch_seq);
-    bool tutarli = gy != gecen_yanit.end() && reddedilen_yanit.count(e.batch_seq) == 0u;
+    const mavlink_ida_actuator_t* gy = gecen_yanit.bul(e.batch_seq);
+    bool tutarli = gy != nullptr && reddedilen_yanit.count(e.batch_seq) == 0u;
     if (tutarli) {
-        const mavlink_ida_actuator_t& m = gy->second;
+        const mavlink_ida_actuator_t& m = *gy;
         const std::uint16_t f = m.act_flags;
         tutarli = m.core_rc == IDA_RC_OK && (f & F(IDAW_ACT_FLAGS_SRC_TICK)) == 0u;
         const auto pa = parti_acan.find(e.batch_seq);
@@ -403,6 +396,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     i.duvar = duvar_ns;
     const std::int64_t t = static_cast<std::int64_t>(adim_no) * kH;
     SinirSonucu s;
+    i.dar_hizmet();   // bekleyen daraltıcılar kova izin verince (A1-K61, K119)
     const std::uint32_t rev_bas = i.emn.emniyet_revizyonu;
     const bool doymus_bas = i.say.emniyet_rev_doydu;
 
@@ -571,8 +565,17 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
             }
         }
         // Uygulanmış eski yuvaları at (gecen_yanit A1-K118 için ayrıca tutulur).
-        while (!i.yuvalar.empty() && i.yuvalar.begin()->second.islendi && i.yuvalar.begin()->first != seq) {
-            i.yuvalar.erase(i.yuvalar.begin());
+        // İşlenmiş yuvalar gönderim sırasıyla atılır (sarmada sayısal sıra kullanılmaz; sol #12);
+        // bu sınırın yuvası olay doğrulaması için bir sınır daha kalır.
+        while (!i.yuva_sira.empty() && i.yuva_sira.front() != seq) {
+            const auto ey = i.yuvalar.find(i.yuva_sira.front());
+            if (ey != i.yuvalar.end() && !ey->second.islendi) {
+                break;
+            }
+            if (ey != i.yuvalar.end()) {
+                i.yuvalar.erase(ey);
+            }
+            i.yuva_sira.pop_front();
         }
         while (!i.birlesik_seq.empty() && yeni(seq, *i.birlesik_seq.begin()) && seq - *i.birlesik_seq.begin() > 64u) {
             i.birlesik_seq.erase(i.birlesik_seq.begin());

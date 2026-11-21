@@ -14,6 +14,12 @@ int test_olay_yinelenen();
 int test_olay_suresi_gecmis();
 int test_olay_fire_kabul();
 int test_emniyet_ornegi();
+int test_yazma_sinirli();
+int test_aygit_kalkti();
+int test_sim_gecikmesi();
+int test_parti_butcesi();
+int test_daraltici_kovasi();
+int test_batch_seq_sarmasi();
 int test_emniyet_capraz_alan();
 int test_emniyet_izin_acik();
 int test_yinelenen_yanit_olay();
@@ -46,6 +52,12 @@ const Test kTestler[] = {
     {"olay_suresi_gecmis", test_olay_suresi_gecmis},
     {"olay_fire_kabul", test_olay_fire_kabul},
     {"emniyet_ornegi", test_emniyet_ornegi},
+    {"yazma_sinirli", test_yazma_sinirli},
+    {"aygit_kalkti", test_aygit_kalkti},
+    {"sim_gecikmesi", test_sim_gecikmesi},
+    {"parti_butcesi", test_parti_butcesi},
+    {"daraltici_kovasi", test_daraltici_kovasi},
+    {"batch_seq_sarmasi", test_batch_seq_sarmasi},
     {"emniyet_capraz_alan", test_emniyet_capraz_alan},
     {"emniyet_izin_acik", test_emniyet_izin_acik},
     {"yinelenen_yanit_olay", test_yinelenen_yanit_olay},

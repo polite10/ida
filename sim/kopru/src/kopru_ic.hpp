@@ -5,12 +5,14 @@
 #include "ida_link/tel.h"
 #include "mavlink_ic.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <deque>
 #include <map>
 #include <optional>
 #include <set>
+#include <variant>
 #include <vector>
 
 namespace ida::kopru {
@@ -79,6 +81,57 @@ struct RevDurum {
 std::uint8_t emniyet_kodu(const sensor::EmniyetOlcumu& y);
 bool en_az_kisitlayici(std::uint8_t kod, const RevDurum& r);
 
+// Ekleme sırasıyla sınırlı anahtar–değer tablosu (sol #12): eski kayıt sayısal anahtara göre
+// değil gönderim sırasına göre atılır; 32 bitlik sıra numarasının sarmasında doğru kalır.
+template <typename V>
+struct SiraliHarita {
+    std::map<std::uint32_t, V> m;
+    std::deque<std::uint32_t> sira;
+    std::size_t sinir = 64;
+    explicit SiraliHarita(std::size_t s) : sinir(s) {}
+    void koy(std::uint32_t k, const V& v)
+    {
+        if (m.count(k) == 0u) {
+            sira.push_back(k);
+        }
+        m[k] = v;
+        while (sira.size() > sinir) {
+            m.erase(sira.front());
+            sira.pop_front();
+        }
+    }
+    const V* bul(std::uint32_t k) const
+    {
+        const auto it = m.find(k);
+        return it == m.end() ? nullptr : &it->second;
+    }
+    void temizle()
+    {
+        m.clear();
+        sira.clear();
+    }
+};
+
+// Pencere kapanışında yazılacak sensör üyesi (A1-K113 öncelikli kaydırma için tutulur;
+// MAVLink başlık seq'i yazım anında verilir).
+struct SensorUye {
+    std::uint32_t msgid = 0;
+    std::variant<mavlink_ida_imu_t, mavlink_ida_mag_t, mavlink_ida_baro_t, mavlink_ida_gnss_t, mavlink_ida_dvl_t,
+                 mavlink_ida_batt_t, mavlink_ida_leak_t>
+        m;
+    std::int64_t t_hazir = 0;   // t_teslim (bosalt'ın atama anı)
+    std::uint8_t tur = 0;       // IDA_SENS_*
+    std::uint8_t inst = 0;
+    bool gecersiz = false;      // VALID = 0
+    std::uint32_t kayma = 0;    // kaç parti kaydı
+    std::size_t boy = 0;        // kodlanmış çerçeve boyu
+};
+
+struct TfKaydi {
+    std::int64_t t = 0;       // t_sim_ns
+    std::int64_t duvar = 0;   // yazım duvarı
+};
+
 struct SakliSonuc {
     std::uint8_t sonuc = 0;
     std::int64_t t_apply = 0;
@@ -118,24 +171,26 @@ struct Kopru::Ic {
 
     // ---- Bu oturumda gönderilen TF'ler ----
     bool tf_var = false;
-    std::uint32_t ilk_seq = 0, son_seq = 0;
-    std::int64_t ilk_t = 0;
-    std::map<std::uint32_t, std::int64_t> tf_yazim;    // seq -> yazım duvarı (son 512)
-    std::uint32_t sonraki_seq = 1;                     // çalıştırma boyunca kesintisiz
+    std::uint32_t son_seq = 0;
+    SiraliHarita<TfKaydi> tf_kayit{512};               // bu oturumda gönderilen TF'ler (son 512)
+    std::uint32_t sonraki_seq = 1;                     // çalıştırma boyunca kesintisiz; 0 da geçerli
+    std::deque<std::uint32_t> yuva_sira;               // yuvalar gönderim sırasıyla
 
     // ---- Açık pencere ----
     std::uint16_t pen_uye = 0;
     bool pen_imu = false;
-    std::size_t pen_kritik = 0;
-    std::size_t pen_bayt = 0;
+    std::size_t pen_kritik = 0;     // pencerede yazılmış daraltıcı komut baytları (kritik; A1-K113)
+    std::size_t pen_bayt = 0;       // pencerede yazılmış toplu üyelerin baytları (A1-K34)
+    std::vector<SensorUye> pen_sensor;   // pencere kapanışında yazılacak sensör üyeleri
+    std::vector<SensorUye> kayan;        // B_krit ya da A1-K34 yüzünden sonraki partiye kayanlar
     std::optional<sensor::Olcum> pen_emniyet;
     std::optional<sensor::Olcum> sonraki_emniyet;
 
     // ---- Yuvalar ve sürekli çıktılar ----
     std::map<std::uint32_t, Yuva> yuvalar;
     std::map<std::uint64_t, std::uint32_t> adim_yuva;  // a_n adımı -> seq
-    std::map<std::uint32_t, mavlink_ida_actuator_t> gecen_yanit;   // A1-K118 için (son 64)
-    std::map<std::uint32_t, std::int64_t> yanit_sure;   // seq -> TF yazımından yanıt alımına (son 64)
+    SiraliHarita<mavlink_ida_actuator_t> gecen_yanit{64};   // kabul edilen yanıtlar (A1-K118)
+    SiraliHarita<std::int64_t> yanit_sure{64};              // TF yazımından yanıt alımına
     std::vector<std::int64_t> yanit_sureleri;           // çalıştırma boyunca (ölçüm)
     std::vector<std::int64_t> sira_boslugu_t;           // A1-K08 boşluklarının sim zamanı
     std::vector<mavlink_ida_actuator_t> esz_bekleyen;
@@ -206,6 +261,21 @@ struct Kopru::Ic {
     std::deque<Komut> toplu;
     std::array<std::optional<Komut>, kDarTurSayisi> dar_bekleyen{};
     std::array<bool, kDarTurSayisi> dar_bu_pencerede{};
+    // A1-K61, K119 (sol #10): daraltıcı tür başına duvar saatli kova (patlama 1, 5 ms'de 1).
+    std::array<double, kDarTurSayisi> dar_kova{};
+    std::array<std::int64_t, kDarTurSayisi> dar_kova_t{};
+    std::array<bool, kDarTurSayisi> dar_kova_var{};
+    void dar_doldur(std::size_t t)
+    {
+        if (!dar_kova_var[t]) {
+            dar_kova_var[t] = true;
+            dar_kova[t] = 1.0;
+        } else {
+            dar_kova[t] = std::min(1.0, dar_kova[t] + static_cast<double>(duvar - dar_kova_t[t]) / static_cast<double>(kP));
+        }
+        dar_kova_t[t] = duvar;
+    }
+    void dar_hizmet();
     std::map<std::uint32_t, KomutSonucu> sonuclar;
     std::set<std::uint32_t> oturum_komutlari;
     std::set<std::uint32_t> sonuc_bekleyen;
@@ -226,7 +296,9 @@ struct Kopru::Ic {
     bool olay_al(const mavlink_ida_event_t& m);   // false: reddedildi (A1-K109, K72)
     bool sonuc_al(const mavlink_ida_cmd_result_t& m);   // false: reddedildi (A1-K109, K72)
     void yerel_sonuc(std::uint32_t cmd_id, std::uint8_t ack, std::uint16_t reason);
-    void komut_yaz(Komut& k);
+    std::size_t komut_yaz(Komut& k);
+    std::size_t uye_yaz(const SensorUye& u);
+    std::size_t uye_boy(const SensorUye& u) const;
     std::uint32_t komut_ekle(Komut k);
     void pencere_ac(std::int64_t t_onceki);
     void rev_artir();

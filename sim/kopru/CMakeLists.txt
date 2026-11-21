@@ -46,6 +46,7 @@ add_executable(ida_kopru_test
   test/test_oturum.cpp
   test/test_yuva.cpp
   test/test_emniyet.cpp
+  test/test_parti.cpp
   test/test_emniyet2.cpp
   test/test_tasima.cpp)
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
@@ -73,6 +74,12 @@ set(_ida_kopru_testleri
   toplu_tutarlilik       # sol #3, Tablo 4.6b
   yeni_acilis_out_seq    # sol #4, A1-K105
   gecersiz_cerceve_etkisiz  # sol #11, A1-K109
+  sim_gecikmesi  # sol B: #6 #9 #10 #12
+  parti_butcesi  # sol B: #6 #9 #10 #12
+  daraltici_kovasi  # sol B: #6 #9 #10 #12
+  batch_seq_sarmasi  # sol B: #6 #9 #10 #12
+  yazma_sinirli  # sol B: #7 #8
+  aygit_kalkti  # sol B: #7 #8
   bellek_tasima
   tcp_tasima
   pty_tasima)

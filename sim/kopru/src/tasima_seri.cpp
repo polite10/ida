@@ -39,22 +39,29 @@ namespace {
 
 class SeriPort final : public Tasima {
 public:
-    SeriPort(HANDLE h, std::string ad) : h_(h), ad_(std::move(ad)) {}
+    // Zaman aşımları ilk yazımdan önce, açılışta kurulur (sol #7).
+    SeriPort(HANDLE h, std::string ad) : h_(h), ad_(std::move(ad)) { (void)zaman_asimi_kur(0); }
     ~SeriPort() override { kapat(); }
 
-    bool yaz(const std::uint8_t* p, std::size_t n) override
+    // Yazma zaman aşımı (WriteTotalTimeoutConstant = 1 ms): WriteFile en çok ~1 ms bekler ve
+    // yazabildiği kadarını (0 olabilir) bildirir; zaman aşımında da başarı ve kısa yazım dönebilir
+    // (Microsoft "Time-Outs"). Konumu çağıran tutar; ilerlemesizliği Tasima::yaz ve sunucu sınırlar.
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
     {
-        std::size_t yazilan = 0;
-        while (yazilan < n && h_ != INVALID_HANDLE_VALUE) {
-            DWORD k = 0;
-            const DWORD istek = static_cast<DWORD>(std::min<std::size_t>(n - yazilan, 1u << 16));
-            if (WriteFile(h_, p + yazilan, istek, &k, nullptr) == 0) {
-                kapat();
-                return false;
-            }
-            yazilan += static_cast<std::size_t>(k);
+        if (h_ == INVALID_HANDLE_VALUE) {
+            return -1;
         }
-        return yazilan == n;
+        DWORD k = 0;
+        const DWORD istek = static_cast<DWORD>(std::min<std::size_t>(n, 1u << 16));
+        if (WriteFile(h_, p, istek, &k, nullptr) == 0) {
+            const DWORD e = GetLastError();
+            if (e == ERROR_TIMEOUT || e == ERROR_SEM_TIMEOUT) {
+                return static_cast<long long>(k);
+            }
+            kapat();
+            return -1;
+        }
+        return static_cast<long long>(k);
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
@@ -65,17 +72,9 @@ public:
         }
         // Bir bayt gelince hemen dön; gelmezse en çok bekle_us (ms'ye yukarı yuvarlanır).
         const DWORD ms = static_cast<DWORD>(std::max<std::int64_t>((bekle_us + 999) / 1000, 0));
-        if (ms != son_ms_) {
-            COMMTIMEOUTS z{};
-            z.ReadIntervalTimeout = MAXDWORD;
-            z.ReadTotalTimeoutMultiplier = ms == 0 ? 0 : MAXDWORD;
-            z.ReadTotalTimeoutConstant = ms;
-            z.WriteTotalTimeoutConstant = 1000;
-            if (SetCommTimeouts(h_, &z) == 0) {
-                kapat();
-                return OkumaSonucu::kapandi;
-            }
-            son_ms_ = ms;
+        if (ms != son_ms_ && !zaman_asimi_kur(ms)) {
+            kapat();
+            return OkumaSonucu::kapandi;
         }
         DWORD k = 0;
         const DWORD istek = static_cast<DWORD>(std::min<std::size_t>(n, 1u << 16));
@@ -104,6 +103,24 @@ public:
     std::string ad() const override { return ad_; }
 
 private:
+    bool zaman_asimi_kur(DWORD ms)
+    {
+        if (h_ == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+        COMMTIMEOUTS z{};
+        z.ReadIntervalTimeout = MAXDWORD;
+        z.ReadTotalTimeoutMultiplier = ms == 0 ? 0 : MAXDWORD;
+        z.ReadTotalTimeoutConstant = ms;
+        z.WriteTotalTimeoutMultiplier = 0;
+        z.WriteTotalTimeoutConstant = 1;
+        if (SetCommTimeouts(h_, &z) == 0) {
+            return false;
+        }
+        son_ms_ = ms;
+        return true;
+    }
+
     HANDLE h_;
     std::string ad_;
     DWORD son_ms_ = 0xFFFFFFFFu;
@@ -116,26 +133,20 @@ public:
     SeriPort(int fd, std::string ad) : fd_(fd), ad_(std::move(ad)) {}
     ~SeriPort() override { kapat(); }
 
-    bool yaz(const std::uint8_t* p, std::size_t n) override
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
     {
-        std::size_t yazilan = 0;
-        while (yazilan < n && fd_ >= 0) {
-            const ssize_t k = ::write(fd_, p + yazilan, n - yazilan);
-            if (k > 0) {
-                yazilan += static_cast<std::size_t>(k);
-                continue;
-            }
-            if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-                if (sec(true, 1'000'000) < 0) {
-                    kapat();
-                    return false;
-                }
-                continue;
-            }
-            kapat();
-            return false;
+        if (fd_ < 0) {
+            return -1;
         }
-        return yazilan == n;
+        const ssize_t k = ::write(fd_, p, n);
+        if (k >= 0) {
+            return static_cast<long long>(k);
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            return 0;
+        }
+        kapat();
+        return -1;
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
@@ -144,6 +155,9 @@ public:
         if (fd_ < 0) {
             return OkumaSonucu::kapandi;
         }
+        // Ham uçbirimde (VMIN = VTIME = 0) veri yokken read 0 döner; okunabilir denildiği halde
+        // veri gelmiyorsa karşı uç kapanmıştır (aygıt kalktı, sözde uçbirimin ana ucu kapandı;
+        // A1-K23, sol #8). Bekleme 0 olsa da sıfır süreli bir yoklama yapılır.
         for (int deneme = 0; deneme < 2; ++deneme) {
             const ssize_t k = ::read(fd_, p, n);
             if (k > 0) {
@@ -151,19 +165,20 @@ public:
                 return OkumaSonucu::tamam;
             }
             if (k < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                kapat();   // aygıt kalktı (A1-K23)
+                kapat();
                 return OkumaSonucu::kapandi;
             }
-            if (deneme == 1 || bekle_us <= 0) {
-                break;
-            }
-            const int r = sec(false, bekle_us);
+            const int r = sec(false, deneme == 0 ? std::max<std::int64_t>(bekle_us, 0) : 0);
             if (r < 0) {
                 kapat();
                 return OkumaSonucu::kapandi;
             }
             if (r == 0) {
-                break;
+                return OkumaSonucu::zaman_asimi;
+            }
+            if (deneme == 1) {
+                kapat();
+                return OkumaSonucu::kapandi;
             }
         }
         return OkumaSonucu::zaman_asimi;

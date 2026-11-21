@@ -245,14 +245,14 @@ inline sensor::Olcum imu_olcumu(std::uint32_t seq, std::int64_t t);
 
 // Köprü + sahte kart (zamanlama ve olay sınamaları).
 struct SahteDuzenek {
-    Kopru k{KopruAyari{}};
+    Kopru k;
     SahteKart sk;
     std::uint64_t sinir = 0;
     std::int64_t t = 0;
     std::vector<SinirSonucu> sinirlar;   // dizin: sınır numarası
     std::function<void(std::uint64_t)> sinir_kancasi;   // sinir_isle'den önce
 
-    SahteDuzenek()
+    explicit SahteDuzenek(const KopruAyari& a = KopruAyari{}) : k(a)
     {
         sinirlar.push_back(k.sinir_isle(0, 0));
     }
@@ -280,7 +280,7 @@ struct SahteDuzenek {
         for (const auto& o : ek) {
             k.olcum_ekle(o);
         }
-        const std::uint32_t seq = k.parti_kapat(t, t);
+        const std::uint32_t seq = k.parti_kapat(t, t).value_or(0u);
         alisveris(k, sk, t);
         return seq;
     }
@@ -355,7 +355,7 @@ struct IcDuzenek {
             *son = ss;
         }
         k->olcum_ekle(imu_olcumu(++imu_seq, t));
-        const std::uint32_t seq = k->parti_kapat(t, t);
+        const std::uint32_t seq = k->parti_kapat(t, t).value_or(0u);
         pompala();
         return seq;
     }

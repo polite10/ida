@@ -74,6 +74,43 @@ bool en_az_kisitlayici(std::uint8_t kod, const RevDurum& r)
 
 // ---------------------------------------------------------------- Parti
 
+namespace {
+
+// Sensör üyesini pencereye ekler; yazım ve A1-K113 kaydırması pencere kapanışındadır.
+template <typename M>
+void uye_ekle(Kopru::Ic& i, std::uint32_t msgid, const M& m, const sensor::OlcumBasligi& h)
+{
+    SensorUye u;
+    u.msgid = msgid;
+    u.m = m;
+    u.t_hazir = h.t_teslim_ns;
+    u.tur = static_cast<std::uint8_t>(h.tur);
+    u.inst = h.inst;
+    u.gecersiz = (h.flags & sensor::kBayrakGecerli) == 0u;
+    u.boy = i.uye_boy(u);
+    i.pen_sensor.push_back(u);
+}
+
+}  // namespace
+
+std::size_t Kopru::Ic::uye_boy(const SensorUye& u) const
+{
+    // Kodlanmış boy (kırpılmış yük; A1-K05): gönderici kopyasıyla, seq ilerletilmeden.
+    ida_link_gonderici_t g = gonderici;
+    std::uint8_t tampon[IDA_LINK_CERCEVE_AZAMI];
+    std::size_t n = 0;
+    std::visit([&](const auto& m) { (void)ida_link_gonder(&g, u.msgid, &m, sizeof m, tampon, sizeof tampon, &n); },
+               u.m);
+    return n;
+}
+
+std::size_t Kopru::Ic::uye_yaz(const SensorUye& u)
+{
+    std::size_t n = 0;
+    std::visit([&](const auto& m) { cerceve(u.msgid, &m, sizeof m, &n); }, u.m);
+    return n;
+}
+
 void Kopru::olcum_ekle(const sensor::Olcum& o)
 {
     Ic& i = *ic_;
@@ -81,8 +118,6 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         return;
     }
     const sensor::OlcumBasligi& h = o.hdr;
-    std::size_t n = 0;
-    bool kritik = true;
     if (const auto* e = std::get_if<sensor::EmniyetOlcumu>(&o.yuk)) {
         (void)e;
         // A1-K56: partide ≤ 1; kapanma o partide, sonraki açılma sonraki partide. Kayıt pencere
@@ -129,8 +164,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.temp_c = y.temp_c;
         m.flags = h.flags;
         m.inst = h.inst;
-        i.cerceve(MAVLINK_MSG_ID_IDA_IMU, &m, sizeof m, &n);
-        i.pen_imu = true;
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_IMU, m, h);
         break;
     }
     case sensor::SensorTuru::manyetometre: {
@@ -143,7 +177,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         }
         m.flags = h.flags;
         m.inst = h.inst;
-        i.cerceve(MAVLINK_MSG_ID_IDA_MAG, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_MAG, m, h);
         break;
     }
     case sensor::SensorTuru::basinc: {
@@ -156,7 +190,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.temp_c = y.temp_c;
         m.flags = h.flags;
         m.inst = h.inst;
-        i.cerceve(MAVLINK_MSG_ID_IDA_BARO, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_BARO, m, h);
         break;
     }
     case sensor::SensorTuru::gnss: {
@@ -176,7 +210,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.inst = h.inst;
         m.fix_type = y.fix_type;
         m.n_sv = y.n_sv;
-        i.cerceve(MAVLINK_MSG_ID_IDA_GNSS, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_GNSS, m, h);
         break;
     }
     case sensor::SensorTuru::dvl: {
@@ -199,7 +233,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.inst = h.inst;
         m.dvl_flags = y.dvl_flags;
         m.beam_valid = y.beam_valid;
-        i.cerceve(MAVLINK_MSG_ID_IDA_DVL, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_DVL, m, h);
         break;
     }
     case sensor::SensorTuru::batarya_olcer: {
@@ -213,7 +247,7 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.temp_c = y.temp_c;
         m.flags = h.flags;
         m.inst = h.inst;
-        i.cerceve(MAVLINK_MSG_ID_IDA_BATT, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_BATT, m, h);
         break;
     }
     case sensor::SensorTuru::sizinti: {
@@ -224,25 +258,14 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
         m.flags = h.flags;
         m.inst = h.inst;
         m.mask = y.mask;
-        i.cerceve(MAVLINK_MSG_ID_IDA_LEAK, &m, sizeof m, &n);
+        uye_ekle(i, MAVLINK_MSG_ID_IDA_LEAK, m, h);
         break;
     }
     case sensor::SensorTuru::ping1d:
     case sensor::SensorTuru::ping360:
     case sensor::SensorTuru::firlatici_geri_okuma:
     case sensor::SensorTuru::kamera:
-        kritik = false;
         break;
-    }
-    if (n > 0) {
-        if ((h.flags & sensor::kBayrakGecerli) == 0u) {
-            ++i.say.gecersiz_ornek;
-        }
-        ++i.pen_uye;
-        i.pen_bayt += n;
-        if (kritik) {
-            i.pen_kritik += n;
-        }
     }
 }
 
@@ -258,15 +281,8 @@ void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
         sonraki_emniyet.reset();
     }
     dar_bu_pencerede.fill(false);
-    // Bekleyen daraltıcılar (A1-K61: türe 5 ms'de bir) pencere başında gider.
-    for (std::size_t t = 0; t < dar_bekleyen.size(); ++t) {
-        if (dar_bekleyen[t]) {
-            Komut k = *dar_bekleyen[t];
-            dar_bekleyen[t].reset();
-            komut_yaz(k);
-            dar_bu_pencerede[t] = true;
-        }
-    }
+    // Bekleyen daraltıcılar: tür kovası izin verdiğinde (A1-K61, K119; sol #10).
+    dar_hizmet();
     // Toplu komutlar (A1-K36): t_hazır ≤ t_{n−1}; partide ≤ 4, kredi ve kova içinde.
     kredi = std::min<std::int64_t>(kredi + kRc, kCcMax);
     std::size_t yazilan = 0;
@@ -295,14 +311,14 @@ void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
         }
         kova -= 1.0;
         kredi -= boy;
-        komut_yaz(k);
+        pen_bayt += komut_yaz(k);
         toplu.pop_front();
         ++yazilan;
     }
     say.komut_ertelendi += toplu.empty() ? 0u : (toplu.front().t_hazir <= t_onceki ? 1u : 0u);
 }
 
-std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn)
+std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn)
 {
     Ic& i = *ic_;
     i.duvar = duvar_ns;
@@ -312,9 +328,65 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         i.pen_kritik = 0;
         i.pen_bayt = 0;
         i.pen_emniyet.reset();
-        return 0;
+        i.pen_sensor.clear();
+        return std::nullopt;
     }
     std::size_t n = 0;
+    // A1-K113 sırası: (1) TF, (2) IMU, (3) emniyet, (4) daraltıcılar (pencerede yazıldı),
+    // (5) olay sonuçları, (6) diğer sensörler. (1)–(5) en çok 348 B'tır (E13); (6) B_krit'i
+    // aşarsa sırasının sonundan sonraki partiye kayar. Sayım gerçek kodlanmış boyladır (sol #9).
+    std::size_t kritik = 29u + i.pen_kritik;   // TF (kırpılmaz; E20) + daraltıcı komutlar
+    std::size_t ornek = 0;                     // A1-K34: IMU dışı örnek ≤ 16 (emniyet dahil)
+    // (2) IMU: partide 1 (A1-K34); önce kayan IMU. Fazlası IMU olarak sonraki partiye kayar.
+    std::vector<SensorUye> diger;     // (6): önce kayanlar kendi sıralarıyla, sonra yeniler
+    std::vector<SensorUye> imu_kayan;
+    diger.reserve(i.kayan.size() + i.pen_sensor.size());
+    auto imu_isle = [&](SensorUye& u) {
+        if (!i.pen_imu) {
+            kritik += i.uye_yaz(u);
+            i.pen_imu = true;
+            ++i.pen_uye;
+            if (u.gecersiz) {
+                ++i.say.gecersiz_ornek;
+            }
+        } else {
+            ++u.kayma;
+            ++i.say.kritik_erteleme;
+            i.say.kritik_erteleme_en_buyuk = std::max<std::uint64_t>(i.say.kritik_erteleme_en_buyuk, u.kayma);
+            imu_kayan.push_back(u);
+        }
+    };
+    for (SensorUye& u : i.kayan) {
+        if (u.tur == IDA_SENS_IMU) {
+            imu_isle(u);
+        } else {
+            diger.push_back(u);
+        }
+    }
+    i.kayan.clear();
+    std::vector<SensorUye> yeni;
+    yeni.reserve(i.pen_sensor.size());
+    for (SensorUye& u : i.pen_sensor) {
+        if (u.tur == IDA_SENS_IMU) {
+            imu_isle(u);
+        } else {
+            yeni.push_back(u);
+        }
+    }
+    i.pen_sensor.clear();
+    i.kayan = std::move(imu_kayan);
+    std::stable_sort(yeni.begin(), yeni.end(), [](const SensorUye& x, const SensorUye& y) {
+        if (x.t_hazir != y.t_hazir) {
+            return x.t_hazir < y.t_hazir;
+        }
+        if (x.tur != y.tur) {
+            return x.tur < y.tur;   // MAG, BARO, GNSS, DVL, PING1D, BATT, LEAK (A4 tür numarası)
+        }
+        return x.inst < y.inst;
+    });
+    for (SensorUye& u : yeni) {
+        diger.push_back(u);
+    }
     // Emniyet örneği (A1-K56).
     if (i.pen_emniyet) {
         const auto& o = *i.pen_emniyet;
@@ -388,8 +460,8 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         m.inst = o.hdr.inst;
         i.cerceve(MAVLINK_MSG_ID_IDA_SAFETY, &m, sizeof m, &n);
         ++i.pen_uye;
-        i.pen_bayt += n;
-        i.pen_kritik += n;
+        kritik += n;
+        ++ornek;
         i.pen_emniyet.reset();
     }
     // Olay sonuçları (A1-K111): yeni sonuçlar ≤ 4, sonra ≤ 1 saklı sonuç talebi.
@@ -400,8 +472,7 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         r.sess = i.sess_;
         i.cerceve(MAVLINK_MSG_ID_IDA_EVENT_RESULT, &r, sizeof r, &n);
         ++i.pen_uye;
-        i.pen_bayt += n;
-        i.pen_kritik += n;
+        kritik += n;
         ++s;
     }
     if (!i.sakli_talep.empty()) {
@@ -415,8 +486,7 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
             r.sess = i.sess_;
             i.cerceve(MAVLINK_MSG_ID_IDA_EVENT_RESULT, &r, sizeof r, &n);
             ++i.pen_uye;
-            i.pen_bayt += n;
-            i.pen_kritik += n;
+            kritik += n;
         } else {
             ++i.say.sonuc_talebi_atildi;
         }
@@ -424,35 +494,43 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         i.say.sonuc_talebi_atildi += i.sakli_talep.size();
         i.sakli_talep.clear();
     }
-    // Pencere bütçesi (A1-K113, K34): bu dilimde kaydırma yok, yalnız sayılır.
-    i.say.kritik_bayt_en_buyuk = std::max<std::uint64_t>(i.say.kritik_bayt_en_buyuk, i.pen_kritik + 29u);
-    if (i.pen_bayt + 29u > kBPencere) {
+    // (6) Diğer sensörler: B_krit ve A1-K34 örnek sınırı içinde; sığmayanlar sırasının sonundan
+    // başlayarak sonraki partiye kayar (sıra korunur).
+    for (SensorUye& u : diger) {
+        if (kritik + u.boy <= kBKrit && ornek < IDA_PORT_MAX_SAMPLES) {
+            kritik += i.uye_yaz(u);
+            ++i.pen_uye;
+            ++ornek;
+            if (u.gecersiz) {
+                ++i.say.gecersiz_ornek;
+            }
+        } else {
+            ++u.kayma;
+            ++i.say.kritik_erteleme;
+            i.say.kritik_erteleme_en_buyuk = std::max<std::uint64_t>(i.say.kritik_erteleme_en_buyuk, u.kayma);
+            i.kayan.push_back(u);
+        }
+    }
+    i.say.kritik_bayt_en_buyuk = std::max<std::uint64_t>(i.say.kritik_bayt_en_buyuk, kritik);
+    if (i.pen_bayt + kritik > kBPencere) {   // A1-K34, H20
         ++i.say.pencere_tasma;
         i.say.calistirma_gecersiz |= kGecPencereTasma;
     }
-    // TF(n).
+    // TF(n). batch_seq 2^32'de sarar; 0 geçerli bir değerdir (A1-K29, K123; sol #12).
     mavlink_ida_time_frame_t tf{};
     tf.t_sim_ns = t_n;
     tf.batch_seq = i.sonraki_seq++;
-    if (i.sonraki_seq == 0u) {
-        i.sonraki_seq = 1u;
-    }
     tf.sess = i.sess_;
     tf.n_members = static_cast<std::uint8_t>(std::min<std::uint16_t>(i.pen_uye, 255u));
     tf.tf_flags = static_cast<std::uint8_t>(i.pen_imu ? IDAW_TF_FLAGS_IMU : 0u);
     tf.run_mode = static_cast<std::uint8_t>(i.hazirlik_gerekli ? CalistirmaKipi::hazirlik : i.a.kip);
     i.cerceve(MAVLINK_MSG_ID_IDA_TIME_FRAME, &tf, sizeof tf);
-    if (!i.tf_var) {
-        i.tf_var = true;
-        i.ilk_seq = tf.batch_seq;
-        i.ilk_t = t_n;
-    }
+    i.tf_var = true;
     i.son_seq = tf.batch_seq;
-    i.tf_yazim[tf.batch_seq] = duvar_ns;
-    while (i.tf_yazim.size() > 512u) {
-        i.tf_yazim.erase(i.tf_yazim.begin());
-    }
+    i.tf_kayit.koy(tf.batch_seq, TfKaydi{t_n, duvar_ns});
+    i.yuva_sira.push_back(tf.batch_seq);
     Yuva& y = i.yuvalar[tf.batch_seq];
+    y = Yuva{};
     y.t_n = t_n;
     y.adim = static_cast<std::uint64_t>((t_n + kLact) / kH);
     if (w_tn >= 0) {
@@ -478,57 +556,85 @@ bool Kopru::yuva_tamam(std::uint32_t seq) const
 
 std::optional<YanitBilgisi> Kopru::yanit(std::uint32_t seq) const
 {
-    const auto it = ic_->gecen_yanit.find(seq);
-    if (it == ic_->gecen_yanit.end()) {
+    const mavlink_ida_actuator_t* a = ic_->gecen_yanit.bul(seq);
+    if (a == nullptr) {
         return std::nullopt;
     }
     YanitBilgisi y;
-    y.act_flags = it->second.act_flags;
+    y.act_flags = a->act_flags;
     for (std::size_t k = 0; k < 8; ++k) {
-        y.pwm_us[k] = it->second.pwm_us[k];
+        y.pwm_us[k] = a->pwm_us[k];
     }
-    y.fs_level = it->second.fs_level;
-    y.core_rc = it->second.core_rc;
-    y.out_seq = it->second.out_seq;
-    const auto ys = ic_->yanit_sure.find(seq);
-    if (ys != ic_->yanit_sure.end()) {
-        y.yanit_suresi_ns = ys->second;
+    y.fs_level = a->fs_level;
+    y.core_rc = a->core_rc;
+    y.out_seq = a->out_seq;
+    if (const std::int64_t* ys = ic_->yanit_sure.bul(seq)) {
+        y.yanit_suresi_ns = *ys;
     }
     return y;
+}
+
+void Kopru::sim_gecikmesi_bildir()
+{
+    ++ic_->say.sim_gecikmesi;
+    ic_->say.calistirma_gecersiz |= kGecSimGecikmesi;
 }
 
 const std::vector<std::int64_t>& Kopru::yanit_sureleri() const { return ic_->yanit_sureleri; }
 const std::vector<std::int64_t>& Kopru::sira_boslugu_zamanlari() const { return ic_->sira_boslugu_t; }
 
 std::uint32_t Kopru::son_parti() const { return ic_->tf_var ? ic_->son_seq : 0u; }
+bool Kopru::parti_gonderildi() const { return ic_->tf_var; }
 
 // ---------------------------------------------------------------- Komutlar
 
-void Kopru::Ic::komut_yaz(Komut& k)
+std::size_t Kopru::Ic::komut_yaz(Komut& k)
 {
+    std::size_t n = 0;
     switch (k.msgid) {
     case MAVLINK_MSG_ID_IDA_CMD_SIMPLE:
         k.basit.sess = sess_;
-        cerceve(k.msgid, &k.basit, sizeof k.basit);
+        cerceve(k.msgid, &k.basit, sizeof k.basit, &n);
         break;
     case MAVLINK_MSG_ID_IDA_CMD_GUIDED:
         k.guided.sess = sess_;
-        cerceve(k.msgid, &k.guided, sizeof k.guided);
+        cerceve(k.msgid, &k.guided, sizeof k.guided, &n);
         break;
     case MAVLINK_MSG_ID_IDA_CMD_PARAM_SET:
         k.param.sess = sess_;
-        cerceve(k.msgid, &k.param, sizeof k.param);
+        cerceve(k.msgid, &k.param, sizeof k.param, &n);
         break;
     case MAVLINK_MSG_ID_IDA_CMD_FC:
         k.fc.sess = sess_;
-        cerceve(k.msgid, &k.fc, sizeof k.fc);
+        cerceve(k.msgid, &k.fc, sizeof k.fc, &n);
         break;
     default:
-        return;
+        return 0;
     }
     ++pen_uye;
     oturum_komutlari.insert(k.cmd_id);
     sonuc_bekleyen.insert(k.cmd_id);
+    return n;
+}
+
+void Kopru::Ic::dar_hizmet()
+{
+    if (durum != OturumDurumu::kosuyor) {
+        return;
+    }
+    for (std::size_t t = 0; t < dar_bekleyen.size(); ++t) {
+        if (!dar_bekleyen[t]) {
+            continue;
+        }
+        dar_doldur(t);
+        if (dar_kova[t] >= 1.0 && !dar_bu_pencerede[t]) {
+            Komut k = *dar_bekleyen[t];
+            dar_bekleyen[t].reset();
+            dar_kova[t] -= 1.0;
+            pen_kritik += komut_yaz(k);
+            dar_bu_pencerede[t] = true;
+        }
+    }
 }
 
 std::uint32_t Kopru::Ic::komut_ekle(Komut k)
@@ -548,8 +654,10 @@ std::uint32_t Kopru::Ic::komut_ekle(Komut k)
     if (k.sinif == Sinif::daraltir) {
         ++dar_komut_bekleyen;   // A1-K106 (1): sonraki fizik sınırında revizyon artar
         const auto t = static_cast<std::size_t>(k.dar_tur);
-        if (!dar_bu_pencerede[t]) {
-            komut_yaz(k);   // kritik üye: t_hazır'da yazılır (A1-K35, K39)
+        dar_doldur(t);
+        if (!dar_bu_pencerede[t] && dar_kova[t] >= 1.0 && !dar_bekleyen[t]) {
+            dar_kova[t] -= 1.0;
+            pen_kritik += komut_yaz(k);   // kritik üye: t_hazır'da yazılır (A1-K35, K39)
             dar_bu_pencerede[t] = true;
         } else {
             if (dar_bekleyen[t]) {

@@ -125,33 +125,27 @@ public:
     TcpUcu(Soket s, std::string ad) : s_(s), ad_(std::move(ad)) {}
     ~TcpUcu() override { kapat(); }
 
-    bool yaz(const std::uint8_t* p, std::size_t n) override
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
     {
-        std::size_t yazilan = 0;
-        while (yazilan < n && s_ != kGecersiz) {
-            const std::size_t kalan = std::min<std::size_t>(n - yazilan, std::size_t{1} << 20U);
-#if defined(_WIN32)
-            const int k = ::send(s_, reinterpret_cast<const char*>(p + yazilan), static_cast<int>(kalan), 0);
-#elif defined(MSG_NOSIGNAL)
-            const ssize_t k = ::send(s_, p + yazilan, kalan, MSG_NOSIGNAL);
-#else
-            const ssize_t k = ::send(s_, p + yazilan, kalan, 0);
-#endif
-            if (k > 0) {
-                yazilan += static_cast<std::size_t>(k);
-                continue;
-            }
-            if (k < 0 && bekliyor_hatasi(son_hata())) {
-                if (bekle(s_, true, 1'000'000) < 0) {
-                    kapat();
-                    return false;
-                }
-                continue;
-            }
-            kapat();
-            return false;
+        if (s_ == kGecersiz) {
+            return -1;
         }
-        return yazilan == n;
+        const std::size_t kalan = std::min<std::size_t>(n, std::size_t{1} << 20U);
+#if defined(_WIN32)
+        const int k = ::send(s_, reinterpret_cast<const char*>(p), static_cast<int>(kalan), 0);
+#elif defined(MSG_NOSIGNAL)
+        const ssize_t k = ::send(s_, p, kalan, MSG_NOSIGNAL);
+#else
+        const ssize_t k = ::send(s_, p, kalan, 0);
+#endif
+        if (k >= 0) {
+            return static_cast<long long>(k);
+        }
+        if (bekliyor_hatasi(son_hata())) {
+            return 0;
+        }
+        kapat();
+        return -1;
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override

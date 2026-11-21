@@ -9,6 +9,7 @@
 //   acil_durdurma   kabul 4 (EMNİYET): acil durdurma etkinken fiziğe giden darbe genişliği nötr
 //   hil_pty         kabul 7: HIL 1x, sözde uçbirim + kart rolünde karşı taraf, 60 s; gerçek
 //                   zaman kaçırma sayacı ve TF periyot dağılımı (ölçüm; eşik yok)
+//   hil_cikarma_takma  HIL 1x, sözde uçbirim; 5 s'de aygıt kalkar, 7 s'de takılır (A1-K23, H29)
 #include "ida/port.h"
 #include "ida/sunucu/sunucu.hpp"
 #include "zincir.hpp"
@@ -334,12 +335,68 @@ int test_hil_pty()
     return 0;
 }
 
+// sol #8 (A1-K23, H29): HIL'de aygıt kalkar ve geri takılır. Fizik durmaz ve kesintide
+// iticiler nötrdür; sim portu 1 s aralıkla yeniden açmayı dener; takıldıktan sonra yeni el
+// sıkışma kurulur ve yanıtlar yeniden uygulanır; çalıştırma geçersiz işaretlenir.
+int test_hil_cikarma_takma()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 1;
+    a.kip = ida::sunucu::Kip::hil;
+    a.karsi = ida::sunucu::Karsi::pty;
+    a.sure_s = 12.0;
+    a.pty_cikarma_s = 5.0;
+    a.pty_takma_s = 7.0;
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    dogrula(s.tamam, "koşu tamamlandı " + s.hata);
+    dogrula(s.baglanti_kopma == 1u, "bağlantı kaybı görüldü (" + std::to_string(s.baglanti_kopma) + ")");
+    dogrula(s.port_acma_denemesi >= 2u && s.port_acildi == 1u,
+            "port 1 s aralıkla yeniden açılmaya çalışıldı (deneme " + std::to_string(s.port_acma_denemesi) +
+                ", açıldı " + std::to_string(s.port_acildi) + ")");
+    dogrula((s.sayac.calistirma_gecersiz & ida::kopru::kGecPlanlanmamisBitis) != 0u, "çalıştırma geçersiz (A1-K79)");
+    // Satırlar: fizik kesintisiz (her kontrol periyodunda bir satır).
+    bool kesintisiz = !s.satirlar.empty();
+    for (std::size_t i = 1; i < s.satirlar.size(); ++i) {
+        kesintisiz = kesintisiz && std::fabs(s.satirlar[i].t_s - s.satirlar[i - 1].t_s - 0.005) < 1e-9;
+    }
+    dogrula(kesintisiz && s.satirlar.back().t_s > 11.9, "fizik durmadan sürdü (son satır " + sayi(s.satirlar.back().t_s) + " s)");
+    std::uint16_t sess_once = 0, sess_sonra = 0;
+    std::size_t kesinti = 0, notr_disi = 0, sonra_yanit = 0, sonra = 0;
+    for (const auto& r : s.satirlar) {
+        if (r.t_s > 4.0 && r.t_s < 5.0 && r.sess != 0u) {
+            sess_once = r.sess;
+        }
+        if (r.t_s > 5.1 && r.t_s < 6.9) {
+            ++kesinti;
+            for (double f : r.itki_istegi) {
+                if (f != 0.0) {
+                    ++notr_disi;
+                    break;
+                }
+            }
+        }
+        if (r.t_s > 9.0) {
+            ++sonra;
+            sonra_yanit += r.yanit_var != 0u ? 1u : 0u;
+            if (r.sess != 0u) {
+                sess_sonra = r.sess;
+            }
+        }
+    }
+    dogrula(kesinti > 300u && notr_disi == 0u, "kesintide iticiler nötr (" + std::to_string(notr_disi) + " nötr dışı satır)");
+    dogrula(sess_once != 0u && sess_sonra != 0u && sess_sonra != sess_once,
+            "yeni oturum (sess " + std::to_string(sess_once) + " → " + std::to_string(sess_sonra) + ")");
+    dogrula(sonra > 0u && sonra_yanit == sonra, "takıldıktan sonra yanıtlar uygulanıyor (" + std::to_string(sonra_yanit) +
+                                                     "/" + std::to_string(sonra) + ")");
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
 {
     if (argc < 2) {
-        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|acil_durdurma|hil_pty>\n");
+        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|acil_durdurma|hil_pty|hil_cikarma_takma>\n");
         return 2;
     }
     const std::string ad = argv[1];
@@ -353,6 +410,8 @@ int main(int argc, char** argv)
         (void)test_acil_durdurma();
     } else if (ad == "hil_pty") {
         (void)test_hil_pty();
+    } else if (ad == "hil_cikarma_takma") {
+        (void)test_hil_cikarma_takma();
     } else {
         std::printf("bilinmeyen test: %s\n", ad.c_str());
         return 2;

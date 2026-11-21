@@ -2,11 +2,35 @@
 #include "ida/kopru/tasima.hpp"
 
 #include <chrono>
+#include <thread>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 
 namespace ida::kopru {
+
+bool Tasima::yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us)
+{
+    const auto son = std::chrono::steady_clock::now() + std::chrono::microseconds(sure_us);
+    std::size_t yazilan = 0;
+    while (yazilan < n) {
+        const long long k = yaz_biraz(p + yazilan, n - yazilan);
+        if (k < 0) {
+            return false;
+        }
+        yazilan += static_cast<std::size_t>(k);
+        if (yazilan < n) {
+            if (std::chrono::steady_clock::now() >= son) {
+                return false;
+            }
+            if (k == 0) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+        }
+    }
+    return true;
+}
+
 namespace {
 
 struct Ortak {
@@ -21,18 +45,18 @@ public:
     BellekUcu(std::shared_ptr<Ortak> o, int ben) : o_(std::move(o)), ben_(ben) {}
     ~BellekUcu() override { kapat(); }
 
-    bool yaz(const std::uint8_t* p, std::size_t n) override
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
     {
         {
             const std::lock_guard<std::mutex> k(o_->m);
             if (o_->kapali) {
-                return false;
+                return -1;
             }
             auto& q = o_->yon[1 - ben_];
             q.insert(q.end(), p, p + n);
         }
         o_->cv.notify_all();
-        return true;
+        return static_cast<long long>(n);
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override

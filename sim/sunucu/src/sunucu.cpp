@@ -123,15 +123,80 @@ private:
     }
 
     // ---- G/Ç ----
+    // Gönderim yolu (sol #7): köprünün baytları bekleyen tampona eklenir; tampon engellemeden,
+    // kısmi yazımın konumu korunarak boşaltılır. Döngü yazıma hiçbir zaman süresiz bağlanmaz:
+    // ilerleme yoksa sonraki çağrıda (her bekleme uyanmasında) yeniden denenir. Yazma hatası
+    // ya da T_bağ (HIL; SIL'de T_SIL) boyunca ilerlemeyen yazım bağlantı kaybıdır (A1-K23).
     void yaz()
     {
         k_->giden_al(tampon_);
-        if (!tampon_.empty() && tas_ && tas_->acik()) {
-            const std::int64_t e0 = gercek();
-            (void)tas_->yaz(tampon_.data(), tampon_.size());
-            evre_[kEvreYaz] += gercek() - e0;
+        if (!tas_) {
+            cikis_.clear();
+            cikis_k_ = 0;
+            return;
         }
+        if (!tampon_.empty()) {
+            if (cikis_k_ >= cikis_.size()) {
+                cikis_.clear();
+                cikis_k_ = 0;
+                cikis_ilerleme_ = gercek();
+            }
+            cikis_.insert(cikis_.end(), tampon_.begin(), tampon_.end());
+        }
+        cikis_hizmet();
     }
+
+    void cikis_hizmet()
+    {
+        if (!tas_ || cikis_k_ >= cikis_.size()) {
+            return;
+        }
+        const std::int64_t e0 = gercek();
+        for (int j = 0; j < 8 && cikis_k_ < cikis_.size(); ++j) {
+            const long long k = tas_->yaz_biraz(cikis_.data() + cikis_k_, cikis_.size() - cikis_k_);
+            if (k < 0) {
+                baglanti_koptu("yazma hatası");
+                return;
+            }
+            if (k == 0) {
+                break;
+            }
+            cikis_k_ += static_cast<std::size_t>(k);
+            cikis_ilerleme_ = gercek();
+        }
+        if (cikis_k_ >= cikis_.size()) {
+            cikis_.clear();
+            cikis_k_ = 0;
+        } else {
+            const std::int64_t sinir = a_.kip == Kip::hil ? k_->ayar().t_bag_ns : a_.t_sil_ns;
+            if (gercek() - cikis_ilerleme_ > sinir || cikis_.size() - cikis_k_ > (std::size_t{1} << 20U)) {
+                ++s_.yazma_takilma;
+                baglanti_koptu("yazma ilerlemiyor");
+                return;
+            }
+        }
+        evre_[kEvreYaz] += gercek() - e0;
+    }
+
+    // Bağlantı kaybı (A1-K23): oturum biter (iticiler sonraki sınırdan nötr, izinler kapanır;
+    // fizik sürer), taşıma kapatılır; HIL'de port 1 s aralıkla yeniden açılmaya çalışılır.
+    void baglanti_koptu(const char* neden)
+    {
+        gunluk(1, std::string("bağlantı kaybı: ") + neden);
+        ++s_.baglanti_kopma;
+        k_->akis_kapandi(duvar());
+        if (tas_) {
+            tas_->kapat();
+            tas_.reset();
+        }
+        cikis_.clear();
+        cikis_k_ = 0;
+        sonraki_acma_ = gercek() + kYenidenAcma;
+    }
+
+    // HIL: taşıma yoksa portu 1 s aralıkla yeniden açar; açılınca yeni el sıkışma (A1-K23, H29).
+    void baglanti_bakim();
+    std::unique_ptr<kopru::Tasima> port_ac(std::string& hata);
 
     // Eldeki baytları köprüye verir; ilk okuma en çok bekle_us bekler.
     void pompa(std::int64_t bekle_us)
@@ -140,6 +205,7 @@ private:
             (void)ic_->pompala();
             bekle_us = 0;
         }
+        cikis_hizmet();
         if (!tas_) {
             return;
         }
@@ -158,8 +224,7 @@ private:
                 continue;
             }
             if (r == kopru::OkumaSonucu::kapandi) {
-                k_->akis_kapandi(duvar());
-                tas_.reset();
+                baglanti_koptu("taşıma kapandı (aygıt kalktı ya da karşı uç kapattı)");
             }
             break;
         }
@@ -193,7 +258,7 @@ private:
     void senaryo_kur();
     bool sinir_on(std::uint64_t b);
     void adim_sonrasi(std::uint64_t b);
-    void satir_ekle(std::uint64_t b, std::uint32_t seq);
+    void satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq);
     void satir_tamamla(Satir& r);
     void csv_yaz(const Satir& r);
     void evre_ozeti_kur();
@@ -215,6 +280,13 @@ private:
     Saat::time_point bas_ = Saat::now();
     std::int64_t sil_duvar_ = 0;
     std::vector<std::uint8_t> tampon_;
+    std::vector<std::uint8_t> cikis_;       // gönderilmeyi bekleyen baytlar
+    std::size_t cikis_k_ = 0;               // cikis_'te yazılmış önek
+    std::int64_t cikis_ilerleme_ = 0;       // son ilerleme anı (gercek)
+    std::int64_t sonraki_acma_ = 0;         // HIL: sonraki yeniden açma denemesi (gercek)
+    static constexpr std::int64_t kYenidenAcma = 1'000'000'000;   // A1-K23: 1 s
+    bool pty_cikarildi_ = false;
+    bool pty_takildi_ = false;
     std::vector<std::uint8_t> alim_;
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
@@ -224,6 +296,7 @@ private:
     std::size_t olay_i_ = 0;
     std::array<double, 8> pwm_yur_{};
     std::array<double, 8> son_pwm_yur_{};
+    std::string pty_yol_;
     bool estop_bu_adim_ = false;
     bool onceki_estop_ = false;       // satırın adımının (t − h, t] acil durdurma durumu
     std::uint32_t id_arm_ = 0, id_kip_ = 0, id_sp_ = 0, id_sp2_ = 0, id_disarm_ = 0;
@@ -232,6 +305,75 @@ private:
     std::int64_t son_tf_yazim_ = -1;
     std::int64_t w0_ = 0;
 };
+
+std::unique_ptr<kopru::Tasima> Calistirici::port_ac(std::string& hata)
+{
+    if (a_.karsi == Karsi::seri) {
+        return kopru::seri_ac(a_.seri, kopru::SeriAyar{}, hata);
+    }
+    if (a_.karsi != Karsi::pty) {
+        hata = "yeniden açılacak port yok";
+        return nullptr;
+    }
+    // Kartsız sınama: takma anı gelmeden "aygıt" yoktur; gelince yeni bir sözde uçbirim açılır
+    // ve kart rolündeki karşı taraf ana uca bağlanır.
+    if (!pty_takildi_) {
+        if (a_.pty_takma_s < 0.0 || static_cast<double>(dn_.zaman_ns()) * 1e-9 < a_.pty_takma_s) {
+            hata = "aygıt yok";
+            return nullptr;
+        }
+        kopru::SozdeUcbirim su = kopru::sozde_ucbirim_ac(hata);
+        if (!su.ana) {
+            return nullptr;
+        }
+        pty_yol_ = su.yol;
+        if (karsi_is_.joinable()) {
+            dur_ = true;
+            karsi_is_.join();
+        }
+        ic_->tasima_degistir(std::move(su.ana));
+        dur_ = false;
+        karsi_is_ = std::thread([this] { ic_->calistir([this] { return dur_.load(); }); });
+        pty_takildi_ = true;
+    }
+    kopru::SeriAyar sea;
+    sea.hiz_zorunlu = false;
+    return kopru::seri_ac(pty_yol_, sea, hata);
+}
+
+void Calistirici::baglanti_bakim()
+{
+    if (a_.kip != Kip::hil) {
+        return;
+    }
+    // Kartsız sınama: aygıtın kalkması (ana uç kapanır; sim bunu okumada görür).
+    if (a_.karsi == Karsi::pty && a_.pty_cikarma_s >= 0.0 && !pty_cikarildi_ &&
+        static_cast<double>(dn_.zaman_ns()) * 1e-9 >= a_.pty_cikarma_s) {
+        pty_cikarildi_ = true;
+        dur_ = true;
+        if (karsi_is_.joinable()) {
+            karsi_is_.join();
+        }
+        ic_->tasima_degistir(nullptr);
+        gunluk(1, "sınama: aygıt çıkarıldı");
+    }
+    if (tas_ || gercek() < sonraki_acma_) {
+        return;
+    }
+    sonraki_acma_ = gercek() + kYenidenAcma;
+    ++s_.port_acma_denemesi;
+    std::string hata;
+    tas_ = port_ac(hata);
+    if (!tas_) {
+        gunluk(2, "port açılamadı: " + hata);
+        return;
+    }
+    ++s_.port_acildi;
+    ++s_.yeniden_baglanti;
+    gunluk(1, "port yeniden açıldı: " + tas_->ad() + "; yeni el sıkışma");
+    tas_->giris_bosalt();   // A1-K12
+    k_->el_sikisma_baslat(duvar());
+}
 
 bool Calistirici::baglanti_kabul()
 {
@@ -311,14 +453,14 @@ bool Calistirici::hazirlik()
         } else {
             bekle_ve_oku(gercek() + kP);
         }
-        const std::uint32_t seq = k_->parti_kapat(t_h, duvar());
+        const std::optional<std::uint32_t> seq = k_->parti_kapat(t_h, duvar());
         yaz();
-        if (seq == 0u) {
+        if (!seq) {
             s_.hata = "hazırlık oturumu koptu";
             return false;
         }
         if (a_.kip == Kip::sil) {
-            if (!yuva_bekle(seq)) {
+            if (!yuva_bekle(*seq)) {
                 return false;
             }
         } else {
@@ -517,7 +659,7 @@ void Calistirici::adim_sonrasi(std::uint64_t b)
     }
 }
 
-void Calistirici::satir_ekle(std::uint64_t b, std::uint32_t seq)
+void Calistirici::satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq)
 {
     if (satir_bekliyor_) {
         satir_tamamla(s_.satirlar.back());
@@ -525,7 +667,8 @@ void Calistirici::satir_ekle(std::uint64_t b, std::uint32_t seq)
     const fizik::DurumAnlik& d = dn_.durum();
     Satir r;
     r.t_s = static_cast<double>(b) * 1.25e-3;
-    r.parti = seq;
+    r.parti = seq.value_or(0u);
+    r.parti_var = seq.has_value();
     r.derinlik = d.konum_n[2];
     const Euler e = euler(d.yonelim[0], d.yonelim[1], d.yonelim[2], d.yonelim[3]);
     r.yon = e.yon;
@@ -549,7 +692,7 @@ void Calistirici::satir_ekle(std::uint64_t b, std::uint32_t seq)
 void Calistirici::satir_tamamla(Satir& r)
 {
     satir_bekliyor_ = false;
-    const auto y = r.parti != 0u ? k_->yanit(r.parti) : std::nullopt;
+    const auto y = r.parti_var ? k_->yanit(r.parti) : std::nullopt;
     if (y) {
         r.yanit_var = 1;
         r.thr_valid = (y->act_flags & kActThr) != 0u ? 1u : 0u;
@@ -822,8 +965,10 @@ Sonuc Calistirici::kos()
             // A1-K108: uygulama anları a_n kontrol sınırlarıdır (L_act = 2P).
             if (b % kopru::kPeriyotAdim == 0 && gercek() > w0_ + t_b) {
                 ++s_.zaman.sim_gecikmesi;
+                k_->sim_gecikmesi_bildir();   // A1-K108, K79 ortak yol (sol #6)
             }
         }
+        baglanti_bakim();
         if (!sinir_on(b)) {
             break;
         }
@@ -842,10 +987,11 @@ Sonuc Calistirici::kos()
                 s_.t_disarm_ns = t_b;   // DISARM'ı taşıyan partinin kapanışı
             }
             const std::int64_t yazim = gercek();
-            seq = k_->parti_kapat(t_b, duvar(), a_.kip == Kip::hil ? w0_ + t_b : -1);
+            const std::optional<std::uint32_t> gon = k_->parti_kapat(t_b, duvar(), a_.kip == Kip::hil ? w0_ + t_b : -1);
             evre_[kEvreParti] += gercek() - yazim;
             yaz();
-            if (seq != 0u) {
+            if (gon) {
+                seq = *gon;
                 tf_yazim.push_back(yazim);
                 son_tf_yazim_ = yazim;
                 if (a_.kip == Kip::hil) {
@@ -854,9 +1000,9 @@ Sonuc Calistirici::kos()
                 }
             }
             const std::int64_t e_s = gercek();
-            satir_ekle(b, seq);
+            satir_ekle(b, gon);
             evre_[kEvreSatir] += gercek() - e_s;
-            if (a_.kip == Kip::sil && seq != 0u && !yuva_bekle(seq)) {
+            if (a_.kip == Kip::sil && gon && !yuva_bekle(seq)) {
                 break;
             }
         } else {

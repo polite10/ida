@@ -70,12 +70,18 @@ struct Ayar {
     int gunluk = 1;                 // 0 sessiz, 1 özet, 2 ayrıntı (stderr)
     std::int64_t t_sil_ns = 5'000'000'000;   // A1-K76 T_SIL (duvar)
     std::int64_t baglanti_bekleme_ns = 20'000'000'000;
+    // pty (kartsız sınama; sol #8): aygıtın kalkması ve geri takılması. cikarma anında sözde
+    // uçbirimin ana ucu kapatılır (işletim sistemi aygıtın kalktığını bildirir); takma anından
+    // sonraki ilk yeniden açma denemesi yeni bir sözde uçbirim açar. < 0: yok.
+    double pty_cikarma_s = -1.0;
+    double pty_takma_s = -1.0;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
 struct Satir {
     double t_s = 0.0;
     std::uint32_t parti = 0;
+    bool parti_var = false;          // bu adımda parti gönderildi (batch_seq 0 da geçerlidir)
     double derinlik = 0.0, derinlik_k = 0.0;
     double yon = 0.0, yon_k = 0.0;
     double yalpa = 0.0, yalpa_k = 0.0;
@@ -136,6 +142,11 @@ struct Sonuc {
     std::uint64_t estop_adim = 0;        // acil durdurma etkin geçen fizik adımı
     std::uint64_t hazirlik_oturumu = 0;  // A1-K19 hazırlık oturumu sayısı
     std::uint64_t yeniden_baglanti = 0;
+    // HIL bağlantı kaybı (A1-K23, H29; sol #7, #8).
+    std::uint64_t baglanti_kopma = 0;          // aygıt kalktı ya da yazma başarısız / ilerlemiyor
+    std::uint64_t port_acma_denemesi = 0;      // 1 s aralıklı yeniden açma denemeleri
+    std::uint64_t port_acildi = 0;
+    std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;

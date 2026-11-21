@@ -1,6 +1,7 @@
 // Taşıma sınamaları: bellek, TCP (A1-K97) ve sözde uçbirimle seri port yolu (A1-K01).
 #include "test_destek.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -118,18 +119,10 @@ int test_pty_tasima()
     struct AnaUc final : Tasima {
         int fd;
         explicit AnaUc(int f) : fd(f) {}
-        bool yaz(const std::uint8_t* p, std::size_t n) override
+        long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
         {
-            std::size_t y = 0;
-            while (y < n) {
-                const ssize_t k = ::write(fd, p + y, n - y);
-                if (k > 0) {
-                    y += static_cast<std::size_t>(k);
-                } else {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-                }
-            }
-            return true;
+            const ssize_t k = ::write(fd, p, n);
+            return k > 0 ? static_cast<long long>(k) : 0;
         }
         OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
         {
@@ -156,6 +149,104 @@ int test_pty_tasima()
     DOGRULA(d, aktar(au, *seri, 50'000), "pty ana → seri (ham kip: bayt çevirisi yok)");
     seri->kapat();
     ::close(ana);
+#endif
+    return d.hata;
+}
+
+// sol #7: yazım süresiz tutmaz. Okumayan bir TCP karşı ucuna 64 MiB yazmak sınırlı sürede
+// başarısız döner (eski döngü: 1 s beklemelerle sonsuza dek); yaz_biraz hiçbir zaman beklemez;
+// kısmi yazımlar konum korunarak birleşir.
+int test_yazma_sinirli()
+{
+    Denetci d;
+    std::string hata;
+    auto din = tcp_dinle(0, hata);
+    DOGRULA(d, din != nullptr, "dinleyici " + hata);
+    if (!din) {
+        return d.hata;
+    }
+    auto istemci = tcp_baglan(din->port(), hata);
+    auto sunucu = din->kabul(1'000'000, hata);
+    DOGRULA(d, istemci && sunucu, "bağlantı " + hata);
+    if (!istemci || !sunucu) {
+        return d.hata;
+    }
+    std::vector<std::uint8_t> v(64u << 20U, 0x5Au);
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool ok = sunucu->yaz(v.data(), v.size(), 300'000);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    DOGRULA(d, !ok, "okumayan karşı uca yazım başarısız döndü");
+    DOGRULA(d, ms < 2000, "sınırlı sürede (" + std::to_string(ms) + " ms; sınır 300 ms + bir dilim)");
+    // Tampon doluyken yaz_biraz beklemeden 0 döner.
+    const auto t1 = std::chrono::steady_clock::now();
+    const long long k = sunucu->yaz_biraz(v.data(), 4096);
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t1).count();
+    DOGRULA(d, k == 0 && us < 50'000, "dolu tamponda yaz_biraz 0 ve beklemesiz (" + std::to_string(us) + " µs)");
+
+    // Kısmi yazım: her çağrıda en çok 3 bayt yazan, her ikinci çağrıda ilerlemeyen uç.
+    struct Kisitli final : Tasima {
+        std::vector<std::uint8_t> al;
+        int sayac = 0;
+        long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
+        {
+            if (++sayac % 2 == 0) {
+                return 0;
+            }
+            const std::size_t k = std::min<std::size_t>(n, 3);
+            al.insert(al.end(), p, p + k);
+            return static_cast<long long>(k);
+        }
+        OkumaSonucu oku(std::uint8_t*, std::size_t, std::int64_t, std::size_t& o) override
+        {
+            o = 0;
+            return OkumaSonucu::zaman_asimi;
+        }
+        void giris_bosalt() override {}
+        bool acik() const override { return true; }
+        void kapat() override {}
+        std::string ad() const override { return "kisitli"; }
+    } ks;
+    std::vector<std::uint8_t> w(1000);
+    for (std::size_t j = 0; j < w.size(); ++j) {
+        w[j] = static_cast<std::uint8_t>(j * 7u);
+    }
+    DOGRULA(d, ks.yaz(w.data(), w.size(), 2'000'000) && ks.al == w, "kısmi ve ilerlemesiz yazımlar birleşti");
+    return d.hata;
+}
+
+// sol #8: sözde uçbirimin ana ucu kapanınca (aygıt kalktı) seri uç okumada `kapandi` görür.
+int test_aygit_kalkti()
+{
+    Denetci d;
+#if defined(_WIN32)
+    std::printf("  atlandı: sözde uçbirim Windows'ta yok\n");
+#else
+    std::string hata;
+    SozdeUcbirim su = sozde_ucbirim_ac(hata);
+    DOGRULA(d, su.ana != nullptr, "sözde uçbirim " + hata);
+    if (!su.ana) {
+        return d.hata;
+    }
+    SeriAyar sa;
+    sa.hiz_zorunlu = false;
+    auto seri = seri_ac(su.yol, sa, hata);
+    DOGRULA(d, seri != nullptr, "seri_ac " + hata);
+    if (!seri) {
+        return d.hata;
+    }
+    std::uint8_t t[64];
+    std::size_t n = 0;
+    DOGRULA(d, seri->oku(t, sizeof t, 1000, n) == OkumaSonucu::zaman_asimi, "veri yokken zaman aşımı");
+    const std::uint8_t m[3] = {1, 2, 3};
+    DOGRULA(d, su.ana->yaz(m, 3), "ana uç yazdı");
+    DOGRULA(d, seri->oku(t, sizeof t, 100'000, n) == OkumaSonucu::tamam && n == 3u, "veri okundu");
+    su.ana.reset();   // ana uç kapanır: aygıt kalktı
+    OkumaSonucu r = OkumaSonucu::zaman_asimi;
+    for (int j = 0; j < 50 && r == OkumaSonucu::zaman_asimi; ++j) {
+        r = seri->oku(t, sizeof t, 10'000, n);
+    }
+    DOGRULA(d, r == OkumaSonucu::kapandi, "aygıtın kalkması okumada görüldü");
+    DOGRULA(d, !seri->acik(), "uç kapatıldı");
 #endif
     return d.hata;
 }

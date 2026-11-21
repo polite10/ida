@@ -28,8 +28,12 @@ enum class OkumaSonucu {
 class Tasima {
 public:
     virtual ~Tasima() = default;
-    // n baytın tamamını yazar (kısmi yazımları birleştirir). false: kapandı ya da hata.
-    virtual bool yaz(const std::uint8_t* p, std::size_t n) = 0;
+    // Engellemeden yazabildiği kadarını yazar (sol #7): dönüş yazılan bayt (0: şu an ilerleme
+    // yok), −1: kapandı ya da hata. Kısmi yazımın konumunu çağıran tutar.
+    virtual long long yaz_biraz(const std::uint8_t* p, std::size_t n) = 0;
+    // n baytın tamamını en çok sure_us içinde yazar (kısmi yazımları birleştirir, ilerlemesiz
+    // yazımda kısa uykuyla bekler). false: kapandı, hata ya da süre doldu (bağlantı sorunu).
+    bool yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us = 2'000'000);
     // En az 1, en çok n bayt okur; en çok bekle_us mikrosaniye bekler (0: beklemez).
     virtual OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us,
                             std::size_t& okunan) = 0;

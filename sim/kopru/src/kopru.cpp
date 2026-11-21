@@ -159,7 +159,8 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     sakli_talep.clear();
     birlesik_seq.clear();
     tf_var = false;
-    tf_yazim.clear();
+    tf_kayit.temizle();
+    yuva_sira.clear();
     out_seq_var = false;
     pen_uye = 0;
     pen_imu = false;
@@ -167,6 +168,8 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     pen_bayt = 0;
     pen_emniyet.reset();
     sonraki_emniyet.reset();
+    pen_sensor.clear();
+    kayan.clear();
     // Sonucu gelmemiş ve gönderilmemiş komutlar (A1-K23: LINK_SESSION_END).
     for (std::uint32_t id : sonuc_bekleyen) {
         yerel_sonuc(id, static_cast<std::uint8_t>(IDAW_ACK_REJECTED),
@@ -212,12 +215,13 @@ void Kopru::Ic::yerel_sonuc(std::uint32_t cmd_id, std::uint8_t ack, std::uint16_
 
 bool Kopru::Ic::tf_gonderildi(std::uint32_t seq) const
 {
-    return tf_var && (seq - ilk_seq) <= (son_seq - ilk_seq);
+    return tf_kayit.bul(seq) != nullptr;
 }
 
 std::int64_t Kopru::Ic::tf_zamani(std::uint32_t seq) const
 {
-    return ilk_t + static_cast<std::int64_t>(seq - ilk_seq) * kP;
+    const TfKaydi* k = tf_kayit.bul(seq);
+    return k != nullptr ? k->t : -1;
 }
 
 // ---------------------------------------------------------------- El sıkışma (A1-K14 … K18)
@@ -593,6 +597,7 @@ Kopru::Kopru(const KopruAyari& ayar) : ic_(std::make_unique<Ic>())
 {
     Ic& i = *ic_;
     i.a = ayar;
+    i.sonraki_seq = ayar.ilk_batch_seq;
     i.belirlenimci = ayar.kip == CalistirmaKipi::sil;
     if (i.a.dialect_hash == 0) {
         i.a.dialect_hash = IDA_LINK_DIALECT_HASH;
