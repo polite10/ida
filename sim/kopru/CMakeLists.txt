@@ -1,0 +1,72 @@
+# sim/kopru — sim sunucusunun A1 köprüsü (W4-kopru): taşıma (bellek, TCP, seri port), sim
+# rolünde oturum, parti, yanıt ve olay uygulaması, operatör komutları; süreç içi karşı taraf.
+#
+#   ida_kopru         köprü ve taşıma (fizik bağımsız; Eigen/vcpkg gerekmez)
+#   ida_kopru_karsi   süreç içi karşı taraf: ida_link üst katmanı + gerçek çekirdek (sınama ve
+#                     `ida_sim --karsi ic`)
+#   ida_kopru_test    CTest: sim.kopru.*
+#
+# PC tarafı: C++20, CXX_EXTENSIONS OFF; uyarı politikası cmake/IdaAyarlar.cmake'den.
+
+find_package(Threads REQUIRED)
+
+function(ida_kopru_ayar hedef)
+  ida_ayar_uygula(${hedef})
+  if(NOT MSVC)
+    target_compile_options(${hedef} PRIVATE -Wshadow)
+  endif()
+endfunction()
+
+add_library(ida_kopru STATIC
+  src/kopru.cpp
+  src/kopru_parti.cpp
+  src/kopru_sinir.cpp
+  src/param_blogu.cpp
+  src/tasima_bellek.cpp
+  src/tasima_tcp.cpp
+  src/tasima_seri.cpp)
+target_include_directories(ida_kopru
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+# ida_sensor: ölçüm tipleri ve A5 Ek D türetimi; ida_core: ida_core_info (A1-K14); ida_link:
+# tel katmanı.
+target_link_libraries(ida_kopru PUBLIC ida_sensor ida_core ida_link Threads::Threads)
+if(WIN32)
+  target_link_libraries(ida_kopru PUBLIC ws2_32)
+endif()
+ida_kopru_ayar(ida_kopru)
+
+add_library(ida_kopru_karsi STATIC src/karsi.cpp)
+target_include_directories(ida_kopru_karsi PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ida_kopru_karsi PUBLIC ida_kopru ida_link_ust ida_core)
+ida_kopru_ayar(ida_kopru_karsi)
+
+add_executable(ida_kopru_test
+  test/test_ana.cpp
+  test/test_oturum.cpp
+  test/test_yuva.cpp
+  test/test_emniyet.cpp
+  test/test_tasima.cpp)
+target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
+target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
+ida_kopru_ayar(ida_kopru_test)
+
+set(_ida_kopru_testleri
+  d7_vektorleri          # A5 Ek D.7 (A1-K114, K126)
+  el_sikisma             # kabul 1
+  on_bin_parti           # kabul 1, 2
+  kopma_yeniden          # kabul 1
+  yanlis_dialect         # kabul 1
+  yuva_zamanlama         # kabul 3: L_act, geç yanıt, süre dolumu
+  eszamansiz_guvenli     # kabul 3: A1-K78
+  olay_izin_yok          # kabul 4 (EMNİYET)
+  olay_yinelenen         # kabul 4
+  olay_suresi_gecmis     # kabul 4
+  olay_fire_kabul        # kabul 4: yetkili durumda FIRE yalnız tüpü boşaltır
+  emniyet_ornegi         # A1-K56: partide ≤ 1, kapanma önce
+  bellek_tasima
+  tcp_tasima
+  pty_tasima)
+foreach(_ad IN LISTS _ida_kopru_testleri)
+  add_test(NAME sim.kopru.${_ad} COMMAND ida_kopru_test ${_ad})
+endforeach()

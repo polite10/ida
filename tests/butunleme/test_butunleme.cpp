@@ -1,0 +1,362 @@
+// Bütünleme testleri (W4-kopru kabul 4–7): `ida_sim`'in kitaplığı (ida_sunucu) üzerinden Z1'in
+// A1 mesajlarıyla koşusu.
+//
+//   z1_sil_ic       kabul 5: süreç içi karşı taraf (ida_link + gerçek çekirdek); W3-zincir
+//                   sınırları (tests/zincir/test_zincir.cpp ile aynı değerler) ve aynı süreçteki
+//                   Z1 ile farklar (yazdırılır); kabul 2: çekirdeğin reddettiği örnek 0
+//   z1_belirlenim   kabul 6: aynı tohumla iki SIL koşusu aynı CSV
+//   z1_sil_tcp      kabul 5: iki süreç (ida_sim kitaplığı + ida_sil programı, TCP)
+//   acil_durdurma   kabul 4 (EMNİYET): acil durdurma etkinken fiziğe giden darbe genişliği nötr
+//   hil_pty         kabul 7: HIL 1x, sözde uçbirim + kart rolünde karşı taraf, 60 s; gerçek
+//                   zaman kaçırma sayacı ve TF periyot dağılımı (ölçüm; eşik yok)
+#include "ida/port.h"
+#include "ida/sunucu/sunucu.hpp"
+#include "zincir.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+namespace {
+
+int g_hata = 0;
+
+void dogrula(bool kosul, const std::string& ileti)
+{
+    std::printf("%s %s\n", kosul ? "GECTI " : "KALDI ", ileti.c_str());
+    if (!kosul) {
+        ++g_hata;
+    }
+}
+
+std::string sayi(double v)
+{
+    char t[64];
+    std::snprintf(t, sizeof t, "%.4f", v);
+    return t;
+}
+
+// tests/zincir/test_zincir.cpp'deki sınırlar (W3-zincir; Z1 varsayılanı t5 + t1 arızası).
+constexpr double kDalisOturma = 20.0;
+constexpr double kDalisAsim = 0.15;
+constexpr double kManevraAsim = 0.15;
+constexpr double kYonAsim = 0.10;
+constexpr double kManevraYonOturma = 15.0;
+constexpr double kTutumArizasiz = 0.05;
+constexpr double kTutumArizali = 0.25;
+constexpr double kTutumToparlanma = 15.0;
+constexpr double kTutmaDerinlik = 0.05;
+constexpr double kTutmaYon = 0.05;
+constexpr unsigned kEtkinAdimAz = 200U;
+
+ida::zincir::Ayar zincir_ayari(const ida::sunucu::Ayar& a)
+{
+    ida::zincir::Ayar z;
+    z.sure_s = a.sure_s;
+    z.t_arm_s = a.z1.t_arm_s;
+    z.t_kip_s = a.z1.t_kip_s;
+    z.t_sp_s = a.z1.t_sp_s;
+    z.t_manevra_s = a.z1.t_manevra_s;
+    z.t_disarm_s = a.z1.t_disarm_s;
+    z.ariza_kanallari = a.z1.ariza_kanallari;
+    z.ariza_carpani = a.z1.ariza_carpani;
+    return z;
+}
+
+// A1 üzerinden koşunun satırları W3-zincir'in değerlendirmesine çevrilir.
+ida::zincir::Sonuc zincir_sonucu(const ida::sunucu::Sonuc& s)
+{
+    ida::zincir::Sonuc z;
+    z.kurulum_tamam = s.tamam;
+    z.hata = s.hata;
+    z.denge_derinligi_m = s.denge_derinligi_m;
+    z.arm_ack = s.arm_ack;
+    z.arm_neden = s.arm_neden;
+    z.kip_ack = s.kip_ack;
+    z.sp_ack = s.sp_ack;
+    z.sp2_ack = s.sp2_ack;
+    z.disarm_ack = s.disarm_ack;
+    z.t_disarm_ns = s.t_disarm_ns;
+    z.t_pwm_notr_ns = s.t_pwm_notr_ns;
+    z.t_itki_sifir_ns = s.t_itki_sifir_ns;
+    for (const ida::sunucu::Satir& r : s.satirlar) {
+        ida::zincir::Satir y;
+        y.t_s = r.t_s;
+        y.derinlik = r.derinlik;
+        y.derinlik_k = r.derinlik_k;
+        y.yon = r.yon;
+        y.yon_k = r.yon_k;
+        y.yalpa = r.yalpa;
+        y.yalpa_k = r.yalpa_k;
+        y.bas_kic = r.bas_kic;
+        y.bas_kic_k = r.bas_kic_k;
+        for (std::size_t i = 0; i < 8; ++i) {
+            y.pwm_uret[i] = r.pwm_uret[i];
+            y.pwm_yur[i] = r.pwm_yur[i];
+            y.pwm_fiz[i] = r.pwm_fiz[i];
+            y.thr[i] = r.thr_valid != 0u ? static_cast<float>((r.pwm_uret[i] - 1500) / 400.0) : 0.0F;
+        }
+        y.tau_z = r.tau_z;
+        y.tau_n = r.tau_n;
+        y.kip = r.kip;
+        y.armed = r.armed;
+        y.fs_level = r.fs_level;
+        y.est_level = r.est_level;
+        y.fs_reasons = r.fs_reasons;
+        y.thr_valid = r.thr_valid;
+        y.is_safe = r.is_safe;
+        y.rc = r.rc;
+        z.satirlar.push_back(y);
+    }
+    return z;
+}
+
+void z1_denetle(const char* ad, const ida::sunucu::Sonuc& s, const ida::zincir::Ozet& o)
+{
+    const std::string on = std::string("[") + ad + "] ";
+    dogrula(s.tamam, on + "koşu tamamlandı " + s.hata);
+    dogrula(s.arm_ack == static_cast<int>(IDA_ACK_ACCEPTED),
+            on + "ARM kabul (ack " + std::to_string(s.arm_ack) + ", neden " + std::to_string(s.arm_neden) + ")");
+    dogrula(s.kip_ack == static_cast<int>(IDA_ACK_ACCEPTED), on + "SET_MODE(GUIDED) kabul");
+    dogrula(s.sp_ack == static_cast<int>(IDA_ACK_ACCEPTED), on + "GUIDED_SP 1 kabul");
+    dogrula(s.sp2_ack == static_cast<int>(IDA_ACK_ACCEPTED), on + "GUIDED_SP 2 kabul");
+    dogrula(s.disarm_ack == static_cast<int>(IDA_ACK_ACCEPTED), on + "DISARM kabul");
+    dogrula(o.dalis.oturma_s >= 0.0 && o.dalis.oturma_s <= kDalisOturma,
+            on + "dalış oturma " + sayi(o.dalis.oturma_s) + " s ≤ " + sayi(kDalisOturma));
+    dogrula(o.dalis.asim_m <= kDalisAsim, on + "dalış aşma " + sayi(o.dalis.asim_m) + " m");
+    dogrula(o.dalis.tutma_derinlik_m <= kTutmaDerinlik, on + "dalış tutma derinlik " + sayi(o.dalis.tutma_derinlik_m) + " m");
+    dogrula(o.dalis.tutma_yon_rad <= kTutmaYon, on + "dalış tutma yön " + sayi(o.dalis.tutma_yon_rad) + " rad");
+    dogrula(o.dalis.tutum_rad <= kTutumArizasiz, on + "dalış yalpa/baş-kıç " + sayi(o.dalis.tutum_rad) + " rad");
+    dogrula(o.manevra.asim_m <= kManevraAsim, on + "manevra aşma " + sayi(o.manevra.asim_m) + " m");
+    dogrula(o.manevra.yon_asim_rad <= kYonAsim, on + "manevra yön aşması " + sayi(o.manevra.yon_asim_rad) + " rad");
+    dogrula(o.manevra.yon_oturma_s >= 0.0 && o.manevra.yon_oturma_s <= kManevraYonOturma,
+            on + "manevra yön oturma " + sayi(o.manevra.yon_oturma_s) + " s");
+    dogrula(o.manevra.tutma_derinlik_m <= kTutmaDerinlik,
+            on + "manevra tutma derinlik " + sayi(o.manevra.tutma_derinlik_m) + " m");
+    dogrula(o.manevra.tutma_yon_rad <= kTutmaYon, on + "manevra tutma yön " + sayi(o.manevra.tutma_yon_rad) + " rad");
+    dogrula(o.manevra.tutum_rad <= kTutumArizali, on + "manevra yalpa/baş-kıç " + sayi(o.manevra.tutum_rad) + " rad");
+    dogrula(o.manevra.tutum_oturma_s >= 0.0 && o.manevra.tutum_oturma_s <= kTutumToparlanma,
+            on + "tutum banda dönüş " + sayi(o.manevra.tutum_oturma_s) + " s");
+    dogrula(o.ariza_etkin_adim >= kEtkinAdimAz && o.ariza_degistirdi_adim == o.ariza_etkin_adim,
+            on + "arıza etkin (" + std::to_string(o.ariza_etkin_adim) + " adım)");
+    dogrula(!o.sayisal_cokme, on + "sayısal çökme yok");
+    dogrula(o.en_yuksek_fs == 0, on + "beklenmeyen arıza eylemi yok (en yüksek fs_level " + std::to_string(o.en_yuksek_fs) + ")");
+    dogrula(o.disarm_sonrasi_sifir, on + "DISARM sonrası itki sıfır ve darbe genişliği nötr");
+    dogrula(s.t_disarm_ns > 0 && s.t_pwm_notr_ns == s.t_disarm_ns + 10'000'000,
+            on + "fiziğe giden darbe genişliği DISARM partisinden tam L_act sonra nötr (+" +
+                sayi(1e-6 * static_cast<double>(s.t_pwm_notr_ns - s.t_disarm_ns)) + " ms)");
+}
+
+void sayac_denetle(const char* ad, const ida::sunucu::Sonuc& s, bool ic)
+{
+    const std::string on = std::string("[") + ad + "] ";
+    const ida::kopru::Sayaclar& c = s.sayac;
+    dogrula(c.parti_kacirildi == 0u && c.yanit_ret_gec == 0u && c.yanit_ret_yinelenen == 0u &&
+                c.yanit_ret_oturum == 0u && c.yanit_ret_eski_uretim == 0u,
+            on + "kaçırılan ya da reddedilen yanıt yok");
+    dogrula(c.alan_ret == 0u && c.bag_ret == 0u,
+            on + "Tablo 4.6 retleri yok (" + std::to_string(c.alan_ret) + "/" + std::to_string(c.bag_ret) + ")");
+    dogrula(c.rx_crc_err == 0u && c.rx_resync_bytes == 0u, on + "çerçeve hatası yok");
+    dogrula(c.batch_incomplete == 0u, on + "eksik parti yok (A1-K30)");
+    dogrula(c.pencere_tasma == 0u, on + "pencere bütçesi aşılmadı (kritik en büyük " +
+                                     std::to_string(c.kritik_bayt_en_buyuk) + " B)");
+    // Kabul 2 (Okumalar): sensör modelinin VALID = 0 işaretlediği örnekler (çözümsüz GNSS)
+    // A4-K33 gereği reddedilir; kabul kapısının zaman ve sıra koşullarından reddedilen 0 olmalı.
+    const ida::kopru::KartSayaclari& k = s.kart.sayac;
+    dogrula(k.var && k.sample_future == 0u && k.imu_rejected == 0u &&
+                static_cast<std::uint64_t>(k.sample_rejected) <= c.gecersiz_ornek,
+            on + "çekirdek yalnız VALID = 0 örnekleri reddetti (IDA_CORE_COUNTERS: reddedilen " +
+                std::to_string(k.sample_rejected) + " ≤ VALID = 0 gönderilen " + std::to_string(c.gecersiz_ornek) +
+                "; gelecek damgalı " + std::to_string(k.sample_future) + ", IMU " + std::to_string(k.imu_rejected) + ")");
+    if (ic) {
+        dogrula(s.karsi_gecerli_red == 0u && s.karsi_sample_future == 0u &&
+                    s.karsi_sample_rejected == c.gecersiz_ornek,
+                on + "her çağrıda: VALID bayraklı reddedilen örnek 0; reddedilen = VALID = 0 gönderilen (" +
+                    std::to_string(s.karsi_sample_rejected) + " = " + std::to_string(c.gecersiz_ornek) + ")");
+    }
+}
+
+void fark_yazdir(const ida::zincir::Ozet& a1, const ida::zincir::Ozet& ic)
+{
+    std::printf("  Z1 farkı (A1 üzerinden − aynı süreçte):\n");
+    auto satir = [](const char* ad, double x, double y) {
+        std::printf("    %-28s %10.4f %10.4f %+10.4f\n", ad, x, y, x - y);
+    };
+    std::printf("    %-28s %10s %10s %10s\n", "ölçü", "A1", "süreç içi", "fark");
+    satir("dalış oturma (s)", a1.dalis.oturma_s, ic.dalis.oturma_s);
+    satir("dalış aşma (m)", a1.dalis.asim_m, ic.dalis.asim_m);
+    satir("dalış tutma derinlik (m)", a1.dalis.tutma_derinlik_m, ic.dalis.tutma_derinlik_m);
+    satir("dalış tutma yön (rad)", a1.dalis.tutma_yon_rad, ic.dalis.tutma_yon_rad);
+    satir("dalış tutum (rad)", a1.dalis.tutum_rad, ic.dalis.tutum_rad);
+    satir("manevra oturma (s)", a1.manevra.oturma_s, ic.manevra.oturma_s);
+    satir("manevra aşma (m)", a1.manevra.asim_m, ic.manevra.asim_m);
+    satir("manevra yön oturma (s)", a1.manevra.yon_oturma_s, ic.manevra.yon_oturma_s);
+    satir("manevra yön aşma (rad)", a1.manevra.yon_asim_rad, ic.manevra.yon_asim_rad);
+    satir("manevra tutma derinlik (m)", a1.manevra.tutma_derinlik_m, ic.manevra.tutma_derinlik_m);
+    satir("manevra tutma yön (rad)", a1.manevra.tutma_yon_rad, ic.manevra.tutma_yon_rad);
+    satir("manevra tutum (rad)", a1.manevra.tutum_rad, ic.manevra.tutum_rad);
+    satir("tutum banda dönüş (s)", a1.manevra.tutum_oturma_s, ic.manevra.tutum_oturma_s);
+    satir("kestirim derinlik hata (m)", a1.kestirim_derinlik_hata_m, ic.kestirim_derinlik_hata_m);
+    satir("kestirim yön hata (rad)", a1.kestirim_yon_hata_rad, ic.kestirim_yon_hata_rad);
+    satir("en kötü kestirim düzeyi", a1.en_yuksek_est, ic.en_yuksek_est);
+}
+
+int test_z1_sil_ic()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    const ida::zincir::Ayar za = zincir_ayari(a);
+    const ida::zincir::Ozet o = ida::zincir::ozetle(zincir_sonucu(s), za);
+    z1_denetle("A1, süreç içi", s, o);
+    sayac_denetle("A1, süreç içi", s, true);
+    dogrula(s.sayac.calistirma_gecersiz == 0u, "[A1, süreç içi] çalıştırma zamanlama bakımından geçerli");
+    dogrula(s.hazirlik_oturumu == 1u, "[A1, süreç içi] boş kart: bir hazırlık oturumu (A1-K19) ve REBOOT");
+    ida::zincir::Ayar zi = za;
+    zi.csv_uret = false;
+    const ida::zincir::Sonuc ic = ida::zincir::kos(zi);
+    fark_yazdir(o, ida::zincir::ozetle(ic, zi));
+    return 0;
+}
+
+int test_z1_belirlenim()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 20.0;
+    const ida::sunucu::Sonuc s1 = ida::sunucu::kos(a);
+    const ida::sunucu::Sonuc s2 = ida::sunucu::kos(a);
+    dogrula(s1.tamam && s2.tamam, "iki koşu tamamlandı");
+    dogrula(!s1.csv.empty() && s1.csv == s2.csv,
+            "aynı tohumla iki SIL koşusu aynı CSV (" + std::to_string(s1.csv.size()) + " bayt)");
+    a.tohum = 2;
+    const ida::sunucu::Sonuc s3 = ida::sunucu::kos(a);
+    dogrula(s3.tamam && s3.csv != s1.csv, "farklı tohum farklı CSV (sensör gürültüsü)");
+    return 0;
+}
+
+int test_z1_sil_tcp(const char* sil_yolu)
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 1;
+    a.karsi = ida::sunucu::Karsi::tcp;
+    a.sil_yolu = sil_yolu;
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    const ida::zincir::Ayar za = zincir_ayari(a);
+    const ida::zincir::Ozet o = ida::zincir::ozetle(zincir_sonucu(s), za);
+    z1_denetle("A1, ida_sil", s, o);
+    sayac_denetle("A1, ida_sil", s, false);
+    std::printf("  yeniden bağlantı %llu, hazırlık %llu, oturum %llu, kopma %llu, çalıştırma geçersiz 0x%x\n",
+                static_cast<unsigned long long>(s.yeniden_baglanti),
+                static_cast<unsigned long long>(s.hazirlik_oturumu),
+                static_cast<unsigned long long>(s.sayac.oturum_kurulan),
+                static_cast<unsigned long long>(s.sayac.oturum_kopma), s.sayac.calistirma_gecersiz);
+    // Süreç içi karşı tarafla aynı girdi: Z1 sonuçları aynı olmalı (aynı çekirdek, aynı akış).
+    ida::sunucu::Ayar b;
+    b.gunluk = 0;
+    const ida::sunucu::Sonuc si = ida::sunucu::kos(b);
+    const ida::zincir::Ozet oi = ida::zincir::ozetle(zincir_sonucu(si), za);
+    std::printf("  ida_sil ile süreç içi karşı taraf farkı: dalış oturma %+.4f s, manevra tutma derinlik %+.4f m\n",
+                o.dalis.oturma_s - oi.dalis.oturma_s, o.manevra.tutma_derinlik_m - oi.manevra.tutma_derinlik_m);
+    return 0;
+}
+
+int test_acil_durdurma()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 25.0;
+    a.acil_durdurma_s = 12.0;   // dalıştan sonra, tutma sırasında
+    a.acil_kalkar_s = 18.0;
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    dogrula(s.tamam, "koşu tamamlandı " + s.hata);
+    dogrula(s.arm_ack == static_cast<int>(IDA_ACK_ACCEPTED), "ARM kabul (acil durdurma ARM'ın ön koşulu değil; W3-K1)");
+    dogrula(s.estop_adim == 4800u, "acil durdurma 6 s boyunca etkin (" + std::to_string(s.estop_adim) + " adım)");
+    dogrula(s.ihlal_estop == 0u, "EMNİYET: acil durdurmada fiziğe giden darbe genişliği nötr, itki isteği 0 (" +
+                                     std::to_string(s.ihlal_estop) + " ihlal)");
+    // Acil durdurma sırasında kart itki istemeyi sürdürür (W3-K1 açık nokta); sim keser.
+    std::size_t notr_disi_istek = 0;
+    std::size_t fiz_notr_disi = 0;
+    for (const ida::sunucu::Satir& r : s.satirlar) {
+        if (r.estop == 0u) {
+            continue;
+        }
+        for (std::size_t i = 0; i < 8; ++i) {
+            notr_disi_istek += r.pwm_yur[i] != 1500 ? 1u : 0u;
+            fiz_notr_disi += r.pwm_fiz[i] != 1500 ? 1u : 0u;
+        }
+    }
+    dogrula(fiz_notr_disi == 0u, "acil durdurma satırlarında fiziğin uyguladığı darbe genişliği nötr");
+    std::printf("  acil durdurmada köprünün yürürlükteki nötr dışı komut sayısı (satır × kanal): %zu\n", notr_disi_istek);
+    dogrula(s.kart.sayac.var, "kart sayaçları alındı");
+    return 0;
+}
+
+int test_hil_pty()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 1;
+    a.kip = ida::sunucu::Kip::hil;
+    a.karsi = ida::sunucu::Karsi::pty;
+    a.sure_s = 60.0;
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    dogrula(s.tamam, "HIL 1x koşusu tamamlandı " + s.hata);
+    dogrula(s.arm_ack == static_cast<int>(IDA_ACK_ACCEPTED), "ARM kabul");
+    const ida::sunucu::ZamanOlcumu& z = s.zaman;
+    std::vector<std::int64_t> p = z.periyotlar_ns;
+    std::sort(p.begin(), p.end());
+    auto yuzde = [&](double q) {
+        if (p.empty()) {
+            return 0.0;
+        }
+        const auto i = static_cast<std::size_t>(std::min<double>(static_cast<double>(p.size() - 1),
+                                                                 std::floor(q * static_cast<double>(p.size()))));
+        return 1e-6 * static_cast<double>(p[i]);
+    };
+    std::printf("  ÖLÇÜM (bu Mac, HIL 1x, sözde uçbirim, 60 s): TF %llu; periyot ms: en az %.3f, p1 %.3f, p50 %.3f, "
+                "p99 %.3f, p99,9 %.3f, en çok %.3f; TF geç yazım en çok %.3f ms\n",
+                static_cast<unsigned long long>(z.tf_sayisi), yuzde(0.0), yuzde(0.01), yuzde(0.5), yuzde(0.99),
+                yuzde(0.999), 1e-6 * static_cast<double>(z.periyot_en_cok_ns),
+                1e-6 * static_cast<double>(z.gec_yazim_en_cok_ns));
+    std::printf("  gerçek zaman kaçırma %llu (sim gecikmesi %llu, kaçırılan parti %llu, son tarih %llu); "
+                "eşzamansız güvenli çıktı %llu; çağrı çakışması %llu; çalıştırma geçersiz 0x%x\n",
+                static_cast<unsigned long long>(z.gercek_zaman_kacirma),
+                static_cast<unsigned long long>(z.sim_gecikmesi),
+                static_cast<unsigned long long>(s.sayac.parti_kacirildi),
+                static_cast<unsigned long long>(s.sayac.son_tarih_kacirildi),
+                static_cast<unsigned long long>(s.sayac.esz_guvenli_uygulanan),
+                static_cast<unsigned long long>(s.sayac.cagri_cakismasi), s.sayac.calistirma_gecersiz);
+    dogrula(z.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + std::to_string(z.tf_sayisi) + ")");
+    dogrula(s.sayac.alan_ret == 0u && s.sayac.bag_ret == 0u, "Tablo 4.6 retleri yok");
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    if (argc < 2) {
+        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|acil_durdurma|hil_pty>\n");
+        return 2;
+    }
+    const std::string ad = argv[1];
+    if (ad == "z1_sil_ic") {
+        (void)test_z1_sil_ic();
+    } else if (ad == "z1_belirlenim") {
+        (void)test_z1_belirlenim();
+    } else if (ad == "z1_sil_tcp" && argc > 2) {
+        (void)test_z1_sil_tcp(argv[2]);
+    } else if (ad == "acil_durdurma") {
+        (void)test_acil_durdurma();
+    } else if (ad == "hil_pty") {
+        (void)test_hil_pty();
+    } else {
+        std::printf("bilinmeyen test: %s\n", ad.c_str());
+        return 2;
+    }
+    std::printf("%s %s: %d kalan\n", ad.c_str(), g_hata == 0 ? "GECTI" : "KALDI", g_hata);
+    return g_hata == 0 ? 0 : 1;
+}

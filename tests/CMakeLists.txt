@@ -114,3 +114,4 @@ add_subdirectory(kabul/gorev)     # W3-gorev bağımsız kabul testleri (kipler,
 add_subdirectory(zincir)        # W3-zincir kapalı çevrim düzeneği (Z1; fizik + gerçek çekirdek)
 add_subdirectory(kabul/oturum)  # ida_link üst katmanı bağımsız kabul testleri (W3-oturum)
 add_subdirectory("${PROJECT_SOURCE_DIR}/firmware/test" firmware-test)  # kart yazılımının donanımsız modülleri (W3-kart)
+add_subdirectory(butunleme)     # W4-kopru: sim sunucusunun bütünleme testleri (Z1 A1 üzerinden, HIL 1x)

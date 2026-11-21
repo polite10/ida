@@ -1,0 +1,328 @@
+// Sim sunucusunun A1 köprüsü (W4-kopru): sim rolünde oturum, parti kurulumu, kart çıktılarının
+// alınıp doğrulanması, sürekli komutların uygulanması, tek seferlik olaylar ve sanal emniyet
+// girdileri, operatör komutları.
+//
+// Sözleşme: docs/sozlesmeler/A1-kart-baglantisi.md (1.0), iskelet §3.2 ve §4. Kural
+// numaraları yorumlarda verilir.
+//
+// Köprü G/Ç ve saat bilmez: her işlev zamanı argüman olarak alır. `duvar_ns` sim'in duvar
+// saatidir (HIL: süreğen saat; SIL: sim zamanından türetilir, A1-K121 (i)); `t_ns` sim
+// zamanıdır. Gidecek baytlar iç tampona yazılır, zaman yöneticisi `giden_al` ile alıp taşımaya
+// verir. Belirlenimcidir: aynı girdi dizisi aynı bayt dizisini üretir.
+//
+// Zaman yöneticisinin her fizik sınırı `b` (t = b·h) için çağrı sırası:
+//   sinir_isle(b, …)            emniyet işlemleri ve sürekli çıktılar (A1-K85 sırası); dönen
+//                               darbe genişlikleri b'de başlayan fizik adımına verilir
+//   (sensör kümesi adımı)       dis_durum() ile; ardından olcum_ekle(…) her yeni kayıt için
+//   parti_kapat(t_n, …)         b kontrol periyodunun sınırıysa (b = 4n)
+// Komutlar ve emniyet atamaları sınırlar arasında verilir; bir sonraki sinir_isle'de işlenir.
+//
+// Atış kontrol sınırı: köprü yalnız emniyet zincirini ve yetkili durumu uygular. Kabul edilen
+// FIRE yalnız tüpün "dolu" bitini siler (torpido fiziği, ayrılma ve isabet bu işte yoktur);
+// hedefleme ya da atış ölçütü yoktur.
+#pragma once
+
+#include "ida/sensor/olcum.hpp"
+#include "ida/sensor/sensor_kumesi.hpp"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace ida::kopru {
+
+inline constexpr std::int64_t kMs = 1'000'000;
+inline constexpr std::int64_t kP = 5 * kMs;          // kontrol periyodu (A1 §3.9)
+inline constexpr std::int64_t kH = 1'250'000;        // fizik adımı
+inline constexpr std::int64_t kLact = 10 * kMs;      // uygulama gecikmesi
+inline constexpr std::uint64_t kPeriyotAdim = 4;     // P / h
+inline constexpr std::uint64_t kLactAdim = 8;        // L_act / h
+
+// IDAW_RUN_MODE değerleri.
+enum class CalistirmaKipi : std::uint8_t { sil = 1, hil_1x = 2, hil_bariyer = 3, hazirlik = 4 };
+
+// Sim'in A1 durumu (A1 §4.2) ve el sıkışmanın ek alt durumları.
+enum class OturumDurumu {
+    kapali,              // el sıkışma başlatılmadı
+    el_sikisma,          // SIM_HELLO yineleniyor (A1-K12)
+    hazir,               // SESSION_ACCEPT(OK) gönderildi; kartın ilk oturum çerçevesi bekleniyor
+    kosuyor,             // oturum kuruldu (A1-K27)
+    reddedildi,          // REJECT_* gönderildi; çalıştırma başlamaz (A1-K14, H25)
+};
+
+struct KopruAyari {
+    CalistirmaKipi kip = CalistirmaKipi::sil;
+    // SIL türetimleri (A1-K114, K126; A5 Ek D.7): nonce, sess ve run_id `ana_tohum`dan.
+    // HIL'de nonce ve sess gerçek rastgelelikten, run_id dışarıdan (A1-K126) gelir.
+    std::uint64_t ana_tohum = 1;
+    std::uint32_t run_id = 0;            // 0: SIL'de a1/run_id'den türet
+    // Zamanlama ve emniyet parametreleri (A1 §3.9; A1-K104 ile denetlenir).
+    std::int64_t valid_for_ns = 100 * kMs;
+    std::int64_t t_bag_ns = 500 * kMs;
+    std::int64_t t_bekle_ns = 30 * kMs;
+    std::int64_t apply_by_ns = 20 * kMs;
+    std::int64_t hold_ns = 200 * kMs;
+    // ESC (A5 arac.esc): alt, nötr, üst (µs).
+    std::uint16_t esc_alt_us = 1100;
+    std::uint16_t esc_notr_us = 1500;
+    std::uint16_t esc_ust_us = 1900;
+    // El sıkışma denetimi (A1-K14): beklenen değerler. dialect_hash 0 ise derlenmiş değer.
+    std::uint64_t dialect_hash = 0;
+    std::uint64_t param_schema_hash = 0;  // 0: ida_core_info'dan
+    // A1-K18: A5'ten kurulan parametre bloğunun CRC-32/ISO-HDLC değeri.
+    std::uint32_t beklenen_blok_crc = 0;
+};
+
+// Sim sayaçları (A1 Tablo 3.11a; bu dilimde tutulanlar).
+struct Sayaclar {
+    std::uint64_t parti_gonderilen = 0;
+    std::uint64_t parti_kacirildi = 0;
+    std::uint64_t parti_kacirildi_birlesik = 0;
+    std::uint64_t tf_gec_yazim_ns_en_buyuk = 0;
+    std::uint64_t yanit_ret_yinelenen = 0;
+    std::uint64_t yanit_ret_gec = 0;
+    std::uint64_t yanit_ret_oturum = 0;
+    std::uint64_t yanit_ret_eski_uretim = 0;
+    std::uint64_t yanit_iptal_esz = 0;
+    std::uint64_t esz_guvenli_uygulanan = 0;
+    std::uint64_t komut_suresi_doldu = 0;
+    std::uint64_t olay_alinan = 0;
+    std::uint64_t olay_gec = 0;
+    std::uint64_t olay_eksik = 0;
+    std::array<std::uint64_t, 7> olay_sonuc{};   // dizin: IDA_EVR_* 1–6
+    std::uint64_t olay_rev_ret = 0;
+    std::uint64_t sonuc_kuyrugu_en_buyuk = 0;
+    std::uint64_t sonuc_talebi_atildi = 0;
+    std::uint64_t komut_birlestirildi = 0;
+    std::uint64_t komut_ertelendi = 0;
+    std::uint64_t komut_sonucsuz = 0;
+    std::uint64_t komut_bayat_yetki = 0;
+    std::uint64_t komut_oturumsuz = 0;
+    std::uint64_t pencere_tasma = 0;
+    std::uint64_t kritik_bayt_en_buyuk = 0;
+    std::uint64_t gecersiz_ornek = 0;            // VALID = 0 gönderilen sensör üyesi (çekirdek reddeder)
+    std::uint64_t emniyet_birlesti = 0;          // aynı pencerede birleştirilen emniyet kayıtları
+    std::uint64_t emniyet_ertelendi = 0;         // A1-K56: açılma sonraki partiye
+    std::uint64_t alan_ret = 0;                  // alan_ret_<mesaj> toplamı (V2, V4)
+    std::uint64_t bag_ret = 0;                   // bag_ret_<mesaj> toplamı (V3)
+    std::uint64_t rx_crc_err = 0, rx_resync_bytes = 0, rx_unknown_msgid = 0, rx_bad_len = 0,
+                  rx_wrong_sys = 0, rx_iflag = 0, rx_mav1 = 0, rx_seq_gap = 0, rx_frames = 0;
+    std::uint64_t el_sikisma_atilan = 0;         // A1-K12: el sıkışmada atılan çerçeve
+    std::uint64_t oturum_kurulan = 0;
+    std::uint64_t oturum_kopma = 0;
+    std::uint64_t beklenmeyen_sifirlama = 0;
+    std::uint64_t oturum_reddi = 0;
+    std::uint64_t cagri_cakismasi = 0;
+    std::uint64_t cagri_izi = 0;
+    std::uint64_t bariyer_bekleme = 0;           // bu dilimde bariyer kipi yok: 0
+    std::uint64_t son_tarih_kacirildi = 0;
+    std::uint64_t sim_gecikmesi = 0;
+    std::uint64_t batch_incomplete = 0;          // BATCH_INCOMPLETE bayraklı yanıt (H4)
+    std::uint64_t emniyet_revizyonu = 1;
+    bool emniyet_rev_doydu = false;
+    // Zamanlama geçerliliği (A1-K79): neden bitleri (Gecersizlik).
+    std::uint32_t calistirma_gecersiz = 0;
+};
+
+// A1-K79 neden bitleri.
+enum Gecersizlik : std::uint32_t {
+    kGecKacirilanParti = 1u << 0,
+    kGecSonTarih = 1u << 1,
+    kGecCagriCakismasi = 1u << 2,
+    kGecBariyer = 1u << 3,
+    kGecGecOlay = 1u << 4,
+    kGecEszamansiz = 1u << 5,
+    kGecGecYanit = 1u << 6,
+    kGecPencereTasma = 1u << 7,
+    kGecPlanlanmamisBitis = 1u << 8,
+    kGecDuraklatma = 1u << 9,
+    kGecSimGecikmesi = 1u << 10,
+};
+
+// Kartın bildirdikleri (son alınan, doğrulamadan geçmiş).
+struct KartNav {
+    bool var = false;
+    std::int64_t t_ns = 0;
+    std::uint32_t batch_seq = 0;
+    std::array<float, 3> p_ned{};
+    std::array<float, 4> q_nb{1.0F, 0.0F, 0.0F, 0.0F};
+    float depth = 0.0F;
+    std::uint8_t est_level = 0;
+};
+
+struct KartDurum {
+    bool var = false;
+    std::uint32_t batch_seq = 0;
+    std::uint8_t mode = 0, armed = 0, fs_level = 0, health = 0, link_state = 0;
+    std::uint8_t param_store = 0;
+    std::uint32_t fs_reasons = 0;
+    std::uint32_t param_blob_crc = 0;
+    std::uint32_t boot_count = 0;
+};
+
+// IDA_CORE_COUNTERS (A4 ida_core_counters_t; ada göre).
+struct KartSayaclari {
+    bool var = false;
+    std::uint32_t sample_rejected = 0, sample_future = 0, sample_conflict = 0,
+                  sample_dup_dropped = 0, narrow_from_rejected = 0, imu_rejected = 0, imu_gap = 0,
+                  bad_input = 0, dup_seq = 0, old_seq = 0, cmd_rejected = 0, widen_blocked = 0,
+                  evres_ignored = 0, event_unknown = 0, step_miss = 0;
+};
+
+struct KartBilgisi {
+    KartNav nav;
+    KartDurum durum;
+    KartSayaclari sayac;
+    std::uint32_t boot_count = 0;
+    std::uint16_t sessions_since_boot = 0;
+    std::uint32_t param_blob_crc = 0;
+    std::uint8_t init_rc = 0;
+    std::uint8_t role = 0;
+    std::uint8_t son_oturum_reddi = 0;           // son gönderilen IDAW_SESSION_RESULT
+    std::uint8_t son_kapanis_nedeni = 0;         // son alınan IDA_SESSION_CLOSE.reason
+};
+
+// Bir komutun sonucu. `yerel` = true: sonucu sim kendisi verdi (oturum yok, birleştirildi,
+// bayat yetki; A1-K61, K129, K23).
+struct KomutSonucu {
+    std::uint8_t ack = 0;        // IDAW_ACK
+    std::uint16_t reason = 0;    // IDAW_REASON
+    std::uint8_t kind = 0;       // IDAW_RES_KIND
+    std::uint32_t value_bits = 0;
+    std::uint32_t save_crc = 0;
+    bool yerel = false;
+    std::int64_t t_ns = 0;       // sonucun alındığı/verildiği sim zamanı
+};
+
+// GUIDED_SP hedefi (A1 §3.6 IDA_CMD_GUIDED; A4-K50).
+struct GuidedHedef {
+    std::uint8_t mask = 0;       // IDAW_SP_MASK
+    std::array<float, 2> pos_ne{};
+    float depth = 0.0F;
+    float altitude = 0.0F;
+    std::array<float, 3> vel_ned{};
+    float yaw = 0.0F;
+    float yaw_rate = 0.0F;
+};
+
+// Senaryonun emniyet ataması: verilen alanlar sonraki fizik sınırında uygulanır.
+struct EmniyetAtama {
+    std::optional<bool> acil_durdurma;            // true: basılı
+    std::array<std::optional<bool>, 2> fis{};     // true: takılı
+    std::array<std::optional<bool>, 2> pim{};     // true: takılı
+};
+
+// Kartın bir partiye verdiği olağan yanıt (IDA_ACTUATOR; A1-K109'dan geçmiş).
+struct YanitBilgisi {
+    std::uint16_t act_flags = 0;
+    std::array<std::uint16_t, 8> pwm_us{};
+    std::uint8_t fs_level = 0;
+    std::uint8_t core_rc = 0;
+    std::uint32_t out_seq = 0;
+};
+
+// Bir fizik sınırının sonucu: o sınırda başlayan adımın sürekli komutu (A1-K74, K77, K78).
+struct SinirSonucu {
+    std::array<double, 8> pwm_us{};   // yürürlükteki komut; nötr durumda hepsi ESC nötrü
+    bool notr = true;                 // yürürlükte komut yok (süresi doldu ya da hiç gelmedi)
+    bool yuva_uygulandi = false;      // bu sınırda bir yuva uygulandı
+    bool yuva_kacirildi = false;      // bu sınırda bir yuva kaçırıldı (A1-K75)
+    std::uint32_t yuva_seq = 0;       // bu sınırın yuvası (varsa)
+};
+
+class Kopru {
+public:
+    explicit Kopru(const KopruAyari& ayar);
+    ~Kopru();
+    Kopru(Kopru&&) noexcept;
+    Kopru& operator=(Kopru&&) noexcept;
+    Kopru(const Kopru&) = delete;
+    Kopru& operator=(const Kopru&) = delete;
+
+    // ---- Oturum ----
+    // Yeni el sıkışma (A1-K12): yeni nonce, SIM_HELLO; o ana kadar alınan baytlar atılır.
+    void el_sikisma_baslat(std::int64_t duvar_ns);
+    void al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns);
+    // Zamana bağlı işler: SIM_HELLO yinelemesi (T_hello), canlılık (T_canlı), T_bağ (yalnız
+    // HIL), T_hazır, T_reboot.
+    void zamanla(std::int64_t duvar_ns);
+    // Planlı kapanış (A1-K21, K128): SESSION_CLOSE(reason) gönderir ve oturumu bitirir.
+    void oturum_kapat(std::uint8_t reason, std::int64_t duvar_ns);
+    // Taşıma kapandı (SIL TCP, aygıt kalktı; A1-K23, K99) ya da SIL gözetimi doldu (A1-K76).
+    void akis_kapandi(std::int64_t duvar_ns);
+    void sil_gozetimi_doldu(std::int64_t duvar_ns);
+    // Çalıştırma kipini değiştirir (hazırlık oturumundan sonra; A1-K19). Oturum yokken.
+    void kip_ayarla(CalistirmaKipi kip);
+
+    OturumDurumu durum() const;
+    std::uint16_t sess() const;
+    bool yeniden_baslatma_bekleniyor() const;     // REBOOT gönderildi (A1-K17)
+    // A1-K18/K19: kart blok uyuşmazlığı ya da init_rc yüzünden hazırlık oturumu istiyor.
+    bool hazirlik_gerekli() const;
+
+    // ---- Giden baytlar ----
+    void giden_al(std::vector<std::uint8_t>& v);
+    bool giden_var() const;
+
+    // ---- Parti (A1 §4.3, §4.4) ----
+    void olcum_ekle(const sensor::Olcum& o);
+    // Pencereyi kapatır: emniyet örneği, sonuçlar, TF(n). Dönüş: batch_seq (oturum yoksa 0).
+    // w_tn: t_n'in planlanan duvar anı W(t_n) (HIL; A1-K43, K108); SIL'de < 0.
+    std::uint32_t parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn = -1);
+    // Yuva n tamamlandı mı (A1-K73).
+    bool yuva_tamam(std::uint32_t seq) const;
+    // Partinin doğrulamadan geçmiş olağan yanıtı (son 64 parti).
+    std::optional<YanitBilgisi> yanit(std::uint32_t seq) const;
+    std::uint32_t son_parti() const;
+
+    // ---- Fizik sınırı (A1-K85) ----
+    SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
+
+    // ---- Emniyet (iskelet §3.2, §5) ----
+    void emniyet_ata(const EmniyetAtama& a);
+    sensor::DisDurum dis_durum() const;
+    bool acil_durdurma() const;
+    bool tup_dolu(int tup) const;
+    bool izin_acik(int tup) const;
+
+    // ---- Komutlar (A1 §3.6, §4.5) ----
+    // Dönüş: cmd_id. t_ns komutun verildiği sim anı (t_hazır).
+    std::uint32_t komut_basit(std::uint8_t type, std::uint16_t arg, std::int64_t t_ns,
+                              std::uint8_t kaynak = 255);
+    std::uint32_t komut_guided(const GuidedHedef& h, std::int64_t t_ns, std::uint8_t kaynak = 255);
+    std::uint32_t komut_param_set(std::uint16_t param_id, std::uint8_t param_type,
+                                  std::uint32_t value_bits, std::int64_t t_ns,
+                                  std::uint8_t kaynak = 250);
+    std::uint32_t komut_fc(std::uint8_t op, std::uint8_t tube, std::int64_t t_ns,
+                           std::uint8_t kaynak = 255);
+    std::optional<KomutSonucu> komut_sonucu(std::uint32_t cmd_id) const;
+    std::size_t bekleyen_komut() const;
+
+    // ---- Gözlem ----
+    const Sayaclar& sayaclar() const;
+    const KartBilgisi& kart() const;
+    const KopruAyari& ayar() const;
+    // A1-K104: ayar aralık dışıysa ilk ihlalin metni (boş: geçerli).
+    std::string yapilandirma_hatasi() const;
+    std::uint32_t run_id() const;
+    // SIL koşucusuna verilecek --a1-seed (A1-K114; a1/board_tohum).
+    std::uint64_t board_tohumu() const;
+
+    struct Ic;
+
+private:
+    std::unique_ptr<Ic> ic_;
+};
+
+// A5 Ek D.7 türetimleri (A1-K114, K126; ana_tohum ve etiket).
+std::uint32_t d7_u32(std::uint64_t tohum, const std::string& etiket, std::uint64_t n);
+std::uint64_t d7_u64(std::uint64_t tohum, const std::string& etiket, std::uint64_t n);
+
+// CRC-32/ISO-HDLC (A1-K68; parametre bloğu).
+std::uint32_t crc32_iso_hdlc(const std::uint8_t* p, std::size_t n);
+
+}  // namespace ida::kopru
