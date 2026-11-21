@@ -1,5 +1,6 @@
 /* olcum_cekirdek.c — ölçüm çekirdek döngüsü (olcum_cekirdek.h). Host'a özgü kod içermez. */
 #include "olcum_cekirdek.h"
+#include "tel_eski.h"
 
 #include "ida_link_altin_veri.h"
 #include "mavlink/ida/mavlink.h"
@@ -86,61 +87,106 @@ int ida_link_olcum_hazirla(ida_link_olcum_t *o)
     return ida_link_alici_kur(&o->alici, IDA_LINK_ROL_KART) == IDA_LINK_TAMAM ? 0 : -6;
 }
 
-static uint32_t ayristir(ida_link_olcum_t *o, const uint8_t *v, size_t n, uint32_t yineleme,
-                         uint32_t beklenen)
-{
-    uint32_t ozet = 0;
-    uint32_t teslim = 0;
-    for (uint32_t k = 0; k < yineleme; ++k) {
-        size_t i = 0;
-        while (i < n) {
-            size_t tk = 0;
-            if (ida_link_al(&o->alici, &v[i], n - i, &tk, &o->cerceve) == IDA_LINK_CERCEVE) {
-                ozet += o->cerceve.msgid + o->cerceve.yuk[0];
-                teslim++;
-            }
-            i += tk;
-        }
+/* Ayrıştırma döngüsü; iki uygulama için ayrı ayrı açılır (dolaylı çağrı olmasın: ölçülen
+   maliyet yalnız kitaplığınki kalsın). parca 0 ise kalan akışın tamamı verilir. */
+#define OLCUM_AYRISTIR_TANIMLA(ad, AL, COZ, BILGI)                                           \
+    static uint32_t ad(ida_link_olcum_t *o, const uint8_t *v, size_t n, size_t parca,        \
+                       int coz, uint32_t yineleme, uint32_t beklenen)                        \
+    {                                                                                        \
+        uint32_t ozet = 0;                                                                   \
+        uint32_t teslim = 0;                                                                 \
+        for (uint32_t k = 0; k < yineleme; ++k) {                                            \
+            size_t i = 0;                                                                    \
+            while (i < n) {                                                                  \
+                size_t tk = 0;                                                               \
+                const size_t m = (parca == 0u || parca > n - i) ? n - i : parca;             \
+                if (AL(&o->alici, &v[i], m, &tk, &o->cerceve) == IDA_LINK_CERCEVE) {         \
+                    ozet += o->cerceve.msgid + o->cerceve.yuk[0];                            \
+                    teslim++;                                                                \
+                    if (coz) {                                                               \
+                        ida_link_mesaj_bilgisi_t b;                                          \
+                        if (BILGI(o->cerceve.msgid, &b) == IDA_LINK_TAMAM &&                    \
+                            b.yapi_boyu <= sizeof o->cozulen.b &&                            \
+                            COZ(&o->cerceve, o->cerceve.msgid, o->cozulen.b, b.yapi_boyu) == \
+                                IDA_LINK_TAMAM) {                                            \
+                            ozet += o->cozulen.b[b.yapi_boyu - 1u];                          \
+                        } else {                                                             \
+                            return 0u;                                                       \
+                        }                                                                    \
+                    }                                                                        \
+                }                                                                            \
+                i += tk;                                                                     \
+            }                                                                                \
+        }                                                                                    \
+        return teslim == beklenen * yineleme ? (ozet | 1u) : 0u;                             \
     }
-    return teslim == beklenen * yineleme ? (ozet | 1u) : 0u;
+
+OLCUM_AYRISTIR_TANIMLA(ayristir_yeni, ida_link_al, ida_link_coz, ida_link_mesaj_bilgisi)
+OLCUM_AYRISTIR_TANIMLA(ayristir_eski, ida_link_eski_al, ida_link_eski_coz,
+                       ida_link_eski_mesaj_bilgisi)
+
+/* Kodlama döngüsü: pencerenin bütün çerçeveleri (ilk..son) ya da tek çerçeve. */
+#define OLCUM_KODLA_TANIMLA(ad, GONDER)                                                      \
+    static uint32_t ad(ida_link_olcum_t *o, unsigned ilk, unsigned son, uint32_t yineleme)   \
+    {                                                                                        \
+        uint32_t ozet = 0;                                                                   \
+        for (uint32_t k = 0; k < yineleme; ++k) {                                            \
+            size_t n = 0;                                                                    \
+            for (unsigned i = ilk; i < son; ++i) {                                           \
+                size_t yz = 0;                                                               \
+                (void)GONDER(&o->gonderici, o->mesaj[i].msgid, o->mesaj[i].yapi.b,           \
+                             o->mesaj[i].yapi_boyu, &o->cikis[n],                            \
+                             IDA_LINK_OLCUM_PENCERE_AZAMI - n, &yz);                         \
+                n += yz;                                                                     \
+            }                                                                                \
+            ozet += (uint32_t)n + (n > 0u ? o->cikis[n - 1u] : 0u);                          \
+        }                                                                                    \
+        return ozet;                                                                         \
+    }
+
+OLCUM_KODLA_TANIMLA(kodla_yeni, ida_link_gonder)
+OLCUM_KODLA_TANIMLA(kodla_eski, ida_link_eski_gonder)
+
+uint32_t ida_link_olcum_ayristir(ida_link_olcum_t *o, ida_link_olcum_uygulama_t u,
+                                 ida_link_olcum_akis_t akis, size_t parca, int coz,
+                                 uint32_t yineleme)
+{
+    const int buyuk = akis == IDA_LINK_OLCUM_BUYUK;
+    const uint8_t *v = buyuk ? o->buyuk : o->pencere;
+    const size_t n = buyuk ? o->buyuk_bayt : o->pencere_bayt;
+    const uint32_t beklenen = buyuk ? 1u : IDA_LINK_OLCUM_CERCEVE_SAYISI;
+    return u == IDA_LINK_OLCUM_ESKI ? ayristir_eski(o, v, n, parca, coz, yineleme, beklenen)
+                                    : ayristir_yeni(o, v, n, parca, coz, yineleme, beklenen);
+}
+
+uint32_t ida_link_olcum_kodla(ida_link_olcum_t *o, ida_link_olcum_uygulama_t u,
+                              ida_link_olcum_akis_t akis, uint32_t yineleme)
+{
+    const int buyuk = akis == IDA_LINK_OLCUM_BUYUK;
+    const unsigned ilk = buyuk ? OLCUM_BUYUK_SIRA : 0u;
+    const unsigned son = buyuk ? OLCUM_BUYUK_SIRA + 1u : IDA_LINK_OLCUM_CERCEVE_SAYISI;
+    return u == IDA_LINK_OLCUM_ESKI ? kodla_eski(o, ilk, son, yineleme)
+                                    : kodla_yeni(o, ilk, son, yineleme);
 }
 
 uint32_t ida_link_olcum_pencere_ayristir(ida_link_olcum_t *o, uint32_t yineleme)
 {
-    return ayristir(o, o->pencere, o->pencere_bayt, yineleme, IDA_LINK_OLCUM_CERCEVE_SAYISI);
+    return ida_link_olcum_ayristir(o, IDA_LINK_OLCUM_YENI, IDA_LINK_OLCUM_PENCERE, 0u, 0,
+                                   yineleme);
 }
 
 uint32_t ida_link_olcum_buyuk_ayristir(ida_link_olcum_t *o, uint32_t yineleme)
 {
-    return ayristir(o, o->buyuk, o->buyuk_bayt, yineleme, 1u);
+    return ida_link_olcum_ayristir(o, IDA_LINK_OLCUM_YENI, IDA_LINK_OLCUM_BUYUK, 0u, 0,
+                                   yineleme);
 }
 
 uint32_t ida_link_olcum_pencere_kodla(ida_link_olcum_t *o, uint32_t yineleme)
 {
-    uint32_t ozet = 0;
-    for (uint32_t k = 0; k < yineleme; ++k) {
-        size_t n = 0;
-        for (unsigned i = 0; i < IDA_LINK_OLCUM_CERCEVE_SAYISI; ++i) {
-            size_t yz = 0;
-            (void)ida_link_gonder(&o->gonderici, o->mesaj[i].msgid, o->mesaj[i].yapi.b,
-                                  o->mesaj[i].yapi_boyu, &o->cikis[n],
-                                  IDA_LINK_OLCUM_PENCERE_AZAMI - n, &yz);
-            n += yz;
-        }
-        ozet += (uint32_t)n + (n > 0u ? o->cikis[n - 1u] : 0u);
-    }
-    return ozet;
+    return ida_link_olcum_kodla(o, IDA_LINK_OLCUM_YENI, IDA_LINK_OLCUM_PENCERE, yineleme);
 }
 
 uint32_t ida_link_olcum_buyuk_kodla(ida_link_olcum_t *o, uint32_t yineleme)
 {
-    const ida_link_olcum_mesaj_t *b = &o->mesaj[OLCUM_BUYUK_SIRA];
-    uint32_t ozet = 0;
-    for (uint32_t k = 0; k < yineleme; ++k) {
-        size_t yz = 0;
-        (void)ida_link_gonder(&o->gonderici, b->msgid, b->yapi.b, b->yapi_boyu, o->cikis,
-                              sizeof o->cikis, &yz);
-        ozet += (uint32_t)yz + (yz > 0u ? o->cikis[yz - 1u] : 0u);
-    }
-    return ozet;
+    return ida_link_olcum_kodla(o, IDA_LINK_OLCUM_YENI, IDA_LINK_OLCUM_BUYUK, yineleme);
 }
