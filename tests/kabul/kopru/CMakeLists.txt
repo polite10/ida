@@ -36,7 +36,8 @@ add_dependencies(kabul_kopru_ortak ida_link_uret)
 kabul_kopru_ayar(kabul_kopru_ortak)
 
 # Köprü düzeyi (Kopru + sahte kart, bellek içi taşıma).
-add_executable(kabul_kopru kabul_kopru.cpp kabul_olay.cpp kabul_zaman.cpp kabul_saglamlik.cpp)
+add_executable(kabul_kopru kabul_kopru.cpp kabul_olay.cpp kabul_zaman.cpp kabul_saglamlik.cpp
+  kabul_geri_okuma.cpp)
 target_link_libraries(kabul_kopru PRIVATE kabul_kopru_ortak)
 kabul_kopru_ayar(kabul_kopru)
 
@@ -79,6 +80,8 @@ set(_kabul_kopru_vakalari
   # Vaka 8: emniyet örneği
   A1-K56.kisitlama_ertelenmez
   A1-K56.ayni_pencerede_kapanip_acilma
+  A1-K56.geri_okuma_fis_takilmasi      # gerçek sensör kümesi (W4-K4, W4-K5)
+  A1-K56.geri_okuma_pim_cikarilmasi
   # Vaka 9: dayanıklılık
   A1-K109.rastgele_cerceveler_acil
   A1-K109.rastgele_cerceveler_fis)
