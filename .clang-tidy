@@ -19,6 +19,12 @@
 #   Sınırlar çağıran kodda açıkça denetlenir ve GCC -fanalyzer, MSVC /analyze ve ASan ile
 #   sınanır. Aynı ailenin öteki üyeleri (ör. insecureAPI.strcpy) açık kalır.
 #
+#   bugprone-easily-swappable-parameters — mimar kararı W3-K12 (2026-11-21). Sayısal ve
+#   kontrol kodu art arda aynı türden skaler ve dizi parametreleri kaçınılmaz olarak alır
+#   (ör. alt/üst sınır, istek/kalıntı, kazanç/hata/süre); denetim hata bulmuyor, yalnız
+#   biçimsel yeniden yapılanma üretiyor. İlk görüldüğü yer PR #15 (Windows CI),
+#   core/src/kontrol/ (kontrol.c, tahsis.c).
+#
 # Başlık süzgeci: core/ ve protocol/ida_link/ altındaki include/ ve src/ başlıkları
 # denetlenir; sistem başlıkları ve üretilmiş MAVLink başlıkları (derleme dizininde,
 # -isystem ile verilir) denetlenmez.
@@ -28,6 +34,7 @@ Checks: >-
   cert-*,
   clang-analyzer-*,
   -clang-analyzer-optin.performance.Padding,
-  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -bugprone-easily-swappable-parameters
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*(core|protocol[/\\]ida_link)[/\\](include|src)[/\\].*'
