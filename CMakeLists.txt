@@ -51,6 +51,7 @@ if(IDA_HEDEF STREQUAL "fw")
   add_subdirectory(firmware)
 else()
   add_subdirectory(tests)
+  add_subdirectory(sim)  # sim sunucusu (C++20): fizik çekirdeği (W3-fizik)
 endif()
 
 # Sözleşme başlıkları denetimi iki kökte de derlenir (fw: arm-none-eabi-gcc ile C17).
