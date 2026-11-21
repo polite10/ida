@@ -50,7 +50,9 @@ if(KIP MATCHES "^kaynak_dizini")
     file(COPY "${IDA_KOK}/tools/denetim/deneme/cekirdek-stm32/kaynak/stm32u5xx.h"
       DESTINATION "${_sahte_kaynak}/include")
   endif()
-  list(APPEND _ek_ayarlar "-DCMAKE_C_FLAGS=-resource-dir=${_sahte_kaynak}")
+  # Yol bayrak değerinin içinde tırnaklanır: CMAKE_C_FLAGS komut satırı olarak yeniden
+  # ayrıştırılır; derleme dizini boşluk içerirse tırnaksız yol bölünürdü (sol inceleme md.1).
+  list(APPEND _ek_ayarlar "-DCMAKE_C_FLAGS=-resource-dir=\"${_sahte_kaynak}\"")
 endif()
 
 _adim(yapilandirma "${CMAKE_COMMAND}" --fresh
