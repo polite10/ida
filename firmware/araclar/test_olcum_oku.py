@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""firmware/araclar/test_olcum_oku.py — ölçüm bloğu okuyucusunun tutarlılık denetimi (sol bulgu 7).
+
+Kart gerekmez: okuma, sahte bir okuyucuyla taklit edilir. Yarı güncellenmiş blok (sıra numarası
+tek) ve okuma sırasında güncellenen blok (sonraki sıra farklı) reddedilmeli, tutarlı okuma
+kabul edilmeli. CTest: firmware.araclar.olcum_oku.
+"""
+import os
+import sys
+import unittest
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import olcum_oku  # noqa: E402
+
+
+class TutarlilikTesti(unittest.TestCase):
+    def setUp(self):
+        self.adlar = olcum_oku.duzen()
+        self.sira = self.adlar.index("yayin_sira")
+
+    def blok(self, sira, deger):
+        s = [deger] * len(self.adlar)
+        s[self.sira] = sira
+        return s
+
+    def test_yari_guncellenmis_blok_reddedilir(self):
+        # Sıra tek: güncelleme sürerken okundu; sonraki denemede tutarlı.
+        okumalar = iter([(self.blok(7, 1), 7), (self.blok(8, 2), 8)])
+        s = olcum_oku.tutarli_oku(lambda: next(okumalar), self.sira)
+        self.assertEqual(s[0], 2)
+
+    def test_okuma_sirasinda_guncellenen_blok_reddedilir(self):
+        # Blok okunurken yeni yayın başladı/bitti: sonraki sıra farklı.
+        okumalar = iter([(self.blok(8, 1), 10), (self.blok(10, 3), 10)])
+        s = olcum_oku.tutarli_oku(lambda: next(okumalar), self.sira)
+        self.assertEqual(s[0], 3)
+
+    def test_hic_tutarli_okuma_yoksa_hata(self):
+        okumalar = iter([(self.blok(9, 1), 9)] * 5)
+        with self.assertRaises(SystemExit):
+            olcum_oku.tutarli_oku(lambda: next(okumalar), self.sira, deneme=5)
+
+    def test_sira_sozcugu_duzende(self):
+        self.assertIn("yayin_sira", self.adlar)
+        self.assertTrue(olcum_oku.tutarli_mi(4, 4))
+        self.assertFalse(olcum_oku.tutarli_mi(5, 5))
+        self.assertFalse(olcum_oku.tutarli_mi(4, 6))
+
+
+if __name__ == "__main__":
+    unittest.main()
