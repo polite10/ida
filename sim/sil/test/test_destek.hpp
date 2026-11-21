@@ -166,6 +166,8 @@ public:
     void param_set(std::uint32_t cmd_id, std::uint16_t id, std::uint8_t type, std::uint32_t bits);
     void guided(std::uint32_t cmd_id, std::uint8_t mask, float depth, float yaw);
     void emniyet(std::uint32_t seq, std::int64_t t, std::uint32_t rev);
+    void batarya(std::uint32_t seq, std::int64_t t);   // 16 V (eşikler 13,2 / 12,4 V)
+    void sizinti(std::uint32_t seq, std::int64_t t);   // kuru
     // Kamera algılama partisi başlığı ve tek kaydı (A8).
     void algilama(std::uint32_t batch_seq, std::uint32_t det_seq, std::int64_t t);
     // Ping360 satırı: 240 örnek, tek parça (önce DATA, sonra HEAD).

@@ -398,6 +398,31 @@ void PartiKurucu::emniyet(std::uint32_t seq, std::int64_t t, std::uint32_t rev)
     ++uye_;
 }
 
+void PartiKurucu::batarya(std::uint32_t seq, std::int64_t t)
+{
+    mavlink_ida_batt_t m{};
+    m.t_meas_ns = t;
+    m.seq = seq;
+    m.window_ns = 1000000u;
+    m.voltage = 16.0f;
+    m.current = 2.0f;
+    m.temp_c = 25.0f;
+    m.flags = static_cast<std::uint16_t>(IDA_HF_VALID);
+    sim_.gonder(MAVLINK_MSG_ID_IDA_BATT, m);
+    ++uye_;
+}
+
+void PartiKurucu::sizinti(std::uint32_t seq, std::int64_t t)
+{
+    mavlink_ida_leak_t m{};
+    m.t_meas_ns = t;
+    m.seq = seq;
+    m.mask = 0u;
+    m.flags = static_cast<std::uint16_t>(IDA_HF_VALID);
+    sim_.gonder(MAVLINK_MSG_ID_IDA_LEAK, m);
+    ++uye_;
+}
+
 void PartiKurucu::algilama(std::uint32_t batch_seq, std::uint32_t det_seq, std::int64_t t)
 {
     mavlink_ida_det_batch_t b{};
@@ -470,6 +495,10 @@ bool parti(SahteSim& sim, std::uint32_t seq, Cerceve* act,
     }
     if (seq % 8u == 0u) {
         p.mag(seq / 8u, t - 2000000);
+    }
+    if (seq % 4u == 2u) {
+        p.batarya(seq / 4u, t - 1500000);
+        p.sizinti(seq / 4u, t - 1500000);
     }
     if (ek) {
         ek(p);
