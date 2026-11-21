@@ -260,6 +260,38 @@ int main(int argc, char** argv)
              "(bilgi; W3-K1 acik nokta)", true);
         olcu("acil: kontrol satiri", static_cast<double>(satir), "(bilgi)", true);
         olcu("acil: thr_valid satiri", static_cast<double>(thr_valid_satir), "(bilgi)", true);
+        // Kalkıştan sonra fiziğe giden itkinin geri geldiği ilk satır (W4-K3: kalkıştan sonra
+        // gönderilen partinin yanıtıyla) ve kartın atış kontrol durumu akışı (gözlem).
+        double t_geri = -1.0;
+        for (const ida::sunucu::Satir& r : s.satirlar) {
+            if (a.acil_kalkar_s >= 0.0 && r.t_s >= a.acil_kalkar_s && r.estop == 0u) {
+                bool notr_disi = false;
+                for (std::size_t i = 0; i < 8; ++i) {
+                    notr_disi = notr_disi || r.pwm_fiz[i] != 1500;
+                }
+                if (notr_disi) {
+                    t_geri = r.t_s;
+                    break;
+                }
+            }
+        }
+        olcu("acil: kalkistan itkinin geri gelisine ms", t_geri >= 0.0 ? 1e3 * (t_geri - a.acil_kalkar_s) : -1.0,
+             "(bilgi; W4-K3)", true);
+        std::printf("fc akisi (t_s estop fc_state fc_inhibit):");
+        int onceki_estop = -1;
+        int onceki_state = -1;
+        long long onceki_mask = -1;
+        for (const ida::sunucu::Satir& r : s.satirlar) {
+            if (static_cast<int>(r.estop) != onceki_estop || static_cast<int>(r.fc_state) != onceki_state ||
+                static_cast<long long>(r.fc_inhibit) != onceki_mask) {
+                std::printf(" [%.3f %u %u 0x%05X]", r.t_s, static_cast<unsigned>(r.estop),
+                            static_cast<unsigned>(r.fc_state), static_cast<unsigned>(r.fc_inhibit));
+                onceki_estop = static_cast<int>(r.estop);
+                onceki_state = static_cast<int>(r.fc_state);
+                onceki_mask = static_cast<long long>(r.fc_inhibit);
+            }
+        }
+        std::printf("\n");
     }
     std::printf("== ida_z2 %s (sure %.1f s, tohum %llu)\n", kip.c_str(), a.sure_s,
                 static_cast<unsigned long long>(a.tohum));
@@ -329,6 +361,29 @@ int main(int argc, char** argv)
         }
         std::printf("\n");
     }
+    std::vector<std::int64_t> ys;
+    for (const ida::sunucu::Satir& r : s.satirlar) {
+        if (r.yanit_suresi_ns >= 0) {
+            ys.push_back(r.yanit_suresi_ns);
+        }
+    }
+    std::size_t ys_10ms = 0;
+    for (const std::int64_t v : ys) {
+        ys_10ms += v >= 10'000'000 ? 1u : 0u;
+    }
+    std::printf("yanit suresi (TF yazimi -> yanit alimi, satirlardan): n %zu; ms p0 %.3f p50 %.3f p99 %.3f p99.9 %.3f "
+                "en cok %.3f; >= 10 ms %zu; ozet (ida_sim): n %llu p50 %.3f p99 %.3f en cok %.3f\n",
+                ys.size(), yuzdelik(ys, 0.0), yuzdelik(ys, 0.5), yuzdelik(ys, 0.99), yuzdelik(ys, 0.999),
+                ys.empty() ? 0.0 : 1e-6 * static_cast<double>(*std::max_element(ys.begin(), ys.end())), ys_10ms,
+                static_cast<unsigned long long>(z.yanit_sayisi), 1e-6 * static_cast<double>(z.yanit_p50_ns),
+                1e-6 * static_cast<double>(z.yanit_p99_ns), 1e-6 * static_cast<double>(z.yanit_en_cok_ns));
+    std::printf("ek sayaclar: eszamansiz_ilk_parti_oncesi %llu estop_iptal %llu emniyet_rev_geri %llu; "
+                "oturum ici crc %llu atlanan %llu seq_gap %llu; fc son: var %d state %u inhibit 0x%05X\n",
+                static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi),
+                static_cast<unsigned long long>(c.estop_iptal), static_cast<unsigned long long>(c.emniyet_rev_geri),
+                static_cast<unsigned long long>(z.rx_crc_kosu), static_cast<unsigned long long>(z.rx_resync_kosu),
+                static_cast<unsigned long long>(z.rx_seq_gap_kosu), s.kart.fc_var ? 1 : 0,
+                static_cast<unsigned>(s.kart.fc_state), static_cast<unsigned>(s.kart.fc_inhibit_mask));
     std::printf("ida_z2 %s: %d kalan\n", kalan == 0 ? "GECTI" : "KALDI", kalan);
     if (!json_yolu.empty()) {
         Metin f;
@@ -370,7 +425,14 @@ int main(int argc, char** argv)
             for (std::size_t i = 0; i < kutu.size(); ++i) {
                 f("%s%llu", i == 0 ? "" : ", ", static_cast<unsigned long long>(kutu[i]));
             }
-            f("]}}\n");
+            f("], \"yanit_n\": %zu, \"yanit_p50\": %.4f, \"yanit_p99\": %.4f, \"yanit_p999\": %.4f, "
+              "\"yanit_en_cok\": %.4f, \"yanit_10ms_ustu\": %zu, \"ilk_parti_oncesi_esz\": %llu, "
+              "\"estop_iptal\": %llu, \"crc_kosu\": %llu, \"atlanan_kosu\": %llu, \"seq_gap_kosu\": %llu}}\n",
+              ys.size(), yuzdelik(ys, 0.5), yuzdelik(ys, 0.99), yuzdelik(ys, 0.999),
+              ys.empty() ? 0.0 : 1e-6 * static_cast<double>(*std::max_element(ys.begin(), ys.end())), ys_10ms,
+              static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi),
+              static_cast<unsigned long long>(c.estop_iptal), static_cast<unsigned long long>(z.rx_crc_kosu),
+              static_cast<unsigned long long>(z.rx_resync_kosu), static_cast<unsigned long long>(z.rx_seq_gap_kosu));
             std::ofstream(json_yolu, std::ios::binary) << f.s;
         }
     }
