@@ -5,7 +5,10 @@
 #
 #   -DNINJA=<ninja> -DIKILI=<derleme dizini> -DNESNELER=<nesne;...>
 #   -DCEKIRDEK_KOKLERI=<dizin;...>   çekirdeğin kendi başlık kökleri (include/, src/)
-#   -DSISTEM_KOKLERI=<dizin;...>     derleyicinin ve standart C kitaplığının başlık kökleri
+#   -DSISTEM_KOKLERI=<dizin;...>     derleyicinin ve standart C kitaplığının başlık kökleri;
+#                                    Clang'de derleyicinin kaynak dizini de (sanitizer'ın
+#                                    yok sayma listesi gibi başlık olmayan bağımlılıklar
+#                                    oradan gelir; IdaCekirdekSiniri.cmake)
 #   -DBUYUK_KUCUK=ON|OFF             yolları büyük/küçük harf duyarsız karşılaştır (Windows)
 #
 # Her başlık için:
