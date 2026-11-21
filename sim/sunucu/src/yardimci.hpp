@@ -44,4 +44,12 @@ public:
 
 std::unique_ptr<AltSurec> surec_baslat(const std::vector<std::string>& argv, std::string& hata);
 
+// Windows komut satırı (sol #14): argümanlar Microsoft CRT'nin ayrıştırma kurallarına göre
+// kodlanır ("Parsing C command-line arguments"): boşluk, sekme, satır sonu ya da tırnak içeren
+// (ya da boş) argüman tırnağa alınır; tırnaktan önceki n ters bölü 2n + 1'e (tırnak kaçar),
+// kapanış tırnağından önceki n ters bölü 2n'ye çoğaltılır; başka yerdeki ters bölü olduğu gibi
+// kalır. Program adı (argv[0]) CRT'de kaçış olmadan ayrıştırıldığından yalnız tırnağa alınır
+// (tırnak içeremez: false). Platformdan bağımsızdır (sınanabilsin diye).
+bool windows_komut_satiri(const std::vector<std::string>& argv, std::string& satir);
+
 }  // namespace ida::sunucu

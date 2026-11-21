@@ -207,6 +207,46 @@ private:
 
 }  // namespace
 
+bool windows_komut_satiri(const std::vector<std::string>& argv, std::string& satir)
+{
+    satir.clear();
+    for (std::size_t i = 0; i < argv.size(); ++i) {
+        const std::string& a = argv[i];
+        if (i > 0) {
+            satir += ' ';
+        }
+        if (i == 0) {
+            if (a.find('"') != std::string::npos) {
+                return false;
+            }
+            satir += '"' + a + '"';
+            continue;
+        }
+        if (!a.empty() && a.find_first_of(" \t\n\v\"") == std::string::npos) {
+            satir += a;
+            continue;
+        }
+        satir += '"';
+        std::size_t ters = 0;
+        for (const char c : a) {
+            if (c == '\\') {
+                ++ters;
+                continue;
+            }
+            if (c == '"') {
+                satir.append(2 * ters + 1, '\\');
+            } else {
+                satir.append(ters, '\\');
+            }
+            ters = 0;
+            satir += c;
+        }
+        satir.append(2 * ters, '\\');   // kapanış tırnağından önce
+        satir += '"';
+    }
+    return true;
+}
+
 std::unique_ptr<AltSurec> surec_baslat(const std::vector<std::string>& argv, std::string& hata)
 {
     if (argv.empty()) {
@@ -215,11 +255,9 @@ std::unique_ptr<AltSurec> surec_baslat(const std::vector<std::string>& argv, std
     }
 #if defined(_WIN32)
     std::string satir;
-    for (const std::string& a : argv) {
-        if (!satir.empty()) {
-            satir += ' ';
-        }
-        satir += '"' + a + '"';
+    if (!windows_komut_satiri(argv, satir)) {
+        hata = "program adı tırnak içeriyor";
+        return nullptr;
     }
     STARTUPINFOA si{};
     si.cb = sizeof si;

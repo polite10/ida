@@ -41,7 +41,8 @@ struct KarsiTaraf::Ic {
     std::uint32_t boot_count = 0;
     bool ilk_init = true;
     std::uint32_t nonce_deneme = 0;
-    std::int64_t saat = 0;             // SIL: son TF'nin zamanı
+    std::int64_t saat = 0;             // SIL: protokolün kabul ettiği son TF'nin zamanı
+    std::int64_t son_now_w = 0;        // SIL: bu çekirdek ömründe verilen son now_w (A4-K09)
     std::chrono::steady_clock::time_point bas = std::chrono::steady_clock::now();
     std::vector<std::uint8_t> blok;
     std::uint32_t blok_gen = 0;
@@ -116,6 +117,11 @@ struct KarsiTaraf::Ic {
         }
         std::memset(bellek.get(), 0, 65536);
         ++boot_count;
+        if (a.rol == KarsiRol::sil) {
+            // W4-K10 (ida_sil ile aynı): her çekirdek ömrü platform saatini 0'dan başlatır.
+            saat = 0;
+            son_now_w = 0;
+        }
         ida_init_in_t ii{};
         ii.port_major = static_cast<std::uint16_t>(IDA_PORT_VERSION_MAJOR);
         ii.port_minor = static_cast<std::uint16_t>(IDA_PORT_VERSION_MINOR);
@@ -149,7 +155,8 @@ struct KarsiTaraf::Ic {
         nonce_deneme = 0;
         pstore = static_cast<std::uint8_t>(IDA_PSTORE_IDLE);
         pfail = 0;
-        pgen = blok.empty() ? 0u : blok_gen;
+        // W4-K10 (a): SIL'de init sonrasında param_gen = 0 (ida_sil ile aynı).
+        pgen = a.rol == KarsiRol::sil || blok.empty() ? 0u : blok_gen;
         yeniden_baslat_istendi = false;
         plat.ctx = this;
         plat.zaman = &Ic::p_zaman;
@@ -206,6 +213,18 @@ struct KarsiTaraf::Ic {
                 }
             }
             in.bg_slices = dilim;
+            if (a.rol == KarsiRol::sil) {
+                // A4-K09: saat bir çekirdek ömründe azalmaz; A4-K14: SIL'de alım damgası =
+                // çağrının now_w'si (ida_sil'in alim_damgalari'yla aynı; sol #13).
+                if (in.now_w.ns < son_now_w) {
+                    in.now_w.ns = son_now_w;
+                }
+                son_now_w = in.now_w.ns;
+                alim_damgalari(in);
+            }
+            if (a.cagri_kancasi) {
+                a.cagri_kancasi(static_cast<int>(tur), in);
+            }
             const ida_rc_t rc = tur == IDA_LINK_CAGRI_STEP ? ida_core_step(cekirdek(), &in, cikti.get())
                                                            : ida_core_tick(cekirdek(), &in, cikti.get());
             ida_link_ust_put_out(l.get(), &in, rc, cikti.get());
@@ -230,6 +249,37 @@ struct KarsiTaraf::Ic {
             ist.imu_rejected = cikti->status.cnt.imu_rejected;
             kayitlar(*cikti);
         }
+    }
+
+    static void alim_damgalari(ida_in_t& in)
+    {
+        const ida_wtime_t w = in.now_w;
+        if (in.tf.present) {
+            in.tf.t_rx = w;
+        }
+        if (in.imu_present) {
+            in.imu.hdr.t_rx = w;
+        }
+        const std::size_t n_ornek = std::min<std::size_t>(in.n_samples, IDA_PORT_MAX_SAMPLES);
+        for (std::size_t k = 0; k < n_ornek; ++k) {
+            in.samples[k].hdr.t_rx = w;
+        }
+        const std::size_t n_bas = std::min<std::size_t>(in.n_det_batch, IDA_PORT_MAX_DET_BATCH);
+        for (std::size_t k = 0; k < n_bas; ++k) {
+            in.det_batch_t_rx[k] = w;
+        }
+        const std::size_t n_kayit = std::min<std::size_t>(in.n_det, IDA_PORT_MAX_DET_IN);
+        for (std::size_t k = 0; k < n_kayit; ++k) {
+            in.det_t_rx[k] = w;
+        }
+        // Ping360 satırı: süreç içi karşı tarafta sonar yok (W4-sonar); işaretçi değişmez.
+    }
+
+    std::uint32_t kapanan_parti() const
+    {
+        std::uint32_t say[IDA_LINK_SAY_N] = {};
+        ida_link_ust_sayaclar(l.get(), say);
+        return say[IDA_LINK_SAY_BATCH_CLOSED];
     }
 
     void cerceve_sonrasi()
@@ -262,13 +312,18 @@ struct KarsiTaraf::Ic {
             if (rc != IDA_LINK_CERCEVE) {
                 break;
             }
-            const std::int64_t t_rx = simdi();   // önceki TF'nin zamanı (SIL)
-            ida_link_ust_rx(l.get(), bekleyen.data() + bas_i, konum - bas_i, ida_wtime_t{t_rx});
+            // SIL (ida_sil ile aynı; sol #13): çerçeve alım anındaki saatle modüle verilir; saat
+            // yalnız modül TF'yi kabul edip partiyi kapattıysa (batch_closed arttıysa) TF'nin
+            // zamanına ilerler (DUP/OLD/eski oturum saati ilerletmez). Çağrı girdisindeki alım
+            // damgaları çağrının now_w'sidir (alim_damgalari).
+            const bool tf_mi = c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME && a.rol == KarsiRol::sil;
+            const std::uint32_t kapanan_once = tf_mi ? kapanan_parti() : 0u;
+            ida_link_ust_rx(l.get(), bekleyen.data() + bas_i, konum - bas_i, ida_wtime_t{simdi()});
             bas_i = konum;
-            if (c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME && a.rol == KarsiRol::sil) {
+            if (tf_mi && kapanan_parti() != kapanan_once) {
                 mavlink_ida_time_frame_t tf{};
-                (void)ida_link_coz(&c, c.msgid, &tf, sizeof tf);
-                if (tf.sess == ida_link_ust_sess(l.get()) && tf.t_sim_ns > saat) {
+                if (ida_link_coz(&c, c.msgid, &tf, sizeof tf) == IDA_LINK_TAMAM && tf.t_sim_ns >= 0 &&
+                    tf.t_sim_ns <= static_cast<std::int64_t>(IDA_TIME_MAX_NS) && tf.t_sim_ns > saat) {
                     saat = tf.t_sim_ns;
                 }
             }

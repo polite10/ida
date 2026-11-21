@@ -17,6 +17,7 @@
 #pragma once
 
 #include "ida/kopru/kopru.hpp"
+#include "ida/port.h"
 
 #include <array>
 #include <cstdint>
@@ -75,6 +76,10 @@ struct Ayar {
     // sonraki ilk yeniden açma denemesi yeni bir sözde uçbirim açar. < 0: yok.
     double pty_cikarma_s = -1.0;
     double pty_takma_s = -1.0;
+    // Yalnız sınama (sol #13): ic kipinde karşı tarafın çekirdek çağrısı girdileri; tcp kipinde
+    // dinleme başlayınca port ve karşı tarafın A1 tohumu (dışarıdan koşucu başlatmak için).
+    std::function<void(int tur, const ida_in_t& girdi)> ic_cagri_kancasi;
+    std::function<void(std::uint16_t port, std::uint64_t a1_tohum)> tcp_hazir;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).

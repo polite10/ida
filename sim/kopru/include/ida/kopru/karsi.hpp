@@ -4,14 +4,17 @@
 // yazılımıdır (firmware/).
 //
 // İki rol:
-//   SIL  saat sim zamanıdır: son alınan zaman çerçevesinin t_sim_ns'i (A4-K11, A1-K121);
-//        parti üyeleri önceki TF'nin zamanıyla damgalanır; ızgara tick'i, T_bağ ve duyuru yok.
+//   SIL  saat sim zamanıdır: protokolün kabul ettiği (partiyi kapatan) son zaman çerçevesinin
+//        t_sim_ns'i (A4-K11, A1-K121); her çekirdek ömrü 0'dan (W4-K10); çağrı girdisindeki
+//        alım damgaları çağrının now_w'sidir (A4-K14) — ida_sil ile aynı politika (sol #13);
+//        ızgara tick'i, T_bağ ve duyuru yok.
 //        Belirlenimcidir: çıktı yalnız alınan bayt akışına bağlıdır.
 //   KART saat bir süreğen saattir (duvar); ızgara tick'i, T_bağ ve duyuru var (A1-K11, K117).
 //        HIL kipinin kartsız sınaması (sözde uçbirim ya da TCP) içindir.
 #pragma once
 
 #include "ida/kopru/tasima.hpp"
+#include "ida/port.h"
 
 #include <cstdint>
 #include <functional>
@@ -32,6 +35,9 @@ struct KarsiAyari {
     std::uint32_t n_bg = 1;                // A1-K121 (iii)
     std::uint16_t esc_alt_us = 1100, esc_notr_us = 1500, esc_ust_us = 1900;
     std::uint32_t t_bag_ns = 500'000'000u;
+    // Yalnız sınama: çekirdek çağrısından hemen önce, girdi tamamlanmışken (ida_sil'in
+    // Kancalar::cagri_icinde ile aynı nokta; sol #13).
+    std::function<void(int tur, const ida_in_t& girdi)> cagri_kancasi;
     // Yalnız sınama: BOARD_HELLO'daki dialect_hash'i değiştirmek mümkün değildir (derlenmiş);
     // yanlış dialect sınaması köprünün beklenen değeriyle yapılır.
 };

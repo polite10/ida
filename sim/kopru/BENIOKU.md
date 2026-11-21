@@ -17,7 +17,9 @@ Zaman yöneticisi her fizik sınırı `b` (t = b·h) için: `sinir_isle(b)` (A1-
 ## Bu dilimin sınırları
 
 - Bariyer kipi (HIL 1x + adım bariyeri) yoktur; SIL kilitli adım ve HIL 1x vardır.
-- `B_krit` aşımında kritik üyeler kaydırılmaz, yalnız sayılır (A1-K113); pencere bütçesi aşımı sayılır ve çalıştırmayı geçersiz kılar. İDA-0 sensör kümesinde en büyük kritik bayt 287 B'tır (SIL Z1, ölçüm).
+- Parti bütçeleri (A1-K34, K113): sensör üyeleri pencerede tutulur ve kapanışta gerçek kodlanmış boylarıyla yazılır; partide 1 IMU, emniyet dahil en çok 16 örnek; kritik toplam (TF, IMU, emniyet, daraltıcı komutlar, olay sonuçları, diğer sensörler) `B_krit` = 520 B'ı aşarsa diğer sensörler sıralarının sonundan sonraki partiye kayar (`kritik_erteleme`). Toplu komutların baytları pencere toplamına girer; `B_pencere` aşımı sayılır ve çalıştırmayı geçersiz kılar. İDA-0 sensör kümesinde en büyük kritik bayt 287 B'tır (SIL Z1, ölçüm).
+- Daraltıcı komutlar tür başına duvar saatli kovayla gider (patlama 1, 5 ms'de 1; A1-K61, K119); pencere açılışı kovayı yenilemez.
+- `batch_seq` 2³²'de sarar, 0 geçerlidir; TF, yanıt ve yuva geçmişleri gönderim sırasıyla tutulur.
 - Sonar (Ping360 parçalama, A1-K49–K53), algılama (A1-K38, `NO_FRAME` A1-K58), bağlantı emülatörü ve hata enjeksiyonu yoktur.
 - A1-K115 (seri sürücünün çıkış kuyruğu boşken yazma) uygulanmadı.
 - Atış kontrol: kabul edilen `FIRE` yalnız tüpün "dolu" bitini siler; torpido fiziği yoktur.

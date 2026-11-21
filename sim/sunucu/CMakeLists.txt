@@ -3,6 +3,7 @@
 #
 #   ida_sunucu   kitaplık (sunucu.hpp); bütünleme testleri (tests/butunleme) bağlar
 #   ida_sim      program
+#   ida_sunucu_test  yardımcı sınamaları
 #
 # Fizik Eigen'e (vcpkg) bağlıdır; ida_fizik yoksa (VCPKG_ROOT yok) bu dizin atlanır.
 
@@ -28,3 +29,11 @@ ida_sunucu_ayar(ida_sunucu)
 add_executable(ida_sim src/main.cpp)
 target_link_libraries(ida_sim PRIVATE ida_sunucu)
 ida_sunucu_ayar(ida_sim)
+
+# Yardımcı sınamaları (sim.sunucu.*): Windows argüman kaçışı (sol #14).
+add_executable(ida_sunucu_test test/test_yardimci.cpp)
+target_include_directories(ida_sunucu_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ida_sunucu_test PRIVATE ida_sunucu)
+ida_sunucu_ayar(ida_sunucu_test)
+add_test(NAME sim.sunucu.arguman_kacisi COMMAND ida_sunucu_test arguman_kacisi)
+add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)

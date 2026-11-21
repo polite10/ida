@@ -858,6 +858,7 @@ Sonuc Calistirici::kos()
         tas_ = std::move(x);
         kopru::KarsiAyari kk;
         kk.a1_tohum = k_->board_tohumu();
+        kk.cagri_kancasi = a_.ic_cagri_kancasi;
         ic_ = std::make_unique<kopru::KarsiTaraf>(std::move(y), kk);
         if (!ic_->kur()) {
             s_.hata = "süreç içi karşı taraf: " + ic_->hata();
@@ -874,6 +875,9 @@ Sonuc Calistirici::kos()
         char tohum[32];
         std::snprintf(tohum, sizeof tohum, "%016llx", static_cast<unsigned long long>(k_->board_tohumu()));
         gunluk(1, "A1 TCP 127.0.0.1:" + std::to_string(din_->port()) + " (--a1-seed " + tohum + ")");
+        if (a_.tcp_hazir) {
+            a_.tcp_hazir(din_->port(), k_->board_tohumu());
+        }
         if (!a_.sil_yolu.empty()) {
             std::vector<std::string> av = {a_.sil_yolu, "--a1-port", std::to_string(din_->port()), "--a1-seed", tohum};
             if (!a_.sil_depo.empty()) {

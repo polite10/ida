@@ -9,8 +9,10 @@
 //   acil_durdurma   kabul 4 (EMNİYET): acil durdurma etkinken fiziğe giden darbe genişliği nötr
 //   hil_pty         kabul 7: HIL 1x, sözde uçbirim + kart rolünde karşı taraf, 60 s; gerçek
 //                   zaman kaçırma sayacı ve TF periyot dağılımı (ölçüm; eşik yok)
+//   a4_girdi_esitligi  süreç içi karşı taraf ile ida_sil'in A4 çağrı girdileri bayt bayt aynı
 //   hil_cikarma_takma  HIL 1x, sözde uçbirim; 5 s'de aygıt kalkar, 7 s'de takılır (A1-K23, H29)
 #include "ida/port.h"
+#include "ida/sil/kosucu.hpp"
 #include "ida/sunucu/sunucu.hpp"
 #include "zincir.hpp"
 
@@ -18,7 +20,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -265,6 +269,98 @@ int test_z1_sil_tcp(const char* sil_yolu)
     return 0;
 }
 
+// sol #13: süreç içi karşı taraf ile ida_sil'in A4 çağrı girdileri aynıdır. Aynı Z1 akışı iki
+// karşı tarafla koşulur; her çekirdek çağrısının tamamlanmış girdisi (çekirdek çağrısından
+// hemen önce; alım damgaları ve platform alanları dahil) bayt bayt karşılaştırılır.
+struct CagriIzi {
+    int tur = 0;
+    ida_in_t in{};
+};
+
+void girdi_kaydet(std::vector<CagriIzi>& v, int tur, const ida_in_t& in)
+{
+    CagriIzi c;
+    c.tur = tur;
+    std::memcpy(&c.in, &in, sizeof in);   // take girdiyi sıfırlayarak doldurur (dolgu baytları 0)
+    c.in.ping360 = nullptr;               // işaretçi: içeriği karşılaştırmaya girmez (sonar yok)
+    v.push_back(c);
+}
+
+std::string girdi_farki(const ida_in_t& x, const ida_in_t& y)
+{
+    std::string f;
+    auto alan = [&](const char* ad, const void* a, const void* b, std::size_t n) {
+        if (std::memcmp(a, b, n) != 0) {
+            f += std::string(f.empty() ? "" : ", ") + ad;
+        }
+    };
+    alan("now_w", &x.now_w, &y.now_w, sizeof x.now_w);
+    alan("tf", &x.tf, &y.tf, sizeof x.tf);
+    alan("imu", &x.imu, &y.imu, sizeof x.imu);
+    alan("samples", x.samples, y.samples, sizeof x.samples);
+    alan("narrow", &x.narrow, &y.narrow, sizeof x.narrow);
+    alan("cmds", x.cmds, y.cmds, sizeof x.cmds);
+    alan("evres", x.evres, y.evres, sizeof x.evres);
+    alan("plat", &x.plat, &y.plat, sizeof x.plat);
+    if (x.bg_slices != y.bg_slices || x.n_samples != y.n_samples || x.n_cmds != y.n_cmds || x.n_evres != y.n_evres ||
+        x.imu_present != y.imu_present) {
+        f += std::string(f.empty() ? "" : ", ") + "sayılar";
+    }
+    return f.empty() ? "diğer" : f;
+}
+
+int test_a4_girdi_esitligi()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 8.0;   // ARM, kip ve hedef komutları dahil
+    std::vector<CagriIzi> ic, sil;
+    a.ic_cagri_kancasi = [&](int tur, const ida_in_t& in) { girdi_kaydet(ic, tur, in); };
+    const ida::sunucu::Sonuc s1 = ida::sunucu::kos(a);
+    dogrula(s1.tamam, "süreç içi koşu " + s1.hata);
+
+    ida::sunucu::Ayar b = a;
+    b.ic_cagri_kancasi = nullptr;
+    b.karsi = ida::sunucu::Karsi::tcp;
+    std::unique_ptr<ida::sil::Kosucu> kosucu;
+    std::thread is;
+    b.tcp_hazir = [&](std::uint16_t port, std::uint64_t tohum) {
+        ida::sil::Ayarlar ka;
+        ka.a1_port = port;
+        ka.a1_tohum = tohum;
+        ka.gunluk = 0;
+        ida::sil::Kancalar kn;
+        kn.cagri_icinde = [&](int tur, const ida_in_t& in) { girdi_kaydet(sil, tur, in); };
+        kosucu = std::make_unique<ida::sil::Kosucu>(ka, kn);
+        is = std::thread([&] { (void)kosucu->calistir(); });
+    };
+    const ida::sunucu::Sonuc s2 = ida::sunucu::kos(b);
+    if (kosucu) {
+        kosucu->durdur();
+    }
+    if (is.joinable()) {
+        is.join();
+    }
+    dogrula(s2.tamam, "ida_sil (süreç içinde, TCP) koşu " + s2.hata);
+    dogrula(!ic.empty() && ic.size() == sil.size(),
+            "çağrı sayısı eşit (süreç içi " + std::to_string(ic.size()) + ", ida_sil " + std::to_string(sil.size()) + ")");
+    std::size_t farkli = 0;
+    std::string ilk;
+    for (std::size_t i = 0; i < std::min(ic.size(), sil.size()); ++i) {
+        if (ic[i].tur != sil[i].tur || std::memcmp(&ic[i].in, &sil[i].in, sizeof(ida_in_t)) != 0) {
+            if (farkli == 0u) {
+                ilk = "çağrı " + std::to_string(i) + " (tür " + std::to_string(ic[i].tur) + "/" +
+                      std::to_string(sil[i].tur) + "): " + girdi_farki(ic[i].in, sil[i].in);
+            }
+            ++farkli;
+        }
+    }
+    dogrula(farkli == 0u, "A4 çağrı girdileri bayt bayt aynı (" + std::to_string(farkli) + " farklı" +
+                              (ilk.empty() ? "" : "; ilk: " + ilk) + ")");
+    dogrula(s1.csv == s2.csv, "iki karşı tarafla CSV aynı");
+    return 0;
+}
+
 int test_acil_durdurma()
 {
     ida::sunucu::Ayar a;
@@ -396,7 +492,7 @@ int test_hil_cikarma_takma()
 int main(int argc, char** argv)
 {
     if (argc < 2) {
-        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|acil_durdurma|hil_pty|hil_cikarma_takma>\n");
+        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|a4_girdi_esitligi|acil_durdurma|hil_pty|hil_cikarma_takma>\n");
         return 2;
     }
     const std::string ad = argv[1];
@@ -406,6 +502,8 @@ int main(int argc, char** argv)
         (void)test_z1_belirlenim();
     } else if (ad == "z1_sil_tcp" && argc > 2) {
         (void)test_z1_sil_tcp(argv[2]);
+    } else if (ad == "a4_girdi_esitligi") {
+        (void)test_a4_girdi_esitligi();
     } else if (ad == "acil_durdurma") {
         (void)test_acil_durdurma();
     } else if (ad == "hil_pty") {
