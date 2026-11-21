@@ -7,6 +7,7 @@
 
 #include "cekirdek.h"
 #include "gorev/gorev.h"
+#include "gudum/gudum.h"
 #include "kestirim/kestirim.h"
 #include "mat/ida_math.h"
 #include "mat/mat.h"
@@ -105,6 +106,7 @@ static void dongu_sifirla(ida_kon_t *k)
     }
     k->i_v[0] = 0.0f;
     k->i_v[1] = 0.0f;
+    k->ref_kusak_var = 0u;
     cikti_sifirla(k);
 }
 
@@ -230,6 +232,25 @@ static void kanal_degisimi(ida_kon_t *k, const ida_kon_istek_t *s)
     k->son_tutum = s->tutum;
     k->son_yon = s->yon_kanali;
     k->son_yatay = s->yatay;
+}
+
+/* Referans kuşağı değişti (sol bulgu 2; EMNİYET): hedefin kaynağı değişti (arıza eylemine
+   geçiş, tutma hedefinin yeniden yakalanması, güdüm hedefinin iptali, derinleşme yasağı).
+   Eski hedefe göre yumuşatılmış derinlik ve yön referansları ölçülen durumdan yeniden kurulur;
+   eski hedefe giderken biriken öteleme integralleri (dikey, yatay) sıfırlanır. Açısal hız
+   integralleri korunur: moment bozucusunu (ör. zayıflamış itici) karşılarlar ve sıfırlanmaları
+   tutumda geçici sapma yaratır. */
+static void referans_kusagi(ida_kon_t *k, const ida_kon_istek_t *s)
+{
+    if ((k->ref_kusak_var == 1u) && (k->son_ref_kusak != s->ref_kusak)) {
+        k->d_ref_var = 0u;
+        k->psi_ref_var = 0u;
+        k->i_w = 0.0f;
+        k->i_v[0] = 0.0f;
+        k->i_v[1] = 0.0f;
+    }
+    k->son_ref_kusak = s->ref_kusak;
+    k->ref_kusak_var = 1u;
 }
 
 /* Koşullu integral (sarma önlemi; 02 §2.5): çıkış kendi sınırında ya da tahsis o yönde doymuş
@@ -387,26 +408,50 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
     /* Dikey: derinlik → dikey hız setpoint'i → NED Z kuvveti (+ yüzerlik ve sönüm ileri
        beslemesi). */
     float fz_ned = 0.0f;
+    /* Derinleşme yasağı (EMNİYET): aşağı yönlü kuvvetin üst sınırı yalnız yüzerlik
+       dengelemesidir (BUOY_FF = B − W kestirimi, pozitif yüzer araçta ≥ 0): bu kuvvet aracı
+       yerinde tutar, net aşağı ivme üretmez. Fazlası (aşağı hız ve integral) üretilmez. */
+    const bool yasak = s->dalis_yasak != 0u;
+    const float tutma_z = (z->yuzerlik > 0.0f) ? z->yuzerlik : 0.0f;
     if (dalis && (s->dikey != IDA_KON_DIKEY_KUVVET)) {
         float w_sp = 0.0f;
         if (s->dikey == IDA_KON_DIKEY_DERINLIK) {
-            const float hedef = (s->derinlik > 0.0f) ? s->derinlik : 0.0f;
+            float hedef = (s->derinlik > 0.0f) ? s->derinlik : 0.0f;
+            if (yasak && (hedef > n->depth)) {
+                hedef = n->depth;
+            }
             if (k->d_ref_var == 0u) {
                 k->d_ref = n->depth;
                 k->d_ref_var = 1u;
             }
             const float adim = kirp(sk(&ok, hedef - k->d_ref), z->ref_d_hiz * dt);
             k->d_ref = sk(&ok, k->d_ref + adim);
-            const float ileri = (dt > 0.0f) ? (adim / dt) : 0.0f;
+            float ileri = (dt > 0.0f) ? (adim / dt) : 0.0f;
+            if (yasak) {
+                /* Referans ölçülen derinliğin altında kalamaz: araç referansın hız sınırından
+                   hızlı yükselse de eski (derin) referans dalış istemez (2. tur bulgu 2). */
+                if (k->d_ref > n->depth) {
+                    k->d_ref = n->depth;
+                }
+                if (ileri > 0.0f) {
+                    ileri = 0.0f;
+                }
+            }
             w_sp = kirp(sk(&ok, (z->d_kp * sk(&ok, k->d_ref - n->depth)) + ileri), z->lim_w);
         } else {
             k->d_ref_var = 0u;
             w_sp = kirp(s->dikey_hiz, z->lim_w);
         }
+        if (yasak && (w_sp > 0.0f)) {
+            w_sp = 0.0f; /* aşağı yönlü dikey hız isteği yok */
+        }
         a.w_pi = true;
         a.e_w = sk(&ok, w_sp - n->v_ned[2]);
         a.ham_w = sk(&ok, (z->w_kp * a.e_w) + k->i_w + z->yuzerlik + (z->w_sonum * w_sp));
         fz_ned = kirp(a.ham_w, z->lim_fz);
+        if (yasak && (fz_ned > tutma_z)) {
+            fz_ned = tutma_z;
+        }
     }
 
     /* Açısal: açı kanallarından Euler hızı, hız kanallarından gövde hızı; birlikte çözülür. */
@@ -506,7 +551,11 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
         tau[IDA_EKS_Y] += s->kuvvet[IDA_EKS_Y];
     }
     if (dalis && (s->dikey == IDA_KON_DIKEY_KUVVET)) {
-        tau[IDA_EKS_Z] += s->kuvvet[IDA_EKS_Z];
+        float kz = s->kuvvet[IDA_EKS_Z];
+        if (yasak && (kz > tutma_z)) {
+            kz = tutma_z; /* derinleşme yasağı: doğrudan aşağı kuvvet de sınırlı */
+        }
+        tau[IDA_EKS_Z] += kz;
     }
     tau[IDA_EKS_K] = dalis ? moment[0] : 0.0f;
     tau[IDA_EKS_M] = dalis ? moment[1] : 0.0f;
@@ -564,6 +613,9 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
     if (a.w_pi) {
         k->i_w = integral(k->i_w, z->w_ki, a.e_w, dt, a.ham_w, z->lim_fz,
                           doyma_isareti(kal_n.z, fz_ned));
+        if (yasak && (k->i_w > 0.0f)) {
+            k->i_w = 0.0f; /* derinleşme yasağı: integral aşağı yönde birikmez */
+        }
     }
     float ki[3];
     ki[0] = z->pq_ki;
@@ -627,6 +679,7 @@ void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_gird
         return;
     }
     kanal_degisimi(k, &g->istek);
+    referans_kusagi(k, &g->istek);
     kazanc_t z;
     kazanc_oku(prm, &z);
     if (!hesapla_etkin(k, &z, g, dt)) {
@@ -635,14 +688,10 @@ void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_gird
     }
 }
 
-/* Görev/güdümün isteği. Bu sürümde görev modülü yer tutucudur ve istek üretmez: KAPALI.
-   W3-gorev bağlantısı: bu işlevin gövdesi güdümün isteğini okuyan tek çağrıyla değişir
-   (ör. ida_gud_kon_istegi(&c->gud, c, i)); başka satır değişmez. */
+/* Görev/güdümün isteği: güdümün tek erişimcisi (etkin kip, arıza eylemi ve GUIDED_SP). */
 static void istek_al(const ida_core_t *c, ida_kon_istek_t *i)
 {
-    (void)c;
-    (void)memset(i, 0, sizeof(*i));
-    i->kip = IDA_KON_KIP_KAPALI;
+    ida_gud_kon_istegi(&c->gud, c, i);
 }
 
 void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g)
@@ -661,7 +710,7 @@ void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g)
     g->kisit = fs >= (uint8_t)IDA_FS_PASSIVE_SURFACE;
     const uint8_t est = ida_kes_duzey(&c->kes);
     g->kestirim_yeterli = (est == (uint8_t)IDA_EST_OK) || (est == (uint8_t)IDA_EST_DEGRADED);
-    g->itici_disi = 0u; /* görev modülünün itici arıza maskesi (W3-gorev) */
+    g->itici_disi = ida_gor_itici_disi(&c->gor); /* görev modülünün itici arıza maskesi */
 }
 
 void ida_kon_adim(ida_kon_t *k, const ida_core_t *c)
@@ -687,6 +736,7 @@ static bool kanal_gecerli(uint8_t v, uint8_t en_cok)
 bool ida_kon_tutarli(const ida_kon_t *k)
 {
     bool t = (k->onb_var <= 1u) && (k->cokme <= 1u) && (k->t_var <= 1u) &&
+             (k->ref_kusak_var <= 1u) &&
              (k->d_ref_var <= 1u) && (k->psi_ref_var <= 1u) &&
              kanal_gecerli(k->son_kip, IDA_KON_KIP_DALIS) &&
              kanal_gecerli(k->son_dikey, IDA_KON_DIKEY_KUVVET) &&
