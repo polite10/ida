@@ -290,6 +290,9 @@ public:
     std::optional<YanitBilgisi> yanit(std::uint32_t seq) const;
     // Bütün olağan yanıtların TF yazımından alımına süreleri (duvar, ns; ölçüm).
     const std::vector<std::int64_t>& yanit_sureleri() const;
+    // Karttan gelen akışta her başlık sıra boşluğunun (A1-K08) sim zamanı damgası: son işlenen
+    // fizik sınırının zamanı; köprü kurulduğundan beri, en çok ilk 1024.
+    const std::vector<std::int64_t>& sira_boslugu_zamanlari() const;
     std::uint32_t son_parti() const;
 
     // ---- Fizik sınırı (A1-K85) ----

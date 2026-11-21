@@ -175,6 +175,14 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(c.rx_seq_gap),
                          static_cast<unsigned long long>(c.esz_guvenli_uygulanan),
                          static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi));
+            if (!s.zaman.sira_boslugu_t_ns.empty()) {
+                std::fprintf(stderr, "ida_sim: hil: oturum içi ilk sıra boşlukları (sim zamanı, s):");
+                for (std::int64_t t : s.zaman.sira_boslugu_t_ns) {
+                    std::fprintf(stderr, " %.4f", 1e-9 * static_cast<double>(t));
+                }
+                std::fprintf(stderr, "\n");
+            }
+            std::fprintf(stderr, "ida_sim: hil döngü %s", s.evre_ozeti.c_str());
             if (s.kart.fc_var) {
                 std::fprintf(stderr, "ida_sim: kart atış kontrol durumu (son IDA_FC_STATUS): state %u, inhibit_mask 0x%x\n",
                              static_cast<unsigned>(s.kart.fc_state), static_cast<unsigned>(s.kart.fc_inhibit_mask));
