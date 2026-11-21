@@ -251,13 +251,103 @@ static void test_md2_ariza_eylemi(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
     ida_gun_kur(&o->gun);
     arm_kabul_bekle(o, "HEARTBEAT kaybı DISARMED'de");
-    /* Yalnız WARN, kaydı arm reddi gerektirmiyor: sızıntı algılayıcısı bayat. */
+    /* Sızıntı algılayıcısı bayat: eylem yalnız WARN, ama W4-K13'e göre kaydı arm reddi
+       gerektirir (ölçülmemiş koşul sağlanmış sayılmaz; ayrıntı test_w4k13_*). */
     ortam_kur(o);
     o->besle_leak = false;
     ilerle(o, 2500);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
     ida_gun_kur(&o->gun);
-    arm_kabul_bekle(o, "WARN, arm reddi yok");
+    arm_ret_bekle(o, "sızıntı bayat (W4-K13)");
+}
+
+/* ---- W4-K13: veri yokken ya da bayatken ARM reddi ----------------------------------------- */
+
+/* ortam_kur'un besleme seçimli biçimi: init'ten beri batarya ya da sızıntı örneği hiç yok. */
+static void ortam_kur_besleme(ortam_t *o, bool batt, bool leak)
+{
+    (void)memset(o, 0, sizeof(*o));
+    ida_gor_kur(&o->g);
+    ida_emn_kur(&o->e);
+    ida_prm_varsayilan(&o->p.yururluk);
+    o->p.param_ok = true;
+    ida_gun_kur(&o->gun);
+    o->now = 10000 * MS;
+    o->gi.est_level = (uint8_t)IDA_EST_OK;
+    o->gi.param_ok = true;
+    o->gi.nav_derinlik = 2.0f;
+    o->gi.nav_yon = 0.5f;
+    o->gi.nav_ne[0] = 1.0f;
+    o->gi.nav_ne[1] = 2.0f;
+    o->gi.prm = &o->p;
+    o->besle_batt = batt;
+    o->besle_leak = leak;
+    o->besle_hb = true;
+    o->oturum = true;
+    o->batt_v = 16.0f;
+    o->e.kisitli = 0u;
+    ilerle(o, 500);
+    ida_gun_kur(&o->gun);
+}
+
+/* (a) Hiç batarya örneği yokken, hiç sızıntı örneği yokken ARM reddedilir (NOT_ARMABLE);
+   neden bitleri ve eylem düzeyi değişmedi (WARN; BATT_LOW, LEAK). (c) İlk taze örnekle ret
+   kendiliğinden kalkar. İkisi tazeyken kabul test_md2_tum_kosullar_tutarken_kabul'dedir. */
+static void test_w4k13_veri_yokken_arm_reddi_ve_taze_ornekle_kalkar(void)
+{
+    ortam_t *o = &O;
+    ortam_kur_besleme(o, false, true);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
+    TEST_ASSERT_TRUE((o->g.fs_nedenleri & IDA_FSR_BATT_LOW) != 0u);
+    arm_ret_bekle(o, "batarya örneği hiç yok");
+    o->besle_batt = true;
+    bir_adim(o);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    arm_kabul_bekle(o, "ilk taze batarya örneği");
+
+    ortam_kur_besleme(o, true, false);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
+    TEST_ASSERT_TRUE((o->g.fs_nedenleri & IDA_FSR_LEAK) != 0u);
+    arm_ret_bekle(o, "sızıntı örneği hiç yok");
+    o->besle_leak = true;
+    bir_adim(o);
+    arm_kabul_bekle(o, "ilk taze sızıntı örneği");
+
+    ortam_kur_besleme(o, false, false);
+    arm_ret_bekle(o, "ikisi de yok");
+}
+
+/* (b) Silahlıyken batarya ya da sızıntı bayatlarsa araç silahlı kalır; eylem düzeyi WARN'dan
+   ağırlaşmaz (MANUAL ve DEPTH_HOLD sütunları). (c) Bayat → taze: yeniden silahlanabilir. */
+static void test_w4k13_silahliyken_bayatlama_silahsizlandirmaz(void)
+{
+    ortam_t *o = &O;
+    static const uint8_t kipler[2] = {IDA_MODE_MANUAL, IDA_MODE_DEPTH_HOLD};
+    for (uint32_t i = 0u; i < 2u; i++) {
+        for (uint32_t tur = 0u; tur < 2u; tur++) {
+            ortam_kur(o);
+            o->e.mode = kipler[i];
+            o->g.son_kip = kipler[i];
+            bir_adim(o);
+            arm_kabul_bekle(o, "taze verilerle");
+            if (tur == 0u) {
+                o->besle_batt = false;
+            } else {
+                o->besle_leak = false;
+            }
+            ilerle(o, 3000);
+            TEST_ASSERT_TRUE_MESSAGE(o->e.armed, "bayatlama silahsızlandırmamalı");
+            TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
+            /* Silahsızlandırılıp bayatken yeniden ARM: ret; taze örnekle kabul. */
+            o->e.armed = false;
+            bir_adim(o);
+            arm_ret_bekle(o, "bayatken yeniden ARM");
+            o->besle_batt = true;
+            o->besle_leak = true;
+            bir_adim(o);
+            arm_kabul_bekle(o, "taze örnekle yeniden ARM");
+        }
+    }
 }
 
 static void test_md2_arm_reddi_gerektiren_ariza_kayitlari(void)
@@ -660,6 +750,8 @@ int main(void)
     RUN_TEST(test_md2_kestirim_duzeyi);
     RUN_TEST(test_md2_ariza_eylemi);
     RUN_TEST(test_md2_arm_reddi_gerektiren_ariza_kayitlari);
+    RUN_TEST(test_w4k13_veri_yokken_arm_reddi_ve_taze_ornekle_kalkar);
+    RUN_TEST(test_w4k13_silahliyken_bayatlama_silahsizlandirmaz);
     RUN_TEST(test_md2_emniyet_girdileri_arm_kosulu_degil);
     RUN_TEST(test_md2_kosul_tutmazken_silahliyken);
     RUN_TEST(test_md2_daraltmayla_ayni_adim);

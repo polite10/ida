@@ -57,6 +57,24 @@ static void girdi_kur(void)
         s->u.baro.p_abs = 106000.0f;
         s->u.baro.temp_c = 20.0f;
     }
+    if ((g_seq % 20u) == 0u) { /* batarya ve sızıntı 10 Hz (W4-K13: veri yokken ARM reddi) */
+        ida_sample_t *s = &IN.samples[IN.n_samples++];
+        (void)memset(s, 0, sizeof(*s));
+        s->hdr.t_meas.ns = g_t;
+        s->hdr.t_rx.ns = g_t;
+        s->hdr.seq = g_seq;
+        s->hdr.window_ns = 100000000u;
+        s->hdr.flags = (uint16_t)IDA_HF_VALID;
+        s->hdr.type = (uint8_t)IDA_SENS_BATT;
+        s->u.batt.voltage = 15.6f;
+        ida_sample_t *l = &IN.samples[IN.n_samples++];
+        (void)memset(l, 0, sizeof(*l));
+        l->hdr.t_meas.ns = g_t;
+        l->hdr.t_rx.ns = g_t;
+        l->hdr.seq = g_seq;
+        l->hdr.flags = (uint16_t)IDA_HF_VALID;
+        l->hdr.type = (uint8_t)IDA_SENS_LEAK;
+    }
     if ((g_seq % 200u) == 0u) {
         ida_cmd_t *k = &IN.cmds[IN.n_cmds++];
         (void)memset(k, 0, sizeof(*k));
@@ -143,7 +161,7 @@ static void test_cokme_sonrasi_failsafe_reset_ve_yeniden_arm(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r.ack);
     mandal((uint8_t)IDA_NARROW_MODE, (uint8_t)IDA_MODE_MANUAL); /* SAYISAL: itkisiz eylem */
     TEST_ASSERT_EQUAL_UINT8(IDA_MODE_MANUAL, OUT.status.mode);
-    TEST_ASSERT_TRUE(OUT.fs_level <= (uint8_t)IDA_FS_WARN); /* batarya ve sızıntı ölçeri yok: uyarı */
+    TEST_ASSERT_TRUE(OUT.fs_level <= (uint8_t)IDA_FS_WARN);
 
     cokme_enjekte();
     adim();
