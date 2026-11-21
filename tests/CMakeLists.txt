@@ -110,3 +110,4 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 add_subdirectory(duman)
 add_subdirectory(kabul/cekirdek)
 add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
+add_subdirectory(kabul/oturum)  # ida_link üst katmanı bağımsız kabul testleri (W3-oturum)
