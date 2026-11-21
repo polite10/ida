@@ -63,9 +63,17 @@ KISISEL_YOL = [
 RUST_DOSYA = re.compile(r"(^|/)(Cargo\.toml|Cargo\.lock|rust-toolchain(\.toml)?|[^/]+\.rs)$")
 RUST_ICERIK = re.compile(
     r"\b(cargo|rustc|rustup|corrosion|crates\.io)\b|rust-toolchain", re.IGNORECASE)
-# STM32U5 dışındaki STM32 aileleri, Cortex-M33 dışındaki çekirdekler ve başka MCU aileleri.
+# Hedef yalnız STM32U5A9J-DK kartıdır (MCU STM32U5A9NJ; K8). Yakalananlar: öteki STM32
+# aileleri; STM32U5 ailesinin U5A9 dışındaki bütün parçaları ve kartları (ör. STM32U5G9J-DK1,
+# STM32U585, NUCLEO-U575ZI-Q, B-U585I-IOT02A); Cortex-M33 dışındaki çekirdekler; başka MCU
+# aileleri. Serbest kalanlar: aile başlıkları ve kütüphaneleri (stm32u5xx.h, stm32u5xx_hal),
+# ST'nin U5x9J keşif kiti BSP adı (stm32u5x9j_discovery; hedef kartın BSP'si), "x" ile biten
+# ürün hattı adları (STM32U59x/5Ax gibi; belirli bir parça seçimi değildir), ortak ST
+# araçları (STM32CubeIDE, STM32_Programmer_CLI) ve hedef parçanın adları (STM32U5A9NJ,
+# STM32U5A9xx, STM32U5A9J-DK).
 ARDIL_ICERIK = re.compile(
-    r"\bstm32(?:[a-tv-z][a-z]?[0-9]|u[0-46-9])"
+    r"\bstm32(?:[a-tv-z][a-z]?[0-9]|u[0-46-9]|u5(?!xx|x9|a9|[0-9a-z]x)[0-9a-z])"
+    r"|\bnucleo-[a-z][0-9a-z]*|\bb-u5[0-9]"
     r"|\bcortex-m(?:0|0plus|1|3|4|7|23|35p|52|55|85)\b"
     r"|\b(?:esp32|esp8266|nrf5[0-9]|rp2040|rp2350|imxrt|teensy|atsamd|gd32|ch32v)",
     re.IGNORECASE)

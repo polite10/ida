@@ -152,6 +152,35 @@ sol'un dört parçalı doğrulama incelemesi (`docs/sozlesmeler/inceleme/W1-dogr
 
 **Süreç.** Bu turun değişiklikleri doğrulama incelemesinden sonra yapıldı; dondurmadan önce sol, bütünleştirme dalının doğrulama anındaki hâli (`40b8d63`) ile son hâli arasındaki farkı inceler (fark incelemesi).
 
+## Fark incelemesi turu (2026-11-20)
+
+sol'un iki parçalı fark incelemesi (`docs/sozlesmeler/inceleme/W1-fark-sol-{1,2}.md`, bütünleştirme dalında; `40b8d63..6b63c6e`) iki parçada da "dondurulamaz" dedi: doğrulama turunun 40 bulgusundan 36'sı kapanmış, 4'ü kısmen kapanmıştı; 5 kritik, 5 önemli, 1 küçük yeni bulgu vardı. Tel biçimi, `dialect_hash`, altın çerçeveler ve yapı yerleşimleri sol'un yeniden hesabında da değişmemişti. Aynı tura çekirdek uygulayıcısının A4'te açık bıraktığı 6 okuma ile çekirdek kabul testlerinin 20 belirsizliği ve 2 ifade notu eklendi. Kararlar kullanıcı kararı değildir.
+
+**Emniyet zinciri**
+
+- **D-17 Dördüncü bekleme noktası: kartın açık partisi (P1 bulgu 1).** Kart bir daraltıcı komutu mandala aldığı anda, kendisinden önce alınmış ve henüz hiçbir çekirdek çağrısına girmemiş bütün genişleticileri atar ve `REJECTED` / `NARROWED` yanıtlar: erteleme tamponundakiler, açık partidekiler ve kapanmış ama çağrılmamış partidekiler (A1-K63). Gerekçe: gecikmiş zaman çerçevesinde araya giren ızgara tick'i mandalı tüketiyor, açık partideki eski `ARM` sonraki adıma mandalsız giriyordu. İskelet 0.12 §3.2.
+- **D-18 Bekletilen kapanma her yazılabilir çıktıda verilir (P1 bulgu 2).** `out` NULL çağrısında oluşan kapanma, sonraki ilk yazılabilir çıktıda dönüş kodundan bağımsız olarak çıkar (A4 §4.14); kurulmamış çekirdeğin sabit çıktısı hariç.
+- **D-19 Komut ret tablosu alan aralıklarını kapsar (P1 bulgu 3).** Maskeyle seçilen alanın aralık ihlali `OUT_OF_RANGE`'dir (A4 §3.17, K50); yeni neden kodu yok.
+- **D-20 Daraltıcı hiçbir biçim ya da yineleme denetimiyle reddedilmez (P1 bulgu 4).** Çekirdeğe mandalla ya da yanlışlıkla `cmds[]`'te gelen daraltıcı yineleme penceresinden iki yönde muaftır ve genel alan denetimine girmez (A4-K46 önceliklidir).
+- **D-21 Emniyet örneğinin yeniden gönderimi teslim güvencesi değildir (P1 bulgu 6).** 100 ms yeniden üretme aralığıdır; gevşetme ancak kabul edilen bir partinin kendi örneğiyle gelir, koşulsuz kabul süresi türetilmez (A1-K124).
+
+**Bağlantı (A1)**
+
+- **D-22 (P1 bulgu 5).** Komut kimliği seçiminde sıfır bütün dalların sonunda atlanır (A1-K66); 0 "henüz komut yok" gösterimidir.
+
+**Çekirdek çağrı çerçevesi (A4; uygulamadan gelen okumalar)**
+
+- **D-23** `step_miss` tabanını init'ten sonraki ilk çağrı kurar (`out` NULL olsa da); `out` NULL çağrısındaki kapanma `narrow_from_rejected`'a sayılır, iç tutarlılık denetimi sonraki yazılabilir çağrıda yapılır; "ms" birimi yalnız §3.9 tablosundaki parametreleri kapsar; `PARAM_COMMIT`'te komutun işlendiği andaki `armed` kullanılır ve girdideki her `ARM` sayılır; `FAIL` bildirilen `SAVE` de `gen` tabanını yükseltir; nesil değişiminde sıfırlanan sensör kabul durumu kapalı listedir ve emniyetin etkin değerlerini gevşetmez.
+- **D-24** Kabul testlerinin belirsizlikleri: init'in `now_w`'si geri adım tabanıdır; günlüğün `t_w`'si olayın saptandığı çağrınındır (init günlüklerinde init'in); API denetim sırası NULL → kurulmamış → bulunamadı; aralık dışı `now_w` geri adım sayılmaz; şemada olmayan kayıt bloğu geçersiz kılar; `window_ns = 0` IMU reddedilir; kabul sonucunda neden 0'dır; `cmd_rejected` çıktıdaki her reddi sayar; ikinci `SESSION_END` olay üretmez; kurulmamış çıktı eşitliği alan alandır; `input_dropped` hata dönüşlerinde de yansır; tanımsız olay sonucu yok sayılır ve olay beklemede kalır; oturum sonu çağrısındaki örnekler olağan kurallarla işlenir; IMU bayatlığının "başladı" günlüğü yalnız taze → bayat geçişinde üretilir.
+
+**Görsel taraf, kayıt, panel (A2, A3, A6)**
+
+- **D-25 (P2 bulgu 1).** Kamera montajında bit eşitliği her bağlantının kendi A5 kaynağına bağlıdır: fizik montajı A2'ye, nominal montaj A8'e; A8 fizik gerçeğini almaz. Ortak iç parametre ve bozulma alanları kayıpsız aktarılır.
+- **D-26 (P2 bulgu 2).** Her `kare_sirasi` için düşme kararı, nedeni, kaydı ve sayımı tektir; ilk sonuçlandıran kural geçerlidir. Yuvanın kapatılması düşme kaydından ayrıdır (A2-K81/K64/K96).
+- **D-27 (P2 bulgu 3–5).** Çelişki parçalarının olay sıra numaraları artandır, ardışık olmak zorunda değildir (A3-K125, A6-K61); kayıtta gereken kanalın bulunmaması 422'dir (A3-K68; A6 eşitlendi); A6'nın A4'ten karşılanmış beklentisi kapatıldı.
+
+**Süreç.** Bu turun düzeltmeleri sol'a yeniden incelettirilmedi (kullanıcı talimatı: bulgular düzeltilir ve durulur). Dondurma kullanıcı kararını bekler; dondurmadan önce bu turun farkının incelenip incelenmeyeceği de o karardadır.
+
 ## Sonraki adım
 
 Altı dal bütünleştirme dalına yeniden birleştirilir; sol **doğrulama incelemesi** yalnız bu belgenin maddelerinin kapanışını ve turun yeni çelişki üretip üretmediğini denetler. Kritik bulgu kalmazsa dondurma: sürüm 1.0, etiketler `sozlesme-A<n>-v1`, PR.

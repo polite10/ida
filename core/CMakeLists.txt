@@ -14,8 +14,11 @@ if(CMAKE_CROSSCOMPILING)
   target_compile_options(ida_core PRIVATE -fstack-usage)
 endif()
 
-# ST, CMSIS ve RTOS başlıkları çekirdeğe giremez; yapılandırmanın sonunda denetlenir.
-ida_cekirdek_siniri_kur(ida_core)
+# Çekirdek yalnız kendi başlıklarına ve standart C kitaplığına bağımlıdır: yapılandırmanın
+# sonunda (include yolu, bağlantı, doğrudan içermeler) ve derlemeden sonra gerçek başlık
+# bağımlılıkları üzerinden (CTest: cekirdek.siniri.basliklar) denetlenir.
+ida_cekirdek_siniri_kur(ida_core
+  KOKLER "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 if(BUILD_TESTING OR NOT DEFINED BUILD_TESTING)
   add_subdirectory(test)
