@@ -498,7 +498,7 @@ static void duzey_guncelle(ida_kes_t *k, const ida_kes_ayar_t *a)
         if (k->imu_bayrakli) {
             k->gecerlilik = 0u; /* bayraklı IMU ile yayılım yapılamaz (bulgu 3) */
         }
-    } else if (!yon || !derinlik || !yatay_hiz || !(sh <= a->sig_hpos) || k->cikis_gec) {
+    } else if (!(sh <= a->sig_hpos) || !yon || !derinlik || !yatay_hiz || k->cikis_gec) {
         k->duzey = (uint8_t)IDA_EST_DEGRADED;
     } else {
         k->duzey = (uint8_t)IDA_EST_OK;
@@ -631,12 +631,12 @@ void ida_kes_nav(const ida_kes_t *k, ida_stime_t t, ida_nav_out_t *nav)
        (A4-K87 "çıkış durumunun ölçüm zamanı") ve geçerlilik düşer (sol bulgu 8). */
     const int64_t gec_ns = t.ns - k->to_ns;
     float dt = 0.0f;
-    if (gec_ns > (int64_t)IDA_KES_TASIMA_MAX_NS) {
-        nav->t.ns = k->to_ns;
-    } else if (gec_ns > 0) {
+    if ((gec_ns > 0) && (gec_ns <= (int64_t)IDA_KES_TASIMA_MAX_NS)) {
         dt = ida_kes_ns_s(gec_ns);
     } else {
-        nav->t.ns = k->to_ns; /* t_ref'ten sonraki IMU yoktur (A4 3.2); savunmacı */
+        /* 100 ms'den eski (taşınmaz) ya da t_ref'te/sonrasında (IMU t_ref'i geçmez, A4 3.2;
+           savunmacı): durum kendi zamanıyla bildirilir. */
+        nav->t.ns = k->to_ns;
     }
     ida_q_t dq;
     ida_q_t q = k->q_o;

@@ -331,11 +331,11 @@ static void grav_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a)
 {
     const ida_v3_t fo = ida_v3_olcekle(k->g_top, 1.0f / k->g_sure);
     const float sapma = ida_v3_norm(fo) - a->g;
-    const float mutlak = (sapma < 0.0f) ? -sapma : sapma;
-    if (!(mutlak <= a->grav_esik)) {
+    const float asim = mutlak(sapma);
+    if (!(asim <= a->grav_esik)) {
         return;
     }
-    const float sig = a->r_grav * (1.0f + mutlak / a->grav_esik);
+    const float sig = a->r_grav * (1.0f + asim / a->grav_esik);
     const float rr = sig * sig;
     const ida_m3_t r = ida_q_dcm(k->xh.q);
     const ida_v3_t u = {a->g * r.m[2][0], a->g * r.m[2][1], a->g * r.m[2][2]};
