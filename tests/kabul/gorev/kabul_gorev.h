@@ -163,7 +163,10 @@ void kg_hazir_olmali(int azami, const char *amac);
 
 /* Daraltıcı kip seçimi (NARROW_MODE) ve sonucunun denetimi (hazır durumda). */
 void kg_kip_sec(uint8_t mode);
-/* GUIDED'e geçiş (genişletici SET_MODE); ACCEPTED bekler (hazır durumda; 3.17). */
+/* Konum gerektiren kip için gevşek biçim: hedef kip sabitlenmez (W3-K5). */
+void kg_kip_sec_konumlu(uint8_t mode);
+/* GUIDED'e geçiş (genişletici SET_MODE); bileşen geçerliliği gelene kadar yineler, ACCEPTED
+   bekler (hazır durumda; 3.17, W3-K7). */
 void kg_guided(void);
 /* ARM gönderir; ACCEPTED ve armed = 1 bekler. Kimliği döndürür. */
 uint32_t kg_silahlan(void);

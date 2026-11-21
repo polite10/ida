@@ -199,14 +199,29 @@ static void test_md4_yinelenen_kip_komutu(void)
     kg_baglam("md4 yinelenen SET_MODE");
     hazir_ol("yinelenen SET_MODE");
     (void)kg_silahlan(); /* MANUAL'e geçiş silahlı durumda yapılır (kip ön koşulu uygulamanındır) */
-    ida_in_t *in = kg_girdi(KG_OLAGAN);
-    ida_cmd_t *c = kg_kip_komutu(in, (uint8_t)IDA_MODE_GUIDED);
-    uint32_t id = c->cmd_id;
-    int j = (int)(c - in->cmds);
-    (void)kg_cagir(in);
-    const ida_cmd_result_t *r = kg_sonuc(j);
-    KG_DOGRULA(r->ack == IDA_ACK_ACCEPTED && kg_out()->status.mode == IDA_MODE_GUIDED,
-               "hazır durumda SET_MODE(GUIDED) ack %u neden %u kip %u (3.17)", (unsigned)r->ack, (unsigned)r->reason,
+    /* W3-K5, K7: GUIDED girişi bileşen geçerliliğine bakar; dışarıdan yalnız sonuçla gözlenir.
+       Kabul edilene kadar (en çok 2 s) her adımda yeni kimlikle denenir; ret yalnız BAD_MODE. */
+    ida_in_t *in = NULL;
+    ida_cmd_t *c = NULL;
+    const ida_cmd_result_t *r = NULL;
+    uint32_t id = 0u;
+    int j = 0;
+    for (int deneme = 0; deneme < 400; ++deneme) {
+        in = kg_girdi(KG_OLAGAN);
+        c = kg_kip_komutu(in, (uint8_t)IDA_MODE_GUIDED);
+        id = c->cmd_id;
+        j = (int)(c - in->cmds);
+        (void)kg_cagir(in);
+        r = kg_sonuc(j);
+        if (r->ack == IDA_ACK_ACCEPTED) {
+            break;
+        }
+        KG_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == IDA_REASON_BAD_MODE,
+                   "SET_MODE(GUIDED) ack %u neden %u; ACCEPTED ya da BAD_MODE (3.17)", (unsigned)r->ack,
+                   (unsigned)r->reason);
+    }
+    KG_DOGRULA(r != NULL && r->ack == IDA_ACK_ACCEPTED && kg_out()->status.mode == IDA_MODE_GUIDED,
+               "hazır durumda SET_MODE(GUIDED) 2 s içinde kabul edilmedi (kip %u; 3.17, W3-K7)",
                (unsigned)kg_out()->status.mode);
     kg_adimlar(3);
     kg_kip_sec((uint8_t)IDA_MODE_MANUAL);

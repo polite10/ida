@@ -100,7 +100,9 @@ static void vaka(const baslangic_t *b, ariza_t a, uint8_t *fs_azami)
 {
     bool armed0 = kg_out()->armed;
     uint8_t kip0 = kg_out()->status.mode;
-    int sure = a == AR_YER_ISTASYONU_KAYBI ? 2000 : 400; /* 10 s ya da 2 s */
+    /* Süreler düzeneğin seçimidir; eylem gecikmeleri parametredir ve sözleşmede değeri yoktur.
+       Batarya ve yer istasyonu kaybında eylemin görülebilmesi için uzun tutulur. */
+    int sure = (a == AR_YER_ISTASYONU_KAYBI || a == AR_DUSUK_BATARYA) ? 6000 : 400; /* 30 s ya da 2 s */
     uint8_t fs = 0u;
     bool kip_genis_oldu = false;
 
@@ -193,14 +195,18 @@ static void test_md3_kip_ariza_matrisi(void)
                 (void)kg_silahlan();
             }
             uint8_t ilk_kip = kg_out()->status.mode;
+            bool konumlu = b->kip == IDA_MODE_STATION_KEEP;
             if (b->kip == IDA_MODE_GUIDED) {
                 kg_guided();
+            } else if (konumlu) {
+                /* W3-K5: yatay geçerlilik bu dilimde yok; hedef kip sabitlenmez. */
+                kg_kip_sec_konumlu(b->kip);
             } else if (b->kip != 0u) {
                 kg_kip_sec(b->kip);
             }
             kg_adimlar(20);
             uint8_t beklenen_kip = b->kip != 0u ? b->kip : ilk_kip;
-            KG_DOGRULA(kg_out()->armed == b->silahli && kg_out()->status.mode == beklenen_kip,
+            KG_DOGRULA(kg_out()->armed == b->silahli && (konumlu || kg_out()->status.mode == beklenen_kip),
                        "%s: başlangıç durumu arızasız 20 adımda korunmadı (armed %d, kip %u)", b->ad,
                        (int)kg_out()->armed, (unsigned)kg_out()->status.mode);
             vaka(b, (ariza_t)a, &fs);
