@@ -1,0 +1,474 @@
+{
+  "sema_surumu": "1.0",
+  "kume_kimligi": "acik_su",
+  "kume_surumu": 1,
+  "aciklama": "W3-viz görselleştirici geliştirme kümesi: İDA-0 (BlueROV2 Heavy sınıfı açık çerçeve, iki torpido tüpü, sonar başı), bağlı şamandıra hedef ve kumlu deniz tabanı. Geometri viz/arac/model-uret/uret.py ile basit şekillerden üretilir; elle çizilmez. Yüzerlik gövde kutusu A7 uygunluk örneğindeki 04 yer tutucusuyla aynıdır. Akustik değerler tahmindir. Varlık sırası sahte A2 kaynağının varlık indeksleridir (0 araç, 1 hedef, 2 taban).",
+  "birimler": {
+    "uzunluk": "m",
+    "aci": "rad",
+    "kutle": "kg",
+    "zaman": "s"
+  },
+  "eksenler": {
+    "gltf": "sag_el_y_yukari_z_on",
+    "gltf_govde": [
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        -1,
+        0
+      ]
+    ],
+    "gltf_godot_yerel": [
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        -1
+      ]
+    ]
+  },
+  "uretim": {
+    "disa_aktarici": {
+      "arac": "betik",
+      "surum": "1",
+      "ayarlar": {
+        "betik": "viz/arac/model-uret/uret.py"
+      }
+    }
+  },
+  "malzemeler": [
+    {
+      "kimlik": "govde_plastik",
+      "aciklama": "İDA-0 çerçeve, köpük, tüpler ve iticiler",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.01,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.5,
+        "puruzluluk_gamma_p": 0.5,
+        "kaynak": "tahmin",
+        "dayanak": "750 kHz'te yansıtıcılık bilinmiyor (05 2.4.1); A7 uygunluk örneğiyle aynı yer tutucu"
+      }
+    },
+    {
+      "kimlik": "hedef_boyali_metal",
+      "aciklama": "Şamandıra hedef, maplar, halat, batırma bloğu",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.05,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.9,
+        "puruzluluk_gamma_p": 0.3,
+        "kaynak": "tahmin",
+        "dayanak": "yer tutucu; kalibrasyon A5'te"
+      }
+    },
+    {
+      "kimlik": "taban_kum",
+      "aciklama": "Kumlu deniz tabanı",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.02,
+        "gelis_yasasi": "cos1",
+        "ayna_yansima_rs": 0.4,
+        "puruzluluk_gamma_p": 0.8,
+        "kaynak": "tahmin",
+        "dayanak": "yer tutucu; kalibrasyon A5'te"
+      }
+    },
+    {
+      "kimlik": "kaya",
+      "aciklama": "Taban kayaları",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.04,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.6,
+        "puruzluluk_gamma_p": 0.6,
+        "kaynak": "tahmin",
+        "dayanak": "yer tutucu; kalibrasyon A5'te"
+      }
+    }
+  ],
+  "varliklar": [
+    {
+      "kimlik": "ida0",
+      "tur": "arac",
+      "dosya": "ida0.glb",
+      "sha256": "ac3f70d040e7d41a712c91392877ca66d64d593d40ff4ee284374209874f405e",
+      "bayt": 510900,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.235,
+          -0.29,
+          -0.24
+        ],
+        "en_buyuk": [
+          0.235,
+          0.29,
+          0.145
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 1,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 2,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 3,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 4,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 5,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 6,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 7,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 8,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 9,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 10,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 11,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 12,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 13,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 14,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 15,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 16,
+          "malzeme": "govde_plastik"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "govde",
+          "kosul": "her_zaman"
+        },
+        {
+          "dugum": 2,
+          "ad": "torpido_1",
+          "kosul": "tup_1_dolu"
+        },
+        {
+          "dugum": 3,
+          "ad": "torpido_2",
+          "kosul": "tup_2_dolu"
+        }
+      ],
+      "yuzerlik": [
+        {
+          "dugum": 4,
+          "ad": "BUOY_govde",
+          "kosul": "her_zaman",
+          "hacim_m3": 0.0136992,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            0.0,
+            -0.01
+          ],
+          "en_uzun_kenar_m": 0.624819974
+        },
+        {
+          "dugum": 5,
+          "ad": "BUOY_tup_1",
+          "kosul": "tup_1_dolu",
+          "hacim_m3": 0.000167552,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            0.1,
+            0.1
+          ],
+          "en_uzun_kenar_m": 0.026409207
+        },
+        {
+          "dugum": 6,
+          "ad": "BUOY_tup_2",
+          "kosul": "tup_2_dolu",
+          "hacim_m3": 0.000167552,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            -0.1,
+            0.1
+          ],
+          "en_uzun_kenar_m": 0.026409207
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 7,
+          "ad": "COL_govde",
+          "ayristirma": "yok"
+        }
+      ],
+      "baglanti_noktalari": [
+        {
+          "dugum": 8,
+          "ad": "MNT_kamera0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.21,
+            0.0,
+            -0.02
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 9,
+          "ad": "MNT_ping360_0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.12,
+            0.0,
+            -0.2
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 10,
+          "ad": "MNT_dvl0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.05,
+            0.0,
+            0.14
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 11,
+          "ad": "TUBE_1",
+          "tur": "tup",
+          "konum_govde_m": [
+            0.0,
+            0.1,
+            0.1
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 12,
+          "ad": "TUBE_2",
+          "tur": "tup",
+          "konum_govde_m": [
+            0.0,
+            -0.1,
+            0.1
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "kimlik": "hedef_samandira",
+      "tur": "hedef",
+      "dosya": "hedef_samandira.glb",
+      "sha256": "79e98203793657f4643fcc2797387b5d3e090c4474f7eb366326f8f143715d34",
+      "bayt": 110992,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.5,
+          -0.25,
+          -0.315
+        ],
+        "en_buyuk": [
+          0.5,
+          0.25,
+          6.25
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "hedef_boyali_metal"
+        },
+        {
+          "gltf_malzeme": 1,
+          "malzeme": "hedef_boyali_metal"
+        },
+        {
+          "gltf_malzeme": 2,
+          "malzeme": "hedef_boyali_metal"
+        },
+        {
+          "gltf_malzeme": 3,
+          "malzeme": "hedef_boyali_metal"
+        },
+        {
+          "gltf_malzeme": 4,
+          "malzeme": "hedef_boyali_metal"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "hedef",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 2,
+          "ad": "COL_hedef",
+          "ayristirma": "yok"
+        }
+      ]
+    },
+    {
+      "kimlik": "deniz_tabani",
+      "tur": "statik",
+      "dosya": "deniz_tabani.glb",
+      "sha256": "38f379d4e62d6870ace70e70ae24d1be1709319cd0ee7a71a27d098da797e257",
+      "bayt": 805876,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -80.0,
+          -80.0,
+          -1.217253
+        ],
+        "en_buyuk": [
+          80.0,
+          80.0,
+          2.0
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "taban_kum"
+        },
+        {
+          "gltf_malzeme": 1,
+          "malzeme": "kaya"
+        },
+        {
+          "gltf_malzeme": 2,
+          "malzeme": "kaya"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "taban",
+          "kosul": "her_zaman"
+        },
+        {
+          "dugum": 2,
+          "ad": "kayalar",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 3,
+          "ad": "COL_taban",
+          "ayristirma": "yok"
+        }
+      ]
+    }
+  ]
+}
