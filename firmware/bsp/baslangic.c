@@ -134,6 +134,7 @@ IDA_ZAYIF(TIM2_IRQHandler);
 IDA_ZAYIF(USART1_IRQHandler);
 IDA_ZAYIF(GPDMA1_Channel0_IRQHandler);
 IDA_ZAYIF(GPDMA1_Channel1_IRQHandler);
+IDA_ZAYIF(FLASH_IRQHandler); /* güçlüsü bsp/flash.c (ECC düzeltme kesmesi) */
 
 typedef void (*ida_vektor_t)(void);
 
@@ -167,5 +168,6 @@ const ida_vektor_t ida_vektor_tablosu[IDA_VEKTOR_SAYISI] = {
     [16 + USART1_IRQn] = USART1_IRQHandler,
     [16 + GPDMA1_Channel0_IRQn] = GPDMA1_Channel0_IRQHandler,
     [16 + GPDMA1_Channel1_IRQn] = GPDMA1_Channel1_IRQHandler,
+    [16 + FLASH_IRQn] = FLASH_IRQHandler,
 };
 #pragma GCC diagnostic pop

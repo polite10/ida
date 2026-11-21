@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "acilis_kaydi.h"
+#include "rng.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,7 +70,12 @@ void ida_bsp_led_yesil_cevir(void);
 
 /* ---- rastgelelik -------------------------------------------------------------------------- */
 /* Sıfırdan farklı 32 bit gerçek rastgele sayı; RNG hata verirse 0 döner. */
-uint32_t ida_bsp_rastgele(void);
+/* Gerçek rastgele 32 bit, sıfırdan farklı (bsp/rng.c). 0: tamam; < 0: kurtarılamayan RNG hatası
+   (çağıran güvenli beklemeye geçer; A1-K13: sabit nonce kullanılmaz). */
+int ida_bsp_rastgele(uint32_t *deger);
+/* RNG başlatılamadı (HAL_RNG_Init). */
+bool ida_bsp_rng_baslatma_hatasi(void);
+const ida_rng_sayac_t *ida_bsp_rng_sayac(void);
 
 /* ---- hata kaydı --------------------------------------------------------------------------- */
 /* Hata işleyicisinin kaydına girecek çekirdek çağrısı sayacı (çağırıcı artırır). */
@@ -92,6 +98,7 @@ uint32_t ida_bsp_nvic_bekci(void);
 /* Kesme öncelikleri (01 §2.4 tablosu; 0 en acil). */
 #define IDA_BSP_ONCELIK_ZAMAN 1u
 #define IDA_BSP_ONCELIK_SERI  3u
+#define IDA_BSP_ONCELIK_FLASH 4u /* ECC düzeltme kesmesi (bsp/flash.c) */
 
 /* ---- yığın (01 §2.10) --------------------------------------------------------------------- */
 /* Ana yığının boyu ve açılıştan beri en yüksek kullanımı (boyama deseniyle; bayt). */

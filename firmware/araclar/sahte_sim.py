@@ -35,6 +35,7 @@ import xml.etree.ElementTree as ET
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import duman  # noqa: E402
+import kabul  # noqa: E402
 import olcum_oku  # noqa: E402
 
 KOK = duman.KOK
@@ -439,21 +440,19 @@ def tbag_kipi(arg, sim, ozet):
     kos_parti(sim, parti, 3.0)
     t_dur = time.monotonic()
     # Gönderim durdu: kartın çıktıları ve oturum sonu.
+    # t_dur: son partinin (TF) yazıldığı an; kartın T_bağ'ı son geçerli çerçeveden sayar.
+    t_dur = parti.tf_zaman.get(parti.n - 1, t_dur)
     g = sim.bekle_mesaj(lambda g: g[1] == "IDA_BOARD_HELLO" and g[2]["peer_nonce"] == 0, 3.0)
     t_idle = g[0] - t_dur if g else None
-    asenk = [x for x in sim.gelen if x[0] >= t_dur and x[1] == "IDA_ACTUATOR" and x[2]["act_flags"] & 16]
-    guvenli = all(x[2]["act_flags"] & 2 for x in asenk)
-    ozet["tbag"] = {"duyuruya_kadar_s": t_idle, "asenk_aktuator": len(asenk),
-                    "asenk_hepsi_is_safe": guvenli,
-                    "asenk_ilk_s": (asenk[0][0] - t_dur) if asenk else None,
-                    "asenk_son_s": (asenk[-1][0] - t_dur) if asenk else None,
-                    "pwm_ornek": asenk[-1][2]["pwm_us"] if asenk else None}
+    asenk = [(x[0] - t_dur, x[2]["act_flags"], list(x[2]["pwm_us"]), x[2]["batch_seq"])
+             for x in sim.gelen if x[0] >= t_dur and x[1] == "IDA_ACTUATOR" and x[2]["act_flags"] & 16]
     sess2, _ = el_sikis(sim)
-    ozet["tbag"]["yeniden_el_sikisma"] = sess2 is not None
     if sess2 is not None:
         sim.gonder("IDA_SESSION_CLOSE", sess=sess2, reason=5)
         sim.yaz()
-    gecti = g is not None and 0.45 <= t_idle <= 0.8 and sess2 is not None and guvenli
+    gecti, ayrinti = kabul.tbag_degerlendir(asenk, t_idle, parti.n - 1, sess2 is not None)
+    ayrinti["asenk_son_s"] = asenk[-1][0] if asenk else None
+    ozet["tbag"] = ayrinti
     ozet["sonuc"] = "GECTI" if gecti else "GECMEDI"
     return gecti
 

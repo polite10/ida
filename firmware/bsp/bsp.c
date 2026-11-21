@@ -6,6 +6,7 @@
  * AHB ÷2 -> >= 5 µs -> ÷1 (MP1 bulgusu), FLASH_LATENCY_4. Bu dizi ayrıca HSI48'i açar (RNG).
  */
 #include "bsp.h"
+#include "rng.h"
 
 #include <string.h>
 
@@ -26,7 +27,8 @@ __attribute__((section(".noinit"))) ida_acilis_kaydi_t ida_bsp_noinit_kayit;
 
 static ida_acilis_sonuc_t acilis;
 static RNG_HandleTypeDef rng;
-static uint32_t rng_hata;
+static uint32_t rng_baslatma_hatasi;
+static ida_rng_sayac_t rng_say;
 
 volatile uint32_t ida_bsp_adim_sayaci;
 
@@ -221,7 +223,46 @@ void ida_bsp_led_yesil_cevir(void)
     ida_bsp_led_yesil((GPIOE->ODR & GPIO_PIN_0) == 0u);
 }
 
-/* ---- RNG ----------------------------------------------------------------------------------- */
+/* ---- RNG (bsp/rng.c; sol bulgu 4) ------------------------------------------------------ */
+
+_Static_assert(IDA_RNG_SR_DRDY == RNG_SR_DRDY, "DRDY");
+_Static_assert(IDA_RNG_SR_CECS == RNG_SR_CECS, "CECS");
+_Static_assert(IDA_RNG_SR_SECS == RNG_SR_SECS, "SECS");
+_Static_assert(IDA_RNG_SR_CEIS == RNG_SR_CEIS, "CEIS");
+_Static_assert(IDA_RNG_SR_SEIS == RNG_SR_SEIS, "SEIS");
+_Static_assert(IDA_RNG_CR_CONDRST == RNG_CR_CONDRST, "CONDRST");
+
+static uint32_t r_sr(void *ctx)
+{
+    (void)ctx;
+    return RNG->SR;
+}
+
+static uint32_t r_dr(void *ctx)
+{
+    (void)ctx;
+    return RNG->DR;
+}
+
+static uint32_t r_cr(void *ctx)
+{
+    (void)ctx;
+    return RNG->CR;
+}
+
+static void r_cr_yaz(void *ctx, uint32_t v)
+{
+    (void)ctx;
+    RNG->CR = v;
+}
+
+static void r_sr_yaz(void *ctx, uint32_t v)
+{
+    (void)ctx;
+    RNG->SR = v;
+}
+
+static const ida_rng_ops_t rng_ops = {NULL, r_sr, r_dr, r_cr, r_cr_yaz, r_sr_yaz};
 
 static void rng_baslat(void)
 {
@@ -230,33 +271,28 @@ static void rng_baslat(void)
     rng.Instance = RNG;
     rng.Init.ClockErrorDetection = RNG_CED_ENABLE;
     if (HAL_RNG_Init(&rng) != HAL_OK) {
-        rng_hata++;
+        rng_baslatma_hatasi++;
     }
 }
 
-uint32_t ida_bsp_rastgele(void)
+int ida_bsp_rastgele(uint32_t *deger)
 {
     /* Yazmaç düzeyinde, sınırlı yoklama (SysTick durduktan sonra da çağrılır; HAL'in zaman
-       aşımı HAL_GetTick'e dayanır). Saat ya da tohum hatasında 0 döner. */
-    for (uint32_t deneme = 0u; deneme < 4u; deneme++) {
-        uint32_t i = 0u;
-        while ((RNG->SR & RNG_SR_DRDY) == 0u && i < 200000u) {
-            if ((RNG->SR & (RNG_SR_SECS | RNG_SR_CECS)) != 0u) {
-                rng_hata++;
-                return 0u;
-            }
-            i++;
-        }
-        if ((RNG->SR & RNG_SR_DRDY) == 0u) {
-            rng_hata++;
-            return 0u;
-        }
-        const uint32_t s = RNG->DR;
-        if (s != 0u) {
-            return s;
-        }
+       aşımı HAL_GetTick'e dayanır). */
+    if (rng_baslatma_hatasi != 0u) {
+        return -1;
     }
-    return 0u;
+    return ida_rng_oku(&rng_ops, &rng_say, deger);
+}
+
+bool ida_bsp_rng_baslatma_hatasi(void)
+{
+    return rng_baslatma_hatasi != 0u;
+}
+
+const ida_rng_sayac_t *ida_bsp_rng_sayac(void)
+{
+    return &rng_say;
 }
 
 /* ---- çevre --------------------------------------------------------------------------------- */

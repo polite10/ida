@@ -32,6 +32,8 @@ extern "C" {
 #define IDA_CAG_NEDEN_ARIZA    2u /* ardışık arıza sayacı >= 3 (01 §2.8)                       */
 #define IDA_CAG_NEDEN_INIT     3u /* ida_core_init kurulamadı (VERSION, BAD_INPUT)              */
 #define IDA_CAG_NEDEN_SAAT     4u /* saat kurulamadı                                           */
+#define IDA_CAG_NEDEN_TX       5u /* kritik çerçeve gönderim kuyruğuna alınamadı (A1-K110)      */
+#define IDA_CAG_NEDEN_RNG      6u /* gerçek rastgele sayı üretilemiyor (A1-K13)                 */
 
 typedef struct {
     uint8_t durum;
@@ -66,6 +68,9 @@ void ida_cagirici_kur(const ida_cagirici_kurulum_t *k);
    step: ida_core_step, değilse ida_core_tick. in->bg_slices, plat.prev_call_ns ve
    plat.prev_overrun burada yazılır. */
 ida_rc_t ida_cagirici_cagir(bool step, ida_in_t *in, ida_out_t *out, uint64_t simdi_us);
+/* Platform güvenli beklemesine girer (geri alınmaz; çekirdek bundan sonra çağrılmaz).
+   Zaten güvenli beklemedeyse ilk neden korunur. */
+void ida_cagirici_guvenli(uint8_t neden);
 /* Arka plan dilimi (yalnız NORMAL'de). */
 void ida_cagirici_arka_plan(uint64_t simdi_us);
 const ida_cagirici_t *ida_cagirici_durum(void);

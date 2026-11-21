@@ -22,6 +22,7 @@ _Static_assert(16u + IDA_KAL_BLOB_AZAMI <= IDA_KAL_CMIT_OFS, "blok sayfaya sığ
 #define A_YAZ 2u
 #define A_CMIT 3u
 #define A_SON_CMIT 4u
+#define A_GERIAL 5u /* tamamlanma yazıldıktan sonra iptal: hedef sayfa silinir (A4-K83) */
 
 uint32_t ida_kal_crc32(const void *veri, size_t n)
 {
@@ -55,6 +56,13 @@ static const uint8_t *sayfa(const ida_kalici_t *k, uint32_t s)
     return k->f.taban(k->f.ctx) + (size_t)s * IDA_KAL_SAYFA_BAYT;
 }
 
+/* Bölgede [ofs, ofs + n) okunurken çift ECC hatası görüldü mü (sol bulgu 6): görüldüyse okunan
+   baytlar ne olursa olsun kayıt reddedilir. */
+static bool ecc_bozuk(const ida_kalici_t *k, uint32_t ofs, uint32_t n)
+{
+    return k->f.ecc_bozuk(k->f.ctx, ofs, n);
+}
+
 static bool silinmis(const uint8_t *q, size_t n)
 {
     for (size_t i = 0u; i < n; i++) {
@@ -67,13 +75,17 @@ static bool silinmis(const uint8_t *q, size_t n)
 
 /* ---- açılış sayacı ---------------------------------------------------------------------- */
 
-static bool sayac_kaydi(const uint8_t *q, uint32_t *n)
+static bool sayac_kaydi(const ida_kalici_t *k, uint32_t ofs, uint32_t *n)
 {
+    const uint8_t *q = k->f.taban(k->f.ctx) + ofs;
     if (oku32(q) != IDA_KAL_SAYAC_MAGIC) {
         return false;
     }
     const uint32_t v = oku32(q + 4);
     if (oku32(q + 8) != (0xFFFFFFFFu ^ v) || oku32(q + 12) != ida_kal_crc32(q, 12u)) {
+        return false;
+    }
+    if (ecc_bozuk(k, ofs, IDA_KAL_QW)) {
         return false;
     }
     *n = v;
@@ -99,7 +111,9 @@ static int32_t bos_yuva(const ida_kalici_t *k, uint32_t s, uint32_t bas)
 {
     const uint8_t *p = sayfa(k, s);
     for (uint32_t y = bas; y < SAYAC_YUVA; y++) {
-        if (silinmis(p + y * IDA_KAL_QW, IDA_KAL_QW)) {
+        /* ECC'si bozuk yuva (yarım program) silinmiş görünse de kullanılmaz. */
+        if (silinmis(p + y * IDA_KAL_QW, IDA_KAL_QW) &&
+            !ecc_bozuk(k, s * IDA_KAL_SAYFA_BAYT + y * IDA_KAL_QW, IDA_KAL_QW)) {
             return (int32_t)y;
         }
     }
@@ -112,10 +126,9 @@ static void sayac_artir(ida_kalici_t *k, void (*bekle)(void *), void *bctx)
     bool var = false;
     uint32_t enb_s = 0u, enb_y = 0u;
     for (uint32_t s = 0u; s < 2u; s++) {
-        const uint8_t *p = sayfa(k, s);
         for (uint32_t y = 0u; y < SAYAC_YUVA; y++) {
             uint32_t n = 0u;
-            if (sayac_kaydi(p + y * IDA_KAL_QW, &n) && (!var || n > enb)) {
+            if (sayac_kaydi(k, s * IDA_KAL_SAYFA_BAYT + y * IDA_KAL_QW, &n) && (!var || n > enb)) {
                 var = true;
                 enb = n;
                 enb_s = s;
@@ -150,7 +163,7 @@ static void sayac_artir(ida_kalici_t *k, void (*bekle)(void *), void *bctx)
         const uint32_t ofs = s * IDA_KAL_SAYFA_BAYT + (uint32_t)y * IDA_KAL_QW;
         if (k->f.yaz16(k->f.ctx, ofs, q) == 0 && islem_bekle(k, bekle, bctx) == 0) {
             uint32_t n = 0u;
-            if (sayac_kaydi(sayfa(k, 0u) + ofs, &n) && n == yeni) {
+            if (sayac_kaydi(k, ofs, &n) && n == yeni) {
                 k->boot_count = yeni;
                 k->boot_count_ok = 1u;
                 return;
@@ -174,6 +187,11 @@ static bool blok_gecerli(const ida_kalici_t *k, uint32_t s, uint32_t *len, uint3
     const uint32_t l = oku32(p + 4), g = oku32(p + 8), cr = oku32(p + 12);
     if (l > IDA_KAL_BLOB_AZAMI || oku32(c + 4) != g || oku32(c + 8) != (0xFFFFFFFFu ^ g) ||
         oku32(c + 12) != ida_kal_crc32(p, 16u) || ida_kal_crc32(p + 16, l) != cr) {
+        return false;
+    }
+    /* Okunan bütün quad-word'lerde çift ECC hatası yok (sol bulgu 6). */
+    const uint32_t taban = s * IDA_KAL_SAYFA_BAYT;
+    if (ecc_bozuk(k, taban, 16u + l) || ecc_bozuk(k, taban + IDA_KAL_CMIT_OFS, IDA_KAL_QW)) {
         return false;
     }
     *len = l;
@@ -292,7 +310,8 @@ static bool icerik_dogru(const ida_kalici_t *k)
     uint8_t q[IDA_KAL_QW] = {0};
     qw_kur(k, 0u, q);
     return memcmp(p, q, IDA_KAL_QW) == 0 && memcmp(p + 16, k->blob, k->len) == 0 &&
-           ida_kal_crc32(p + 16, k->len) == k->crc;
+           ida_kal_crc32(p + 16, k->len) == k->crc &&
+           !ecc_bozuk(k, (uint32_t)k->hedef * IDA_KAL_SAYFA_BAYT, 16u + k->len);
 }
 
 void ida_kal_adim(ida_kalici_t *k)
@@ -305,10 +324,39 @@ void ida_kal_adim(ida_kalici_t *k)
         return; /* donanım işlemi sürüyor */
     }
     if (d < 0) {
+        if (k->adim == A_SON_CMIT || k->adim == A_GERIAL) {
+            /* Tamamlanma yazımı ya da geri alma silmesi hata verdi: RAM flash'taki gerçek durumla
+               eşitlenir; hedef geçerli kaldıysa kayıt yapılmıştır ve FAIL bildirilmez (A4-K83:
+               FAIL'de kalıcı blok değişmemiştir). */
+            gecerli_bul(k);
+            if (k->gecerli_sayfa == (int8_t)k->hedef && k->blok_gen == k->gen) {
+                bitir(k, IDA_KAL_OK, IDA_KAL_FAIL_YOK);
+                return;
+            }
+        }
         bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_FLASH);
         return;
     }
-    if (k->iptal_istegi) {
+    if (k->iptal_istegi && k->adim == A_SON_CMIT) {
+        /* Sol bulgu 3: tamamlanma kaydı yazıldı (ya da yazımı başladı); iptalin kesinleşmesi
+           için hedef sayfa silinir. Ancak silme bitince FAIL/ABORTED bildirilir; böylece FAIL'de
+           kalıcı blok değişmemiş olur (A4-K83). Silme kesilirse yarım silinmiş sayfa geçersizdir
+           (tamamlanma sayfanın sonunda, başlık başında). */
+        if (k->f.sil(k->f.ctx, k->hedef) != 0) {
+            /* Geri alınamadı: RAM flash'taki gerçek durumla eşitlenir; hedef geçerliyse kayıt
+               yapılmıştır (FAIL bildirilmez). */
+            gecerli_bul(k);
+            if (k->gecerli_sayfa == (int8_t)k->hedef && k->blok_gen == k->gen) {
+                bitir(k, IDA_KAL_OK, IDA_KAL_FAIL_YOK);
+            } else {
+                bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_FLASH);
+            }
+            return;
+        }
+        k->adim = A_GERIAL;
+        return;
+    }
+    if (k->iptal_istegi && k->adim != A_GERIAL) {
         bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_ABORTED); /* tamamlanma yazılmadı: eski blok geçerli */
         return;
     }
@@ -362,6 +410,9 @@ void ida_kal_adim(ida_kalici_t *k)
         bitir(k, IDA_KAL_OK, IDA_KAL_FAIL_YOK);
         return;
     }
+    case A_GERIAL:
+        bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_ABORTED); /* hedef silindi: eski blok geçerli */
+        return;
     default:
         bitir(k, IDA_KAL_FAIL, IDA_KAL_FAIL_FLASH);
         return;

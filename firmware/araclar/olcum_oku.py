@@ -28,7 +28,8 @@ KOK = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 ARAC = os.path.join(KOK, "firmware", "araclar", "arac.sh")
 OLCUM_H = os.path.join(KOK, "firmware", "app", "olcum.h")
 KUTU_UST_US = [10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 3500, 5000, None]
-SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744}
+SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744, "tx_dur": 0x54584452, "ecc": 0x45433259,
+          "temizle": 0}
 
 
 def duzen():
@@ -203,6 +204,7 @@ def ozet(d):
                                      "rx_halka_azami", "uart_bekle_hata", "tx_bayt", "tx_ret",
                                      "tx_doluluk_azami", "rx_yeniden", "rx_durdu")}
     o["gonderim"] = {k[4:]: d[k] for k in d if k.startswith("gon_")}
+    o["kapanis_neden"] = d.get("kapanis_neden")
     o["link"] = {"durum": d["link_durum"], "sess": d["link_sess"]}
     o["sayac"] = {k[4:]: d[k] for k in d if k.startswith("say_")}
     o["kalici"] = {k[4:]: d[k] for k in d if k.startswith("kal_")}

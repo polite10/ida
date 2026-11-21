@@ -144,6 +144,15 @@ void ida_cagirici_arka_plan(uint64_t simdi_us)
     }
 }
 
+void ida_cagirici_guvenli(uint8_t neden)
+{
+    if (cag.durum == IDA_CAG_GUVENLI) {
+        return;
+    }
+    cag.durum = IDA_CAG_GUVENLI;
+    cag.neden = neden;
+}
+
 const ida_cagirici_t *ida_cagirici_durum(void)
 {
     return &cag;
