@@ -48,6 +48,15 @@ typedef enum {
 static const char *const DA_ADI[DA_N] = {"mandal", "cmds ARM,DISARM", "cmds DISARM,ARM",
                                          "DUP_SEQ", "IMU_REJECTED", "SESSION_END"};
 
+/* Biçim adı; sınır dışında "?" (MSVC /analyze C6385: indisin sınırı açıkça denetlenir). */
+static const char *da_adi(int v)
+{
+    if (v < 0 || (size_t)v >= sizeof DA_ADI / sizeof DA_ADI[0]) {
+        return "?";
+    }
+    return DA_ADI[v];
+}
+
 /* Bir DISARM + ARM çağrısı kurar, yürütür ve ARM'ın sonucunu denetler. */
 static void disarm_arm_cagrisi(da_t v)
 {
@@ -95,12 +104,12 @@ static void disarm_arm_cagrisi(da_t v)
     int j = (int)(arm - in->cmds);
     ida_rc_t rc = kg_cagir(in);
     const ida_cmd_result_t *r = kg_sonuc(j);
-    KG_DOGRULA(rc == beklenen_rc, "%s: dönüş %d, beklenen %d (A4-K113)", DA_ADI[v], (int)rc, (int)beklenen_rc);
+    KG_DOGRULA(rc == beklenen_rc, "%s: dönüş %d, beklenen %d (A4-K113)", da_adi((int)v), (int)rc, (int)beklenen_rc);
     KG_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == beklenen,
-               "%s: ARM ack %u neden %u; REJECTED / %u bekleniyordu (A4-K45, K114; görev md.4)", DA_ADI[v],
+               "%s: ARM ack %u neden %u; REJECTED / %u bekleniyordu (A4-K45, K114; görev md.4)", da_adi((int)v),
                (unsigned)r->ack, (unsigned)r->reason, (unsigned)beklenen);
-    KG_DOGRULA(!kg_out()->armed, "%s: DISARM ile aynı çağrıda ARM sonrası armed = 1 (görev md.4)", DA_ADI[v]);
-    KG_DOGRULA(kg_out()->health.narrowed, "%s: health.narrowed = 0 (A4-K45)", DA_ADI[v]);
+    KG_DOGRULA(!kg_out()->armed, "%s: DISARM ile aynı çağrıda ARM sonrası armed = 1 (görev md.4)", da_adi((int)v));
+    KG_DOGRULA(kg_out()->health.narrowed, "%s: health.narrowed = 0 (A4-K45)", da_adi((int)v));
 }
 
 /* Görev md.4 (b), A4-K45, K46, K73, K113, K114, K122: silahsızken DISARM ile aynı çağrıdaki
@@ -115,10 +124,10 @@ static void test_md4_disarm_ile_arm_silahsiz(void)
     kg_anlik_al();
     for (int v = 0; v < (int)DA_N; ++v) {
         kg_anlik_don();
-        kg_baglam("md4 DISARM+ARM silahsız: %s", DA_ADI[v]);
+        kg_baglam("md4 DISARM+ARM silahsız: %s", da_adi((int)v));
         disarm_arm_cagrisi((da_t)v);
         kg_adimlar(5);
-        KG_DOGRULA(!kg_out()->armed, "%s: sonraki adımlarda armed = 1 (ARM yeniden uygulanmamalı)", DA_ADI[v]);
+        KG_DOGRULA(!kg_out()->armed, "%s: sonraki adımlarda armed = 1 (ARM yeniden uygulanmamalı)", da_adi((int)v));
     }
 }
 
@@ -133,11 +142,11 @@ static void test_md4_disarm_ile_arm_silahli(void)
     kg_anlik_al();
     for (int v = 0; v < (int)DA_N; ++v) {
         kg_anlik_don();
-        kg_baglam("md4 DISARM+ARM silahlı: %s", DA_ADI[v]);
+        kg_baglam("md4 DISARM+ARM silahlı: %s", da_adi((int)v));
         KG_DOGRULA(kg_out()->armed, "düzenek: anlık görüntüde silahlı değil");
         disarm_arm_cagrisi((da_t)v);
         kg_adimlar(5);
-        KG_DOGRULA(!kg_out()->armed, "%s: sonraki adımlarda armed = 1", DA_ADI[v]);
+        KG_DOGRULA(!kg_out()->armed, "%s: sonraki adımlarda armed = 1", da_adi((int)v));
     }
 }
 
@@ -239,28 +248,29 @@ static void test_md4_yinelenen_kip_komutu(void)
 
 /* ---- Rastgele diziler ------------------------------------------------------------- */
 
-#define SON_KOMUT_N 8
+#define SON_KOMUT_N 8u
 
 typedef struct {
     ida_cmd_t c[SON_KOMUT_N];
-    int n;
-    int bas;
+    unsigned n;
+    unsigned bas;
 } son_komut_t;
 
+/* İndisler işaretsiz ve kalanla sınırlı (MSVC /analyze C6385/C6386). */
 static void son_ekle(son_komut_t *s, const ida_cmd_t *c)
 {
     if (s->n < SON_KOMUT_N) {
         s->c[(s->bas + s->n) % SON_KOMUT_N] = *c;
         s->n++;
     } else {
-        s->c[s->bas] = *c;
-        s->bas = (s->bas + 1) % SON_KOMUT_N;
+        s->c[s->bas % SON_KOMUT_N] = *c;
+        s->bas = (s->bas + 1u) % SON_KOMUT_N;
     }
 }
 
 static bool cagrida_id_var(const ida_in_t *in, uint32_t id)
 {
-    for (unsigned j = 0; j < in->n_cmds; ++j) {
+    for (unsigned j = 0; j < in->n_cmds && j < IDA_PORT_MAX_CMDS; ++j) {
         if (in->cmds[j].cmd_id == id) {
             return true;
         }
@@ -334,7 +344,7 @@ static void rastgele_dizi(uint64_t tohum, int n_cagri)
             kg_mandal(in, (uint8_t)IDA_NARROW_DISARM, 0u);
         }
         if (kg_olasi(&r, 50u)) {
-            kg_mandal(in, (uint8_t)IDA_NARROW_MODE, KIPLER[kg_rng(&r, 4u)]);
+            kg_mandal(in, (uint8_t)IDA_NARROW_MODE, KIPLER[kg_rng(&r, 4u) & 3u]);
         }
         if (kg_olasi(&r, 10u)) {
             kg_mandal(in, (uint8_t)IDA_NARROW_FC_DISARM, 0u);
@@ -363,12 +373,12 @@ static void rastgele_dizi(uint64_t tohum, int n_cagri)
             (void)kg_komut(in, (uint8_t)IDA_CMD_DISARM); /* platform hatası (A4-K46) */
         }
         if (in->n_cmds < 8u && kg_olasi(&r, 5u)) {
-            (void)kg_kip_komutu(in, KIPLER[kg_rng(&r, 4u)]); /* daraltıcı hedef; platform hatası */
+            (void)kg_kip_komutu(in, KIPLER[kg_rng(&r, 4u) & 3u]); /* daraltıcı hedef; platform hatası */
         }
         /* Yinelenen komutlar: son kabul edilen çağrıların son 8 komutundan. */
         for (int y = 0; y < 2; ++y) {
-            if (in->n_cmds < 8u && son.n > 0 && kg_olasi(&r, 60u)) {
-                const ida_cmd_t *eski = &son.c[(son.bas + (int)kg_rng(&r, (uint32_t)son.n)) % SON_KOMUT_N];
+            if (in->n_cmds < 8u && son.n > 0u && kg_olasi(&r, 60u)) {
+                const ida_cmd_t *eski = &son.c[(son.bas + kg_rng(&r, son.n)) % SON_KOMUT_N];
                 if (!cagrida_id_var(in, eski->cmd_id)) {
                     ida_cmd_t *c = kg_komut_id(in, eski->type, eski->cmd_id);
                     *c = *eski;
@@ -378,7 +388,7 @@ static void rastgele_dizi(uint64_t tohum, int n_cagri)
         ida_rc_t rc = kg_cagir(in);
         if (rc == IDA_RC_OK || rc == IDA_RC_IMU_REJECTED) {
             const ida_in_t *gi = kg_son_girdi();
-            for (unsigned j = 0; j < gi->n_cmds; ++j) {
+            for (unsigned j = 0; j < gi->n_cmds && j < IDA_PORT_MAX_CMDS; ++j) {
                 const ida_cmd_t *c = &gi->cmds[j];
                 bool dar = c->type == IDA_CMD_DISARM ||
                            (c->type == IDA_CMD_SET_MODE && c->u.set_mode.mode != IDA_MODE_GUIDED &&
