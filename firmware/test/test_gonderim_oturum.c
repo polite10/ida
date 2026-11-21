@@ -44,6 +44,7 @@ static uint32_t nonce_ctr;
 static uint32_t uye;
 static uint32_t olay_ctr;
 static bool olay_planli;
+static bool rng_bozuk; /* p_nonce gerçek rastgele sayı üretemiyor */
 
 /* Sim'in aldığı çerçeveler (yalnız ilgilenilenler). */
 static uint32_t n_actuator, n_event, n_close, n_hello;
@@ -75,6 +76,9 @@ static void p_temizle(void *ctx)
 static uint32_t p_nonce(void *ctx)
 {
     (void)ctx;
+    if (rng_bozuk) {
+        return 0u; /* platform: RNG kurtarılamadı */
+    }
     return 0x1000u + (++nonce_ctr);
 }
 
@@ -182,7 +186,7 @@ static void tur(void)
         ida_link_ust_put_out(&l, &girdi, IDA_RC_OK, &cikti);
     }
 #if !defined(IDA_TEST_KAPANIS_YOK)
-    (void)ida_kapanis_denetle(&kap, &g, false, &l);
+    (void)ida_kapanis_denetle(&kap, &g, rng_bozuk, &l);
 #endif
     for (int i = 0; i < 64 && ida_gon_pompa(&g, &T, (uint64_t)(saat / 1000)) != 0u; i++) {
     }
@@ -257,6 +261,7 @@ void setUp(void)
     uye = 0u;
     olay_ctr = 0u;
     olay_planli = false;
+    rng_bozuk = false;
     n_actuator = n_event = n_close = n_hello = 0u;
     bozuk = 0u;
     memset(&son_close, 0, sizeof son_close);
@@ -368,10 +373,47 @@ static void test_durmus_tasimada_kritik_dolar_ve_safety_close(void)
     TEST_ASSERT_EQUAL_UINT32(0u, bozuk);
 }
 
+/* Sol bulgu 4: RNG kurtarılamazsa sabit nonce ile el sıkışma sürdürülmez. Oturum modülü
+   nonce 0'ı birkaç kez alınca sabit bir değer kullanır; platform aynı turda güvenli beklemeye
+   geçer ve o duyuruyu kuyruktan siler; SESSION_ACCEPT oturum kurmaz. */
+static void test_rng_hatasi_el_sikismayi_durdurur(void)
+{
+    rng_bozuk = true;
+    mavlink_ida_sim_hello_t h;
+    memset(&h, 0, sizeof h);
+    h.dialect_hash = IDA_LINK_DIALECT_HASH;
+    h.nonce = 0x53000003u;
+    h.run_id = 1u;
+    h.ctrl_period_ns = 5000000u;
+    h.proto_major = 1u;
+    sim_yaz(MAVLINK_MSG_ID_IDA_SIM_HELLO, &h, sizeof h, false);
+    tur();
+    TEST_ASSERT_EQUAL_UINT8(IDA_KAPANIS_RNG, kap.neden);
+    TEST_ASSERT_TRUE_MESSAGE(son_hello.peer_nonce != 0x53000003u,
+                             "sabit nonce'lu el sıkışma yanıtı gönderilmemeli (A1-K13)");
+    mavlink_ida_session_accept_t a;
+    memset(&a, 0, sizeof a);
+    a.run_id = 1u;
+    a.nonce_sim = 0x53000003u;
+    a.nonce_board = 1u;
+    a.sess = 5u;
+    a.result = (uint8_t)IDAW_SESSION_RESULT_OK;
+    a.run_mode = (uint8_t)IDAW_RUN_MODE_HIL_1X;
+    sim_yaz(MAVLINK_MSG_ID_IDA_SESSION_ACCEPT, &a, sizeof a, false);
+    for (int i = 0; i < 60; i++) {
+        saat += P_NS;
+        tur();
+    }
+    TEST_ASSERT_TRUE(ida_link_ust_durum(&l) != IDA_LINK_UST_RUNNING);
+    TEST_ASSERT_TRUE(n_hello >= 1u);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)IDA_RC_NOT_INIT, son_hello.init_rc);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_akarken_kayip_yok);
     RUN_TEST(test_durmus_tasimada_kritik_dolar_ve_safety_close);
+    RUN_TEST(test_rng_hatasi_el_sikismayi_durdurur);
     return UNITY_END();
 }

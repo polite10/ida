@@ -20,6 +20,9 @@
  *                        döngü durur -> IWDG; kayıt yarım kalır (W3-kart dilim 2 kabul 5)
  *   0x54584452 ("TXDR")  gönderim taşıması durur (sürücüye çerçeve verilmez): kritik kuyruk
  *                        dolar -> güvenli kapanış (sol bulgu 1); komut silinene kadar sürer
+ *   0x45433259 ("EC2Y")  kalıcı bölgenin geçerli bloğu taşımayan parametre sayfasında aynı
+ *                        quad-word'e ikinci yazım denenir, okunur ve sayfa silinir (sol bulgu 2,
+ *                        6); sonuç sinama_sonuc ve fl_* sayaçlarında. Kayıt sürerken yapılmaz.
  *
  * Güvenli kapanış (app/kapanis.c): kritik çerçeve kuyruğa alınamazsa ya da gerçek rastgele sayı
  * üretilemezse platform güvenli beklemeye girer (çekirdek çağrılmaz, oturum biter, SIM_HELLO
@@ -59,6 +62,7 @@
 #define SINAMA_HATA 0x48415441u
 #define SINAMA_KAYIT_IWDG 0x4B495744u
 #define SINAMA_TX_DUR 0x54584452u
+#define SINAMA_ECC 0x45433259u /* "EC2Y" */
 
 volatile uint32_t ida_fw_olcum[IDA_OL_SAYI] __attribute__((used));
 #if defined(IDA_OLCUM)
@@ -70,11 +74,15 @@ static ida_link_ust_ayar_t ust_ayar;
 static ida_link_platform_t ust_plat;
 static ida_gonderim_t gon;
 static ida_kapanis_t kapanis;
+static bool rng_hata;
 static ida_kalici_t kal;
 static ida_in_t girdi;
 static ida_out_t cikti;
 static uint8_t blok[B_AYR];
 static uint32_t saat_adim;
+#if defined(IDA_OLCUM)
+static uint32_t sinama_sonuc;
+#endif
 
 /* Ölçüm sayaçları (01 §2.11) */
 static ida_ist_t blok_ist, periyot_ist, skart_ist;
@@ -125,7 +133,12 @@ static void p_temizle(void *ctx)
 static uint32_t p_nonce(void *ctx)
 {
     (void)ctx;
-    return ida_bsp_rastgele();
+    uint32_t v = 0u;
+    if (ida_bsp_rastgele(&v) == 0) {
+        return v;
+    }
+    rng_hata = true; /* kurtarılamaz: ana döngü güvenli kapanışa geçer (A1-K13) */
+    return 0u;
 }
 
 static void p_yeniden(void *ctx)
@@ -172,6 +185,12 @@ static int f_durum(void *ctx)
 {
     (void)ctx;
     return ida_flash_durum();
+}
+
+static bool f_ecc(void *ctx, uint32_t ofs, uint32_t n)
+{
+    (void)ctx;
+    return ida_flash_ecc_bozuk(ofs, n);
 }
 
 static void f_bekle(void *ctx)
@@ -235,6 +254,7 @@ static void olcum_guncelle(uint64_t simdi)
 #if defined(IDA_OLCUM)
     o[IDA_OL_derleme_olcum] = 1u;
     o[IDA_OL_sinama_komutu] = ida_fw_sinama_komutu;
+    o[IDA_OL_sinama_sonuc] = sinama_sonuc;
 #else
     o[IDA_OL_derleme_olcum] = 0u;
 #endif
@@ -337,6 +357,14 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_gon_temizlenen] = gon.temizlenen;
     o[IDA_OL_gon_kritik_hata] = gon.kritik_hata ? 1u : 0u;
     o[IDA_OL_kapanis_neden] = kapanis.neden;
+    {
+        const ida_rng_sayac_t *r = ida_bsp_rng_sayac();
+        o[IDA_OL_rng_tohum_hata] = r->tohum_hata;
+        o[IDA_OL_rng_saat_hata] = r->saat_hata;
+        o[IDA_OL_rng_kurtarma] = r->kurtarma;
+        o[IDA_OL_rng_atilan] = r->atilan;
+        o[IDA_OL_rng_kurtarilamaz] = r->kurtarilamaz + (ida_bsp_rng_baslatma_hatasi() ? 1u : 0u);
+    }
     o[IDA_OL_gon_sira_giris_kesinti] = gon.sira_giris.kesinti;
     o[IDA_OL_gon_sira_giris_eksik] = gon.sira_giris.eksik;
     o[IDA_OL_gon_sira_kuyruk_kesinti] = gon.sira_kuyruk.kesinti;
@@ -391,6 +419,10 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_fl_yazma_en_kotu_cevrim] = ida_flash_olcum.yazma_en_kotu_cevrim;
     o[IDA_OL_fl_hata] = ida_flash_olcum.hata;
     o[IDA_OL_fl_ecc_nmi] = ida_flash_olcum.ecc_nmi;
+    o[IDA_OL_fl_eccc_nvm] = ida_flash_olcum.eccc_nvm;
+    o[IDA_OL_fl_eccc_diger] = ida_flash_olcum.eccc_diger;
+    o[IDA_OL_fl_eccd_diger] = ida_flash_olcum.eccd_diger;
+    o[IDA_OL_fl_ecc_son] = ida_flash_olcum.ecc_son;
     o[IDA_OL_yigin_boyu] = ida_bsp_yigin_boyu();
     o[IDA_OL_yigin_en_yuksek] = ida_bsp_yigin_en_yuksek();
     o[IDA_OL_reset_cause] = a->reset_cause;
@@ -492,6 +524,47 @@ static void sinama(void)
     if (k == SINAMA_HATA) {
         ida_fw_sinama_komutu = 0u;
         __builtin_trap(); /* UDF -> UsageFault (UNDEFINSTR) */
+    }
+    if (k == SINAMA_ECC && !ida_kal_mesgul(&kal)) {
+        ida_fw_sinama_komutu = 0u;
+        /* Geçerli bloğu taşımayan parametre sayfası (2 ya da 3): içeriği eski kuşaktır. */
+        const uint32_t sayfa = kal.gecerli_sayfa == 2 ? 3u : 2u;
+        const uint32_t ofs = sayfa * IDA_KAL_SAYFA_BAYT + 32u;
+        uint8_t q[16];
+        for (uint32_t i = 0u; i < 16u; i++) {
+            q[i] = (uint8_t)(0xA5u ^ i);
+        }
+        int r0 = ida_flash_sil(sayfa);
+        if (r0 == 0) {
+            do {
+                r0 = ida_flash_durum();
+            } while (r0 == 1);
+        }
+        int r1 = ida_flash_yaz16(ofs, q);
+        if (r1 == 0) {
+            do {
+                r1 = ida_flash_durum();
+            } while (r1 == 1);
+        }
+        q[0] = 0x00u; /* ikinci yazım: farklı veri */
+        int r2 = ida_flash_yaz16(ofs, q);
+        if (r2 == 0) {
+            do {
+                r2 = ida_flash_durum();
+            } while (r2 == 1);
+        }
+        const volatile uint8_t *p = ida_flash_taban() + ofs;
+        const uint8_t okunan = p[0];
+        const bool ecc = ida_flash_ecc_bozuk(ofs, 16u);
+        int r3 = ida_flash_sil(sayfa);
+        if (r3 == 0) {
+            do {
+                r3 = ida_flash_durum();
+            } while (r3 == 1);
+        }
+        sinama_sonuc = 0x80000000u | ((uint32_t)(r1 & 0xFF)) | ((uint32_t)(r2 & 0xFF) << 8) |
+                       ((uint32_t)okunan << 16) | (ecc ? 0x01000000u : 0u) |
+                       ((r0 | r3) != 0 ? 0x02000000u : 0u);
     }
 }
 #endif
@@ -617,9 +690,10 @@ int main(void)
     ida_kapanis_kur(&kapanis);
 
     /* Kalıcı bellek: geçerli parametre bloğu ve açılış sayacı (bloklayıcı; 2 s IWDG içinde). */
-    const ida_kal_flash_t fl = {NULL, f_taban, f_sil, f_yaz16, f_durum};
+    const ida_kal_flash_t fl = {NULL, f_taban, f_sil, f_yaz16, f_durum, f_ecc};
     const uint32_t k0 = ida_bsp_cevrim();
     if (saat_tamam) {
+        ida_flash_ecc_baslat(); /* bölge okunmadan önce: ECCC/ECCD yönetimi (sol bulgu 2) */
         ida_kal_acilis(&kal, &fl, f_bekle, NULL);
     } else {
         kal.gecerli_sayfa = -1; /* flash'a dokunulmaz: blok yok, sayaç ayrılamadı */
@@ -713,7 +787,8 @@ int main(void)
             ida_link_ust_poll_tx(&ust);
             cagri();
             /* Güvenli kapanış (kritik çıktı kaybı; A1-K110): çağrı penceresi dışında. */
-            const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon, false, &ust);
+            const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon,
+                                                   rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
             if (kn != IDA_KAPANIS_YOK) {
                 ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX : IDA_CAG_NEDEN_RNG);
                 ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */

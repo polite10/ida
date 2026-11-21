@@ -8,8 +8,10 @@
  *   - kritik bir çerçeve (IDA_ACTUATOR ya da çağrının yeni olayı) gönderim kuyruğuna
  *     alınamadı: kritik çıktının kaybı olağan kuyruk davranışı değildir (A1-K110);
  *   - gerçek rastgele sayı üretilemiyor: sabit nonce ile el sıkışma sürdürülmez (A1-K13).
- * Karar verilince oturum modülü güvenli beklemeye alınır (oturum varsa SESSION_CLOSE(SAFE_STATE)
- * denenir ve oturum biter; sonra SIM_HELLO yanıtlanmaz, duyurular init_rc = NOT_INIT taşır).
+ * RNG nedeninde gönderim kuyruğunda yazımı başlamamış çerçeveler silinir (sabit nonce taşıyan bir
+ * BOARD_HELLO kuyrukta kalmasın). Karar verilince oturum modülü güvenli beklemeye alınır (oturum
+ * varsa SESSION_CLOSE(SAFE_STATE) denenir ve oturum biter; sonra SIM_HELLO yanıtlanmaz, duyurular
+ * init_rc = NOT_INIT taşır).
  * Geri alınmaz; çekirdeğin çağrılmaması platformun işidir (neden döner).
  */
 #ifndef IDA_FW_KAPANIS_H
@@ -36,7 +38,7 @@ typedef struct {
 void ida_kapanis_kur(ida_kapanis_t *k);
 /* Kapanış gerekiyorsa (ve çağrı penceresi kapalıysa) oturum modülünü güvenli beklemeye alır.
    Dönüş: bu çağrıda başlayan kapanışın nedeni; başlamadıysa IDA_KAPANIS_YOK. */
-uint8_t ida_kapanis_denetle(ida_kapanis_t *k, const ida_gonderim_t *g, bool rng_hata,
+uint8_t ida_kapanis_denetle(ida_kapanis_t *k, ida_gonderim_t *g, bool rng_hata,
                             ida_link_ust_t *ust);
 
 #ifdef __cplusplus

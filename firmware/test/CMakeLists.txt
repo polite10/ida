@@ -8,6 +8,8 @@ set(_fw "${PROJECT_SOURCE_DIR}/firmware")
 add_library(ida_fw_saf_host STATIC
   "${_fw}/link/alim.c"
   "${_fw}/bsp/acilis_kaydi.c"
+  "${_fw}/bsp/ecc.c"
+  "${_fw}/bsp/rng.c"
   "${_fw}/app/istatistik.c"
   "${_fw}/app/saglik.c"
   "${_fw}/app/gonderim.c"
@@ -39,9 +41,13 @@ ida_ayar_uygula(ida_fw_test_gonderim_oturum_karsi CEKIRDEK)
 add_test(NAME firmware.birim.gonderim_oturum_karsi_ornek COMMAND ida_fw_test_gonderim_oturum_karsi)
 set_tests_properties(firmware.birim.gonderim_oturum_karsi_ornek PROPERTIES WILL_FAIL TRUE)
 _ida_fw_birim(kalici)
+_ida_fw_birim(ecc)
+_ida_fw_birim(rng)
 _ida_fw_birim(saglik)
 
 # Ölçüm bloğu okuyucusunun tutarlılık denetimi (Python, kart gerekmez).
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 add_test(NAME firmware.araclar.olcum_oku
   COMMAND "${Python3_EXECUTABLE}" -I "${_fw}/araclar/test_olcum_oku.py")
+add_test(NAME firmware.araclar.kabul
+  COMMAND "${Python3_EXECUTABLE}" -I "${_fw}/araclar/test_kabul.py")

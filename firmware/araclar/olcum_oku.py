@@ -28,7 +28,7 @@ KOK = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 ARAC = os.path.join(KOK, "firmware", "araclar", "arac.sh")
 OLCUM_H = os.path.join(KOK, "firmware", "app", "olcum.h")
 KUTU_UST_US = [10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 3500, 5000, None]
-SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744, "tx_dur": 0x54584452,
+SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744, "tx_dur": 0x54584452, "ecc": 0x45433259,
           "temizle": 0}
 
 

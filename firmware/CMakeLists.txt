@@ -51,6 +51,8 @@ target_compile_definitions(ida_fw_baslangic PRIVATE
 add_library(ida_fw_saf STATIC
   link/alim.c
   bsp/acilis_kaydi.c
+  bsp/ecc.c
+  bsp/rng.c
   app/istatistik.c
   app/saglik.c
   app/gonderim.c

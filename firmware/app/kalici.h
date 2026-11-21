@@ -20,7 +20,9 @@
  *   [16, 16 + len)   blob (A4 §3.10; çekirdeğin ürettiği bayt dizisi, yorumlanmaz; A4-K84)
  *   [8176, 8192)     tamamlanma: magic "CMIT", gen, ~gen, CRC-32(başlık)
  * Tamamlanma kaydı en son yazılır; olmayan sayfa geçersizdir. İki sayfa da geçerliyse kuşağı
- * büyük olan kullanılır. Kayıt, geçerli (en yeni) bloğu taşımayan sayfaya yapılır: sil →
+ * büyük olan kullanılır. Okunurken çift ECC hatası görülen (ecc_bozuk) sayaç kaydı, yuvası ve
+ * blok, baytları geçerli görünse de reddedilir.
+ * Kayıt, geçerli (en yeni) bloğu taşımayan sayfaya yapılır: sil →
  * başlık ve blob → geri okuma ve CRC → tamamlanma. Güç kesintisi ya da iptal eski bloğu bozmaz.
  * Kayıt adım adım ilerler (her adım tek bir donanım işlemi; döngüyü bloklamaz): durum
  * A4-K83'ün param_store'u (BUSY, sonra OK ya da FAIL) ve kuşağıdır.
@@ -56,6 +58,9 @@ typedef struct {
     int (*yaz16)(void *ctx, uint32_t ofs, const uint8_t q[IDA_KAL_QW]);
     /* Son işlemin durumu: 0 bitti (başarılı), 1 sürüyor, < 0 hata. */
     int (*durum)(void *ctx);
+    /* [ofs, ofs + n) okunurken çift ECC hatası (yutulan NMI) görüldü mü (sol bulgu 6). Bilgi,
+       ilgili sayfa silinene kadar kalır; okuma bundan önce yapılmış olmalıdır. */
+    bool (*ecc_bozuk)(void *ctx, uint32_t ofs, uint32_t n);
 } ida_kal_flash_t;
 
 /* A4 IDA_PSTORE_* / IDA_PSFAIL_* ile aynı değerler (kalici.c'de _Static_assert). */
@@ -108,7 +113,9 @@ void ida_kal_kaydet(ida_kalici_t *k, const uint8_t *blob, uint32_t len, uint32_t
 /* Ana döngüde her turda: donanım boştaysa sıradaki tek işlemi başlatır. */
 void ida_kal_adim(ida_kalici_t *k);
 /* Oturum sonunda ya da güvenli duruma girişte süren kaydı iptal eder (A4-K83): yeni işlem
-   başlatılmaz; süren işlem bitince FAIL / ABORTED. */
+   başlatılmaz; süren işlem bitince FAIL / ABORTED. Tamamlanma kaydının yazımı başlamışsa önce
+   hedef sayfa silinir; FAIL / ABORTED ancak silme bitince bildirilir (FAIL'de kalıcı blok
+   değişmemiştir). */
 void ida_kal_iptal(ida_kalici_t *k);
 bool ida_kal_mesgul(const ida_kalici_t *k);
 

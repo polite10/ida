@@ -54,6 +54,7 @@
     X(gon_tx_frames) X(gon_tx_dropped) X(gon_crit_stall) X(gon_kritik_ret) X(gon_zorunlu_ret) \
     X(gon_yazma_ret) X(gon_kritik_bekleme_en_kotu_us) X(gon_q1_azami) X(gon_q2_azami) X(gon_q3_azami) \
     X(gon_gecersiz_ret) X(gon_temizlenen) X(gon_kritik_hata) X(kapanis_neden) \
+    X(rng_tohum_hata) X(rng_saat_hata) X(rng_kurtarma) X(rng_atilan) X(rng_kurtarilamaz) \
     X(gon_sira_giris_kesinti) X(gon_sira_giris_eksik) X(gon_sira_kuyruk_kesinti) \
     X(gon_sira_kuyruk_eksik) X(gon_sira_cikis_kesinti) X(gon_sira_cikis_eksik) \
     X(link_durum) X(link_sess) \
@@ -67,12 +68,12 @@
     X(kal_blok_len) X(kal_blok_crc) X(kal_gecerli_sayfa_i) X(kal_kayit_sayisi) X(kal_kayit_hata) \
     X(kal_sayac_deneme) X(kal_acilis_cevrim) X(kal_kayit_sure_us) X(kal_kayit_en_kotu_tur_cevrim) \
     X(fl_silme_sayisi) X(fl_yazma_sayisi) X(fl_silme_en_kotu_cevrim) X(fl_yazma_en_kotu_cevrim) \
-    X(fl_hata) X(fl_ecc_nmi) \
+    X(fl_hata) X(fl_ecc_nmi) X(fl_eccc_nvm) X(fl_eccc_diger) X(fl_eccd_diger) X(fl_ecc_son) \
     X(yigin_boyu) X(yigin_en_yuksek) \
     X(reset_cause) X(reset_flags) X(ardisik_ariza) X(kayit_gecerliydi) X(fpscr) \
     X(onceki_ariza) X(ariza_sayisi) X(ariza_cfsr) X(ariza_hfsr) X(ariza_pc) X(ariza_lr) \
     X(ariza_yigin_gecerli) X(ariza_istisna) \
-    X(sinama_komutu) X(nvic_yeniden) X(rx_yeniden) X(rx_durdu)
+    X(sinama_komutu) X(sinama_sonuc) X(nvic_yeniden) X(rx_yeniden) X(rx_durdu)
 /* clang-format on */
 
 #define IDA_FW_OLCUM_X(ad) IDA_OL_##ad,
