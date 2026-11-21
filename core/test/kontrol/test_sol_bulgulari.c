@@ -208,6 +208,9 @@ static void karma_kur(ida_kon_girdi_t *g)
 {
     prm_f(&P, IDA_PRM_kon_itki_egim, 100000.0f); /* tek adımda tam tahsis */
     prm_f(&P, IDA_PRM_kon_yon_kp, 0.0f);        /* ψ̇ = yalnız referans ileri beslemesi */
+    /* Beklenen değerler RATE_KP_R = 4 (ilk varsayılan) ile yazıldı; varsayılan Z1'de 8'e
+       ayarlandı (W3-zincir md. 4): kazanç burada sabitlenir, ölçüt değişmez. */
+    prm_f(&P, IDA_PRM_kon_r_kp, 4.0f);
     girdi(g, 1000 * DS_MS, true);
     g->nav.q_nb[0] = ida_cos(0.25f); /* φ = 0,5 */
     g->nav.q_nb[1] = ida_sin(0.25f);
@@ -376,6 +379,10 @@ static void test_b6_olu_bantta_integral_donmaz(void)
 {
     prm_f(&P, IDA_PRM_kon_itki_egim, 100000.0f);
     prm_f(&P, IDA_PRM_kon_yuzerlik_ff, 1.2f);
+    /* İstek 1,2 + W_KP · 0,01 ölü bant eşiğinin altında olmalı: W_KP = 60 (ilk varsayılan)
+       ile 4 × 0,45 N. Varsayılan Z1'de 120'ye ayarlandı (W3-zincir md. 4); kazanç burada
+       sabitlenir, ölçüt değişmez. */
+    prm_f(&P, IDA_PRM_kon_w_kp, 60.0f);
     ida_kon_girdi_t g;
     girdi(&g, 1000 * DS_MS, true);
     g.istek.dikey_hiz = 0.0f;

@@ -107,9 +107,18 @@ static void test_317_yer_tutucu_satirlari(void)
     komut(7u, 8u, (uint8_t)IDA_CMD_SET_MODE);
     IN.cmds[7].u.set_mode.mode = (uint8_t)IDA_MODE_GUIDED;
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    for (uint32_t id = 1u; id <= 7u; id++) {
-        desteksiz_bekle(id);
-    }
+    desteksiz_bekle(1u); /* bilinmeyen tür */
+    desteksiz_bekle(2u);
+    /* HEARTBEAT (3.17: kendi ret koşulu yok) ve FAILSAFE_RESET (temizlenecek mandallı eylem
+       yok: etkisiz) görev modülünce uygulanır (W3-K8): ACCEPTED / NONE. */
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(3u)->ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(3u)->reason);
+    desteksiz_bekle(4u); /* MANUAL: bu sürümde yok */
+    /* GUIDED_SP güdümce uygulanır (W3-zincir): mask = 0 → OUT_OF_RANGE (3.17, A4-K50). */
+    ret_bekle(5u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    desteksiz_bekle(6u); /* MISSION_BEGIN: görev dilim 2 */
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(7u)->ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(7u)->reason);
     ret_bekle(8u, (uint16_t)IDA_REASON_BAD_MODE);
     /* MISSION_ITEM, MISSION_END, MISSION_CTL; SET_MODE(AUTO) */
     IN.n_cmds = 0u;
@@ -288,7 +297,10 @@ static void test_reddedilen_cagri_pencereye_girmez(void)
     ret_bekle(9u, (uint16_t)IDA_REASON_CALL_REJECTED);
     TEST_ASSERT_EQUAL_UINT32(1u, OUT.status.cnt.cmd_rejected);
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    desteksiz_bekle(9u); /* DUPLICATE değil (A4-K114) */
+    /* DUPLICATE değil (A4-K114): reddedilen çağrının komutu pencereye girmedi; HEARTBEAT
+       olağan yanıtını alır (3.17; W3-K8). */
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(9u)->ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(9u)->reason);
     /* reddedilen çağrıda PARAM_GET sonucu PARAM_VALUE türünde */
     komut(0u, 10u, (uint8_t)IDA_CMD_PARAM_GET);
     IN.n_samples = 17u;

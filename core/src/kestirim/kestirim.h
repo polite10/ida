@@ -113,6 +113,8 @@ typedef struct {
     bool yon_var;       /* yön en az bir kez manyetometreden kuruldu                  */
     bool kalibre;       /* basınç referansı (P_atm) kuruldu; oturum boyunca korunur  */
     uint8_t duzey;      /* IDA_EST_*                                                   */
+    uint8_t suzgec_duzey; /* çökme mandalından bağımsız süzgeç düzeyi (INIT, OK,
+                             DEGRADED, BAD); ida_kes_suzgec_duzey                 */
     uint8_t gecerlilik; /* IDA_KES_G_*                                                 */
     float p_atm;        /* Pa                                                          */
     int64_t d_ns;       /* ufuk gecikmesi D (hizalamada sabitlenir)                   */
@@ -205,5 +207,10 @@ uint8_t ida_kes_gecerlilik(const ida_kes_t *k);
 /* Sayısal çökme mandalını kaldırır (görev modülü FAILSAFE_RESET'te çağırır; 02 §2.3.6).
    Mandal, filtre yeniden hizalanmışsa kalkar; true: kalktı. */
 bool ida_kes_ariza_temizle(ida_kes_t *k);
+/* Süzgecin çökme mandalından bağımsız düzeyi: hizalanmamışsa INIT, hizalanmışsa sağlığına
+   göre OK, DEGRADED ya da BAD (mandal yokken ida_kes_duzey ile aynı). Görev modülü
+   FAILSAFE_RESET'in sayısal çökme temizleme koşulunu buna bağlar: mandal kuruluyken
+   ida_kes_duzey hep FAULT'tur ve yeniden hizalanmış sağlıklı süzgeci göstermez. */
+uint8_t ida_kes_suzgec_duzey(const ida_kes_t *k);
 
 #endif /* IDA_CORE_KESTIRIM_H */

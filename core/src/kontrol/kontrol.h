@@ -75,6 +75,16 @@ typedef struct {
     float hiz[2];        /* m/s: ileri, yan (yön çerçevesi)                                */
     float kuvvet[6];     /* N, N·m: gövde X, Y, Z, K, M, N (yalnız KUVVET/MOMENT seçilen
                             eksenlerde okunur)                                             */
+    uint8_t dalis_yasak; /* 1: derinleşme yasak (sızıntı algılayıcısı bayat, 02 §4.3; sol
+                            W3-zincir 2. tur bulgu 2; EMNİYET): derinlik referansı ölçülen
+                            derinlikten derin olamaz, aşağı yönlü dikey hız isteği üretilmez,
+                            NED aşağı kuvvet yüzerlik dengelemesiyle (BUOY_FF, ≥ 0) sınırlıdır,
+                            dikey integral aşağı yönde birikmez                            */
+    uint32_t ref_kusak;  /* referans kuşağı (sol bulgu 2; EMNİYET): hedefin kaynağı değişince
+                            (tutma hedefinin yeniden yakalanması, arıza eylemi geçişi, güdüm
+                            hedefinin iptali, derinleşme yasağının başlaması) artar; kontrol
+                            değişimi görünce derinlik ve yön referanslarını ölçülen durumdan
+                            yeniden kurar, öteleme integrallerini sıfırlar                 */
 } ida_kon_istek_t;
 
 /* ---- Bir adımın girdileri ---------------------------------------------------------------- */
@@ -130,6 +140,10 @@ typedef struct {
 
     uint8_t t_var;
     int64_t t_onceki_ns;
+
+    /* Son etkin adımın referans kuşağı (ida_kon_istek_t.ref_kusak); ref_kusak_var 0: yok. */
+    uint32_t son_ref_kusak;
+    uint8_t ref_kusak_var;
 } ida_kon_t;
 
 void ida_kon_kur(ida_kon_t *k);

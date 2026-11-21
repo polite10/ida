@@ -1,0 +1,30 @@
+# sim/sunucu — başsız sim sunucusu `ida_sim` (W4-kopru): fizik + sensör kümesi + A1 köprüsü +
+# zaman yöneticisi.
+#
+#   ida_sunucu   kitaplık (sunucu.hpp); bütünleme testleri (tests/butunleme) bağlar
+#   ida_sim      program
+#
+# Fizik Eigen'e (vcpkg) bağlıdır; ida_fizik yoksa (VCPKG_ROOT yok) bu dizin atlanır.
+
+if(NOT TARGET ida_fizik)
+  message(STATUS "ida_fizik yok: sim/sunucu atlandı")
+  return()
+endif()
+
+function(ida_sunucu_ayar hedef)
+  ida_ayar_uygula(${hedef})
+  if(NOT MSVC)
+    target_compile_options(${hedef} PRIVATE -Wshadow)
+  endif()
+endfunction()
+
+add_library(ida_sunucu STATIC src/sunucu.cpp src/yardimci.cpp)
+target_include_directories(ida_sunucu
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ida_sunucu PUBLIC ida_kopru ida_kopru_karsi ida_fizik ida_sensor)
+ida_sunucu_ayar(ida_sunucu)
+
+add_executable(ida_sim src/main.cpp)
+target_link_libraries(ida_sim PRIVATE ida_sunucu)
+ida_sunucu_ayar(ida_sim)

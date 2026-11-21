@@ -20,11 +20,22 @@ void ida_emn_kur(ida_emn_t *e)
     e->kabul_kisit = 0u;
     e->oturum_kapali = false;
     (void)memset(&e->d, 0, sizeof(e->d));
+    e->hedef_iptal = (uint8_t)IDA_EMN_IPTAL_TUMU; /* init'te saklı hedef yok; kurulu güvenli */
+    e->kusak = 0u;
+    e->kusak_tumleyen = 0xFFFFFFFFu;
+}
+
+void ida_emn_kusak_artir(ida_emn_t *e)
+{
+    e->hedef_iptal = (uint8_t)IDA_EMN_IPTAL_TUMU;
+    e->kusak = e->kusak + 1u;
+    e->kusak_tumleyen = 0xFFFFFFFFu ^ e->kusak;
 }
 
 void ida_emn_oturum_basi(ida_emn_t *e)
 {
     e->oturum_kapali = false;
+    ida_emn_kusak_artir(e); /* saklı hedefler önceki oturumundur (EMNİYET) */
 }
 
 uint8_t ida_emn_kisit_icerigi(const ida_safety_t *s)
@@ -215,6 +226,9 @@ void ida_emn_daralt(ida_emn_t *e, const ida_in_t *in, const ida_emn_baglam_t *b)
                              .arg0 = ((e->kisitli & IDA_EMN_ESTOP) != 0u) ? 1 : 0,
                              .arg1 = gunluk_tup_bitleri(e->kisitli)};
         ida_gun_ekle(b->gun, &k);
+    }
+    if (d.disarm || d.kip_izni_dus) {
+        ida_emn_kusak_artir(e); /* silahsızlandırma ya da kip daralması (SESSION_END dahil) */
     }
     e->d = d;
 }

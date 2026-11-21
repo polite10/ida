@@ -1,0 +1,23 @@
+# sim/kopru — A1 köprüsü (`ida_kopru`)
+
+Sim sunucusunun kartla (ve kartsız koşucuyla) konuşan yarısı (görev: `docs/gorevler/W4-kopru.md`; sözleşme: `docs/sozlesmeler/A1-kart-baglantisi.md` 1.0). Köprü G/Ç ve saat bilmez: her işlev zamanı argüman olarak alır, gidecek baytları iç tampona yazar; zaman yöneticisi (`sim/sunucu`) taşımaya verir. Aynı girdi dizisi aynı bayt dizisini üretir.
+
+| Dosya | İçerik |
+|---|---|
+| `include/ida/kopru/kopru.hpp` | `Kopru`: sim rolünde oturum (A1 §4.2), parti (§4.3, §4.4), yanıtların ve olayların doğrulanması (A1-K109, Tablo 4.6) ve uygulanması (A1-K72–K78, K81–K89, K106, K111, K118), fizik sınırındaki emniyet sırası (A1-K85), operatör komutları (§4.5) |
+| `include/ida/kopru/tasima.hpp` | Taşıma: bellek çifti, TCP (SIL; yalnız 127.0.0.1, `TCP_NODELAY`), seri port (HIL; 3 000 000 baud 8N1, ham kip; macOS IOSSIOSPEED, Windows DCB), sözde uçbirim çifti (POSIX; kartsız HIL sınaması) |
+| `include/ida/kopru/param_blogu.hpp` | A5'ten kurulan parametre bloğu (A4 §3.10) ve CRC'si (A1-K18, K19) |
+| `include/ida/kopru/karsi.hpp` | Süreç içi karşı taraf: `ida_link` üst katmanı + gerçek çekirdek (SIL ve kart rolü); sınama ve `ida_sim --karsi ic|pty` içindir, ürün değildir |
+| `test/` | CTest `sim.kopru.*` |
+
+## Fizik sınırındaki çağrı sırası
+
+Zaman yöneticisi her fizik sınırı `b` (t = b·h) için: `sinir_isle(b)` (A1-K85'in beş adımı: oturum sonu ve dolan izinler; kısıtlayan komutlar ve senaryo atamaları; kart olayları `SAFETY_CLOSE` → `SAFETY_OPEN` → `FIRE`; gevşetmeler; sürekli çıktılar) → dönen darbe genişlikleri b'de başlayan fizik adımına → sensör kümesi `dis_durum()` ile → yeni kayıtlar `olcum_ekle` → kontrol sınırında `parti_kapat(t_n)`.
+
+## Bu dilimin sınırları
+
+- Bariyer kipi (HIL 1x + adım bariyeri) yoktur; SIL kilitli adım ve HIL 1x vardır.
+- `B_krit` aşımında kritik üyeler kaydırılmaz, yalnız sayılır (A1-K113); pencere bütçesi aşımı sayılır ve çalıştırmayı geçersiz kılar. İDA-0 sensör kümesinde en büyük kritik bayt 287 B'tır (SIL Z1, ölçüm).
+- Sonar (Ping360 parçalama, A1-K49–K53), algılama (A1-K38, `NO_FRAME` A1-K58), bağlantı emülatörü ve hata enjeksiyonu yoktur.
+- A1-K115 (seri sürücünün çıkış kuyruğu boşken yazma) uygulanmadı.
+- Atış kontrol: kabul edilen `FIRE` yalnız tüpün "dolu" bitini siler; torpido fiziği yoktur.
