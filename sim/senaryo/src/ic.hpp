@@ -98,6 +98,9 @@ void desteklenmeyenler(const Deger& birlesik, Bulgucu& b);
 // `manifest` A7 kümesinin ayrıştırılmış manifesti (yoksa nullptr; A5-K115 bulgusu ayrıca).
 void anlamsal_kurallar(const Deger& s, const Deger* manifest, Bulgucu& b);
 
+// Aşama 2, fizik yükleyici denetimleri (dilim 2): A5-K22 ve A5-K34 (fizik_yukleyici.cpp).
+void fizik_denetimleri(const Deger& s, const Deger* manifest, Bulgucu& b);
+
 // Yol yardımcıları
 std::string yol_birlestir(std::string_view dizin, std::string_view goreli);
 std::string dizin_adi(std::string_view yol);

@@ -310,6 +310,9 @@ CozumSonucu senaryo_coz(const DosyaKaynagi& kaynak, const std::string& senaryo_y
     const std::optional<Deger> manifest = manifest_oku(kaynak, s, b, r);
     ic::cozumle(s, b);
     ic::anlamsal_kurallar(s, manifest ? &*manifest : nullptr, b);
+    if (!b.hata_var()) {
+        ic::fizik_denetimleri(s, manifest ? &*manifest : nullptr, b);
+    }
     ic::sema_dogrula(s, "#", y0, ic::SemaKipi::toml, b);
     if (b.hata_var()) {
         return bitir();

@@ -51,6 +51,7 @@ add_library(ida_senaryo STATIC
   src/cozumleme.cpp
   src/deger.cpp
   src/dogrulayici.cpp
+  src/fizik_yukleyici.cpp
   src/json_okuma.cpp
   src/kanonik.cpp
   src/kurallar.cpp
@@ -68,7 +69,7 @@ target_include_directories(ida_senaryo
 get_target_property(_toml_baslik tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(ida_senaryo SYSTEM PRIVATE ${_toml_baslik})
 target_compile_definitions(ida_senaryo PRIVATE TOML_HEADER_ONLY=1 TOML_ENABLE_FORMATTERS=0)
-target_link_libraries(ida_senaryo PRIVATE nlohmann_json::nlohmann_json Eigen3::Eigen)
+target_link_libraries(ida_senaryo PUBLIC ida_fizik PRIVATE nlohmann_json::nlohmann_json Eigen3::Eigen)
 ida_senaryo_ayar(ida_senaryo)
 # Üretilen gömülü kaynaklar İDA uyarı politikasına girer ama yalnız sabit dizilerdir.
 
@@ -83,7 +84,8 @@ add_executable(ida_senaryo_test
   test/test_bozuk.cpp
   test/test_cozumleme.cpp
   test/test_dayaniklilik.cpp
-  test/test_ozet.cpp)
+  test/test_ozet.cpp
+  test/test_yukleyici.cpp)
 target_include_directories(ida_senaryo_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_senaryo_test PRIVATE ida_senaryo nlohmann_json::nlohmann_json)
 ida_senaryo_ayar(ida_senaryo_test)
@@ -104,10 +106,28 @@ set(_ida_senaryo_testleri
   yeniden_yukleme          # A5-K02
   rapor_bicimi             # A5-K90–K95
   dayaniklilik             # 10 000 bozulmuş dosya, sabit tohum
-  cozumleme_suresi)        # ölçüm (eşik yok)
+  cozumleme_suresi         # ölçüm (eşik yok)
+  # dilim 2: fizik yükleyici
+  fizik_yukleyici          # çözümlenmiş senaryo → ida::fizik yapıları; Dunya::kur
+  ek_a_vektorleri          # A5-K23, K24: Ek A (trimli dahil), 1e-4 bağıl
+  fizik_kurallari          # A5-K22, K34
+  fizik_karsilastirma)     # madde 11: dosyadan kurulan ↔ ida0_arac(), havuz_ortami() (rapor)
 foreach(_ad IN LISTS _ida_senaryo_testleri)
   add_test(NAME sim.senaryo.${_ad} COMMAND ida_senaryo_test ${_ad} "${PROJECT_SOURCE_DIR}")
 endforeach()
+
+# ---- sensör yükleyici (dilim 2): yalnız sim/sensor depoda varken (W4-sensor) ------------
+if(EXISTS "${PROJECT_SOURCE_DIR}/sim/sensor/CMakeLists.txt")
+  add_library(ida_senaryo_sensor STATIC src/sensor_yukleyici.cpp)
+  target_link_libraries(ida_senaryo_sensor PUBLIC ida_senaryo ida_sensor)
+  ida_senaryo_ayar(ida_senaryo_sensor)
+  add_executable(ida_senaryo_sensor_test test/test_sensor_yukleyici.cpp)
+  target_link_libraries(ida_senaryo_sensor_test PRIVATE ida_senaryo_sensor)
+  ida_senaryo_ayar(ida_senaryo_sensor_test)
+  foreach(_ad sensor_yukleyici sensor_karsilastirma)
+    add_test(NAME sim.senaryo.${_ad} COMMAND ida_senaryo_sensor_test ${_ad} "${PROJECT_SOURCE_DIR}")
+  endforeach()
+endif()
 
 # Komut satırı aracının çıkış kodları (0 geçerli, 1 geçersiz, 2 kullanım, 3 G/Ç).
 set(_cikis "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cikis_kodu.cmake")
