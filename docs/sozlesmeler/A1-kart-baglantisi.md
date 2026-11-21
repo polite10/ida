@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, çapraz uyum turu (2026-11-20) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
 | Görev belgesi | `docs/gorevler/W1-A1.md`; ortak kurallar `docs/gorevler/W1-ortak.md`; çapraz uyum kararları `docs/gorevler/W1-uyum.md` (U1–U18) |
 | Makinece okunur tanım | `protocol/ida.xml` (MAVLink 2 dialect'i; bu belgenin parçasıdır, ikisi çelişemez) |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.10 (§3, §3.1, §3.2, §4, §5, §6, §8, §10); A4 sözleşmesi adayı (`docs/sozlesmeler/A4-port.md`, `core/include/ida/port.h`; çapraz uyum turu, 129 kural); A8 sözleşmesi adayı (`docs/sozlesmeler/A8-kamera-algilama.md`, `core/include/ida/algilama_kaydi.h`; çapraz uyum turu); A5 sözleşmesi adayı (Ek D.7); ölçümler `docs/olcumler/MP3-vcp.md`, `MP4-dongu-yuku.md`, `MP1-arac-zinciri.md`; bölümler 01, 05, 06 (taslak; iskelet 0.8'den eski; çeliştikleri yerde iskelet geçerlidir) |
 | İnceleme | sol: `docs/sozlesmeler/inceleme/A1-sol.md`, `A1-sol-2.md`; yanıtlar: `A1-yanit.md`, `A1-yanit-2.md` |
-| Durum | Yazan Opus; düzeltme turu 1 ve 2 ile çapraz uyum turu (W1-uyum) mimar kararlarıyla yapıldı; doğrulama incelemesi bekliyor; dondurulmadı. Kural numaraları korundu; birinci turda eklenen kurallar A1-K104–K115, ikinci turda A1-K116–K122, çapraz uyum turunda A1-K123–K128, doğrulama incelemesinden sonra A1-K129 |
+| Durum | Yazan Opus; düzeltme turu 1 ve 2 ile çapraz uyum turu (W1-uyum) mimar kararlarıyla yapıldı; doğrulama incelemesi bekliyor; dondurulmadı. Kural numaraları korundu; birinci turda eklenen kurallar A1-K104–K115, ikinci turda A1-K116–K122, çapraz uyum turunda A1-K123–K128, doğrulama incelemesinden sonra A1-K129 **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 
 **Değerlerin niteliği.** Her süre, hız, boyut ve kapasite ya bir ölçüme (rapor ve başlık atfıyla), ya bir birincil kaynağa (bağlantıyla), ya bir **hesaba** (aritmetik; ölçüm değil) ya da **mimari seçimi (tahmin)** etiketine dayanır. Etiketli değerler ölçülmüş değildir; Bölüm 8'de hangi ölçümle kapanacakları yazılıdır. Bu belgedeki uçtan uca gecikme bütçesi bir tahmindir; kartta ve PC'de birlikte ölçülmedi.
 

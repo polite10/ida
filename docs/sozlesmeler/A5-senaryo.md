@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, W1-uyum turu ve W1 doğrulama düzeltmeleri D4–D8 (2026-11-20) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | İş | `W1-A5` (`docs/gorevler/W1-A5.md`; ortak kurallar `docs/gorevler/W1-ortak.md`); çapraz uyum `docs/gorevler/W1-uyum.md` |
 | İnceleme | `docs/sozlesmeler/inceleme/A5-sol.md`, `A5-sol-2.md`; yanıtlar `A5-yanit.md`, `A5-yanit-2.md`; çapraz inceleme `W1-capraz-sol-{1..4}.md`, doğrulama `W1-dogrulama-sol-3.md` (bütünleştirme dalında) |
 | Dayanak | iskelet 0.10 (`docs/mimari/00-iskelet.md`) §3, §3.1, §4, §5, §6, §8, §10; bölümler 02, 04, 05, 06, 08 (taslak); `docs/gorevler/W0-MP7a.md`; `docs/olcumler/MP7-sonar-suresi.md`; `docs/research/00-duzeltmeler-ve-kararlar.md`; mimarın W1-A5 düzeltme turu kararları |

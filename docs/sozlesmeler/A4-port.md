@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, dondurma öncesi son tur (2026-11-20; çekirdek iskeletinin tasarım notunun A4 belirsizlikleri E1–E5, İ1–İ21, F1–F9) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
 | Görev belgesi | `docs/gorevler/W1-A4.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `core/include/ida/port.h` (bu belgenin parçasıdır; ikisi çelişemez) |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.10 (§2, §3, §3.1, §3.2, §4, §5, §6, §8, §10); `docs/olcumler/MP4-dongu-yuku.md`, `MP1-arac-zinciri.md`, `MP3-vcp.md` (iskelet üzerinden); bölümler 01, 02, 03, 06 (taslak; iskeletle çeliştikleri yerde iskelet geçerlidir) |
 | İnceleme | sol: `docs/sozlesmeler/inceleme/A4-sol.md`, `A4-sol-2.md`; yanıtlar: `A4-yanit.md`, `A4-yanit-2.md` (aynı dizin) |
-| Durum | Yazan Opus; iki düzeltme turu mimar kararlarıyla yapıldı; çapraz uyum incelemesi ve mimar denetimi bekliyor; dondurulmadı |
+| Durum | Yazan Opus; iki düzeltme turu mimar kararlarıyla yapıldı; çapraz uyum incelemesi ve mimar denetimi bekliyor; dondurulmadı **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 
 Değerlerin niteliği: bu belgedeki her süre, hız ve kapasite ya bir ölçüme (rapor ve başlık atfıyla), ya bir birincil kaynağa, ya da **mimari seçimi (tahmin)** etiketine dayanır. Etiketli değerler ölçülmüş değildir; Bölüm 8'de hangi ölçümle kapanacakları yazılıdır.
 

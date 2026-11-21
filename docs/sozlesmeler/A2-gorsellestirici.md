@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday (2026-11-19) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | Görev | `docs/gorevler/W1-A2A7.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `sim/include/ida/a2_wire.h` (bayt düzeni; bu belgeyle çelişemez) |
 | İlgili sözleşmeler | A7 (`docs/sozlesmeler/A7-sahne.md`), A8 (kamera algılama), A5 (senaryo), A6 (kayıt), A3 (web panelleri) |

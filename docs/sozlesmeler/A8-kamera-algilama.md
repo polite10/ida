@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday, W1 çapraz uyum turu (2026-11-20; `docs/gorevler/W1-uyum.md`) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | Görev | `docs/gorevler/W1-A8.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.10 (§3 A8 satırı, "Algılama kaydının çerçevesi", "Kamera ile hedef algılama"; §3.1; §4; §5 "Bilinen sınır"; §6; §8; §10 md. 6, 21, 25) |
 | Makinece okunur tanım | `core/include/ida/algilama_kaydi.h` (ISO C17; C++20 ile de derlenir) |

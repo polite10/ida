@@ -3,7 +3,8 @@
 | | |
 |---|---|
 | Sözleşme | A3 |
-| Sürüm | 1.0-aday, düzeltme turu 2 ve W1 çapraz uyum turu (tel sürümü `1.0`) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21; tel sürümü `1.0`) |
+| Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | Tarih | 2026-11-19; düzeltme turu 1: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit.md`); düzeltme turu 2: 2026-11-20 (`docs/sozlesmeler/inceleme/A3A6-yanit-2.md`); çapraz uyum turu: 2026-11-20 (`docs/gorevler/W1-uyum.md`, §11) |
 | Görev | `docs/gorevler/W1-A3A6.md` |
 | Makinece okunur parça | `docs/sozlesmeler/sema/a3-kanallar.json` |
