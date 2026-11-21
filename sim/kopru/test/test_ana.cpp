@@ -14,6 +14,7 @@ int test_olay_yinelenen();
 int test_olay_suresi_gecmis();
 int test_olay_fire_kabul();
 int test_emniyet_ornegi();
+int test_eszamansiz_ilk_parti();
 int test_emniyet_rev_durum();
 int test_bellek_tasima();
 int test_tcp_tasima();
@@ -39,6 +40,7 @@ const Test kTestler[] = {
     {"olay_suresi_gecmis", test_olay_suresi_gecmis},
     {"olay_fire_kabul", test_olay_fire_kabul},
     {"emniyet_ornegi", test_emniyet_ornegi},
+    {"eszamansiz_ilk_parti", test_eszamansiz_ilk_parti},
     {"emniyet_rev_durum", test_emniyet_rev_durum},
     {"bellek_tasima", test_bellek_tasima},
     {"tcp_tasima", test_tcp_tasima},

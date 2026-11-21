@@ -165,7 +165,7 @@ int main(int argc, char** argv)
             std::fprintf(stderr,
                          "ida_sim: hil: yanıt süresi (TF yazımı → yanıt alımı) %llu yanıt, p50/p99/en çok %.3f/%.3f/%.3f ms; "
                          "çalıştırma oturumunda karttan gelen: CRC %llu, atlanan bayt %llu, sıra boşluğu %llu "
-                         "(toplam %llu/%llu/%llu); eşzamansız güvenli çıktı %llu\n",
+                         "(toplam %llu/%llu/%llu); eşzamansız güvenli çıktı %llu (ilk parti öncesi, A1-K79 dışı: %llu)\n",
                          static_cast<unsigned long long>(s.zaman.yanit_sayisi), 1e-6 * static_cast<double>(s.zaman.yanit_p50_ns),
                          1e-6 * static_cast<double>(s.zaman.yanit_p99_ns), 1e-6 * static_cast<double>(s.zaman.yanit_en_cok_ns),
                          static_cast<unsigned long long>(s.zaman.rx_crc_kosu),
@@ -173,7 +173,8 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(s.zaman.rx_seq_gap_kosu),
                          static_cast<unsigned long long>(c.rx_crc_err), static_cast<unsigned long long>(c.rx_resync_bytes),
                          static_cast<unsigned long long>(c.rx_seq_gap),
-                         static_cast<unsigned long long>(c.esz_guvenli_uygulanan));
+                         static_cast<unsigned long long>(c.esz_guvenli_uygulanan),
+                         static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi));
             if (s.kart.fc_var) {
                 std::fprintf(stderr, "ida_sim: kart atış kontrol durumu (son IDA_FC_STATUS): state %u, inhibit_mask 0x%x\n",
                              static_cast<unsigned>(s.kart.fc_state), static_cast<unsigned>(s.kart.fc_inhibit_mask));

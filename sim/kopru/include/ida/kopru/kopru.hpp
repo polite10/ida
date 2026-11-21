@@ -104,7 +104,8 @@ struct Sayaclar {
     std::uint64_t komut_oturumsuz = 0;
     std::uint64_t pencere_tasma = 0;
     std::uint64_t kritik_bayt_en_buyuk = 0;
-    std::uint64_t estop_iptal = 0;               // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
+    std::uint64_t eszamansiz_ilk_parti_oncesi = 0;  // W4-K6: uygulandı, A1-K79'a sayılmadı
+    std::uint64_t estop_iptal = 0;              // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
     std::uint64_t emniyet_rev_geri = 0;          // W4-K4: revizyonu durumuna göre geri alınan emniyet örneği
     std::uint64_t gecersiz_ornek = 0;           // VALID = 0 gönderilen sensör üyesi (çekirdek reddeder)
     std::uint64_t emniyet_birlesti = 0;          // aynı pencerede birleştirilen emniyet kayıtları

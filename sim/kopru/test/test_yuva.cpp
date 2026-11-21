@@ -149,3 +149,48 @@ int test_eszamansiz_guvenli()
     DOGRULA(d, (z.k.sayaclar().calistirma_gecersiz & kGecEszamansiz) != 0u, "çalıştırma geçersiz (A1-K79)");
     return d.hata;
 }
+
+// W4-K6: ilk parti kapanmadan (batch_seq = 0) gelen eşzamansız güvenli çıktı uygulanır ama
+// A1-K79 geçersizliğine sayılmaz; parti kapandıktan sonra gelen sayılır, batch_seq = 0 iddia
+// etse de.
+int test_eszamansiz_ilk_parti()
+{
+    Denetci d;
+    constexpr std::uint16_t kEsz = static_cast<std::uint16_t>(IDAW_ACT_FLAGS_THR_VALID | IDAW_ACT_FLAGS_IS_SAFE |
+                                                              IDAW_ACT_FLAGS_SRC_TICK | IDAW_ACT_FLAGS_ASYNC);
+    std::array<std::uint16_t, 8> notr{};
+    notr.fill(1500);
+    {
+        SahteDuzenek z;
+        DOGRULA(d, z.el_sikis(), "el sıkışma");
+        z.sk.yanit(0, kEsz, notr);   // ilk TF'den önce (ızgara tick'i)
+        alisveris(z.k, z.sk, z.t);
+        z.sinir_ilerle();
+        DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u, "ilk parti öncesi çıktı uygulandı (A1-K78)");
+        DOGRULA(d, z.k.sayaclar().eszamansiz_ilk_parti_oncesi == 1u, "ayrı sayaçta");
+        DOGRULA(d, (z.k.sayaclar().calistirma_gecersiz & kGecEszamansiz) == 0u, "geçersiz kılmaz (W4-K6)");
+        for (int n = 0; n < 4; ++n) {
+            (void)z.periyot();
+        }
+        z.sk.yanit(z.k.son_parti(), kEsz, notr);   // ilk parti kapandıktan sonra
+        alisveris(z.k, z.sk, z.t);
+        z.sinir_ilerle();
+        DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 2u, "ikinci çıktı uygulandı");
+        DOGRULA(d, (z.k.sayaclar().calistirma_gecersiz & kGecEszamansiz) != 0u, "parti kapandıktan sonra geçersiz kılar");
+    }
+    {
+        SahteDuzenek z;
+        DOGRULA(d, z.el_sikis(), "el sıkışma");
+        for (int n = 0; n < 4; ++n) {
+            (void)z.periyot();
+        }
+        z.sk.yanit(0, kEsz, notr);   // batch_seq = 0 iddiası, ama parti kapanmış
+        alisveris(z.k, z.sk, z.t);
+        z.sinir_ilerle();
+        DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u, "çıktı uygulandı");
+        DOGRULA(d, z.k.sayaclar().eszamansiz_ilk_parti_oncesi == 0u, "muaf sayılmadı");
+        DOGRULA(d, (z.k.sayaclar().calistirma_gecersiz & kGecEszamansiz) != 0u,
+                "batch_seq = 0 iddiası parti kapandıktan sonra sayımdan kaçamaz");
+    }
+    return d.hata;
+}

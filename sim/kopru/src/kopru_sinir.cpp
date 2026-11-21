@@ -135,6 +135,12 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         say.calistirma_gecersiz |= kGecCagriCakismasi;
     }
     if (esz) {
+        // W4-K6: batch_seq = 0 taşıyan ve bu oturumda kartın henüz hiçbir partiyi kapattığı
+        // görülmemişken (olağan yanıt alınmamışken) gelen eşzamansız çıktı A1-K79'a sayılmaz.
+        // Parti kapandıktan sonra batch_seq = 0 iddia eden çıktı muaf değildir (Okumalar).
+        if (m.batch_seq == 0u && !ilk_yanit_alindi) {
+            esz_muaf.insert(m.out_seq);
+        }
         esz_bekleyen.push_back(m);
         return;
     }
@@ -170,6 +176,7 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         return;
     }
     y.act_var = true;
+    ilk_yanit_alindi = true;
     y.act = m;
     yuva_tamamlandi_mi(m.batch_seq);
 }
@@ -570,7 +577,11 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         i.son_uygulanan_out_seq = ad.m.out_seq;
         if (ad.esz) {
             ++i.say.esz_guvenli_uygulanan;
-            i.say.calistirma_gecersiz |= kGecEszamansiz;
+            if (i.esz_muaf.count(ad.m.out_seq) != 0u) {
+                ++i.say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
+            } else {
+                i.say.calistirma_gecersiz |= kGecEszamansiz;
+            }
             // Kendinden önce üretilmiş, henüz uygulanmamış olağan yanıtları iptal eder.
             for (auto& [sq, y] : i.yuvalar) {
                 (void)sq;

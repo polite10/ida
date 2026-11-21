@@ -59,6 +59,7 @@ set(_ida_kopru_testleri
   yanlis_dialect         # kabul 1
   yuva_zamanlama         # kabul 3: L_act, geç yanıt, süre dolumu
   eszamansiz_guvenli     # kabul 3: A1-K78
+  eszamansiz_ilk_parti   # W4-K6: ilk parti öncesi eşzamansız çıktı A1-K79'a sayılmaz
   olay_izin_yok          # kabul 4 (EMNİYET)
   olay_yinelenen         # kabul 4
   olay_suresi_gecmis     # kabul 4
