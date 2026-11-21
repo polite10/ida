@@ -265,14 +265,17 @@ static void ariza_eylemi_ret(const char *ad, void (*uygula)(kg_dunya_t *), uint3
     kg_baglam("md2 arıza eylemi: %s", ad);
     hazir_ol(ad);
     uygula(kg_dunya());
+    /* Görev md.3: bu arızanın bir eylemi vardır. Nedenin görünme gecikmesi çekirdek
+       parametresidir ve sözleşmede değeri yoktur (A4-K76); parametre adı da sözleşmede
+       sabitlenmediği için okunmaz, yerine 120 s'lik geniş bir üst sınır beklenir (düzeneğin
+       seçimi). */
     int i = 0;
-    while (i < 400 && (kg_out()->status.fs_reasons & neden_bitleri) == 0u && kg_out()->fs_level < IDA_FS_HOLD) {
+    while (i < 24000 && (kg_out()->status.fs_reasons & neden_bitleri) == 0u && kg_out()->fs_level < IDA_FS_HOLD) {
         (void)kg_adim();
         ++i;
     }
-    /* Görev md.3: bu arızanın bir eylemi vardır; 2 s içinde nedeni ya da eylemi görünmeli. */
     KG_DOGRULA((kg_out()->status.fs_reasons & neden_bitleri) != 0u || kg_out()->fs_level >= IDA_FS_HOLD,
-               "%s 2 s içinde ne arıza nedeni ne arıza eylemi üretti (fs_level %u, fs_reasons 0x%lx; görev md.3)", ad,
+               "%s 120 s içinde ne arıza nedeni ne arıza eylemi üretti (fs_level %u, fs_reasons 0x%lx; görev md.3)", ad,
                (unsigned)kg_out()->fs_level, (unsigned long)kg_out()->status.fs_reasons);
     arm_ret_beklenir(kg_girdi(KG_OLAGAN), (uint16_t)IDA_REASON_NOT_ARMABLE, "3.17, W3-K3: sızıntı ve düşük batarya");
 }

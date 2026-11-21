@@ -711,7 +711,7 @@ static int yinelenme(uint32_t id)
 
 static bool tup_bitleri_gecerli(uint8_t t)
 {
-    return (t & (uint8_t)~0x0Fu) == 0u;
+    return (t & 0xF0u) == 0u; /* W3-K14: (uint8_t)~X yerine (C4310) */
 }
 
 /* Alan değerinin kısıtlayıcı olup olmadığı (A4-K116). */
@@ -818,7 +818,7 @@ static uint32_t sonuc_biti(const ida_cmd_result_t *r)
  * PARAM_INVALID, PARAM_BUSY, NOT_ARMABLE, sonra ACCEPTED), A4-K61, K78, K83, K103, K108;
  * NOT_ARMABLE'ın koşulları mimar kararı W3-K3 ile (dosya başı).
  */
-static uint32_t arm_izinli(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, bool daraltma)
+static uint32_t arm_izinli(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, bool daraltma, bool sonra_kip)
 {
     const kg_onceki_t *P = &M.P;
     uint32_t s = 0u;
@@ -849,7 +849,13 @@ static uint32_t arm_izinli(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, 
     }
     /* W3-K3: kestirim INIT/BAD/FAULT, arıza eylemi (HOLD ve üstü), sızıntı ve batarya nedeni. */
     bool est_ret = P->est_var && o->nav_valid && !est_yeterli(P->est) && !est_yeterli(o->nav.est_level);
-    if (o->fs_level >= IDA_FS_HOLD || (o->status.fs_reasons & KG_FSR_ARM_ENGELI) != 0u || est_ret) {
+    bool neden_engel = (o->status.fs_reasons & KG_FSR_ARM_ENGELI) != 0u || est_ret;
+    if (o->fs_level >= IDA_FS_HOLD && !neden_engel && sonra_kip) {
+        /* W3-K13: ARM'dan sonra kabul edilen SET_MODE arıza düzeyini yeni kipe göre yeniden
+           hesaplar; çağrı sonundaki düzey ARM işlendiği andaki düzey olmayabilir. */
+        return s | KG_R(IDA_REASON_NOT_ARMABLE) | KG_IZ_KABUL;
+    }
+    if (o->fs_level >= IDA_FS_HOLD || neden_engel) {
         return s | KG_R(IDA_REASON_NOT_ARMABLE);
     }
     bool hazir = P->var && P->fs_level <= IDA_FS_WARN && o->fs_level <= IDA_FS_WARN &&
@@ -923,7 +929,22 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
        kapanma yalnız "olası" daraltmadır ve NARROWED beklenmez, ama izinlidir. */
     bool kapanma_kesin = kapanma && g_gevsetme_gozlendi;
     bool daraltma = bitler != 0u || cmd_dar || in->plat.link_event == IDA_LINKEV_SESSION_END || kapanma_kesin;
-    bool daraltma_olasi = !daraltma && kapanma;
+    /* W3-K9: görev modülünün adım daraltması (arıza eyleminin ağırlaşması, kip düşmesi, kendi
+       silahsızlandırması) çağrı kısıtına katılır ve NARROWED A4-K45'in konumunda verilir;
+       dışarıdan fs_level artışı, komutsuz kip değişimi ya da DISARM'sız silahsızlanma olarak
+       gözlenir. Daraltmanın komutlardan önce mi sonra mı oluştuğu (W3-K13: kip değişimiyle
+       yeniden hesap) dışarıdan ayrılamadığı için bu çağrıda NARROWED izinlidir, şart değildir. */
+    bool kip_komut_kabul = false;
+    for (unsigned j = 0; j < nk; ++j) {
+        if (in->cmds[j].type == IDA_CMD_SET_MODE && o->results[nbit + j].ack == IDA_ACK_ACCEPTED) {
+            kip_komut_kabul = true;
+        }
+    }
+    bool adim_daraltma = P->var && (o->fs_level > P->fs_level ||
+                                    (P->mode != IDA_MODE_INIT && o->status.mode != P->mode && !kip_dar &&
+                                     !kip_komut_kabul) ||
+                                    (P->armed && !o->armed && !disarm));
+    bool daraltma_olasi = !daraltma && (kapanma || adim_daraltma);
 
     int arm_sayisi = 0;
     int arm_kabul = 0;
@@ -973,7 +994,13 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
         }
         /* D8: ARM sonucunun izinli kümesi. */
         if (c->type == IDA_CMD_ARM) {
-            uint32_t izin = yin == KG_YIN_KESIN ? KG_IZ_YIN : arm_izinli(in, rc, o, daraltma);
+            bool sonra_kip = false;
+            for (unsigned q = j + 1u; q < nk; ++q) {
+                if (in->cmds[q].type == IDA_CMD_SET_MODE && o->results[nbit + q].ack == IDA_ACK_ACCEPTED) {
+                    sonra_kip = true;
+                }
+            }
+            uint32_t izin = yin == KG_YIN_KESIN ? KG_IZ_YIN : arm_izinli(in, rc, o, daraltma, sonra_kip);
             if (yin == KG_YIN_BELIRSIZ) {
                 izin |= KG_IZ_YIN;
             }
@@ -1231,6 +1258,20 @@ void kg_hazir_olmali(int azami, const char *amac)
                amac, azami, (double)azami * 0.005, kg_hazir_neden());
 }
 
+void kg_kip_sec_konumlu(uint8_t mode)
+{
+    /* W3-K5: konum gerektiren kip (STATION_KEEP) yatay geçerlilik ister; geçerlilik yokken
+       kipe girilmez ya da kip konum gerektirmeyen bir kipe iner (hedef kip sözleşmede yazılı
+       değil, sabitlenmez). Daraltıcı istek her durumda GUIDED/AUTO'ya götürmez (A4-K45, K46). */
+    ida_in_t *in = kg_girdi(KG_OLAGAN);
+    kg_mandal(in, (uint8_t)IDA_NARROW_MODE, mode);
+    ida_rc_t rc = kg_cagir(in);
+    KG_DOGRULA(rc == IDA_RC_OK, "kip seçimi çağrısı %d döndü", (int)rc);
+    uint8_t m = kg_out()->status.mode;
+    KG_DOGRULA(m != IDA_MODE_GUIDED && m != IDA_MODE_AUTO && m != IDA_MODE_INIT,
+               "NARROW_MODE %u sonrası kip %u (A4-K46, K127; W3-K5)", (unsigned)mode, (unsigned)m);
+}
+
 void kg_kip_sec(uint8_t mode)
 {
     ida_in_t *in = kg_girdi(KG_OLAGAN);
@@ -1243,16 +1284,27 @@ void kg_kip_sec(uint8_t mode)
 
 void kg_guided(void)
 {
-    ida_in_t *in = kg_girdi(KG_OLAGAN);
-    ida_cmd_t *c = kg_kip_komutu(in, (uint8_t)IDA_MODE_GUIDED);
-    int j = (int)(c - in->cmds);
-    ida_rc_t rc = kg_cagir(in);
-    const ida_cmd_result_t *r = kg_sonuc(j);
-    KG_DOGRULA(rc == IDA_RC_OK && r->ack == IDA_ACK_ACCEPTED,
-               "SET_MODE(GUIDED) dönüş %d, ack %u neden %u; hazır durumda ACCEPTED bekleniyordu (3.17)", (int)rc,
-               (unsigned)r->ack, (unsigned)r->reason);
-    KG_DOGRULA(kg_out()->status.mode == IDA_MODE_GUIDED, "SET_MODE(GUIDED) ACCEPTED ama kip %u",
-               (unsigned)kg_out()->status.mode);
+    /* W3-K5, K7: GUIDED'e giriş kestirim düzeyine değil tutum, yön ve derinlik bileşenlerinin
+       geçerliliğine bakar; bu dışarıdan yalnız SET_MODE(GUIDED)'ın sonucuyla gözlenir. Hazır
+       durumda en çok 2 s boyunca her adımda yeni kimlikle denenir; ret yalnız BAD_MODE
+       olabilir (3.17 SET_MODE satırı). */
+    for (int deneme = 0; deneme < 400; ++deneme) {
+        ida_in_t *in = kg_girdi(KG_OLAGAN);
+        ida_cmd_t *c = kg_kip_komutu(in, (uint8_t)IDA_MODE_GUIDED);
+        int j = (int)(c - in->cmds);
+        ida_rc_t rc = kg_cagir(in);
+        const ida_cmd_result_t *r = kg_sonuc(j);
+        KG_DOGRULA(rc == IDA_RC_OK, "SET_MODE(GUIDED) çağrısı %d döndü", (int)rc);
+        if (r->ack == IDA_ACK_ACCEPTED) {
+            KG_DOGRULA(kg_out()->status.mode == IDA_MODE_GUIDED, "SET_MODE(GUIDED) ACCEPTED ama kip %u",
+                       (unsigned)kg_out()->status.mode);
+            return;
+        }
+        KG_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == IDA_REASON_BAD_MODE,
+                   "SET_MODE(GUIDED) ack %u neden %u; ACCEPTED ya da BAD_MODE bekleniyordu (3.17)", (unsigned)r->ack,
+                   (unsigned)r->reason);
+    }
+    kg_basarisiz(__FILE__, __LINE__, "hazır durumda SET_MODE(GUIDED) 2 s boyunca BAD_MODE aldı (3.17; W3-K7)");
 }
 
 uint32_t kg_silahlan(void)
