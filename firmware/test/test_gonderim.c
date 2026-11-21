@@ -31,6 +31,10 @@ static bool t_yaz(void *ctx, const uint8_t *b, size_t n)
     if (yaz_reddet) {
         return false;
     }
+    TEST_ASSERT_TRUE_MESSAGE(n <= sizeof son, "taşıma: çerçeve boyu sınır dışı");
+    if (n > sizeof son) {
+        return false;
+    }
     memcpy(son, b, n);
     son_n = n;
     mesgul = true;
