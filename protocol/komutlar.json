@@ -1054,7 +1054,7 @@
             "description": "f32 araligi; I32/U32 degerleri tamsayi olarak bu araligin icindedir"
           }
         },
-        "description": "ACCEPTED'te param_id, param_type ve value bulunur (IDA_CMD_RESULT kind = PARAM_VALUE)"
+        "description": "ACCEPTED'te param_id, param_type ve value bulunur (IDA_CMD_RESULT kind = PARAM_VALUE); ACCEPTED degilse param_type ve value yazilmaz (A4 type = 0: deger yok; A1 3.7)"
       },
       "bilesik": false
     },
