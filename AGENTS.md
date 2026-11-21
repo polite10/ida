@@ -37,7 +37,7 @@ Windows hedef bilgisayarı düşük donanımlıdır (8 GB bellek, dahili ekran k
 ## Belgeleri okuma sırası
 
 1. **`docs/DURUM.md`** — projenin şu anki durumu: ne bitti, ne sürüyor, sıradaki adım, açık konular.
-2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15). Güncel sürüm 0.12 (2026-11-20): W0 ölçüm sonuçları, K17 ve W1 sözleşme incelemelerinden (çapraz uyum, doğrulama ve fark incelemeleri dahil) çıkan iskelet düzeyindeki kararlar işlendi; bölümler (01–09) ile çelişirse iskelet geçerlidir.
+2. **`docs/mimari/00-iskelet.md`** — mimari iskelet; kullanıcı 2026-11-14'te bilinen açık bulgularla onayladı (K15). Güncel sürüm 0.12 (2026-11-20): W0 ölçüm sonuçları, K17 ve W1 sözleşme incelemelerinden (çapraz uyum, doğrulama ve fark incelemeleri dahil) çıkan iskelet düzeyindeki kararlar işlendi; bölümler (01–09) ile çelişirse iskelet geçerlidir. Arayüz sözleşmeleri `docs/sozlesmeler/` altında 1.0 olarak dondurulmuştur (2026-11-21); iskelet ile sözleşme çelişirse sözleşme geçerlidir ve çelişki mimara raporlanır.
 3. **`docs/mimari/acik-bulgular.md`** — mimari bölümlerinin incelemelerinde kapanmamış bulgular; her biri kapatılacağı sözleşme ya da uygulama işiyle etiketli.
 4. **`docs/research/00-duzeltmeler-ve-kararlar.md`** — tek geçerli başvuru belgesi. Kararlar, raporlardaki hataların düzeltmeleri, raporlar arası çelişkilerin çözümleri, ölçülmeden kesinleşemeyecek konular ve açık sorular buradadır.
 5. **`docs/research/NN-*.md`** — ham araştırma raporları. Yazıldıkları haliyle korunur ve **bilinen hatalar içerir**. 01–07 Rust varsayımıyla yazılmıştır.
@@ -61,6 +61,8 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 **2026-11-17 kullanıcı kararı (K18):** Fable'ın yürüttüğü mimar oturumu Codex devralır. Kod yazımı Opus'a, bağımsız kod incelemesi `gpt-6.1-sol`'a verilir. Bu görev dağılımı, aşağıdaki eski tabloda ve kurallarda farklı yazım ataması bulunan yerlerin önüne geçer; mimar kod yazmaz ve commit atmaz.
 
 **2026-11-19 kullanıcı kararı (K19):** Mimar oturumunu yeniden Fable (Claude) yürütür; K18'deki mimar devri sona erdi. K18'in görev dağılımı sürer: kod yazımı Opus'ta, bağımsız kod incelemesi `gpt-6.1-sol`'da; mimar kod yazmaz ve commit atmaz.
+
+**2026-11-21 kullanıcı kararı (K20):** Hız önceliklidir. Sözleşmeler (A1–A8) 1.0 olarak donduruldu; hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir. Bir iş için tek sol incelemesi ve tek düzeltme turu yapılır; ikinci tur yalnız emniyet zincirine (silahlandırma, atış izni, acil durdurma) dokunan bulgularda açılır. Küçük belirsizlikte uygulayıcı makul okumayı seçer ve raporuna not düşer; mimar toplu onaylar. Vazgeçilmeyenler: emniyet zincirinin bağımsız kabul testleri, kart üzerindeki ölçümler, Windows derlemesi.
 
 1. Mimar oturum kullanıcıyla kararları netleştirir, fikir yapısını kurar, görev belgelerini yazar, alt agent'ları gönderir ve çıktıları denetler. Kod yazmaz ve commit atmaz.
 2. Araştırma ve uygulama işleri alt agent'lara verilir. Codex `gpt-6.1-sol` yalnızca inceleme için değil kodlama için de kullanılabilir.
@@ -111,7 +113,7 @@ tools/                     yardımcı betikler
 .claude/agents/            agent tanımları
 ```
 
-Ürün kodu dizinleri sözleşmeler (W1) dondurulduktan sonra eklenecek; ölçüm prototipleri `olcum/` dallarında `tools/olcum/` altında yaşar.
+Ürün kodu dizinleri (`core/`, `protocol/`, `firmware/`, `sim/`, `web/`, `viz/`, `tests/`) W2'de eklendi; ölçüm prototipleri `olcum/` dallarında `tools/olcum/` altında yaşar.
 
 ## Git
 

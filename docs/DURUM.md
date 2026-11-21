@@ -1,11 +1,12 @@
 # Durum
 
-Son güncelleme: 2026-11-20
+Son güncelleme: 2026-11-21
 
 Bu belge projenin şu an nerede olduğunu söyler. Anlamlı bir iş parçası bittiğinde güncellenir. Kararlar ve düzeltmeler için [research/00-duzeltmeler-ve-kararlar.md](research/00-duzeltmeler-ve-kararlar.md) belgesine bakılır.
 
 ## Şu an
 
+- **Sözleşmeler donduruldu, W2 PR'ları birleşti, K20 (2026-11-21; günceldir):** A1–A8 sürüm 1.0 olarak donduruldu (PR #11, birleştirme commit'i `8df5b4a`; etiketler `sozlesme-A1-v1` … `sozlesme-A8-v1`). PR #8 (`4227060`), #9 (`e3f530c`) ve #10 (`78bbfd1`) `main`'e birleşti; #10'da `tests/CMakeLists.txt` çakışması iki kabul dizini de korunarak çözüldü. `main` üzerinde Windows (`derleme.yml`, koşu 44896495188) ve macOS (`derleme-mac.yml`, koşu 44896497943) koşuları başlatıldı; sonuç henüz yok. Kullanıcı kararı K20 (hızlandırma) karar günlüğüne ve `AGENTS.md`'ye işlendi. Kart başka USB portuna takıldı; seri uç şimdi `/dev/cu.usbmodem21403` (aynı ST-LINK, seri no sonu `…3831`; betikler ilk `usbmodem` ucunu kendisi bulur). Sıradaki: W3 işleri paralel başlıyor (görev belgelerini mimar yazıyor).
 - **Fark incelemesi turu ve W2 kod incelemeleri kapandı; dondurma kullanıcı kararını bekliyor (2026-11-20, akşamüstü; günceldir):**
   - **W1 fark incelemesi (sol, iki parça; `40b8d63..6b63c6e`) bitti:** iki parça da "dondurulamaz" dedi; doğrulama turunun 40 bulgusundan 36'sı kapanmış, 4'ü kısmen; yeni 5 kritik, 5 önemli, 1 küçük bulgu. Hepsi mimar kararlarıyla (D-17…D-27; `docs/gorevler/W1-uyum.md` "Fark incelemesi turu") düzeltildi; iskelet 0.12 (D-17: kartın açık ve bekleyen partisi de bekleme noktasıdır). Aynı tura çekirdek uygulayıcısının 6 açık okuması, çekirdek kabul testlerinin 20 belirsizliği ve uygulama sırasında çıkan ek okumalar (kayıt tamamlanmasının kuşak eşleşmesiyle saptanması, `FAIL`'in kuşak taşıması, mandallı `core_ok`, oturum sonu kapanması, atılan genişleticinin nihailiği, tel sayaçlarının dört okuması) eklendi. Bütünleştirme dalı `sozlesme/w1-butunlesme` @ `2a7d178`; kural sayıları A1 129, A2 93 (yeni A2-K97), A3 125, A4 130, A5 111 etkin, A6 61, A7 41, A8 82; mimarın mekanik denetimi temiz (tanımsız atıf 0). Tel biçimi, `dialect_hash` (`0x3939788984A5FF80`), altın çerçeveler ve yapı yerleşimleri değişmedi (yalnız `param_gen` açıklamaları). Sözleşme dalları: `a1-v1` `4c05a84`, `a4-v1` `fb849bb`, `a2a7-v1` `f980fc5`, `a3a6-v1` `f709dd7`, `a8-v1` `a867094`; `a5-v1` değişmedi. Bu turun düzeltmeleri sol'a yeniden incelettirilmedi.
   - **W2 sol kod incelemeleri (üç iş) bitti, üçü de "birleştirilemez" demişti; bulgular düzeltildi, üç PR Windows CI'da yeşil:** PR #10 `is/w2-cekirdek` @ `f62017c`: 4 kritik + 1 önemli (bütünlük denetiminin üzerine yazılan bozulmayı kaybetmesi; kayıt tamamlanmasının durum kodu değişmeyince kaçması; birimlemede taşma; kabul testlerinde yapı-dizi erişimi ve sayaç sarması); birim testleri 84 vaka, kabul testleri 138 (4 IGNORE: gevşetme W4'te); `sizeof(ida_core_t)` 2160 B, fw-release çekirdek kodu ≈ 19,8 KB; çıktı `docs/gorevler/inceleme/W2-cekirdek-sol.md` (PR dalında). PR #9 `is/w2-protokol` @ `05ee0fc`: 2 kritik + 1 önemli (kabul testlerinin "belirsiz" grubu kesin testlere çevrildi; testlerde tür erişimi; rolün doğrulanmadan daraltılması); birim 37, kabul 65 test; ilk gönderim MSVC C4456 (gölgeleme) ile düştü, ikinci gönderimde yeşil. PR #8 `is/w2-depo` @ `edc2642`: 2 kritik + 2 önemli (çekirdek sınırı artık derleyicinin gerçek başlık bağımlılıklarını denetliyor; statik analizde araç/derleme hatası bulgu sayılmıyor, çıkış 70; ardıl kart deseni yalnız STM32U5A9'u serbest bırakıyor; macOS işi ayrı iş akışına (`derleme-mac.yml`) alındı ve yeni gönderim süren macOS koşusunu iptal ediyor); yeni denetimler MSVC altında da koştu ve geçti. Mimar denetimi: çekirdek kodu + güncel kabul testleri yerelde birlikte koşturuldu (host-debug 28/28); depo düzeltmeleri çekirdek dalıyla geçici bir kopyada birleştirilip yeni başlık denetimi gerçek çekirdeğe karşı koşturuldu (33/33).
@@ -69,6 +70,7 @@ W0-MP5a ölçüldü (`docs/gorevler/W0-MP5a.md`): ilk uygulama iki eşiği de a�
 
 ## Sıradaki adım
 
+0. (2026-11-21, en güncel) W3 paralel işler: kart yazılımı, fizik çekirdeği, çekirdek kontrol zinciri, web panelleri, tel katmanı hızlandırması; hedef ilk çalışan zincir (SIL'de derinlik tutma, sonra kartta).
 0. (2026-11-20 akşamüstü, en güncel; kullanıcı kararını bekler, başlatılmadı) Dondurma (sürüm 1.0, etiketler `sozlesme-A<n>-v1`, `main`'e birleştirme, açık bulgular kaydı) ve öncesinde bu turun farkının sol'a incelettirilip incelettirilmeyeceği; üç W2 PR'ının macOS koşuları (`ci-mac` etiketi; hiç koşmadı) ve birleştirilmeleri; MP5 iyileştirmelerinin ürün tel katmanına taşınması; W3.
 0. (2026-11-20, en güncel) Sol fark incelemesi (15:18; `W1-fark-sol-{1,2}.md`) ve W2 kod incelemeleri → bulguların düzeltilmesi → dur; devamı kullanıcı talimatıyla.
 0. (2026-11-20, en güncel) Kalan yazar turları (A2/A7, A5, A8) → altı dalın bütünleştirme dalına yeniden birleştirilmesi → sol fark incelemesi (`40b8d63`'ten son hâle) → dondurma; W2-depo ve W2-protokol incelemeleri ve birleştirme; W2-cekirdek ikinci aşama.
@@ -109,6 +111,8 @@ Kart Mac'e tek kabloyla, ST-LINK portundan bağlanır (K17); araç kurulumu içi
 - 00 belgesindeki açık sorular (Bölüm 9). Yarışmaya ve ardıl karta bağlı olanlar kapsam dışıdır (K7, K8).
 
 ## Kayıt
+### 2026-11-21 · sözleşmeler donduruldu (1.0), W2 PR'ları birleşti, K20
+- A1–A8 sürüm 1.0 (PR #11, `8df5b4a`; etiketler `sozlesme-A<n>-v1`); PR #8, #9, #10 birleşti; Windows ve macOS koşuları başlatıldı (44896495188, 44896497943; sonuç yok); K20; kart seri ucu `/dev/cu.usbmodem21403`.
 ### 2026-11-20 (akşamüstü) · fark incelemesi turu ve W2 kod incelemeleri kapandı; dondurma kararı bekleniyor
 W1 fark incelemesi (sol, iki parça) "dondurulamaz" dedi; mimar kararlarıyla (D-17…D-27, iskelet 0.12) düzeltildi; bütünleştirme dalı `sozlesme/w1-butunlesme` @ `2a7d178`; düzeltmeler sol'a yeniden incelettirilmedi.
 W2'nin üç sol kod incelemesi ("birleştirilemez") düzeltildi; PR #8 @ `edc2642`, PR #9 @ `05ee0fc`, PR #10 @ `f62017c` Windows CI'da yeşil; macOS koşuları (`ci-mac`) çalışmadı.

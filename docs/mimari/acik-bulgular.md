@@ -1,5 +1,7 @@
 # Açık bulgular kaydı
 
+**2026-11-21:** A1–A8 sözleşmeleri 1.0 olarak donduruldu (etiketler `sozlesme-A<n>-v1`). Sözleşme işine etiketli bulguların tek tek kapanış işaretlemesi yapılmadı (K20); bir bulgu, ilgili uygulama işinde ele alındığında kapanış kanıtıyla işaretlenir.
+
 Durum: 2026-11-14 tarihli inceleme durumu. Kaynak: `docs/mimari/inceleme/` altındaki sol incelemeleri ve `docs/mimari/01`–`09` belgelerinin "8. Açık noktalar ve iskelete öneriler" başlıkları. Bu belge toplama ve etiketlemedir; çözüm içermez, önemi değiştirmez.
 
 Dalga etiketleri 09 sürüm 0.2'ye göre güncellendi (ölçümler W0, sözleşmeler W1).
