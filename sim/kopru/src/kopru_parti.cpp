@@ -429,6 +429,7 @@ std::optional<YanitBilgisi> Kopru::yanit(std::uint32_t seq) const
 }
 
 const std::vector<std::int64_t>& Kopru::yanit_sureleri() const { return ic_->yanit_sureleri; }
+const std::vector<std::int64_t>& Kopru::sira_boslugu_zamanlari() const { return ic_->sira_boslugu_t; }
 
 std::uint32_t Kopru::son_parti() const { return ic_->tf_var ? ic_->son_seq : 0u; }
 

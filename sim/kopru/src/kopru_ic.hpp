@@ -126,6 +126,7 @@ struct Kopru::Ic {
     std::map<std::uint32_t, mavlink_ida_actuator_t> gecen_yanit;   // A1-K118 için (son 64)
     std::map<std::uint32_t, std::int64_t> yanit_sure;   // seq -> TF yazımından yanıt alımına (son 64)
     std::vector<std::int64_t> yanit_sureleri;           // çalıştırma boyunca (ölçüm)
+    std::vector<std::int64_t> sira_boslugu_t;           // A1-K08 boşluklarının sim zamanı
     std::vector<mavlink_ida_actuator_t> esz_bekleyen;
     std::set<std::uint32_t> esz_muaf;       // W4-K6: ilk parti öncesi eşzamansız çıktıların out_seq'i
     bool ilk_yanit_alindi = false;          // bu oturumda olağan yanıt alındı

@@ -40,6 +40,23 @@ constexpr std::uint8_t kAckAccepted = 1;
 constexpr std::uint8_t kPstoreOk = 2;
 constexpr std::uint8_t kCloseRunEnd = 5, kCloseShutdown = 1;
 
+// HIL döngüsünün evreleri (ölçüm; duvar saati).
+enum Evre : std::size_t {
+    kEvreUyanma = 0,   // sınır bekleyişinden uyanma gecikmesi (hedef ana göre)
+    kEvreTfUyanma,     // TF bekleyişinden uyanma gecikmesi
+    kEvreKopru,        // köprünün sınır işlemi (A1-K85)
+    kEvreSensor,       // sensör kümesi adımı ve boşaltma
+    kEvreKodlama,      // ölçümlerin A1 üyesine kodlanması
+    kEvreParti,        // parti kapanışı (TF kodlama)
+    kEvreYaz,          // taşımaya yazma
+    kEvreOkuma,        // taşımadan okuma ve çözme (bekleme içindekiler dahil)
+    kEvreFizik,        // fizik adımı
+    kEvreSatir,        // satır kaydı
+    kEvreSayisi
+};
+constexpr const char* kEvreAdi[kEvreSayisi] = {"uyanma", "tf_uyanma", "kopru", "sensor", "kodlama",
+                                               "parti", "yaz", "okuma", "fizik", "satir"};
+
 struct Euler {
     double yalpa, bas_kic, yon;
 };
@@ -110,7 +127,9 @@ private:
     {
         k_->giden_al(tampon_);
         if (!tampon_.empty() && tas_ && tas_->acik()) {
+            const std::int64_t e0 = gercek();
             (void)tas_->yaz(tampon_.data(), tampon_.size());
+            evre_[kEvreYaz] += gercek() - e0;
         }
     }
 
@@ -125,6 +144,7 @@ private:
             return;
         }
         alim_.resize(16384);   // yığında değil (MSVC C6262)
+        const std::int64_t e0 = gercek();
         for (;;) {
             std::size_t n = 0;
             const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
@@ -143,9 +163,12 @@ private:
             }
             break;
         }
+        evre_[kEvreOkuma] += gercek() - e0;
     }
 
-    // HIL: hedef duvar anına kadar okuyup bekler.
+    // HIL: hedef duvar anına kadar okuyup bekler. Okuma engelsizdir; arada mutlak son tarihe
+    // göre kısa uykular (≤ 0,2 ms; yüksek çözünürlüklü), son 0,15 ms döndürülerek beklenir.
+    // select'in uzun beklemesi kullanılmaz: ölçümde uyanma gecikmesinin kaynağıydı.
     void bekle_ve_oku(std::int64_t hedef)
     {
         for (;;) {
@@ -155,14 +178,10 @@ private:
             if (simdi >= hedef) {
                 return;
             }
-            const std::int64_t kalan_us = (hedef - simdi) / 1000;
-            if (kalan_us > 300 && tas_) {
-                pompa(std::min<std::int64_t>(kalan_us - 200, 2000));
-            } else if (kalan_us > 0) {
-                pompa(0);
-                std::this_thread::yield();
-            } else {
-                pompa(0);
+            pompa(0);
+            const std::int64_t kalan = hedef - gercek();
+            if (kalan > 150'000) {
+                sure_uyu(std::min<std::int64_t>(kalan - 150'000, 200'000));
             }
         }
     }
@@ -177,6 +196,7 @@ private:
     void satir_ekle(std::uint64_t b, std::uint32_t seq);
     void satir_tamamla(Satir& r);
     void csv_yaz(const Satir& r);
+    void evre_ozeti_kur();
 
     const Ayar& a_;
     Sonuc s_;
@@ -196,6 +216,9 @@ private:
     std::int64_t sil_duvar_ = 0;
     std::vector<std::uint8_t> tampon_;
     std::vector<std::uint8_t> alim_;
+    std::array<std::int64_t, kEvreSayisi> evre_{};
+    std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
+    std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
     std::vector<sensor::Olcum> olcumler_;
     std::vector<Olay> olaylar_;
     std::size_t olay_i_ = 0;
@@ -422,7 +445,10 @@ bool Calistirici::sinir_on(std::uint64_t b)
         olaylar_[olay_i_].f();
         ++olay_i_;
     }
+    const std::int64_t e0 = gercek();
     const kopru::SinirSonucu ss = k_->sinir_isle(b, duvar());
+    const std::int64_t e1 = gercek();
+    evre_[kEvreKopru] += e1 - e0;
     son_pwm_yur_ = pwm_yur_;
     pwm_yur_ = ss.pwm_us;
     std::array<double, 8> pwm = ss.pwm_us;
@@ -442,6 +468,7 @@ bool Calistirici::sinir_on(std::uint64_t b)
         }
     }
     (void)dn_.itici_komutu_ver(b, pwm);
+    const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
         s_.hata = "sensör kümesi adımı başarısız";
@@ -449,9 +476,12 @@ bool Calistirici::sinir_on(std::uint64_t b)
     }
     olcumler_.clear();
     kume_.bosalt(t, olcumler_);
+    const std::int64_t e3 = gercek();
+    evre_[kEvreSensor] += e3 - e2;
     for (const sensor::Olcum& o : olcumler_) {
         k_->olcum_ekle(o);
     }
+    evre_[kEvreKodlama] += gercek() - e3;
     return true;
 }
 
@@ -581,6 +611,43 @@ void Calistirici::csv_yaz(const Satir& r)
     c.pop_back();   // satır sonu: ek sütunlar
     ekle(c, ",%lld,%u,0x%x,%u\n", static_cast<long long>(r.yanit_suresi_ns / 1000), static_cast<unsigned>(r.fc_state),
          static_cast<unsigned>(r.fc_inhibit), static_cast<unsigned>(r.sim_izin));
+}
+
+// HIL evre ölçümünün özeti: evre başına p50/p99/en çok (µs) ve TF'nin en geç yazıldığı beş
+// periyotta (TF sınırı ve önceki üç sınır) evrelerin toplamı.
+void Calistirici::evre_ozeti_kur()
+{
+    std::string& o = s_.evre_ozeti;
+    o = "evre (µs): p50 / p99 / en çok\n";
+    std::vector<std::int64_t> v;
+    v.reserve(profil_.size());
+    for (std::size_t e = 0; e < kEvreSayisi; ++e) {
+        v.clear();
+        for (const auto& p : profil_) {
+            v.push_back(p[e]);
+        }
+        std::sort(v.begin(), v.end());
+        ekle(o, "  %-10s %8.1f %8.1f %9.1f\n", kEvreAdi[e], 1e-3 * static_cast<double>(v[v.size() / 2]),
+             1e-3 * static_cast<double>(v[std::min(v.size() - 1, (v.size() * 99) / 100)]),
+             1e-3 * static_cast<double>(v.back()));
+    }
+    std::vector<std::pair<std::int64_t, std::uint64_t>> g = tf_gec_;
+    std::sort(g.begin(), g.end(), [](const auto& x, const auto& y) { return x.first > y.first; });
+    ekle(o, "en geç beş TF (geç yazım µs; o periyodun evre toplamları µs):\n");
+    for (std::size_t i = 0; i < std::min<std::size_t>(5, g.size()); ++i) {
+        const std::uint64_t b = g[i].second;
+        std::array<std::int64_t, kEvreSayisi> top{};
+        for (std::uint64_t j = (b >= 3 ? b - 3 : 0); j <= b && j < profil_.size(); ++j) {
+            for (std::size_t e = 0; e < kEvreSayisi; ++e) {
+                top[e] += profil_[static_cast<std::size_t>(j)][e];
+            }
+        }
+        ekle(o, "  t=%.3f s geç %.1f:", 1.25e-3 * static_cast<double>(b), 1e-3 * static_cast<double>(g[i].first));
+        for (std::size_t e = 0; e < kEvreSayisi; ++e) {
+            ekle(o, " %s %.1f", kEvreAdi[e], 1e-3 * static_cast<double>(top[e]));
+        }
+        o += "\n";
+    }
 }
 
 Sonuc Calistirici::kos()
@@ -731,11 +798,16 @@ Sonuc Calistirici::kos()
     const auto n_sinir = static_cast<std::uint64_t>(std::llround(a_.sure_s * 1e9)) / static_cast<std::uint64_t>(kH);
     if (a_.csv_uret) {
         s_.csv = csv_basligi();
+        s_.csv.reserve(static_cast<std::size_t>(n_sinir / 4U + 2U) * 320U);   // döngüde yeniden ayırma yok
     }
     s_.satirlar.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
     w0_ = gercek() + 50 * kMs;   // HIL: W(t) = W0 + t
     std::vector<std::int64_t> tf_yazim;
     tf_yazim.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
+    if (a_.kip == Kip::hil) {
+        profil_.reserve(static_cast<std::size_t>(n_sinir + 1U));
+        tf_gec_.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
+    }
 
     for (std::uint64_t b = 0; b <= n_sinir; ++b) {
         const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
@@ -744,7 +816,9 @@ Sonuc Calistirici::kos()
             pompa(0);
             k_->zamanla(duvar());
         } else {
+            evre_.fill(0);
             bekle_ve_oku(w0_ + t_b - kCSim);
+            evre_[kEvreUyanma] = std::max<std::int64_t>(0, gercek() - (w0_ + t_b - kCSim));
             // A1-K108: uygulama anları a_n kontrol sınırlarıdır (L_act = 2P).
             if (b % kopru::kPeriyotAdim == 0 && gercek() > w0_ + t_b) {
                 ++s_.zaman.sim_gecikmesi;
@@ -762,32 +836,42 @@ Sonuc Calistirici::kos()
                     hedef = std::max(hedef, son_tf_yazim_ + kP / 2);   // A1-K39
                 }
                 bekle_ve_oku(hedef);
+                evre_[kEvreTfUyanma] = std::max<std::int64_t>(0, gercek() - hedef);
             }
             if (id_disarm_ != 0u && s_.t_disarm_ns < 0) {
                 s_.t_disarm_ns = t_b;   // DISARM'ı taşıyan partinin kapanışı
             }
             const std::int64_t yazim = gercek();
             seq = k_->parti_kapat(t_b, duvar(), a_.kip == Kip::hil ? w0_ + t_b : -1);
+            evre_[kEvreParti] += gercek() - yazim;
             yaz();
             if (seq != 0u) {
                 tf_yazim.push_back(yazim);
                 son_tf_yazim_ = yazim;
                 if (a_.kip == Kip::hil) {
                     s_.zaman.gec_yazim_en_cok_ns = std::max(s_.zaman.gec_yazim_en_cok_ns, yazim - (w0_ + t_b));
+                    tf_gec_.emplace_back(yazim - (w0_ + t_b), b);
                 }
             }
+            const std::int64_t e_s = gercek();
             satir_ekle(b, seq);
+            evre_[kEvreSatir] += gercek() - e_s;
             if (a_.kip == Kip::sil && seq != 0u && !yuva_bekle(seq)) {
                 break;
             }
         } else {
             yaz();
         }
+        const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {
             s_.hata = "fizik sayısal hata";
             break;
         }
         adim_sonrasi(b);
+        if (a_.kip == Kip::hil) {
+            evre_[kEvreFizik] += gercek() - e_f;
+            profil_.push_back(evre_);
+        }
     }
     // Son satırın kart tarafı ve planlı kapanış (A1-K21).
     if (a_.kip == Kip::sil) {
@@ -798,6 +882,9 @@ Sonuc Calistirici::kos()
     if (satir_bekliyor_) {
         satir_tamamla(s_.satirlar.back());
     }
+    // Oturum içi çerçeve sayaçları SESSION_CLOSE gönderiminden önce dondurulur (kart oturum
+    // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
+    const kopru::Sayaclar rx_son = k_->sayaclar();
     k_->oturum_kapat(kCloseShutdown, duvar());
     yaz();
     pompa(0);
@@ -813,6 +900,9 @@ Sonuc Calistirici::kos()
     }
 
     // ---- Sonuç ----
+    if (!profil_.empty()) {
+        evre_ozeti_kur();
+    }
     s_.sayac = k_->sayaclar();
     s_.kart = k_->kart();
     auto ack = [&](std::uint32_t id, int& a, int* neden = nullptr) {
@@ -859,9 +949,14 @@ Sonuc Calistirici::kos()
             z.yanit_p99_ns = ys[std::min(ys.size() - 1, (ys.size() * 99) / 100)];
             z.yanit_en_cok_ns = ys.back();
         }
-        z.rx_crc_kosu = s_.sayac.rx_crc_err - rx_bas.rx_crc_err;
-        z.rx_resync_kosu = s_.sayac.rx_resync_bytes - rx_bas.rx_resync_bytes;
-        z.rx_seq_gap_kosu = s_.sayac.rx_seq_gap - rx_bas.rx_seq_gap;
+        z.rx_crc_kosu = rx_son.rx_crc_err - rx_bas.rx_crc_err;
+        z.rx_resync_kosu = rx_son.rx_resync_bytes - rx_bas.rx_resync_bytes;
+        z.rx_seq_gap_kosu = rx_son.rx_seq_gap - rx_bas.rx_seq_gap;
+        const std::vector<std::int64_t>& bt = k_->sira_boslugu_zamanlari();
+        for (std::size_t j = static_cast<std::size_t>(rx_bas.rx_seq_gap);
+             j < static_cast<std::size_t>(rx_son.rx_seq_gap) && j < bt.size() && z.sira_boslugu_t_ns.size() < 3u; ++j) {
+            z.sira_boslugu_t_ns.push_back(bt[j]);
+        }
     }
     if (!a_.csv_yolu.empty() && a_.csv_uret) {
         std::ofstream f(a_.csv_yolu, std::ios::binary);   // fopen değil: MSVC C4996

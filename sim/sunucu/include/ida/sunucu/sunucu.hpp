@@ -113,7 +113,9 @@ struct ZamanOlcumu {
     std::int64_t yanit_p50_ns = 0, yanit_p99_ns = 0, yanit_en_cok_ns = 0;
     // Karttan gelen akışın çerçeve hataları: toplam ve çalıştırma oturumu kurulduktan sonra
     // (el sıkışma, hazırlık ve REBOOT sırasındakiler hariç).
+    // SESSION_CLOSE gönderiminde dondurulur.
     std::uint64_t rx_crc_kosu = 0, rx_resync_kosu = 0, rx_seq_gap_kosu = 0;
+    std::vector<std::int64_t> sira_boslugu_t_ns;   // oturum içi ilk üç sıra boşluğunun sim zamanı
 };
 
 struct Sonuc {
@@ -137,7 +139,8 @@ struct Sonuc {
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;
-    std::uint64_t karsi_gecerli_red = 0;       // VALID olduğu halde reddedilen örnek (0 olmalı)
+    std::uint64_t karsi_gecerli_red = 0;
+    std::string evre_ozeti;                    // HIL: döngü evrelerinin ölçümü (duvar)       // VALID olduğu halde reddedilen örnek (0 olmalı)
 };
 
 Sonuc kos(const Ayar& ayar);

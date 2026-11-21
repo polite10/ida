@@ -29,6 +29,11 @@ private:
 // USER_INTERACTIVE; Windows: THREAD_PRIORITY_HIGHEST. Başarısızlık sessizdir.
 void zamanlayici_onceligi();
 
+// Yüksek çözünürlüklü uyku (ns): macOS mach_wait_until, Windows yüksek çözünürlüklü beklenebilir
+// zamanlayıcı (derlenir; ölçülmedi), öteki POSIX nanosleep. Çağıran mutlak son tarihten kalan
+// süreyi verir ve son kısmı döndürerek bekler.
+void sure_uyu(std::int64_t ns);
+
 // Alt süreç (SIL koşucusu; A1-K97). POSIX posix_spawn, Windows CreateProcess.
 class AltSurec {
 public:

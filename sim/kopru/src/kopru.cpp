@@ -619,6 +619,9 @@ void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
         p += tuk;
         n -= tuk;
         if (rc == IDA_LINK_CERCEVE) {
+            while (i.sira_boslugu_t.size() < i.alici.sayac.rx_seq_gap && i.sira_boslugu_t.size() < 1024u) {
+                i.sira_boslugu_t.push_back(i.sinir_var ? static_cast<std::int64_t>(i.son_sinir) * kH : 0);
+            }
             i.kart_cercevesi(fr);
         } else {
             break;

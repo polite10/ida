@@ -12,9 +12,13 @@
 #else
 #include <csignal>
 #if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/thread_policy.h>
 #include <pthread.h>
 #include <sys/qos.h>
 #endif
+#include <ctime>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -77,12 +81,64 @@ double SekilTersi::olcekle(double pwm, double carpan, double notr, double kazanc
     return d > 0.0 ? notr + d2 : notr - d2;
 }
 
+#if defined(__APPLE__)
+namespace {
+std::uint64_t ns_mach(std::int64_t ns)
+{
+    static const mach_timebase_info_data_t tb = [] {
+        mach_timebase_info_data_t t{};
+        (void)mach_timebase_info(&t);
+        return t;
+    }();
+    return static_cast<std::uint64_t>(ns) * tb.denom / tb.numer;
+}
+}  // namespace
+#endif
+
 void zamanlayici_onceligi()
 {
 #if defined(_WIN32)
-    (void)SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    (void)SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
 #elif defined(__APPLE__)
     (void)pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    // Zaman kısıtlı (gerçek zamanlı) iş parçacığı politikası: fizik adımı periyodunda (1,25 ms)
+    // en çok 0,5 ms hesap, 1,25 ms içinde bitmeli. Ses iş parçacıklarının kullandığı Mach
+    // politikası; uyanma gecikmesini zamanlayıcı birleştirmesinden ve öncelik düşmesinden korur.
+    thread_time_constraint_policy_data_t p{};
+    p.period = static_cast<std::uint32_t>(ns_mach(1'250'000));
+    p.computation = static_cast<std::uint32_t>(ns_mach(500'000));
+    p.constraint = static_cast<std::uint32_t>(ns_mach(1'250'000));
+    p.preemptible = 1;
+    (void)thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY,
+                            reinterpret_cast<thread_policy_t>(&p), THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+#endif
+}
+
+void sure_uyu(std::int64_t ns)
+{
+    if (ns <= 0) {
+        return;
+    }
+#if defined(_WIN32)
+    // Yüksek çözünürlüklü beklenebilir zamanlayıcı (Windows 10 1803+). Ölçülmedi.
+    static thread_local HANDLE z = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002 /* HIGH_RESOLUTION */,
+                                                          TIMER_ALL_ACCESS);
+    if (z != nullptr) {
+        LARGE_INTEGER sure{};
+        sure.QuadPart = -static_cast<LONGLONG>((ns + 99) / 100);   // göreli, 100 ns birim
+        if (SetWaitableTimer(z, &sure, 0, nullptr, nullptr, FALSE) != 0) {
+            (void)WaitForSingleObject(z, INFINITE);
+            return;
+        }
+    }
+    Sleep(0);
+#elif defined(__APPLE__)
+    (void)mach_wait_until(mach_absolute_time() + ns_mach(ns));
+#else
+    timespec ts{};
+    ts.tv_sec = static_cast<decltype(ts.tv_sec)>(ns / 1'000'000'000);
+    ts.tv_nsec = static_cast<decltype(ts.tv_nsec)>(ns % 1'000'000'000);
+    (void)nanosleep(&ts, nullptr);
 #endif
 }
 
