@@ -80,6 +80,8 @@ static uint64_t capraz_onceki_us;
 static ida_rx_gozetim_t rx_gozetim;
 static uint32_t nvic_yeniden;
 static uint32_t olcum_sira; /* ölçüm bloğunun yayın sıra numarası (çift: tutarlı) */
+static uint32_t rx_bekleme_en_uzun; /* bekleyen alımın tüketilmeden geçen en uzun süresi (µs) */
+static uint32_t besleme_ret_son;    /* son besleme reddinin duvar saati (ms) */
 
 static void olcum_yaz64(uint32_t lo_indis, uint64_t v)
 {
@@ -249,6 +251,8 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_rx_yeniden] = s.rx_yeniden;
     o[IDA_OL_rx_durdu] = s.rx_durdu;
     o[IDA_OL_stamp_coarse] = plat.stamp_coarse;
+    o[IDA_OL_rx_bekleme_en_uzun_us] = rx_bekleme_en_uzun;
+    o[IDA_OL_besleme_ret_son_ms] = besleme_ret_son;
     ida_bsp_bariyer();
     olcum_sira++;
     o[IDA_OL_yayin_sira] = olcum_sira;
@@ -295,6 +299,10 @@ static void saglik(uint64_t simdi)
     g.core_ok = c->core_ok;
     g.son_cagri_us = c->son_cagri_us;
     g.rx_tamam = ida_rx_gozetim_tamam(&rx_gozetim, bekleyen, simdi, SAGLIK_S_US);
+    if (bekleyen && rx_gozetim.bekliyordu && simdi - rx_gozetim.son_ilerleme_us > rx_bekleme_en_uzun) {
+        const uint64_t b = simdi - rx_gozetim.son_ilerleme_us;
+        rx_bekleme_en_uzun = b > UINT32_MAX ? UINT32_MAX : (uint32_t)b;
+    }
     g.alim_durdu = ida_seri_alim_durdu();
     g.simdi_us = simdi;
     g.s_us = SAGLIK_S_US;
@@ -302,6 +310,7 @@ static void saglik(uint64_t simdi)
     if (ret != 0u) {
         besleme_ret++;
         besleme_ret_bitleri |= ret;
+        besleme_ret_son = (uint32_t)(simdi / 1000u); /* ms */
         return;
     }
     ida_bsp_iwdg_besle();

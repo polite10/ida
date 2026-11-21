@@ -50,7 +50,8 @@
     X(reset_cause) X(reset_flags) X(ardisik_ariza) X(kayit_gecerliydi) X(fpscr) \
     X(onceki_ariza) X(ariza_sayisi) X(ariza_cfsr) X(ariza_hfsr) X(ariza_pc) X(ariza_lr) \
     X(ariza_yigin_gecerli) X(ariza_istisna) \
-    X(nonce) X(sinama_komutu) X(nvic_yeniden) X(rx_yeniden) X(rx_durdu) X(stamp_coarse)
+    X(nonce) X(sinama_komutu) X(nvic_yeniden) X(rx_yeniden) X(rx_durdu) X(stamp_coarse) \
+    X(rx_bekleme_en_uzun_us) X(besleme_ret_son_ms)
 /* clang-format on */
 
 #define IDA_FW_OLCUM_X(ad) IDA_OL_##ad,

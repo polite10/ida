@@ -51,7 +51,12 @@ void ida_rx_gozetim_guncelle(ida_rx_gozetim_t *g, bool bekleyen, bool ilerledi,
 bool ida_rx_gozetim_tamam(const ida_rx_gozetim_t *g, bool bekleyen, uint64_t simdi_us,
                           uint64_t s_us)
 {
-    return !bekleyen || simdi_us - g->son_ilerleme_us <= s_us;
+    /* Gözetimin henüz görmediği yeni bir bekleme süreyi başlatmamıştır: tutar (kartta gözlendi:
+       uzun boşluktan sonra gelen ilk olay, son tüketimden beri geçen süreyle bir kez ret). */
+    if (!bekleyen || !g->bekliyordu) {
+        return true;
+    }
+    return simdi_us - g->son_ilerleme_us <= s_us;
 }
 
 uint32_t ida_saglik_degerlendir(const ida_saglik_girdi_t *g)

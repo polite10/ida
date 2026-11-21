@@ -106,6 +106,19 @@ static void test_rx_gozetim_ilerleme_ve_yeni_bekleme(void)
     TEST_ASSERT_TRUE(ida_rx_gozetim_tamam(&g, true, 80000u, S_US));
 }
 
+/* Uzun boşluktan sonra yeni gelen bekleme, gözetim onu görmeden değerlendirilirse süre son
+   tüketimden sayılmaz (yanlış ret olmaz). */
+static void test_rx_gozetim_yeni_bekleme_hemen_ret_edilmez(void)
+{
+    ida_rx_gozetim_t g;
+    ida_rx_gozetim_kur(&g, 0u);
+    ida_rx_gozetim_guncelle(&g, false, true, 1000u);
+    TEST_ASSERT_TRUE(ida_rx_gozetim_tamam(&g, true, 50000u, S_US));
+    ida_rx_gozetim_guncelle(&g, true, false, 50000u);
+    TEST_ASSERT_TRUE(ida_rx_gozetim_tamam(&g, true, 60000u, S_US));
+    TEST_ASSERT_FALSE(ida_rx_gozetim_tamam(&g, true, 70001u, S_US));
+}
+
 static void test_saglik_kosullari(void)
 {
     ida_saglik_girdi_t s = {true, true, 100000u, true, false, 110000u, S_US};
@@ -140,6 +153,7 @@ int main(void)
     RUN_TEST(test_izgara_olagan);
     RUN_TEST(test_sol3_rx_tuketimi_durunca_beslenmez);
     RUN_TEST(test_rx_gozetim_ilerleme_ve_yeni_bekleme);
+    RUN_TEST(test_rx_gozetim_yeni_bekleme_hemen_ret_edilmez);
     RUN_TEST(test_saglik_kosullari);
     RUN_TEST(test_sol6_baglanti_basarisiz_led);
     return UNITY_END();
