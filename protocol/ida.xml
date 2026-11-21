@@ -331,7 +331,7 @@
       <field type="uint32_t" name="fw_version">Kart yazilimi ya da SIL kosucusu surumu.</field>
       <field type="uint32_t" name="fw_git">Kaynak deposu commit ozetinin ilk 32 biti.</field>
       <field type="uint32_t" name="param_blob_crc">Kalici parametre blogunun tamaminin CRC-32/ISO-HDLC degeri; blok yoksa 0.</field>
-      <field type="uint32_t" name="param_gen">plat.param_gen.</field>
+      <field type="uint32_t" name="param_gen">Gonderildigi andaki kalici blogun kusagi (blok yoksa 0); plat.param_gen'den alinmaz (A1-K68).</field>
       <field type="uint32_t" name="last_cmd_id">Bu acilista cekirdege verilen son cmd_id; hic yoksa 0 (A1-K66).</field>
       <field type="uint32_t" name="ctrl_period_ns" units="ns">Kartin derlendigi kontrol periyodu; 1.0'da 5000000 (A1-K14).</field>
       <field type="uint16_t" name="param_blob_len" units="bytes">Blok boyu; yoksa 0.</field>
@@ -672,7 +672,7 @@
       <description>Kart -> sim. A4 ida_status_t ve ida_health_t ozeti ile kalici kayit durumu; 10 Hz (A1-K91).</description>
       <field type="uint32_t" name="boot_count">status.boot_count.</field>
       <field type="uint32_t" name="fs_reasons">status.fs_reasons (A4 IDA_FSR_*).</field>
-      <field type="uint32_t" name="param_gen">plat.param_gen.</field>
+      <field type="uint32_t" name="param_gen">plat.param_gen: son tamamlanan kayit denemesinin kusagi; param_store = FAIL iken basarisiz denemeninki (A4 3.6; A1-K68).</field>
       <field type="uint32_t" name="param_blob_crc">Kalici blogun CRC-32/ISO-HDLC degeri; yoksa 0.</field>
       <field type="uint32_t" name="batch_seq">Son ciktinin seq'i.</field>
       <field type="uint16_t" name="mission_item">status.mission_item.</field>

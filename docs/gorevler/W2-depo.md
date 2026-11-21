@@ -55,7 +55,7 @@ Bu iş W2'nin ilk işidir ve ürün kodu yazmaz: sonraki bütün işlerin içine
 
 1. Temiz bir kopyada `cmake --preset host-debug` ve derleme, macOS'ta yerelde ve CI'da iki işletim sisteminde uyarısız geçer; örnek birim testi koşar.
 2. `fw-debug` ve `fw-release` kartsız bağlanır; harita ve boyut raporu üretilir; çekirdek nesnelerinde ve firmware bağlamasında ayırma simgesi yoktur ve `malloc` çağıran deneme nesnesi denetimce yakalanır.
-3. Sözleşme başlıkları denetimi dört derleyici/dil birleşiminde geçer; geçmeyen varsa başlığa dokunulmadan hata ayrıntısıyla raporlanmıştır.
+3. Sözleşme başlıkları denetimi beş derleyici/dil birleşiminde (C17: Apple Clang, MSVC, Arm GCC; C++20: Apple Clang, MSVC) geçer; geçmeyen varsa başlığa dokunulmadan hata ayrıntısıyla raporlanmıştır.
 4. Belge denetimi bilerek değiştirilmiş bir ham raporu ve kişisel yol içeren bir dosyayı reddeder; çekirdeğe `stm32` başlığı eklemeye çalışan deneme hedefi derlenmez.
 5. CI bir PR'da yukarıdaki işleri iki işletim sisteminde yeşil koşturur; koşu süresi ve kota hesabı raporda.
 6. Depoda kişisel makine yolu, hareketli sürüm etiketi, Rust bağımlılığı yoktur.

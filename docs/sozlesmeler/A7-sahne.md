@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0-aday (2026-11-19) |
+| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | Görev | `docs/gorevler/W1-A2A7.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `assets/manifest.schema.json` (JSON Schema 2020-12); uygunluk örneği `assets/ornek/manifest.json` (A5 örneklerinin atıf verdiği dört varlık; ikili `.glb` dosyaları yoktur, §3.7) |
 | İlgili sözleşmeler | A2 (`docs/sozlesmeler/A2-gorsellestirici.md`), A5 (senaryo; malzeme geçersiz kılma), A6 (kayıt) |

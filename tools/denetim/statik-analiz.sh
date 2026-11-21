@@ -14,6 +14,9 @@
 #                  altında); varsayılan build/host-debug/protocol/uretilen. Yalnız core/
 #                  dışındaki bir dizin taranırken gerekir; yoksa çıkış 70 (önce host-debug
 #                  derlenmeli: başlıklar derleme sırasında üretilir).
+#   IDA_STATIK_KAYNAKLAR   (yalnız denetimin kendi testi) boşlukla ayrılmış kaynak listesi;
+#                  dizin taramasının yerine geçer (include yolu: core/include, core/src).
+#   IDA_STATIK_KARSI_ORNEK (yalnız denetimin kendi testi) karşı örnek dosyası.
 #
 # Taranan dizinler: TARAMA_DIZINLERI listesi (core/, protocol/ida_link/). Var olmayan dizin
 # atlanır ve bu günlüğe yazılır. Her dizinde kaynaklar <dizin>/src/ altındaki (alt dizinler
@@ -31,7 +34,16 @@
 # --include olarak verilir (gerekçesi o dosyada). "MISRA uyumlu" iddiası yoktur (09 §2.8).
 # Firmware'in GCC -fanalyzer'ı fw-debug ön ayarında, MSVC /analyze IDA_MSVC_ANALYZE
 # seçeneğiyle derlemenin içindedir.
-# Çıkış: 0 bulgu yok, 1 bulgu var, 70 araç ya da girdi yok, araç çalışmadı.
+# Araç hatası bulgu değildir (sol S2): her araç çağrısının çıkış durumu ayrı kaydedilir;
+# derleme ve önişleme hataları (clang-tidy'de clang-diagnostic-error, "Error while
+# processing"; cppcheck'te syntaxError, preprocessorErrorDirective, internalError,
+# unknownMacro, cppcheckError, "cppcheck: error") ve bulgu satırı olmadan sıfırdan farklı
+# çıkış "araç çalışmadı" sayılır. Karşı örnek (tools/denetim/deneme/statik/hatali.c) her
+# koşuda beklenen GERÇEK denetim kimliklerini üretmelidir: clang-tidy'de
+# clang-analyzer-core.NullDereference ve clang-analyzer-security.ArrayBound, cppcheck'te
+# nullPointer ve arrayIndexOutOfBounds; herhangi bir "error" satırı yetmez.
+# Çıkış: 0 bulgu yok, 1 bulgu var, 70 araç ya da girdi yok, araç çalışmadı, karşı örnek
+# beklenen kimlikleri üretmedi.
 
 set -u
 export LC_ALL=C
@@ -66,7 +78,20 @@ cxx_kaynaklar=()
 include_args=()
 taranan=()
 uretilen_gerekli=0
-for d in "${TARAMA_DIZINLERI[@]}"; do
+if [ -n "${IDA_STATIK_KAYNAKLAR-}" ]; then
+    # Denetimin kendi testi: verilen dosyalar taranır.
+    TARAMA_DIZINLERI=()
+    include_args=(-Icore/include -Icore/src)
+    taranan=(test-girdisi)
+    for k in $IDA_STATIK_KAYNAKLAR; do
+        [ -f "$k" ] || { gunluk "girdi yok: $k"; exit 70; }
+        case "$k" in
+            *.c) c_kaynaklar+=("$k") ;;
+            *.cpp) cxx_kaynaklar+=("$k") ;;
+        esac
+    done
+fi
+for d in ${TARAMA_DIZINLERI[@]+"${TARAMA_DIZINLERI[@]}"}; do
     if [ ! -d "$d" ]; then
         gunluk "$d/ yok, atlandı"
         continue
@@ -88,7 +113,7 @@ for d in "${TARAMA_DIZINLERI[@]}"; do
 done
 toplam=$(( ${#c_kaynaklar[@]} + ${#cxx_kaynaklar[@]} ))
 if [ "$toplam" -eq 0 ]; then
-    gunluk "taranacak kaynak yok (${TARAMA_DIZINLERI[*]})"
+    gunluk "taranacak kaynak yok"
     exit 70
 fi
 
@@ -102,7 +127,9 @@ if [ "$uretilen_gerekli" -eq 1 ]; then
     fi
     gunluk "üretilmiş başlıklar: $uretilen"
     ct_sistem=(-isystem "$uretilen")
-    cc_uretilen=("-I$uretilen" "--suppress=*:*protocol/uretilen/*" "--suppress=*:*protocol\\uretilen\\*")
+    # Tek desen: cppcheck bastırma yollarını '/' ayracına çevirerek eşler (Windows'ta da);
+    # aynı desenin iki biçimi "already exists" kullanım hatası verir (PR #9).
+    cc_uretilen=("-I$uretilen" "--suppress=*:*protocol/uretilen/*")
 fi
 
 sistem_args=()
@@ -117,24 +144,49 @@ trap 'rm -rf "$gecici"' EXIT
 : >"$gecici/clang-tidy.txt"
 
 zaman() { date +%s; }
-bulgu_say() { grep -c -E "$1" "$2"; }
+say() { grep -c -E "$1" "$2"; }
+# Bulgu satırı: <dosya>:<satır>:<sütun>: <düzey>: ... [kimlik]
+CT_SATIR=':[0-9]+:[0-9]+: (warning|error): '
+CC_SATIR=':[0-9]+:[0-9]+: (error|warning|style|performance|portability): '
+# Araç hatası işaretleri (bulgu sayılmaz; "araç çalışmadı").
+CT_ARAC='\[clang-diagnostic-error\]|Error while processing|error: unable to|error: unknown argument|Error reading configuration'
+CC_ARAC='\[(syntaxError|preprocessorErrorDirective|internalError|internalAstError|unknownMacro|cppcheckError|instantiationError)\]|^cppcheck: (error|failed)'
+arac_hatasi=""
 
-# ---- clang-tidy (dil başına bir çağrı) --------------------------------------------------
+# Bir clang-tidy çıktısında: gerçek bulgu sayısı (araç hatası satırları hariç).
+ct_bulgu_say() { grep -E "$CT_SATIR" "$1" | grep -c -v -E "$CT_ARAC"; }
+cc_bulgu_say() { grep -E "$CC_SATIR" "$1" | grep -c -v -E "$CC_ARAC"; }
+
+# ---- clang-tidy (dil başına bir çağrı; her çağrının çıkışı ayrı) ------------------------
 ct_surum=$("$clang_tidy" --version 2>&1 | tr -d '\r' | grep -m1 -i 'version' | sed 's/^ *//')
 t0=$(zaman)
-ct_rc=0
-if [ "${#c_kaynaklar[@]}" -gt 0 ]; then
-    "$clang_tidy" --quiet --config-file=.clang-tidy "${c_kaynaklar[@]}" -- \
-        -std=c17 ${include_args[@]+"${include_args[@]}"} ${ct_sistem[@]+"${ct_sistem[@]}"} \
-        ${sistem_args[@]+"${sistem_args[@]}"} >>"$gecici/clang-tidy.txt" 2>&1 || ct_rc=$?
-fi
-if [ "${#cxx_kaynaklar[@]}" -gt 0 ]; then
-    "$clang_tidy" --quiet --config-file=.clang-tidy "${cxx_kaynaklar[@]}" -- \
-        -std=c++20 ${include_args[@]+"${include_args[@]}"} ${ct_sistem[@]+"${ct_sistem[@]}"} \
-        ${sistem_args[@]+"${sistem_args[@]}"} >>"$gecici/clang-tidy.txt" 2>&1 || ct_rc=$?
-fi
+ct_cagri=()   # "dil:çıkış:bulgu:araç-hatası"
+ct_bulgu=0
+for dil in c cxx; do
+    if [ "$dil" = c ]; then
+        [ "${#c_kaynaklar[@]}" -gt 0 ] || continue
+        kaynaklar=("${c_kaynaklar[@]}"); std=-std=c17
+    else
+        [ "${#cxx_kaynaklar[@]}" -gt 0 ] || continue
+        kaynaklar=("${cxx_kaynaklar[@]}"); std=-std=c++20
+    fi
+    cikti="$gecici/clang-tidy-$dil.txt"
+    "$clang_tidy" --quiet --config-file=.clang-tidy "${kaynaklar[@]}" -- \
+        "$std" ${include_args[@]+"${include_args[@]}"} ${ct_sistem[@]+"${ct_sistem[@]}"} \
+        ${sistem_args[@]+"${sistem_args[@]}"} >"$cikti" 2>&1
+    rc=$?
+    tr -d '\r' <"$cikti" >"$cikti.n" && mv "$cikti.n" "$cikti"
+    cat "$cikti" >>"$gecici/clang-tidy.txt"
+    b=$(ct_bulgu_say "$cikti")
+    h=0
+    if grep -q -E "$CT_ARAC" "$cikti" || { [ "$rc" -ne 0 ] && [ "$b" -eq 0 ]; }; then
+        h=1
+        arac_hatasi="$arac_hatasi clang-tidy($dil)"
+    fi
+    ct_cagri+=("$dil:çıkış=$rc:bulgu=$b:araç-hatası=$h")
+    ct_bulgu=$((ct_bulgu + b))
+done
 t1=$(zaman)
-ct_bulgu=$(bulgu_say '(warning|error): ' "$gecici/clang-tidy.txt")
 
 # ---- cppcheck --------------------------------------------------------------------------
 cc_surum=$("$cppcheck" --version 2>&1 | tr -d '\r')
@@ -149,15 +201,20 @@ t2=$(zaman)
     ${c_kaynaklar[@]+"${c_kaynaklar[@]}"} ${cxx_kaynaklar[@]+"${cxx_kaynaklar[@]}"} \
     >"$gecici/cppcheck.txt" 2>&1
 cc_rc=$?
+tr -d '\r' <"$gecici/cppcheck.txt" >"$gecici/cppcheck.n" && mv "$gecici/cppcheck.n" "$gecici/cppcheck.txt"
 t3=$(zaman)
-cc_bulgu=$(bulgu_say ': (error|warning|style|performance|portability): ' "$gecici/cppcheck.txt")
+cc_bulgu=$(cc_bulgu_say "$gecici/cppcheck.txt")
+if grep -q -E "$CC_ARAC" "$gecici/cppcheck.txt" || { [ "$cc_rc" -ne 0 ] && [ "$cc_bulgu" -eq 0 ]; }; then
+    arac_hatasi="$arac_hatasi cppcheck"
+fi
 
 ozet=$(printf '%s\n' \
     "# Statik analiz özeti (taranan: ${taranan[*]}; ${#c_kaynaklar[@]} C, ${#cxx_kaynaklar[@]} C++ kaynak)" \
     "clang-tidy: ${ct_surum}" \
-    "  çıkış=${ct_rc} bulgu=${ct_bulgu} süre=$((t1 - t0)) s" \
+    "  çağrılar: ${ct_cagri[*]-yok}; toplam bulgu=${ct_bulgu} süre=$((t1 - t0)) s" \
     "cppcheck: ${cc_surum}" \
-    "  çıkış=${cc_rc} bulgu=${cc_bulgu} süre=$((t3 - t2)) s")
+    "  çıkış=${cc_rc} bulgu=${cc_bulgu} süre=$((t3 - t2)) s" \
+    "araç çalışmadı:${arac_hatasi:- yok}")
 
 printf '%s\n' "$ozet"
 printf '%s\n' '---- clang-tidy çıktısı ----'
@@ -174,25 +231,39 @@ if [ -n "$rapor" ]; then
     } >"$rapor"
 fi
 
-# ---- Karşı örnek: araçlar bilerek hatalı dosyada bulgu üretmeli ------------------------
-deneme=tools/denetim/deneme/statik/hatali.c
+# ---- Karşı örnek: araçlar bilerek hatalı dosyada BEKLENEN kimlikleri üretmeli ------------
+deneme=${IDA_STATIK_KARSI_ORNEK:-tools/denetim/deneme/statik/hatali.c}
 "$clang_tidy" --quiet --config-file=.clang-tidy \
     "$deneme" -- -std=c17 ${sistem_args[@]+"${sistem_args[@]}"} >"$gecici/ct-deneme.txt" 2>&1
-ct_deneme=$(bulgu_say '(warning|error): ' "$gecici/ct-deneme.txt")
+ct_deneme_rc=$?
 "$cppcheck" --quiet --std=c11 --language=c --enable=warning,style,performance,portability \
     --template='{file}:{line}:{column}: {severity}: {message} [{id}]' \
     "$deneme" >"$gecici/cc-deneme.txt" 2>&1
-cc_deneme=$(bulgu_say ': (error|warning|style|performance|portability): ' "$gecici/cc-deneme.txt")
-printf 'karşı örnek (%s): clang-tidy %s bulgu, cppcheck %s bulgu\n' "$deneme" "$ct_deneme" "$cc_deneme"
-[ -z "$rapor" ] || printf 'karşı örnek (%s): clang-tidy %s bulgu, cppcheck %s bulgu\n' \
-    "$deneme" "$ct_deneme" "$cc_deneme" >>"$rapor"
-if [ "$ct_deneme" -eq 0 ] || [ "$cc_deneme" -eq 0 ]; then
-    gunluk "araç karşı örnekte bulgu üretmedi; denetim çalışmıyor"
+cc_deneme_rc=$?
+eksik=""
+for kimlik in clang-analyzer-core.NullDereference clang-analyzer-security.ArrayBound; do
+    grep -E "$CT_SATIR" "$gecici/ct-deneme.txt" | grep -q -F "[$kimlik" || eksik="$eksik clang-tidy:$kimlik"
+done
+for kimlik in nullPointer arrayIndexOutOfBounds; do
+    grep -E "$CC_SATIR" "$gecici/cc-deneme.txt" | grep -q -F "[$kimlik]" || eksik="$eksik cppcheck:$kimlik"
+done
+grep -q -E "$CT_ARAC" "$gecici/ct-deneme.txt" && eksik="$eksik clang-tidy:araç-hatası"
+grep -q -E "$CC_ARAC" "$gecici/cc-deneme.txt" && eksik="$eksik cppcheck:araç-hatası"
+satir=$(printf 'karşı örnek (%s): clang-tidy çıkış=%s, cppcheck çıkış=%s; eksik kimlik:%s' \
+    "$deneme" "$ct_deneme_rc" "$cc_deneme_rc" "${eksik:- yok}")
+printf '%s\n' "$satir"
+[ -z "$rapor" ] || printf '%s\n' "$satir" >>"$rapor"
+if [ -n "$eksik" ]; then
+    gunluk "karşı örnek beklenen denetim kimliklerini üretmedi; denetim çalışmıyor"
     cat "$gecici/ct-deneme.txt" "$gecici/cc-deneme.txt" >&2
     exit 70
 fi
 
-if [ "$ct_rc" -ne 0 ] || [ "$ct_bulgu" -ne 0 ] || [ "$cc_rc" -ne 0 ] || [ "$cc_bulgu" -ne 0 ]; then
+if [ -n "$arac_hatasi" ]; then
+    gunluk "araç çalışmadı:$arac_hatasi (çıktı yukarıda); bulgu sayısı güvenilir değil"
+    exit 70
+fi
+if [ "$ct_bulgu" -ne 0 ] || [ "$cc_bulgu" -ne 0 ] || [ "$cc_rc" -ne 0 ]; then
     exit 1
 fi
 exit 0

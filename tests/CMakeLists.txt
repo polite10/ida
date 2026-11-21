@@ -15,9 +15,10 @@ endif()
 ida_bellek_denetimi_ekle(host.bellek.deneme_yakalanir ida_host_deneme_malloc_nesne
   BULGU_BEKLENIR malloc)
 
-# ---- Çekirdek sınırı: stm32 başlığı eklemeye çalışan deneme hedefi derlenmez ------------
+# ---- Çekirdek sınırı (tools/denetim/deneme/cekirdek-stm32) -----------------------------
 set(_deneme "${PROJECT_SOURCE_DIR}/tools/denetim/deneme/cekirdek-stm32")
-foreach(_kip yol kaynak temiz)
+# Yapılandırma katmanı: bozulmuş çekirdek yapılandırılamaz.
+foreach(_kip yol kaynak uretilen genex)
   add_test(NAME host.cekirdek_siniri.${_kip}
     COMMAND "${CMAKE_COMMAND}" --fresh
             -S "${_deneme}" -B "${CMAKE_CURRENT_BINARY_DIR}/cekirdek-stm32-${_kip}"
@@ -26,12 +27,29 @@ foreach(_kip yol kaynak temiz)
             "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
             "-DIDA_KOK=${PROJECT_SOURCE_DIR}"
             "-DIDA_DENEME_KIPI=${_kip}")
+  set_tests_properties(host.cekirdek_siniri.${_kip} PROPERTIES
+    PASS_REGULAR_EXPRESSION "İDA çekirdek sınırı ihlali \\(ida_core\\)")
 endforeach()
-set_tests_properties(host.cekirdek_siniri.yol host.cekirdek_siniri.kaynak PROPERTIES
-  PASS_REGULAR_EXPRESSION "İDA çekirdek sınırı ihlali \\(ida_core\\)")
-# Denetimin her şeyi reddetmediğini gösteren karşı örnek: temiz çekirdek yapılandırılır.
+# Derleme sonrası katman: kaynak değişmeden başlığa eklenen yasak içerme (dolaylı) derlenir
+# ama gerçek başlık bağımlılıkları denetimi düşer; temiz çekirdekte aynı denetim geçer.
+foreach(_kip temiz dolayli_ad dolayli_kok)
+  add_test(NAME host.cekirdek_siniri.${_kip}
+    COMMAND "${CMAKE_COMMAND}"
+            "-DIDA_KOK=${PROJECT_SOURCE_DIR}"
+            "-DIKILI=${CMAKE_CURRENT_BINARY_DIR}/cekirdek-stm32-${_kip}"
+            "-DKIP=${_kip}"
+            "-DURETEC=${CMAKE_GENERATOR}"
+            "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DC_DERLEYICI=${CMAKE_C_COMPILER}"
+            -P "${_deneme}/calistir.cmake")
+endforeach()
 set_tests_properties(host.cekirdek_siniri.temiz PROPERTIES
+  PASS_REGULAR_EXPRESSION "cekirdek-stm32 denemesi: başlık denetimi GEÇTİ"
   FAIL_REGULAR_EXPRESSION "İDA çekirdek sınırı ihlali")
+set_tests_properties(host.cekirdek_siniri.dolayli_ad PROPERTIES
+  PASS_REGULAR_EXPRESSION "yasak kimlikli başlık \\(cekirdek kökünde\\): [^\n]*stm32u5xx\\.h")
+set_tests_properties(host.cekirdek_siniri.dolayli_kok PROPERTIES
+  PASS_REGULAR_EXPRESSION "çekirdek ve sistem kökleri dışından başlık: [^\n]*platform_baslik\\.h")
 
 # ---- cmake/ modülleri başka dizinlerden çağrılınca da çalışır ---------------------------
 # (include_guard tuzağı): denetim işlevi ve MAVLink üretimi iki kardeş dizinden; boş betik
@@ -70,3 +88,4 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 # ---- vcpkg bağımlılık düzeneğinin dumanı (Eigen) ----------------------------------------
 add_subdirectory(duman)
 add_subdirectory(kabul/cekirdek)
+add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
