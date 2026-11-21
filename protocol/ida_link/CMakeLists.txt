@@ -206,3 +206,27 @@ if(BUILD_TESTING OR NOT DEFINED BUILD_TESTING)
   add_subdirectory(test)
 endif()
 add_subdirectory(olcum)
+
+# ---- Üst katman: oturum, parti, komut sırası, A1 <-> A4 dönüştürücü (W3-oturum) ----------
+# Ayrı arşivdir: tel katmanını (ida_link) yalnız dışa açık arayüzünden kullanır. Kart yazılımı
+# ve SIL koşucusu ida_link_ust'e bağlanır. Simge denetimi kendi betiğiyle yapılır (arşiv içi
+# ve tel katmanına başvurular izinlidir).
+add_library(ida_link_ust STATIC
+  src/ust_oturum.c src/ust_parti.c src/ust_komut.c src/ust_cikti.c src/ust_esleme.c)
+target_include_directories(ida_link_ust PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/core/include")
+target_link_libraries(ida_link_ust PUBLIC ida_link)
+ida_ayar_uygula(ida_link_ust CEKIRDEK)
+if(CMAKE_CROSSCOMPILING)
+  target_compile_options(ida_link_ust PRIVATE -fstack-usage)
+endif()
+ida_bellek_denetimi_ekle(protokol.bellek.ida_link_ust ida_link_ust)
+if(NOT MSVC AND NOT IDA_SANITIZER AND CMAKE_NM)
+  add_test(NAME protokol.simge.ida_link_ust
+    COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}" "-DARSIV=$<TARGET_FILE:ida_link_ust>"
+            "-DTEL=$<TARGET_FILE:ida_link>" "-DMACHO=$<BOOL:${APPLE}>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/test/oturum/simge_denetimi_ust.cmake")
+endif()
+if(BUILD_TESTING OR NOT DEFINED BUILD_TESTING)
+  add_subdirectory(test/oturum)
+endif()
