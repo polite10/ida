@@ -49,19 +49,19 @@ double baro_bekle(const fizik::DurumAnlik& s)
     return m[2] > 0.0 ? kOrtamP + kRho * kG * m[2] : kOrtamP;
 }
 
-// DVL düz taban geometrisi (bağımsız yazım): ışın menzilleri ve irtifa.
+// DVL düz taban geometrisi (bağımsız yazım): ışın menzilleri; irtifa dönüştürücüden yatay
+// tabana dik mesafedir (A4 §3.3, W4-K8).
 void dvl_geometri(const fizik::DurumAnlik& s, std::array<double, 4>& r, double& irtifa)
 {
     const Mat3 rn = ic::matris(s.yonelim);
     const Vek3 p = ic::topla(s.konum_n, ic::carp(rn, kLDvl));
-    irtifa = 0.0;
+    irtifa = kTaban - p[2];
     for (std::size_t i = 0; i < 4; ++i) {
         const double psi = 0.7853981633974483 + 1.5707963267948966 * static_cast<double>(i);
         const Vek3 b{std::sin(kIsinAcisi) * std::cos(psi), std::sin(kIsinAcisi) * std::sin(psi),
                      std::cos(kIsinAcisi)};
         const Vek3 dn = ic::carp(rn, b);
         r[i] = (kTaban - p[2]) / dn[2];
-        irtifa += r[i] * std::cos(kIsinAcisi) / 4.0;
     }
 }
 

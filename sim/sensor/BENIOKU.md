@@ -20,10 +20,28 @@ Fizik anlık görüntüsü (`ida::fizik::DurumAnlik`) yalnız başlıktan kullan
 
 - IMU kontrol sınırlarında (`t = k · 5 ms`), pencere `[t − 5 ms, t]`, değer adım sınırlarındaki yamuk ortalaması; `t_teslim = t_meas`.
 - Periyodik sensörler: ideal an `round(k · 10⁹/f · (1 + ppm·10⁻⁶))`, en yakın adım sınırına bağlanır (yarıda yukarı).
-- Basınç: örnekleme olayı D1'i başlatır; `t_meas` = D1 sonu, `window_ns` = dönüşüm penceresi; kayıt fiziksel bitişin (`t_meas + T_D2 + T_okuma`) üst adım sınırında üretilir, `t_teslim` = fiziksel bitiş.
+- Basınç: örnekleme olayı D1'i başlatır; `t_meas` = D1 sonu, `window_ns` = dönüşüm penceresi; kayıt fiziksel bitişin (`t_meas + T_D2 + T_okuma`) üst adım sınırında üretilir; `t_teslim` = bu üretim sınırı (fiziksel bitiş 19,75 ms, teslim 20 ms; W4-K9).
 - Batarya: pencere = örnek aralığı, `t_meas` pencere sonu.
-- DVL: gönderim adım sınırında; kilitliyken `t_meas = t_tx + r̄/c`, rapor `t_tx + 2r̄/c + T_işlem`, kayıt raporun üst sınırında; hız `t_meas` anındaki durumun ara değeridir. `T_iletim` seri profilde 120 bayt × 10 / baud [T].
-- `t_hazir_ns` her zaman bir adım sınırıdır; `t_meas ≤ t_hazir ≤ t_teslim`'in üst kontrol sınırı.
+- DVL: gönderim adım sınırında; kilitliyken `t_meas = t_tx + r̄/c`, rapor `t_tx + 2r̄/c + T_işlem`, kayıt raporun üst sınırında; hız `t_meas` anındaki durumun ara değeridir. `T_iletim` seri profilde 120 bayt × 10 / baud [T]. `altitude` dönüştürücüden yatay tabana dik mesafedir (A4 §3.3, W4-K8; 05 §2.3.5'in `r·cos α` ortalaması kullanılmaz).
+- `t_hazir_ns` her zaman bir adım sınırıdır; her kayıtta `t_meas ≤ t_hazir ≤ t_teslim` (W4-K9: model teslimi daha erken hesaplarsa teslim üretim sınırına çekilir).
+- Model içi örnek sayacı 64 bittir (RNG sayacı `n`, A5-K110); teldeki `seq` onun 2³² kalanıdır. Arıza çekilişleri A5 Ek D.4 gereği teldeki `seq`'i kullanır.
+
+## GNSS yüksekliği
+
+`alt_mm` ortalama deniz seviyesine göredir (A4 §3.3): `alt = h_elipsoit − N`. Jeoit yüksekliği `N` sensör kümesinin ortam ayarıdır (`SensorOrtami::jeoit_yuksekligi`, varsayılan 0 m; kabul, sim dünyasında jeoit modeli yok; W4-K7). Kurulum |N| ≤ 200 m ister.
+
+## Arıza zinciri ve temsil
+
+- Arıza pencereleri, zaman desenleri ve sürüklenmeler kaydın değişmez temel ölçüm zamanıyla değerlendirilir; `donma_zaman_damgasi`'nın donmuş damgası yalnız çıktı başlığına yazılır.
+- Zincirden sonra, binary32'ye daraltmadan önce bütün yük alanları (kanallar, DVL kovaryansı ve `fom`, `eph`, `epv`, GNSS enlem/boylam/yükseklik) sonlu ve tel tipinin aralığında olmalıdır. Değilse kayıt teslim edilir ama `VALID` = 0 olur ve değerler son geçerli temel kayıttan (yoksa 0) alınır; `Sayaclar::aralik_reddi` artar (05 §4'ün sonlu olmayan çıktı kuralıyla aynı).
+
+## Fırlatıcı ve emniyet geri okuması (W4-K4, K5; EMNİYET)
+
+Kısıtlayan anahtar değişimi gecikmesiz, gevşeten değişim `anahtar_gecikmesi_ns` sonra algılanır. Örneğin `safety_rev`'i gösterdiği durumun revizyonudur: bekleyen gevşetme yoksa güncel revizyon; varsa en erken bekleyen gevşetmeden önceki adımdaki yetkili revizyon. Gevşetme beklerken gecikmesiz algılanmış bir kısıtlama varsa (karışık durum) bu eski revizyon gönderilir: kart o revizyonla izin açamaz (kısıtlayan okuma). `PERMIT_OPEN` örnek anındaki değerdir.
+
+## Süre denetimi
+
+Kurulumda bütün `_ns` alanları A5-K48'e göre denetlenir (süreler ≥ 0, zaman sabitleri ve periyotlar > 0) ve üstten `2⁵³` ns ile sınırlanır (sim zamanıyla toplamlar int64'te taşmasın); `window_ns`'e giden pencereler `u32` sınırını aşamaz. `arm` aynı sınırları arıza sürelerine uygular (`zaman_ns ≤ 2⁶²`, `sure_ns ≤ 2⁶¹`).
 
 ## Kanal numaraları (A5 Ek D.4 `kanal`; arızalar bu kanallara uygulanır)
 
@@ -39,7 +57,7 @@ Fizik anlık görüntüsü (`ida::fizik::DurumAnlik`) yalnız başlıktan kullan
 
 ## Rastgele çekilişlerin yerleri (A5-K84, K110)
 
-Alt sistem adı `sensor/<ad>/<akış>`; sayaç `(n, c2 = kanal<<24 | bilesen<<16 | cekilis)`; normal değer `z0` (w0, w1).
+Alt sistem adı `sensor/<ad>/<akış>`; sayaç `(n, c2 = kanal<<24 | bilesen<<16 | cekilis)`; normal değer `z0` (w0, w1). Tablodaki `seq`, model içi 64 bitlik örnek numarasıdır (2³²'de sarmaz; teldeki `seq` bunun kalanı).
 
 | Sensör | Akış | `n` | kanal / bileşen | Çekiliş |
 |---|---|---|---|---|

@@ -27,6 +27,14 @@ int test_ariza_desenleri();
 int test_ariza_akis_bagimsizligi();
 int test_kurulum_hatalari();
 int test_sure();
+int test_dvl_irtifa_egik();
+int test_gnss_jeoit();
+int test_ariza_donma_bilesik();
+int test_ariza_temsil_araligi();
+int test_ariza_suzgecli_imu();
+int test_ornek_sayaci_64();
+int test_emniyet_revizyon();
+int test_kurulum_sureleri();
 
 SensorKumesiAyari ideal_ayar()
 {
@@ -96,6 +104,14 @@ int main(int argc, char** argv)
         {"ariza_akis_bagimsizligi", test_ariza_akis_bagimsizligi},
         {"kurulum_hatalari", test_kurulum_hatalari},
         {"sure", test_sure},
+        {"dvl_irtifa_egik", test_dvl_irtifa_egik},
+        {"gnss_jeoit", test_gnss_jeoit},
+        {"ariza_donma_bilesik", test_ariza_donma_bilesik},
+        {"ariza_temsil_araligi", test_ariza_temsil_araligi},
+        {"ariza_suzgecli_imu", test_ariza_suzgecli_imu},
+        {"ornek_sayaci_64", test_ornek_sayaci_64},
+        {"emniyet_revizyon", test_emniyet_revizyon},
+        {"kurulum_sureleri", test_kurulum_sureleri},
     };
     if (argc < 2) {
         std::printf("kullanım: %s <test>\n", argv[0]);

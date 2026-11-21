@@ -98,18 +98,30 @@ void yaz32(std::vector<std::uint8_t>& b, std::size_t yer, std::uint32_t v)
 // A4 §3.10 parametre bloğu: varsayılanlar + değişiklikler (genel arayüzle).
 std::vector<std::uint8_t> parametre_blogu(float baro_kal_d)
 {
-    ida_core_info_t info;
+    ida_core_info_t info{};
     ida_core_info(&info);
     const std::uint16_t n = ida_core_param_count();
-    std::vector<ida_param_value_t> d;
+    // Değer bitleri birliğin nesne gösteriminden memcpy ile alınır (etkin olmayan birlik üyesi
+    // okunmaz; W4-sensor sol #8).
+    struct Kayit {
+        std::uint16_t id;
+        std::uint8_t type;
+        std::uint32_t bit;
+    };
+    auto f32_bit = [](float f) {
+        std::uint32_t b = 0;
+        std::memcpy(&b, &f, sizeof b);
+        return b;
+    };
+    std::vector<Kayit> d;
     for (std::uint16_t i = 0; i < n; ++i) {
-        ida_param_desc_t pd;
+        ida_param_desc_t pd{};
         if (ida_core_param_desc(i, &pd) != IDA_RC_OK) continue;
-        ida_param_value_t v = pd.def;
-        v.id = pd.id;
-        v.type = pd.type;
-        if (std::strcmp(pd.name, "YER_G") == 0) v.v.f32 = static_cast<float>(kG);
-        if (std::strcmp(pd.name, "BARO_KAL_D") == 0) v.v.f32 = baro_kal_d;
+        Kayit v{pd.id, pd.type, 0u};
+        static_assert(sizeof pd.def.v == sizeof v.bit, "parametre değeri 32 bit");
+        std::memcpy(&v.bit, &pd.def.v, sizeof v.bit);
+        if (std::strcmp(pd.name, "YER_G") == 0) v.bit = f32_bit(static_cast<float>(kG));
+        if (std::strcmp(pd.name, "BARO_KAL_D") == 0) v.bit = f32_bit(baro_kal_d);
         d.push_back(v);
     }
     for (std::size_t i = 1; i < d.size(); ++i) {   // param_id'ye göre artan
@@ -126,7 +138,7 @@ std::vector<std::uint8_t> parametre_blogu(float baro_kal_d)
         b[y] = static_cast<std::uint8_t>(d[i].id & 0xFFu);
         b[y + 1] = static_cast<std::uint8_t>(d[i].id >> 8);
         b[y + 2] = d[i].type;
-        yaz32(b, y + 4, d[i].v.u32);
+        yaz32(b, y + 4, d[i].bit);
     }
     yaz32(b, 20, crc32(b.data() + 24, yuk));
     return b;
@@ -153,7 +165,7 @@ double sar(double a)
 
 int kos(bool dalis)
 {
-    ida_core_info_t info;
+    ida_core_info_t info{};
     ida_core_info(&info);
     if (info.core_size > sizeof(g_cekirdek) || info.core_align > alignof(std::max_align_t)) {
         std::printf("  çekirdek tamponu yetmiyor: %u B, hizalama %u\n", info.core_size, info.core_align);
@@ -161,7 +173,7 @@ int kos(bool dalis)
     }
     auto* c = reinterpret_cast<ida_core_t*>(g_cekirdek);
     const std::vector<std::uint8_t> blok = parametre_blogu(static_cast<float>(kZ0));
-    ida_init_in_t ii;
+    ida_init_in_t ii{};
     std::memset(&ii, 0, sizeof ii);
     ii.port_major = static_cast<std::uint16_t>(IDA_PORT_VERSION_MAJOR);
     ii.port_minor = static_cast<std::uint16_t>(IDA_PORT_VERSION_MINOR);

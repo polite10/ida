@@ -4,6 +4,8 @@
 #include "model.hpp"
 
 #include <algorithm>
+#include <cfloat>
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -97,6 +99,19 @@ bool kapsam_disi(SensorTuru t)
     return t == SensorTuru::ping1d || t == SensorTuru::ping360 || t == SensorTuru::kamera;
 }
 
+// Süre alanlarının üst sınırı (ns, ≈ 104 gün): sim zamanı (≤ 2⁶², A4-K08) ile toplamları int64'te
+// taşmaz. A5 üst sınır vermez; bu, kurulumun temsil denetimidir (W4-sensor sol #5).
+constexpr std::int64_t kAzamiSure = std::int64_t{1} << 53;
+constexpr std::int64_t kAzamiZaman = std::int64_t{1} << 62;   // IDA_TIME_MAX_NS (A4-K08)
+
+// Süre denetimi: `sifir_olabilir` ise [0, kAzamiSure], değilse (0, kAzamiSure] (A5-K48).
+bool sure_ok(std::int64_t v, bool sifir_olabilir)
+{
+    return (sifir_olabilir ? v >= 0 : v > 0) && v <= kAzamiSure;
+}
+
+bool negatif_degil(double v) { return std::isfinite(v) && v >= 0.0; }
+
 // Boş dizgi: geçerli.
 std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
 {
@@ -133,13 +148,13 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
     switch (a.tur) {
     case SensorTuru::imu: {
         const auto& p = std::get<ImuAyar>(a.ayar);
-        if (p.jiroskop_gm_tau_ns <= 0 || p.ivme_gm_tau_ns <= 0) {
+        if (!sure_ok(p.jiroskop_gm_tau_ns, false) || !sure_ok(p.ivme_gm_tau_ns, false)) {
             return on + "gm_tau_ns > 0 olmalı (A5-K48)";
         }
         if (!(p.jiroskop_aralik > 0.0) || !(p.ivme_aralik > 0.0) || p.bit < 1 || p.bit > 31) {
             return on + "aralik ya da bit geçersiz";
         }
-        if (p.suzgec_etkin && p.suzgec_tau_ns <= 0) {
+        if (p.suzgec_etkin && !sure_ok(p.suzgec_tau_ns, false)) {
             return on + "suzgec_etkin iken suzgec_tau_ns > 0 zorunlu (A5-K46)";
         }
         if (p.dunya_donusu_etkin && !k.ortam.orijin) {
@@ -147,15 +162,24 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
         }
         break;
     }
-    case SensorTuru::manyetometre:
+    case SensorTuru::manyetometre: {
+        const auto& p = std::get<ManyetometreAyar>(a.ayar);
         if (!k.ortam.manyetik_alan) {
             return on + "etkin manyetometre için ortam.manyetik_alan zorunlu (A5-K44)";
         }
+        if (!sure_ok(p.teslim_gecikmesi_ns, true) || !negatif_degil(p.gurultu_sigma)) {
+            return on + "teslim_gecikmesi_ns ≥ 0 ve gurultu_sigma ≥ 0 olmalı (A5-K48)";
+        }
         break;
+    }
     case SensorTuru::basinc: {
         const auto& p = std::get<BasincAyar>(a.ayar);
-        if (p.donusum_penceresi_ns <= 0 || p.okuma_suresi_ns < 0) {
+        if (!sure_ok(p.donusum_penceresi_ns, false) || !sure_ok(p.okuma_suresi_ns, true) ||
+            !negatif_degil(p.gurultu_sigma)) {
             return on + "donusum_penceresi_ns > 0, okuma_suresi_ns ≥ 0 olmalı (A5-K48)";
+        }
+        if (p.donusum_penceresi_ns > static_cast<std::int64_t>(UINT32_MAX)) {
+            return on + "donusum_penceresi_ns window_ns'e (u32) sığmıyor (A4 §3.2)";
         }
         const double f = a.hiz_hz.value_or(25.0);
         if (f > 1e9 / static_cast<double>(2 * p.donusum_penceresi_ns + p.okuma_suresi_ns)) {
@@ -172,7 +196,15 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
             !(p.w_gecis > 0.0) || p.gm_varyans_payi < 0.0 || p.gm_varyans_payi > 1.0) {
             return on + "gnss ayarı aralık dışında";
         }
-        if (p.yakinsama_baslangic_hatasi > 0.0 && p.yakinsama_tau_ns <= 0) {
+        if (!sure_ok(p.teslim_gecikmesi_ns, true) || !sure_ok(p.gm_tau_ns, false) ||
+            !sure_ok(p.t_kisa_ns, true) || !sure_ok(p.t_efemeris_ns, true) ||
+            !sure_ok(p.hizli_medyan_ns, false) || !sure_ok(p.sicak_medyan_ns, false) ||
+            !sure_ok(p.soguk_medyan_ns, false) || !sure_ok(p.t_edinim_ns, true) ||
+            !negatif_degil(p.cep) || !negatif_degil(p.hiz_sigma) || !(p.w50 > 0.0) ||
+            !negatif_degil(p.yakinsama_baslangic_hatasi) || !negatif_degil(p.rapor_carpani)) {
+            return on + "gnss süre ya da hata parametresi aralık dışında (A5-K48)";
+        }
+        if (p.yakinsama_baslangic_hatasi > 0.0 && !sure_ok(p.yakinsama_tau_ns, false)) {
             return on + "yakinsama_baslangic_hatasi > 0 iken yakinsama_tau_ns zorunlu (A5-K40)";
         }
         break;
@@ -186,7 +218,8 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
             return on + "DVL için çözümlenmiş ortam.su.ses_hizi gerekli (formül sonar işinde)";
         }
         if (!(p.isin_acisi > 0.0 && p.isin_acisi < 0.5 * kPi) || p.seri_baud <= 0 ||
-            p.mod_histerezis_ping < 1 || p.kilit_arama_ping < 1 || p.yakin_mod_deneme_ns <= 0) {
+            p.mod_histerezis_ping < 1 || p.kilit_arama_ping < 1 ||
+            !sure_ok(p.yakin_mod_deneme_ns, false) || !sure_ok(p.islem_suresi_ns, true)) {
             return on + "dvl ayarı aralık dışında";
         }
         break;
@@ -196,6 +229,9 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
         if (!(p.gerilim_bolucu > 0.0) || !(p.akim_olcegi > 0.0) || p.adc_bit < 1 ||
             p.adc_bit > 24 || !(p.adc_referans > 0.0)) {
             return on + "batarya_olcer ayarı aralık dışında";
+        }
+        if (!sure_ok(p.teslim_gecikmesi_ns, true) || !negatif_degil(p.analog_gurultu_sigma)) {
+            return on + "teslim_gecikmesi_ns ≥ 0 olmalı (A5-K48)";
         }
         if (!(k.guc.v_sabit > 0.0)) {
             return on + "güç girdisi: v_sabit > 0 olmalı";
@@ -210,6 +246,19 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
         const auto& p = std::get<SizintiAyar>(a.ayar);
         if (p.prob_sayisi < 1 || p.prob_sayisi > 8) {
             return on + "prob_sayisi 1–8 olmalı (ida_leak_t.mask 8 bit)";
+        }
+        if (!sure_ok(p.algilama_gecikmesi_ns, true) ||
+            !(p.sahte_pozitif_orani >= 0.0 && p.sahte_pozitif_orani <= 1.0)) {
+            return on + "algilama_gecikmesi_ns ≥ 0, sahte_pozitif_orani [0, 1] olmalı";
+        }
+        break;
+    }
+    case SensorTuru::firlatici_geri_okuma: {
+        // EMNİYET: negatif gecikme gevşetmeyi aynı sınırda algılatır ya da geçmişe teslim damgası
+        // üretir; reddedilir (W4-sensor sol #5).
+        const auto& p = std::get<FirlaticiGeriOkumaAyar>(a.ayar);
+        if (!sure_ok(p.anahtar_gecikmesi_ns, true) || !sure_ok(p.teslim_gecikmesi_ns, true)) {
+            return on + "anahtar_gecikmesi_ns ve teslim_gecikmesi_ns ≥ 0 olmalı (A5-K48)";
         }
         break;
     }
@@ -294,27 +343,30 @@ struct SensorKumesi::Ic {
         return (i % 2) == 1;
     }
 
-    bool desen_etkin(ArizaKaydi& f, const TemelKayit& r)
+    bool desen_etkin(ArizaKaydi& f, const TemelKayit& r, std::int64_t t_temel)
     {
         switch (f.t.zaman_deseni.tur) {
         case ZamanDeseniTuru::surekli: return true;
         case ZamanDeseniTuru::bernoulli:
             return f.akis.duzgun(r.hdr.seq, c2_kodla(0xFF, 0, 0)) < f.t.zaman_deseni.p;
-        case ZamanDeseniTuru::gilbert_elliott: return ge_kotu(f, r.hdr.t_meas_ns);
+        case ZamanDeseniTuru::gilbert_elliott: return ge_kotu(f, t_temel);
         }
         return false;
     }
 
     // Arıza zinciri (05 §2.7, A5 Tablo 3.10-A bileşim sırası). false: kayıt teslim edilmez.
+    // Pencereler, zaman desenleri ve sürüklenme kaydın değişmez temel ölçüm zamanıyla
+    // değerlendirilir; donmuş damga yalnız çıktı başlığına yazılır (W4-sensor sol #3).
     bool ariza_zinciri(std::size_t si, TemelKayit& r)
     {
         SensorDurumu& s = sensorler[si];
+        const std::int64_t t_temel = r.hdr.t_meas_ns;
         bool teslim = true;
         bool sira_boz = false;
         auto uygula = [&](ArizaTuru tur, auto&& islem) {
             for (ArizaKaydi& f : arizalar) {
                 if (f.sensor != si || f.t.tur != tur) continue;
-                if (!(f.t_b <= r.hdr.t_meas_ns && r.hdr.t_meas_ns < f.t_bitis)) continue;
+                if (!(f.t_b <= t_temel && t_temel < f.t_bitis)) continue;
                 if (tur == ArizaTuru::donma || tur == ArizaTuru::donma_zaman_damgasi) {
                     if (!f.donma_bakildi) {
                         f.donma_bakildi = true;
@@ -326,13 +378,13 @@ struct SensorKumesi::Ic {
                         }
                     }
                 }
-                if (!desen_etkin(f, r)) continue;
+                if (!desen_etkin(f, r, t_temel)) continue;
                 islem(f);
                 r.hdr.ariza_maskesi |= 1u << static_cast<unsigned>(tur);
             }
         };
         const std::size_t n = r.n_kanal;
-        const double tm = static_cast<double>(r.hdr.t_meas_ns);
+        const double tm = static_cast<double>(t_temel);
         uygula(ArizaTuru::ofset, [&](ArizaKaydi& f) {
             for (std::size_t i = 0; i < n; ++i) r.k[i] += f.t.siddet.ofset;
         });
@@ -415,6 +467,41 @@ struct SensorKumesi::Ic {
         return teslim;
     }
 
+    // GNSS anten konumu (kanal 0–2, orijine göre NED) → enlem, boylam (rad) ve ortalama deniz
+    // seviyesine göre yükseklik `h − N` (m; A4 §3.3, W4-K7). Tel alanlarına temsil edilemezse false.
+    bool gnss_konumu(const TemelKayit& r, Vek3& lla) const
+    {
+        if (!ayar.ortam.orijin) {
+            return false;
+        }
+        lla = ned_lla(*ayar.ortam.orijin, {r.k[0], r.k[1], r.k[2]});
+        lla[2] -= ayar.ortam.jeoit_yuksekligi;
+        return std::isfinite(lla[0]) && std::isfinite(lla[1]) && std::isfinite(lla[2]) &&
+               std::abs(lla[0]) <= 0.5 * kPi && std::abs(lla[1]) <= kPi &&
+               std::abs(lla[2] * 1000.0) <= 2147483647.0;
+    }
+
+    // Arıza zinciri sonrası, binary32'ye daraltmadan önce: bütün yük alanları sonlu ve tel
+    // tipinin aralığında mı (W4-sensor sol #4; A1 §3.4 "bütün float alanlar sonlu").
+    bool temsil_edilebilir(const TemelKayit& r) const
+    {
+        auto f32 = [](double x) { return std::isfinite(x) && std::abs(x) <= static_cast<double>(FLT_MAX); };
+        for (std::size_t i = 0; i < r.n_kanal; ++i) {
+            if (!f32(r.k[i])) return false;
+        }
+        for (double x : r.dvl_cov) {
+            if (!f32(x)) return false;
+        }
+        if (!f32(r.dvl_fom) || !f32(r.eph) || !f32(r.epv)) {
+            return false;
+        }
+        if (r.hdr.tur == SensorTuru::gnss && !r.gnss_cozum_yok) {
+            Vek3 lla{};
+            return gnss_konumu(r, lla);
+        }
+        return true;
+    }
+
     Olcum sonlandir(const TemelKayit& r) const
     {
         Olcum o;
@@ -434,12 +521,11 @@ struct SensorKumesi::Ic {
             GnssOlcumu g;
             g.fix_type = r.fix_type;
             g.n_sv = r.n_sv;
-            if (!r.gnss_cozum_yok && ayar.ortam.orijin) {
-                const Vek3 lla = ned_lla(*ayar.ortam.orijin, {r.k[0], r.k[1], r.k[2]});
+            Vek3 lla{};
+            if (!r.gnss_cozum_yok && gnss_konumu(r, lla)) {
                 g.lat_e7 = e7(lla[0]);
                 g.lon_e7 = e7(lla[1]);
-                g.alt_mm = static_cast<std::int32_t>(
-                    std::llround(std::clamp(lla[2] * 1000.0, -2.0e9, 2.0e9)));
+                g.alt_mm = static_cast<std::int32_t>(std::llround(lla[2] * 1000.0));
                 g.vel_ned = {f(3), f(4), f(5)};
                 g.eph = static_cast<float>(r.eph);
                 g.epv = static_cast<float>(r.epv);
@@ -513,6 +599,14 @@ KurulumSonucu SensorKumesi::kur(const SensorKumesiAyari& ayar)
         s.hata = "kontrol periyodu fizik adımının tam katı olmalı (iskelet §4)";
         return s;
     }
+    if (ayar.kontrol_periyodu_ns > static_cast<std::int64_t>(UINT32_MAX) || ayar.adim_ns > kAzamiSure) {
+        s.hata = "kontrol periyodu IMU window_ns'e (u32) sığmıyor (A4 §3.2)";
+        return s;
+    }
+    if (!std::isfinite(ayar.ortam.jeoit_yuksekligi) || std::abs(ayar.ortam.jeoit_yuksekligi) > 200.0) {
+        s.hata = "ortam.jeoit_yuksekligi sonlu ve |N| ≤ 200 m olmalı";
+        return s;
+    }
     if (ayar.sensorler.size() > 64) {
         s.hata = "arac.sensorler: en çok 64 sensör (A5 §3.6)";
         return s;
@@ -582,6 +676,7 @@ AdimSonucu SensorKumesi::adim(const fizik::DurumAnlik& d, std::uint64_t adim_no)
         return AdimSonucu::kurulmadi;
     }
     if (d.adim_no != adim_no ||
+        adim_no > static_cast<std::uint64_t>(kAzamiZaman / c.ayar.adim_ns) ||
         d.t_ns != static_cast<std::int64_t>(adim_no) * c.ayar.adim_ns) {
         return AdimSonucu::tutarsiz;
     }
@@ -640,7 +735,29 @@ AdimSonucu SensorKumesi::adim(const fizik::DurumAnlik& d, std::uint64_t adim_no)
                 s.temel_var = true;
                 s.son_temel = r;
             }
+            // W4-K9: teslim, kaydın üretildiği fizik sınırından önce olamaz.
+            r.hdr.t_teslim_ns = std::max(r.hdr.t_teslim_ns, r.hdr.t_hazir_ns);
             if (c.ariza_zinciri(si, r)) {
+                // W4-sensor sol #4: arıza zinciri sonrası temsil edilemeyen değer karta gitmez.
+                // 05 §4'ün sonlu olmayan çıktı kuralıyla aynı: VALID = 0, değer son geçerli temel
+                // değer (yoksa 0); kayıt teslim edilir, seq boşluğu açılmaz.
+                if (!c.temsil_edilebilir(r)) {
+                    ++c.say.aralik_reddi;
+                    const TemelKayit* t = s.temel_var ? &s.son_temel : nullptr;
+                    for (std::size_t i = 0; i < r.n_kanal; ++i) r.k[i] = t ? t->k[i] : 0.0;
+                    r.dvl_cov = t ? t->dvl_cov : std::array<double, 6>{};
+                    r.dvl_fom = t ? t->dvl_fom : 0.0;
+                    r.eph = t ? t->eph : 0.0;
+                    r.epv = t ? t->epv : 0.0;
+                    r.gnss_cozum_yok = t ? t->gnss_cozum_yok : true;
+                    if (!c.temsil_edilebilir(r)) {
+                        r.k.fill(0.0);
+                        r.dvl_cov.fill(0.0);
+                        r.dvl_fom = r.eph = r.epv = 0.0;
+                        r.gnss_cozum_yok = true;
+                    }
+                    r.hdr.flags = static_cast<std::uint16_t>(r.hdr.flags & (0xFFFFu ^ kBayrakGecerli));
+                }
                 c.kuyruga(c.sonlandir(r));
             }
         }
@@ -711,16 +828,21 @@ ArmSonucu SensorKumesi::arm(const SensorArizasi& f)
     }
     bool gecerli = std::isfinite(z.ofset) && std::isfinite(z.olcek) && std::isfinite(z.oran) &&
                    std::isfinite(z.son_deger) && std::isfinite(z.genlik);
-    if (f.tur == ArizaTuru::suruklenme_ustel) gecerli = gecerli && z.tau_ns > 0;
+    if (f.tur == ArizaTuru::suruklenme_ustel) gecerli = gecerli && sure_ok(z.tau_ns, false);
     if (f.tur == ArizaTuru::gurultu_artisi) gecerli = gecerli && z.k >= 1.0 && std::isfinite(z.k);
     if (f.tur == ArizaTuru::sicrama) gecerli = gecerli && z.genlik >= 0.0 && z.p >= 0.0 && z.p <= 1.0;
     if (f.tur == ArizaTuru::gec_teslim) {
-        gecerli = gecerli && z.gecikme_ns >= 0 && z.titresim_ns >= 0 && z.titresim_ns <= z.gecikme_ns;
+        // Toplamlar (t_teslim + gecikme + titreşim) int64'te taşmasın: süreler kAzamiSure ile sınırlı.
+        gecerli = gecerli && sure_ok(z.gecikme_ns, true) && z.titresim_ns >= 0 &&
+                  z.titresim_ns <= z.gecikme_ns;
     }
     const ZamanDeseni& zd = f.zaman_deseni;
     if (zd.tur == ZamanDeseniTuru::bernoulli) gecerli = gecerli && zd.p >= 0.0 && zd.p <= 1.0;
-    if (zd.tur == ZamanDeseniTuru::gilbert_elliott) gecerli = gecerli && zd.t_iyi_ns > 0 && zd.t_kotu_ns > 0;
-    if (!gecerli || f.sure_ns < 0 || f.zaman_ns < 0) {
+    if (zd.tur == ZamanDeseniTuru::gilbert_elliott) {
+        gecerli = gecerli && sure_ok(zd.t_iyi_ns, false) && sure_ok(zd.t_kotu_ns, false);
+    }
+    if (!gecerli || f.sure_ns < 0 || f.sure_ns > kAzamiZaman / 2 || f.zaman_ns < 0 ||
+        f.zaman_ns > kAzamiZaman) {
         s.hata = "arıza parametresi geçersiz (A5-K48, K66, K67, K68; 05 §2.7)";
         return s;
     }
