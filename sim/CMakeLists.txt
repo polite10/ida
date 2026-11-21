@@ -2,3 +2,4 @@
 # Alt dizinler kendi işlerinde eklenir.
 
 add_subdirectory(fizik)  # fizik çekirdeği (W3-fizik)
+add_subdirectory(sil)    # kartsız koşucu (W4-sil)
