@@ -291,6 +291,27 @@ std::uint32_t Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::i
         m.t_meas_ns = o.hdr.t_meas_ns;
         m.seq = o.hdr.seq;
         m.safety_rev = y.safety_rev;
+        // W4-K4 (EMNİYET): örneğin girdi değerleri (acil durdurma, fiş, pim) o revizyonda sim'de
+        // var olmamışsa (gevşetmenin bildirimi sensörde gecikti, revizyonu gecikmedi) revizyon,
+        // aynı girdi değerlerinin yetkili olduğu en son revizyona geri alınır. Geri alınan
+        // revizyonla damgalanan izin açan olay reddedilir: kısıtlayan yön.
+        {
+            std::uint8_t kod = y.estop != 0u ? 1u : 0u;
+            for (std::size_t k = 0; k < 2; ++k) {
+                kod = static_cast<std::uint8_t>(kod | ((y.tube[k] & IDAW_TUBE_FLAGS_PLUG_IN) != 0u ? (2u << k) : 0u) |
+                                                ((y.tube[k] & IDAW_TUBE_FLAGS_PIN_OUT) != 0u ? (8u << k) : 0u));
+            }
+            const auto it = i.rev_girdi.find(m.safety_rev);
+            if (it != i.rev_girdi.end() && it->second != kod) {
+                for (auto r = std::make_reverse_iterator(it); r != i.rev_girdi.rend(); ++r) {
+                    if (r->second == kod) {
+                        m.safety_rev = r->first;
+                        ++i.say.emniyet_rev_geri;
+                        break;
+                    }
+                }
+            }
+        }
         m.flags = o.hdr.flags;
         m.inst = o.hdr.inst;
         m.estop = y.estop;
@@ -400,8 +421,14 @@ std::optional<YanitBilgisi> Kopru::yanit(std::uint32_t seq) const
     y.fs_level = it->second.fs_level;
     y.core_rc = it->second.core_rc;
     y.out_seq = it->second.out_seq;
+    const auto ys = ic_->yanit_sure.find(seq);
+    if (ys != ic_->yanit_sure.end()) {
+        y.yanit_suresi_ns = ys->second;
+    }
     return y;
 }
+
+const std::vector<std::int64_t>& Kopru::yanit_sureleri() const { return ic_->yanit_sureleri; }
 
 std::uint32_t Kopru::son_parti() const { return ic_->tf_var ? ic_->son_seq : 0u; }
 

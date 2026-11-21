@@ -301,3 +301,38 @@ int test_emniyet_ornegi()
     }
     return d.hata;
 }
+
+// W4-K4 (EMNİYET): emniyet örneğinin revizyonu, girdi değerlerinin sim'de yetkili olduğu
+// revizyondur; gevşetmenin bildirimi gecikmiş bir kayıt yeni revizyonla gönderilmez.
+int test_emniyet_rev_durum()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    z.k.emniyet_ata(EmniyetAtama{true, {}, {}});
+    (void)z.periyot();
+    const std::uint32_t rev_basili = z.k.dis_durum().emniyet.emniyet_revizyonu;
+    z.k.emniyet_ata(EmniyetAtama{false, {}, {}});
+    (void)z.periyot();
+    const std::uint32_t rev_kalkti = z.k.dis_durum().emniyet.emniyet_revizyonu;
+    DOGRULA(d, rev_kalkti == rev_basili + 1u, "kalkış revizyonu artırdı");
+    ida::sensor::Olcum o;
+    o.hdr.tur = ida::sensor::SensorTuru::firlatici_geri_okuma;
+    o.hdr.seq = 1;
+    o.hdr.t_meas_ns = z.t;
+    o.hdr.flags = ida::sensor::kBayrakGecerli;
+    ida::sensor::EmniyetOlcumu e;
+    e.estop = 1;   // sensör kalkışı henüz algılamadı
+    e.tube = {static_cast<std::uint8_t>(IDAW_TUBE_FLAGS_LOADED), static_cast<std::uint8_t>(IDAW_TUBE_FLAGS_LOADED)};
+    e.safety_rev = rev_kalkti;
+    o.yuk = e;
+    const std::size_t once = z.sk.emniyet.size();
+    (void)z.periyot({o});
+    DOGRULA(d, z.sk.emniyet.size() == once + 1u, "emniyet örneği gönderildi");
+    if (z.sk.emniyet.size() == once + 1u) {
+        DOGRULA(d, z.sk.emniyet.back().estop == 1u && z.sk.emniyet.back().safety_rev == rev_basili,
+                "(estop = 1) acil durdurmanın revizyonuyla gider (" + s(z.sk.emniyet.back().safety_rev) + ")");
+    }
+    DOGRULA(d, z.k.sayaclar().emniyet_rev_geri == 1u, "emniyet_rev_geri 1");
+    return d.hata;
+}

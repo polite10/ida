@@ -64,6 +64,7 @@ set(_ida_kopru_testleri
   olay_suresi_gecmis     # kabul 4
   olay_fire_kabul        # kabul 4: yetkili durumda FIRE yalnız tüpü boşaltır
   emniyet_ornegi         # A1-K56: partide ≤ 1, kapanma önce
+  emniyet_rev_durum      # W4-K4: revizyon girdi değerleriyle birlikte
   bellek_tasima
   tcp_tasima
   pty_tasima)
