@@ -148,6 +148,8 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     yuvalar.clear();
     adim_yuva.clear();
     esz_bekleyen.clear();
+    esz_muaf.clear();
+    ilk_yanit_alindi = false;
     olay_bekleyen.clear();
     karari_bekleyen.clear();
     sonuc_kuyrugu.clear();
@@ -474,7 +476,12 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
                                    (m.last_event_result >= 16u && m.last_event_result <= 19u);
         if (m.state > 5u || (m.inhibit_mask & 0xFFFC0000u) != 0u || !sonuc_gecerli) {
             ++say.alan_ret;
+            return;
         }
+        kart.fc_var = true;
+        kart.fc_state = m.state;
+        kart.fc_inhibit_mask = m.inhibit_mask;
+        kart.fc_son_olay_sonucu = m.last_event_result;
         return;
     }
     case MAVLINK_MSG_ID_IDA_LOG: {
@@ -588,6 +595,7 @@ Kopru::Kopru(const KopruAyari& ayar) : ic_(std::make_unique<Ic>())
     i.pwm.fill(static_cast<double>(i.a.esc_notr_us));
     i.emn = sensor::EmniyetDurumu{};
     i.izin_bitis.fill(0);
+    i.rev_girdi[i.emn.emniyet_revizyonu] = i.girdi_kodu();   // W4-K4
 }
 
 Kopru::~Kopru() = default;

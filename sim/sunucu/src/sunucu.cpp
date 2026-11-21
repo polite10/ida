@@ -124,13 +124,13 @@ private:
         if (!tas_) {
             return;
         }
-        std::uint8_t b[16384];
+        alim_.resize(16384);   // yığında değil (MSVC C6262)
         for (;;) {
             std::size_t n = 0;
-            const kopru::OkumaSonucu r = tas_->oku(b, sizeof b, bekle_us, n);
+            const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
             bekle_us = 0;
             if (r == kopru::OkumaSonucu::tamam) {
-                k_->al(b, n, duvar());
+                k_->al(alim_.data(), n, duvar());
                 if (ic_ && a_.kip == Kip::sil && k_->giden_var()) {
                     yaz();
                     (void)ic_->pompala();
@@ -195,6 +195,7 @@ private:
     Saat::time_point bas_ = Saat::now();
     std::int64_t sil_duvar_ = 0;
     std::vector<std::uint8_t> tampon_;
+    std::vector<std::uint8_t> alim_;
     std::vector<sensor::Olcum> olcumler_;
     std::vector<Olay> olaylar_;
     std::size_t olay_i_ = 0;
@@ -547,6 +548,12 @@ void Calistirici::satir_tamamla(Satir& r)
     r.sess = k_->sess();
     r.kacirilan = k_->sayaclar().parti_kacirildi;
     r.gecersiz = k_->sayaclar().calistirma_gecersiz;
+    if (y) {
+        r.yanit_suresi_ns = y->yanit_suresi_ns;
+    }
+    r.fc_state = kb.fc_state;
+    r.fc_inhibit = kb.fc_inhibit_mask;
+    r.sim_izin = static_cast<std::uint8_t>((k_->izin_acik(0) ? 1u : 0u) | (k_->izin_acik(1) ? 2u : 0u));
     if (a_.csv_uret) {
         csv_yaz(r);
     }
@@ -571,6 +578,9 @@ void Calistirici::csv_yaz(const Satir& r)
          static_cast<unsigned>(r.est_level), static_cast<unsigned>(r.thr_valid), static_cast<unsigned>(r.is_safe),
          static_cast<unsigned>(r.yanit_var), r.rc, static_cast<unsigned>(r.estop), static_cast<unsigned>(r.sess),
          static_cast<unsigned long long>(r.kacirilan), static_cast<unsigned>(r.gecersiz));
+    c.pop_back();   // satır sonu: ek sütunlar
+    ekle(c, ",%lld,%u,0x%x,%u\n", static_cast<long long>(r.yanit_suresi_ns / 1000), static_cast<unsigned>(r.fc_state),
+         static_cast<unsigned>(r.fc_inhibit), static_cast<unsigned>(r.sim_izin));
 }
 
 Sonuc Calistirici::kos()
@@ -716,6 +726,7 @@ Sonuc Calistirici::kos()
         return s_;
     }
     gunluk(2, "oturum kuruldu: sess " + std::to_string(k_->sess()));
+    const kopru::Sayaclar rx_bas = k_->sayaclar();   // çalıştırma oturumunun başındaki çerçeve sayaçları
 
     const auto n_sinir = static_cast<std::uint64_t>(std::llround(a_.sure_s * 1e9)) / static_cast<std::uint64_t>(kH);
     if (a_.csv_uret) {
@@ -839,6 +850,19 @@ Sonuc Calistirici::kos()
         z.periyot_ort_ns = top / static_cast<double>(z.periyotlar_ns.size());
     }
     z.gercek_zaman_kacirma = z.sim_gecikmesi + s_.sayac.parti_kacirildi + s_.sayac.son_tarih_kacirildi;
+    {
+        std::vector<std::int64_t> ys = k_->yanit_sureleri();
+        std::sort(ys.begin(), ys.end());
+        z.yanit_sayisi = ys.size();
+        if (!ys.empty()) {
+            z.yanit_p50_ns = ys[ys.size() / 2];
+            z.yanit_p99_ns = ys[std::min(ys.size() - 1, (ys.size() * 99) / 100)];
+            z.yanit_en_cok_ns = ys.back();
+        }
+        z.rx_crc_kosu = s_.sayac.rx_crc_err - rx_bas.rx_crc_err;
+        z.rx_resync_kosu = s_.sayac.rx_resync_bytes - rx_bas.rx_resync_bytes;
+        z.rx_seq_gap_kosu = s_.sayac.rx_seq_gap - rx_bas.rx_seq_gap;
+    }
     if (!a_.csv_yolu.empty() && a_.csv_uret) {
         std::ofstream f(a_.csv_yolu, std::ios::binary);   // fopen değil: MSVC C4996
         f.write(s_.csv.data(), static_cast<std::streamsize>(s_.csv.size()));
@@ -860,7 +884,7 @@ const char* csv_basligi()
            "pwm_yur0,pwm_yur1,pwm_yur2,pwm_yur3,pwm_yur4,pwm_yur5,pwm_yur6,pwm_yur7,"
            "pwm_fiz0,pwm_fiz1,pwm_fiz2,pwm_fiz3,pwm_fiz4,pwm_fiz5,pwm_fiz6,pwm_fiz7,"
            "kip,armed,fs_level,fs_reasons,est_level,thr_valid,is_safe,yanit_var,core_rc,estop,sess,"
-           "parti_kacirildi,calistirma_gecersiz\n";
+           "parti_kacirildi,calistirma_gecersiz,yanit_sure_us,fc_state,fc_inhibit,sim_izin\n";
 }
 
 Sonuc kos(const Ayar& ayar)

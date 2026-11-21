@@ -93,6 +93,10 @@ struct Satir {
     std::uint16_t sess = 0;
     std::uint64_t kacirilan = 0;
     std::uint32_t gecersiz = 0;
+    std::int64_t yanit_suresi_ns = -1;        // TF yazımından bu partinin yanıtının alımına (HIL)
+    std::uint8_t fc_state = 0;                // kartın IDA_FC_STATUS'u (son alınan; gözlem)
+    std::uint32_t fc_inhibit = 0;
+    std::uint8_t sim_izin = 0;                // sim'in yetkili izinleri: bit 0 tüp 0, bit 1 tüp 1
 };
 
 // HIL zamanlama ölçümü (duvar saati; bu makinedeki ölçüm).
@@ -104,6 +108,12 @@ struct ZamanOlcumu {
     std::int64_t gec_yazim_en_cok_ns = 0;     // TF yazım başlangıcı − W(t_n)
     std::uint64_t sim_gecikmesi = 0;          // kontrol sınırı (a_n) W(a_n)'den sonra hesaplandı (A1-K108)
     std::uint64_t gercek_zaman_kacirma = 0;   // sim gecikmesi + kaçırılan parti + son tarih
+    // Uçtan uca yanıt süresi: TF(n) yazımından yanıt(n) alımına (duvar; HIL'de anlamlı).
+    std::uint64_t yanit_sayisi = 0;
+    std::int64_t yanit_p50_ns = 0, yanit_p99_ns = 0, yanit_en_cok_ns = 0;
+    // Karttan gelen akışın çerçeve hataları: toplam ve çalıştırma oturumu kurulduktan sonra
+    // (el sıkışma, hazırlık ve REBOOT sırasındakiler hariç).
+    std::uint64_t rx_crc_kosu = 0, rx_resync_kosu = 0, rx_seq_gap_kosu = 0;
 };
 
 struct Sonuc {

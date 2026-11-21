@@ -59,11 +59,13 @@ set(_ida_kopru_testleri
   yanlis_dialect         # kabul 1
   yuva_zamanlama         # kabul 3: L_act, geç yanıt, süre dolumu
   eszamansiz_guvenli     # kabul 3: A1-K78
+  eszamansiz_ilk_parti   # W4-K6: ilk parti öncesi eşzamansız çıktı A1-K79'a sayılmaz
   olay_izin_yok          # kabul 4 (EMNİYET)
   olay_yinelenen         # kabul 4
   olay_suresi_gecmis     # kabul 4
   olay_fire_kabul        # kabul 4: yetkili durumda FIRE yalnız tüpü boşaltır
   emniyet_ornegi         # A1-K56: partide ≤ 1, kapanma önce
+  emniyet_rev_durum      # W4-K4: revizyon girdi değerleriyle birlikte
   bellek_tasima
   tcp_tasima
   pty_tasima)

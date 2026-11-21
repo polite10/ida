@@ -135,10 +135,24 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         say.calistirma_gecersiz |= kGecCagriCakismasi;
     }
     if (esz) {
+        // W4-K6: batch_seq = 0 taşıyan ve bu oturumda kartın henüz hiçbir partiyi kapattığı
+        // görülmemişken (olağan yanıt alınmamışken) gelen eşzamansız çıktı A1-K79'a sayılmaz.
+        // Parti kapandıktan sonra batch_seq = 0 iddia eden çıktı muaf değildir (Okumalar).
+        if (m.batch_seq == 0u && !ilk_yanit_alindi) {
+            esz_muaf.insert(m.out_seq);
+        }
         esz_bekleyen.push_back(m);
         return;
     }
     gecen_yanit[m.batch_seq] = m;
+    const auto tw = tf_yazim.find(m.batch_seq);
+    if (tw != tf_yazim.end()) {
+        yanit_sure[m.batch_seq] = duvar - tw->second;
+        yanit_sureleri.push_back(duvar - tw->second);
+        while (yanit_sure.size() > 64u) {
+            yanit_sure.erase(yanit_sure.begin());
+        }
+    }
     while (gecen_yanit.size() > 64u) {
         gecen_yanit.erase(gecen_yanit.begin());
     }
@@ -162,6 +176,7 @@ void Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         return;
     }
     y.act_var = true;
+    ilk_yanit_alindi = true;
     y.act = m;
     yuva_tamamlandi_mi(m.batch_seq);
 }
@@ -239,6 +254,11 @@ void Kopru::Ic::rev_artir()
         say.emniyet_rev_doydu = true;
     }
     say.emniyet_revizyonu = emn.emniyet_revizyonu;
+    // W4-K4: bu revizyonun girdi değeri (artış, işlemin durumu değiştirmesinden sonra yapılır).
+    rev_girdi[emn.emniyet_revizyonu] = girdi_kodu();
+    while (rev_girdi.size() > 256u) {
+        rev_girdi.erase(rev_girdi.begin());
+    }
 }
 
 void Kopru::Ic::izin_kapat(int tup)
@@ -477,6 +497,30 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         i.yururluk = false;
         i.yururluk_sil = false;
     }
+    // W4-K3 (EMNİYET): acil durdurmanın etkinleştiği sınırda yürürlükteki komut ve bekleyen bütün
+    // yuvalar iptal edilir; kalkıştan sonra itki yalnız kalkış anından sonra gönderilen bir
+    // partinin (batch_seq ≥ eşik) yanıtıyla gelir. Eşik, acil durdurma sürerken ve kalktığı
+    // sınırda sonraki TF'nin batch_seq'idir (o sınırın partisi kalkıştan sonra gönderilir).
+    if (i.emn.acil_durdurma) {
+        if (!i.estop_onceki) {
+            if (i.yururluk) {
+                ++i.say.estop_iptal;
+            }
+            i.yururluk = false;
+            for (auto& [sq, y] : i.yuvalar) {
+                (void)sq;
+                if (!y.islendi && !y.iptal) {
+                    y.iptal = true;
+                    ++i.say.estop_iptal;
+                }
+            }
+        }
+        i.estop_esik_var = true;
+        i.estop_esik = i.sonraki_seq;
+    } else if (i.estop_onceki) {
+        i.estop_esik = i.sonraki_seq;
+    }
+    i.estop_onceki = i.emn.acil_durdurma;
     struct Aday {
         mavlink_ida_actuator_t m;
         bool esz;
@@ -491,8 +535,11 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         if (yv != i.yuvalar.end()) {
             Yuva& y = yv->second;
             y.islendi = true;
+            const bool esik_alti = i.estop_esik_var && seq != i.estop_esik && !yeni(seq, i.estop_esik);
             if (y.iptal) {
-                // eşzamansız güvenli çıktı iptal etti; kaçırılmış sayılmaz
+                // eşzamansız güvenli çıktı ya da acil durdurma iptal etti; kaçırılmış sayılmaz
+            } else if (i.emn.acil_durdurma || esik_alti) {
+                ++i.say.estop_iptal;   // W4-K3: acil durdurmada ya da öncesinde gönderilen parti
             } else if (i.yuva_tamam(y)) {
                 adaylar.push_back({y.act, false});
             } else {
@@ -530,7 +577,11 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         i.son_uygulanan_out_seq = ad.m.out_seq;
         if (ad.esz) {
             ++i.say.esz_guvenli_uygulanan;
-            i.say.calistirma_gecersiz |= kGecEszamansiz;
+            if (i.esz_muaf.count(ad.m.out_seq) != 0u) {
+                ++i.say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
+            } else {
+                i.say.calistirma_gecersiz |= kGecEszamansiz;
+            }
             // Kendinden önce üretilmiş, henüz uygulanmamış olağan yanıtları iptal eder.
             for (auto& [sq, y] : i.yuvalar) {
                 (void)sq;

@@ -124,7 +124,11 @@ struct Kopru::Ic {
     std::map<std::uint32_t, Yuva> yuvalar;
     std::map<std::uint64_t, std::uint32_t> adim_yuva;  // a_n adımı -> seq
     std::map<std::uint32_t, mavlink_ida_actuator_t> gecen_yanit;   // A1-K118 için (son 64)
+    std::map<std::uint32_t, std::int64_t> yanit_sure;   // seq -> TF yazımından yanıt alımına (son 64)
+    std::vector<std::int64_t> yanit_sureleri;           // çalıştırma boyunca (ölçüm)
     std::vector<mavlink_ida_actuator_t> esz_bekleyen;
+    std::set<std::uint32_t> esz_muaf;       // W4-K6: ilk parti öncesi eşzamansız çıktıların out_seq'i
+    bool ilk_yanit_alindi = false;          // bu oturumda olağan yanıt alındı
     bool sinir_var = false;
     std::uint64_t son_sinir = 0;
     bool out_seq_var = false;
@@ -148,6 +152,20 @@ struct Kopru::Ic {
     std::array<std::int64_t, 2> izin_bitis{};
     std::vector<EmniyetAtama> atama_bekleyen;
     std::uint32_t dar_komut_bekleyen = 0;
+    // W4-K4: her revizyonda emniyet girdilerinin (acil durdurma, fiş, pim) yetkili değeri;
+    // bit 0 estop, bit 1–2 fiş takılı, bit 3–4 pim çıkık. Son 256 revizyon.
+    std::map<std::uint32_t, std::uint8_t> rev_girdi;
+    std::uint8_t girdi_kodu() const
+    {
+        std::uint8_t g = emn.acil_durdurma ? 1u : 0u;
+        for (std::size_t k = 0; k < 2; ++k) {
+            g = static_cast<std::uint8_t>(g | (emn.fis[k] ? (2u << k) : 0u) | (!emn.pim[k] ? (8u << k) : 0u));
+        }
+        return g;
+    }
+    bool estop_onceki = false;              // W4-K3
+    bool estop_esik_var = false;
+    std::uint32_t estop_esik = 0;
 
     // ---- Komutlar ----
     std::uint32_t c = 1;                    // A1-K66
