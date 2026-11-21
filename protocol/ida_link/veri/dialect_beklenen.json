@@ -1,0 +1,9 @@
+{
+  "kaynak": "docs/sozlesmeler/A1-kart-baglantisi.md §3.2 (çapraz uyum turu adayı)",
+  "aciklama": "dialect_hash ve kanonik metnin satır sayılarının sözleşmedeki değerleri. Derleme, değeri protocol/ida.xml'den hesaplar; protokol.dialect.beklenen testi ikisini karşılaştırır. XML bilerek değiştirildiğinde bu dosya sözleşmeyle birlikte bilerek güncellenir.",
+  "dialect_hash": "0x3939788984A5FF80",
+  "mesaj_satiri": 37,
+  "alan_satiri": 334,
+  "girdi_satiri": 194,
+  "toplam_satir": 565
+}
