@@ -81,6 +81,7 @@ int test_komut_yolu(const Baglam&)
         }
     }
     mavlink_ida_cmd_result_t r{};
+    bool gorev_modulu = false;
     const auto simple = [](std::uint32_t id, unsigned tur, unsigned arg) {
         return [id, tur, arg](PartiKurucu& p) {
             p.simple(id, static_cast<std::uint8_t>(tur), static_cast<std::uint16_t>(arg));
@@ -101,6 +102,9 @@ int test_komut_yolu(const Baglam&)
               },
               3u, &r)) {
         sonuc_yaz("GUIDED_SP", r);
+        // Görev modülü yer tutucusu GUIDED_SP'yi UNSUPPORTED döndürür ve ARM yolu yoktur;
+        // gerçek modül (W3-K7) GUIDED_SP'yi işler.
+        gorev_modulu = u(r.ack) != IDA_ACK_UNSUPPORTED;
     }
     // SET_MODE(STABILIZE) (daraltıcı: mandal).
     if (komut(*d.sim, &seq, simple(4u, IDA_CMD_SET_MODE, IDA_MODE_STABILIZE), 4u, &r)) {
@@ -138,6 +142,58 @@ int test_komut_yolu(const Baglam&)
             KONTROL(u(ra.ack) == IDA_ACK_REJECTED);
         }
         KONTROL(silahsiz_mi(*d.sim, &seq));
+    }
+    // ARM'ın kabulü (sol notu): parametre kümesi kaydedilince (param_ok; A4-K78) ve W3-K3'ün
+    // ön koşulları tutunca ARM kabul edilmeli ve araç silahlanmalı. Ön koşullar çekirdeğin
+    // bildirdiği durumdan okunur; tutmuyorsa (ör. görev modülü olmayan çekirdek) beklenti
+    // koşulludur ve durum yazdırılır.
+    {
+        mavlink_ida_cmd_result_t r20{}, r21{};
+        if (komut(*d.sim, &seq, simple(20u, IDA_CMD_PARAM_COMMIT, 0u), 20u, &r20)) {
+            sonuc_yaz("PARAM_COMMIT", r20);
+        }
+        if (komut(*d.sim, &seq, simple(21u, IDA_CMD_PARAM_SAVE, 0u), 21u, &r21)) {
+            sonuc_yaz("PARAM_SAVE", r21);
+        }
+        // Kestirimin durağan hizalaması (KES_HIZ_S, varsayılan 1 s) bitsin: 1,5 s daha.
+        for (int i = 0; i < 300; ++i) {
+            KONTROL(parti(*d.sim, seq++));
+        }
+        mavlink_ida_status_t s{};
+        std::uint8_t est = 0xFFu;
+        for (const Cerceve& c : d.sim->cerceveler()) {
+            if (c.msgid() == MAVLINK_MSG_ID_IDA_NAV) {
+                est = c.coz<mavlink_ida_nav_t>().est_level;
+            }
+        }
+        if (KONTROL(son_durum(*d.sim, &s))) {
+            const bool on_kosul = gorev_modulu && u(s.param_ok) == 1u && u(s.events_ok) == 1u &&
+                                  u(s.fs_level) == IDA_FS_NONE &&
+                                  (u(est) == IDA_EST_OK || u(est) == IDA_EST_DEGRADED);
+            std::printf("  ARM ön koşulları: görev modülü %s, param_ok %u, events_ok %u, "
+                        "fs_level %u, fs_reasons 0x%08x, est_level %u -> %s\n",
+                        gorev_modulu ? "var" : "yer tutucu", u(s.param_ok), u(s.events_ok),
+                        u(s.fs_level),
+                        static_cast<unsigned>(s.fs_reasons), u(est),
+                        on_kosul ? "kabul beklenir" : "beklenti koşullu (sağlanmadı)");
+            mavlink_ida_cmd_result_t ra{};
+            if (komut(*d.sim, &seq, simple(22u, IDA_CMD_ARM, 0u), 22u, &ra)) {
+                sonuc_yaz("ARM (param_ok sonrası)", ra);
+                if (on_kosul) {
+                    KONTROL(u(ra.ack) == IDA_ACK_ACCEPTED);
+                    for (int i = 0; i < 25; ++i) {
+                        KONTROL(parti(*d.sim, seq++));
+                    }
+                    mavlink_ida_status_t s2{};
+                    KONTROL(son_durum(*d.sim, &s2) && u(s2.armed) == 1u);
+                }
+            }
+            mavlink_ida_cmd_result_t rd{};
+            if (komut(*d.sim, &seq, simple(23u, IDA_CMD_DISARM, 0u), 23u, &rd)) {
+                KONTROL(u(rd.ack) == IDA_ACK_ACCEPTED);
+            }
+            KONTROL(silahsiz_mi(*d.sim, &seq));
+        }
     }
     for (const Cerceve& c : d.sim->cerceveler()) {
         KONTROL(c.msgid() != MAVLINK_MSG_ID_IDA_SESSION_CLOSE);

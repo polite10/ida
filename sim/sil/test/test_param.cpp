@@ -245,13 +245,22 @@ int test_param_deposu(const Baglam& b)
         std::uint32_t seq = 1;
         KONTROL(parti(*d.sim, seq++));
         KONTROL(param_al(*d.sim, &seq, 901u, aday.id) == aday.yeni);
-        // Yeni bir kayıt öncekinin kuşağından büyük kuşak alır.
+        // W4-K10 (a): init sonrasında param_gen = 0 (A4 §3.6); saklı kuşak yalnız kalici_blok
+        // bilgisindedir. Yeni kayıt kabul edilir; kuşağı init'ten beri üretilenlere göredir
+        // (önceki açılışın kuşağından büyük olması beklenmez).
+        for (int i = 0; i < 3; ++i) {
+            KONTROL(parti(*d.sim, seq++));
+        }
+        mavlink_ida_status_t st{};
+        if (KONTROL(son_durum(*d.sim, &st))) {
+            KONTROL(st.param_gen == 0u && st.param_blob_crc == save_crc);
+        }
         KONTROL(parti(*d.sim, seq++, nullptr, [](PartiKurucu& p) {
             p.simple(902u, static_cast<std::uint8_t>(IDA_CMD_PARAM_SAVE), 0u);
         }));
         mavlink_ida_cmd_result_t r{};
         if (KONTROL(sonuc_bekle(*d.sim, 902u, &r))) {
-            KONTROL(u(r.ack) == IDA_ACK_ACCEPTED && r.save_gen > save_gen);
+            KONTROL(u(r.ack) == IDA_ACK_ACCEPTED && r.save_gen >= 1u);
             save_gen = r.save_gen;
             save_crc = r.save_crc;
         }

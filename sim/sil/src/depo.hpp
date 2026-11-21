@@ -16,8 +16,11 @@
 //   [44,44+len) blob
 // İki kesim ayrı denetlenir: bozuk blok sayacı, bozuk sayaç bloğu geçersiz kılmaz.
 //
-// Yazım atomiktir (A4-K84): içerik "<yol>.yeni"ye yazılır, geri okunup doğrulanır, sonra eski
-// dosyanın üzerine yeniden adlandırılır; doğrulama tutmazsa eski dosya korunur.
+// Yazım kesintiye dayanıklıdır (A4-K84): içerik "<yol>.yeni"ye yazılır ve aygıta kadar
+// kalıcılaştırılır (macOS F_FULLFSYNC, yoksa fsync; Windows FlushFileBuffers), geri okunup
+// doğrulanır, eskinin üzerine adlandırılır (POSIX rename; Windows MoveFileExW
+// REPLACE_EXISTING | WRITE_THROUGH) ve POSIX'te dizin kalıcılaştırılır. Herhangi bir adım
+// başarısızsa OK verilmez; adlandırmadan önceki bir hatada eski dosya aynen kalır.
 #pragma once
 
 #include <cstddef>
@@ -78,15 +81,24 @@ public:
     void kalici_blok(std::uint32_t* crc, std::uint32_t* len, std::uint32_t* gen) const;
 
     bool dosyali() const { return !yol_.empty(); }
+
+    // Dosyaya yazımın adımları (sırasıyla). Sınama: adımların izi ve tek adımda hata
+    // enjeksiyonu (o adım başarısız sayılır).
+    enum class Adim { Yazma, Kalicilastirma, Dogrulama, YenidenAdlandirma, DizinKaliciligi };
+    void hata_enjekte(std::optional<Adim> a) { hata_ = a; }
+    const std::vector<Adim>& adim_izi() const { return iz_; }
     const std::string& yol() const { return yol_; }
 
 private:
     std::vector<std::uint8_t> kodla(const std::optional<Blok>& b) const;
-    bool atomik_yaz(const std::vector<std::uint8_t>& icerik, bool* dogrulama_hatasi) const;
+    bool atomik_yaz(const std::vector<std::uint8_t>& icerik, bool* dogrulama_hatasi);
+    bool adim(Adim a);
 
     std::string yol_;
     std::optional<std::uint32_t> sayac_;  // son verilen boot_count; yok: geçersiz
     std::optional<Blok> blok_;
+    std::optional<Adim> hata_;
+    std::vector<Adim> iz_;
 };
 
 }  // namespace ida::sil

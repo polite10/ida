@@ -40,6 +40,20 @@ SahteSim::~SahteSim()
     kapat();
 }
 
+void SahteSim::okumayi_durdur()
+{
+    dur_.store(true);
+    if (iplik_.joinable()) {
+        iplik_.join();
+    }
+}
+
+bool SahteSim::bayt_gonder_durdurulabilir(const std::uint8_t* p, std::size_t n,
+                                          const std::atomic<bool>* dur)
+{
+    return soket_.yaz(p, n, dur);
+}
+
 void SahteSim::kapat()
 {
     dur_.store(true);
@@ -367,6 +381,67 @@ void PartiKurucu::guided(std::uint32_t cmd_id, std::uint8_t mask, float depth, f
     m.mask = mask;
     m.source = 255u;
     sim_.gonder(MAVLINK_MSG_ID_IDA_CMD_GUIDED, m);
+    ++uye_;
+}
+
+void PartiKurucu::emniyet(std::uint32_t seq, std::int64_t t, std::uint32_t rev)
+{
+    mavlink_ida_safety_t m{};
+    m.t_meas_ns = t;
+    m.seq = seq;
+    m.safety_rev = rev;
+    m.flags = static_cast<std::uint16_t>(IDA_HF_VALID);
+    m.estop = 0u;
+    m.tube[0] = static_cast<std::uint8_t>(IDA_TUBE_LOADED);
+    m.tube[1] = static_cast<std::uint8_t>(IDA_TUBE_LOADED);
+    sim_.gonder(MAVLINK_MSG_ID_IDA_SAFETY, m);
+    ++uye_;
+}
+
+void PartiKurucu::algilama(std::uint32_t batch_seq, std::uint32_t det_seq, std::int64_t t)
+{
+    mavlink_ida_det_batch_t b{};
+    b.t_meas_ns = t;
+    b.batch_seq = batch_seq;
+    b.window_ns = 1000000u;
+    b.source = 1u;
+    b.count = 1u;
+    sim_.gonder(MAVLINK_MSG_ID_IDA_DET_BATCH, b);
+    ++uye_;
+    mavlink_ida_det_record_t r{};
+    r.t_meas_ns = t;
+    r.det_seq = det_seq;
+    r.batch_seq = batch_seq;
+    r.window_ns = 1000000u;
+    r.confidence = 0.5f;
+    r.source = 1u;
+    r.batch_count = 1u;
+    sim_.gonder(MAVLINK_MSG_ID_IDA_DET_RECORD, r);
+    ++uye_;
+}
+
+void PartiKurucu::ping360(std::uint32_t seq, std::int64_t t)
+{
+    mavlink_ida_ping360_data_t d{};
+    d.seq = seq;
+    d.frag_idx = 0u;
+    for (std::size_t i = 0; i < sizeof d.data; ++i) {
+        d.data[i] = static_cast<std::uint8_t>(i & 0x7Fu);
+    }
+    sim_.gonder(MAVLINK_MSG_ID_IDA_PING360_DATA, d);
+    ++uye_;
+    mavlink_ida_ping360_head_t h{};
+    h.t_meas_ns = t;
+    h.seq = seq;
+    h.angle_grad = static_cast<std::uint16_t>(seq % 400u);
+    h.n_samples = 240u;
+    h.sample_period = 100u;
+    h.tx_duration_us = 50u;
+    h.tx_freq_khz = 750u;
+    h.flags = static_cast<std::uint16_t>(IDA_HF_VALID);
+    h.gain = 1u;
+    h.n_frag = 1u;
+    sim_.gonder(MAVLINK_MSG_ID_IDA_PING360_HEAD, h);
     ++uye_;
 }
 
