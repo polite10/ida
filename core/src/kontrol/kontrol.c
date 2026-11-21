@@ -583,8 +583,8 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
     }
 
     /* Eğrinin tersi ve ölü bant (A4-K54). */
-    ok = ok && ida_sonlu(k->i_w) && ida_sonlu(k->i_v[0]) && ida_sonlu(k->i_v[1]) &&
-         ida_sonlu(k->d_ref) && ida_sonlu(k->psi_ref);
+    ok = ida_sonlu(k->i_w) && ida_sonlu(k->i_v[0]) && ida_sonlu(k->i_v[1]) &&
+         ida_sonlu(k->d_ref) && ida_sonlu(k->psi_ref); /* yukarıda !ok dönüldü */
     for (uint32_t j = 0u; j < 3u; j++) {
         ok = ok && ida_sonlu(k->i_pqr[j]);
     }

@@ -14,6 +14,11 @@ _Static_assert((uint32_t)IDA_PRM_kon_sekil_c4 - (uint32_t)IDA_PRM_kon_sekil_c0 =
 #define YON_TOLERANS   1.0e-3f /* |‖ε‖ − 1| sınırı (A5-K32'nin uygulamadaki toleransı)    */
 #define DF_ESIK        1.0e-12f
 
+/* Sabit olmayan iki boyutlu diziyi const parametreye açık dönüşümle verir: ISO C17'de
+   T (*)[N] → const T (*)[N] örtük dönüşümü uyumsuz sayılır (GCC -pedantic-errors). */
+#define SABIT_B(x) ((const float(*)[IDA_TAH_ITICI])(x))
+#define SABIT_N(x) ((const float(*)[IDA_TAH_ITICI])(x))
+
 typedef union {
     uint32_t u;
     float f;
@@ -248,8 +253,8 @@ static void maske_izdusum(float ns[IDA_TAH_ITICI][IDA_TAH_ITICI], uint8_t maske)
 
 /* Grubun ns altındaki tersi: pg = ns A_gᵀ (A_g ns A_gᵀ)⁺ (8×m). *tam: bütün yönler üretilebilir;
    olcek ≤ 0 ise grubun yetkisi yoktur (pg = 0). */
-static bool grup_tersi(float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], uint8_t maske,
-                       const uint8_t grup[2], float ns[IDA_TAH_ITICI][IDA_TAH_ITICI],
+static bool grup_tersi(const float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], uint8_t maske,
+                       const uint8_t grup[2], const float ns[IDA_TAH_ITICI][IDA_TAH_ITICI],
                        float pg[IDA_TAH_ITICI][2], float na[IDA_TAH_ITICI][2], bool *tam)
 {
     const uint32_t m = grup_boyu(grup);
@@ -329,9 +334,9 @@ static bool grup_tersleri(float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], uint8_t maske,
             }
         }
         bool tam = false;
-        sonlu = sonlu && grup_tersi(b, maske, gruplar[g], no, pg, na, &tam);
+        sonlu = sonlu && grup_tersi(SABIT_B(b), maske, gruplar[g], SABIT_N(no), pg, na, &tam);
         if (!tam) {
-            sonlu = sonlu && grup_tersi(b, maske, gruplar[g], ns, pg, na, &tam);
+            sonlu = sonlu && grup_tersi(SABIT_B(b), maske, gruplar[g], SABIT_N(ns), pg, na, &tam);
         }
         for (uint32_t i = 0u; i < IDA_TAH_ITICI; i++) {
             for (uint32_t c = 0u; c < m; c++) {
@@ -352,7 +357,7 @@ static bool grup_tersleri(float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], uint8_t maske,
 }
 
 /* κ₂(Bs M Bsᵀ): seçili eksenler ve iticiler. Tekilse −1. */
-static float kosul(float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], const uint8_t *eks, uint32_t n,
+static float kosul(const float b[IDA_TAH_EKSEN][IDA_TAH_ITICI], const uint8_t *eks, uint32_t n,
                    uint8_t maske)
 {
     float a[IDA_TAH_EKSEN][IDA_TAH_EKSEN];
@@ -491,9 +496,9 @@ float ida_tah_kosul_sayisi(const ida_prm_kume_t *k, uint8_t rejim)
         return -1.0f;
     }
     if (rejim == IDA_TAH_YUZEY) {
-        return kosul(b, EKS_YUZEY, 3u, yatay);
+        return kosul(SABIT_B(b), EKS_YUZEY, 3u, yatay);
     }
-    return kosul(b, EKS_DALIS, 6u, 0xFFu);
+    return kosul(SABIT_B(b), EKS_DALIS, 6u, 0xFFu);
 }
 
 uint8_t ida_tah_param_denetle(const ida_prm_kume_t *k)
@@ -503,11 +508,11 @@ uint8_t ida_tah_param_denetle(const ida_prm_kume_t *k)
     if (!matris_kur(k, b, &yatay)) {
         return IDA_TAH_YON_BIRIM;
     }
-    const float kd = kosul(b, EKS_DALIS, 6u, 0xFFu);
+    const float kd = kosul(SABIT_B(b), EKS_DALIS, 6u, 0xFFu);
     if (!(kd > 0.0f) || !(kd <= IDA_TAH_KOSUL_EN_BUYUK)) {
         return IDA_TAH_RANK;
     }
-    const float ky = kosul(b, EKS_YUZEY, 3u, yatay);
+    const float ky = kosul(SABIT_B(b), EKS_YUZEY, 3u, yatay);
     if (!(ky > 0.0f) || !(ky <= IDA_TAH_KOSUL_EN_BUYUK)) {
         return IDA_TAH_YUZEY_RANK;
     }
