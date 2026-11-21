@@ -58,8 +58,29 @@ void ida_gor_kur(ida_gor_t *g)
     g->mission_state = (uint8_t)IDA_MS_IDLE;
 }
 
+/* Bozulma mandalı (sol bulgu 5; EMNİYET): durum yeniden kurulur, `bozuk` izi init'e kadar
+   kalır (düzey DISARM: silahsızlandırır, istek KAPALI, arm yok); `bozuk_yeni` bu çağrının
+   adımına bozulmanın görüldüğünü taşır (silahsızlandırma ve genişleticilere NARROWED). */
+static void bozuk_mandalla(ida_gor_t *g)
+{
+    ida_gor_kur(g);
+    g->bozuk = true;
+    g->bozuk_yeni = true;
+}
+
+/* Adımdan önce durumu yazan kancalar (oturum başı, örnekler) önce tutarlılığı denetler: bir
+   yazımın bozuk alanı geçerli değerle örtmesi bozulmanın kanıtını silmesin (sol 2. tur
+   bulgu 2). Çerçevenin bütünlük denetimi aynı çağrıda core_ok'u ayrıca düşürür. */
+static void yazmadan_once_denetle(ida_gor_t *g)
+{
+    if (!g->bozuk_yeni && !ida_gor_tutarli(g)) {
+        bozuk_mandalla(g);
+    }
+}
+
 void ida_gor_oturum_basi(ida_gor_t *g)
 {
+    yazmadan_once_denetle(g);
     /* A4-K72, 3.11 (b3): mandallı arıza eylemleri, silahlandırma ve kip değişmez. Bu modülün
        süreleri duvar saatindedir; oturumlar arasında süreklidir. Ölçüm zamanına bağlı tek
        durum seyrüsefer görüntüsünden alınan tutma hedefleridir: kestirim yeniden başladığı
@@ -71,6 +92,7 @@ void ida_gor_oturum_basi(ida_gor_t *g)
 
 void ida_gor_ornek(ida_gor_t *g, const ida_sample_t *s)
 {
+    yazmadan_once_denetle(g);
     switch (s->hdr.type) {
     case IDA_SENS_BATT:
         g->batt_var = true;
@@ -166,11 +188,11 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     /* Durum bozulması (sol bulgu 5; EMNİYET): tanımsız değer olağan hesapla örtülmez. Durum
        yeniden kurulur ve init'e kadar bozuk izi kalır: düzey DISARM (silahsızlandırır, istek
        kapalı), arm yok; düzeyin yükselmesi bu çağrının genişleticilerini de engeller. */
-    const bool bozulma = !ida_gor_tutarli(g);
+    const bool bozulma = g->bozuk_yeni || !ida_gor_tutarli(g);
     if (bozulma) {
-        ida_gor_kur(g);
-        g->bozuk = true;
+        bozuk_mandalla(g);
     }
+    g->bozuk_yeni = false;
     if (!g->taban_var) {
         g->taban_var = true;
         g->gcs_son_ns = now; /* HEARTBEAT süresinin tabanı */
@@ -225,7 +247,6 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     /* 5. Arm ön koşulunun ve kip kararının anlık görüntüsü (aynı çağrının komutları
        sırasından bağımsız). */
     g->arm_engeli = arm_engeli_hesapla(g, yetki);
-    g->adim_aktif = g->etkin | g->mandal;
 }
 
 /* GEÇİCİ (W3-K5): W3-kestirim birleşince gövde `return ida_kes_gecerlilik(&c->kes);` olur.
@@ -319,24 +340,22 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
        geçerlilik (ida_gor_yatay_gecerli) ve yüklü görev ister. */
     const bool dikey = g->nav_tutum_var && g->nav_yon_var && g->nav_derinlik_var;
     const bool auto_kosul = g->nav_konum_var && gorev_hazir;
-    /* Sol bulgu 1 (EMNİYET): hedef kipin arıza etkisi kabulden önce, adım görüntüsüyle
-       değerlendirilir; hedef sütunda eylem bulunulan sütundakinden ağırsa kip genişlemez.
-       Böylece kip değişimi aynı çağrıda arıza eylemini ağırlaştırmaz ve ARM kararı (adım
-       görüntüsü) iki komut sırasında da aynıdır. */
-    const bool arizayi_agirlastirir =
-        (h < IDA_GOR_KIP_SAYI) &&
-        (ida_gor_ariza_duzey(g, g->adim_aktif, h, NULL) >
-         ida_gor_ariza_duzey(g, g->adim_aktif, yetki->mode, NULL));
-    if ((h == (uint8_t)IDA_GOR_KIP_RET) || !dikey || g->bozuk ||
-        ((olay == (uint8_t)IDA_GOR_OLAY_AUTO) && !auto_kosul) || arizayi_agirlastirir) {
+    /* Ret koşulları yalnız §3.17'nin SET_MODE satırıdır (A4-K124; W3-K13). */
+    if ((h == (uint8_t)IDA_GOR_KIP_RET) || !dikey ||
+        ((olay == (uint8_t)IDA_GOR_OLAY_AUTO) && !auto_kosul)) {
         ret(r, (uint16_t)IDA_REASON_BAD_MODE); /* hedef kipin ön koşulu (3.17) */
         return;
     }
     const uint8_t onceki = yetki->mode;
     (void)ida_gor_kip_uygula(yetki, olay, gun, b->now_w.ns);
     if (yetki->mode != onceki) {
-        /* Yeni sütunda mandallar ve düzey (aynı çağrının çıktısı yeni kipe göre). */
+        /* W3-K13 (sol bulgu 1): arıza düzeyi yeni kipin sütununa göre o anda yeniden
+           hesaplanır (mandallar, düzey, FAILSAFE_CHANGE) ve arm ön koşulunun görüntüsü
+           güncellenir; aynı çağrıda sonra gelen komutlar güncel düzeyi görür (sonraki ARM,
+           yeni kipte arıza eylemi varsa NOT_ARMABLE). Daha önce kabul edilmiş ARM kendi
+           anındaki koşullarla kalır: sonuç ardışık iki çağrıdakiyle aynıdır. */
         ida_gor_ariza_kip_degisti(g, yetki->mode, gun, b->now_w.ns);
+        g->arm_engeli = arm_engeli_hesapla(g, yetki);
         tut_yakala(g);
     }
     g->son_kip = yetki->mode;
@@ -465,7 +484,7 @@ bool ida_gor_tutarli(const ida_gor_t *g)
         b_gecerli(&g->batt_var) && b_gecerli(&g->batt_dusuk_say) &&
         b_gecerli(&g->batt_krit_say) && b_gecerli(&g->sizinti_var[0]) &&
         b_gecerli(&g->sizinti_var[1]) && b_gecerli(&g->sizinti_var[2]) &&
-        b_gecerli(&g->sizinti_var[3]) && b_gecerli(&g->bozuk) &&
+        b_gecerli(&g->sizinti_var[3]) && b_gecerli(&g->bozuk) && b_gecerli(&g->bozuk_yeni) &&
         b_gecerli(&g->est_ok_say) && b_gecerli(&g->konum_say) &&
         b_gecerli(&g->konum_yok_izi) && b_gecerli(&g->adim_daralt) &&
         b_gecerli(&g->est_kotu_say) && b_gecerli(&g->imu_taze_say) && b_gecerli(&g->imu_lag) &&

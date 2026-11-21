@@ -90,7 +90,8 @@ typedef struct {
                                   dağıtıcı A4-K45 konumunda NARROWED verir (W3-K9)          */
     bool bozuk;                /* durum bozulması görüldü: init'e kadar DISARM (EMNİYET)    */
     bool taban_var;            /* zamanlayıcı tabanı kuruldu (ilk adım)                    */
-    uint32_t adim_aktif;       /* adım sonundaki etkin | mandal (kip kararının görüntüsü)  */
+    bool bozuk_yeni;           /* bozulma adımdan önce (örnek, oturum başı) görüldü; bu
+                                  çağrının adımı onu işler                                  */
     uint8_t itici_disi;        /* devre dışı itici maskesi (bit i: itici i); dilim 1'de 0  */
     /* Arıza */
     uint8_t fs_level;          /* IDA_FS_*                                                 */

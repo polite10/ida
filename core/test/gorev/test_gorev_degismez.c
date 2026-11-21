@@ -404,9 +404,11 @@ static void cagri(duzenek_t *d, bool denetle)
             (c->emn.mode != kip0)) {
             TEST_ASSERT_TRUE(kip_kabul);
         }
-        /* Silahlıyken arıza eylemi bulunulan kipin sütunuyla tutarlı ve HOLD'un altında değilse
-           silahlanma bu çağrıda olmamıştır (sol bulgu 1). */
-        if (c->emn.armed && !armed0) {
+        /* Bu çağrıda silahlandıysa ve kip komutla değişmediyse arıza eylemi HOLD'un altındadır
+           (sol bulgu 1). ARM'dan sonra kabul edilen bir kip değişimi aracı yeni kipin eylemiyle
+           silahlı bırakabilir (W3-K13; ardışık iki çağrıyla aynı); sıranın kendisi
+           test_gorev_sol.c'nin B1 testlerinde sınanır. */
+        if (c->emn.armed && !armed0 && !kip_kabul) {
             TEST_ASSERT_TRUE(c->gor.fs_level < (uint8_t)IDA_FS_HOLD);
         }
         /* D5 */
