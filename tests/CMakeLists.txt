@@ -89,3 +89,4 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 add_subdirectory(duman)
 add_subdirectory(kabul/cekirdek)
 add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
+add_subdirectory("${PROJECT_SOURCE_DIR}/firmware/test" firmware-test)  # kart yazılımının donanımsız modülleri (W3-kart)
