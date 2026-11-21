@@ -2,10 +2,10 @@
  * tel.c — A1 tel katmanı (ida_link/tel.h). Sözleşme: A1 §3.2, §4.1, A1-K101.
  *
  * Üretilmiş MAVLink kitaplığından yalnız şunlar kullanılır: mesaj yapı tipleri ve
- * MAVLINK_MSG_ID_* sabitleri (boy, CRC_EXTRA), checksum.h'in durumsuz crc_init /
- * crc_accumulate işlevleri. Kitaplığın ayrıştırıcısı ve kodlayıcısı (kanal dizili olanlar
- * da, *_buffer biçimleri de) kullanılmaz: A1-K05–K07'nin ret ve yeniden eşleme kuralları
- * bu dosyada uygulanır, bütün durum çağıranın örneğindedir.
+ * MAVLINK_MSG_ID_* sabitleri (boy, CRC_EXTRA), checksum.h'in durumsuz crc_init işlevi.
+ * Kitaplığın ayrıştırıcısı ve kodlayıcısı (kanal dizili olanlar da, *_buffer biçimleri de)
+ * kullanılmaz: A1-K05–K07'nin ret ve yeniden eşleme kuralları bu dosyada uygulanır, bütün
+ * durum çağıranın örneğindedir.
  *
  * A1-K101 güvencesi (derleme ve bağlama düzeyi):
  *  - MAVLINK_EXTERNAL_RX_STATUS / MAVLINK_EXTERNAL_RX_BUFFER tanımlanır ve kanal dizileri
@@ -15,6 +15,20 @@
  *    "m_mavlink_status / m_mavlink_buffer tanımsız" hatasıyla durur.
  *  - Ayrıca protokol.simge testi kitaplık arşivinde kanal işlevi ve dizisi simgesi
  *    bulunmadığını nm ile denetler (protocol/ida_link/cmake/simge_denetimi.cmake).
+ *
+ * Hız (W3-tel-hiz; ölçüm docs/olcumler/MP5-tel-maliyeti.md §9, olcum/mp5-tel-maliyeti
+ * dalı). MP5 §9.6'daki değişikliklerden 2–6 alındı (prototipteki `wbt256eh` birleşimi);
+ * açık arayüz ve davranış değişmez:
+ *  2. memcpy/memset yerine sözcük genişliğinde yerel kopya ve sıfırlama (kopyala, sifirla);
+ *  3. alıcıda başlık geçtikten sonra yük ve sağlama baytları blok hâlinde işlenir
+ *     (govde_isle): CRC tek geçişte, yük çerçeveye doğrudan kaynaklardan kopyalanır;
+ *  4. CRC 256 girdili tabloyla (tel_crc_tablo.h; seçimin gerekçesi orada);
+ *  5. kodlayıcıda sondaki sıfırlar sözcük sözcük taranır, yük kopyası ve CRC aynı geçişte;
+ *  6. kimlikten tablo satırına doğrudan dizin (ikili arama yerine), rx_bytes çağrı başına
+ *     bir kez toplanır, ida_link_coz yapıyı bir kez yazar.
+ * Madde 1 (teslim edilen yükün kuyruğunu yalnız yuk_azami'ye kadar sıfırlamak) alınmadı:
+ * tel.h'nin "yuk[len, IDA_LINK_YUK_AZAMI) sıfırdır" sözünü değiştirir.
+ * Eski ve yeni uygulamanın eşitliği olcum/tel_fark.c'de sınanır (eski kopya olcum/tel_eski.c).
  */
 #ifdef MAVLINK_CHECK_MESSAGE_LENGTH
 #error "MAVLINK_CHECK_MESSAGE_LENGTH tanimlanmaz (A1 7.3; uzunluk denetimi ida_link'te, A1-K05)"
@@ -33,6 +47,7 @@ extern mavlink_message_t m_mavlink_buffer[MAVLINK_COMM_NUM_BUFFERS];
 #include <string.h>
 
 #include "ida_link/ozel/tablo_uretilen.h"
+#include "tel_crc_tablo.h"
 
 /* Tel yükü = yapının ilk baytları varsayımı yalnız küçük uçlu hedefte geçerlidir. */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
@@ -75,23 +90,122 @@ _Static_assert(IDA_LINK_TABLO_SAYISI == IDA_LINK_DIALECT_MESAJ_SATIRI, "tablo ek
 _Static_assert(IDA_LINK_DIALECT_YUK_AZAMI <= IDA_LINK_YUK_AZAMI, "yuk siniri");
 _Static_assert(IDA_LINK_CERCEVE_AZAMI == IDA_LINK_EK_BOY + IDA_LINK_YUK_AZAMI, "cerceve siniri");
 
-/* Tablo kimliğe göre artan sıradadır (üreteç sıralar); ikili arama. */
+/* Kimlikten satıra doğrudan dizin (MP5 §9.6 md. 6). Dialect'in bütün kimlikleri A1 §3.2'nin
+   46000–46099 aralığındadır (derleme zamanında denetlenir); DIZIN[kimlik - 46000] satırın
+   sırası + 1, 0 ise kimlik dialect'te yok. Dizin üretilmiş tablo makrosundan kurulur. */
+#define IDA_LINK_KIMLIK_TABAN 46000u
+#define IDA_LINK_KIMLIK_ARALIK 100u
+#define IDA_LINK_SIRA(id, crc, len, tip, yon) IDA_LINK_SIRA_##tip,
+enum { IDA_LINK_TABLO_SATIRLARI(IDA_LINK_SIRA) IDA_LINK_SIRA_SAYISI };
+#define IDA_LINK_ARALIK_DENETIMI(id, crc, len, tip, yon)                     \
+    _Static_assert((id) >= IDA_LINK_KIMLIK_TABAN &&                           \
+                       (id) < IDA_LINK_KIMLIK_TABAN + IDA_LINK_KIMLIK_ARALIK, \
+                   "kimlik araligi: " #tip);
+IDA_LINK_TABLO_SATIRLARI(IDA_LINK_ARALIK_DENETIMI)
+_Static_assert(IDA_LINK_SIRA_SAYISI < 255, "dizin bir bayta sigar");
+_Static_assert(IDA_LINK_SIRA_SAYISI == IDA_LINK_TABLO_SAYISI, "dizin ile tablo ayni satirlar");
+
+#define IDA_LINK_DIZIN(id, crc, len, tip, yon) \
+    [(id) - IDA_LINK_KIMLIK_TABAN] = (uint8_t)(IDA_LINK_SIRA_##tip + 1),
+static const uint8_t DIZIN[IDA_LINK_KIMLIK_ARALIK] = {IDA_LINK_TABLO_SATIRLARI(IDA_LINK_DIZIN)};
+
 static const tablo_satiri_t *satir_bul(uint32_t msgid)
 {
-    size_t alt = 0;
-    size_t ust = IDA_LINK_TABLO_N;
-    while (alt < ust) {
-        const size_t orta = alt + (ust - alt) / 2u;
-        if (TABLO[orta].msgid == msgid) {
-            return &TABLO[orta];
-        }
-        if (TABLO[orta].msgid < msgid) {
-            alt = orta + 1u;
-        } else {
-            ust = orta;
-        }
+    const uint32_t k = msgid - IDA_LINK_KIMLIK_TABAN;  /* aralık altı sarar, büyük olur */
+    if (k >= IDA_LINK_KIMLIK_ARALIK) {
+        return NULL;
     }
-    return NULL;
+    const uint8_t s = DIZIN[k];
+    return s != 0u ? &TABLO[s - 1u] : NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* Kopya, sıfırlama, CRC                                              */
+/* ------------------------------------------------------------------ */
+
+/* Sözcük genişliğinde kopya (MP5 §9.6 md. 2). Sabit boylu memcpy derleyicide tek yükleme ya
+   da saklama komutuna iner (hizasız erişim Cortex-M33'te ve host'ta serbesttir; takma ad
+   kuralı korunur). Kuyruk döngüsüzdür: derleyici döngüyü kitaplık memcpy çağrısına geri
+   çevirmesin (kartın newlib-nano memcpy/memset'i bayt döngüsüdür; MP5 §6). d ile s
+   örtüşmez. */
+static void kopyala(uint8_t *d, const uint8_t *s, size_t n)
+{
+    while (n >= 8u) {
+        uint32_t w0;
+        uint32_t w1;
+        memcpy(&w0, s, 4u);
+        memcpy(&w1, s + 4, 4u);
+        memcpy(d, &w0, 4u);
+        memcpy(d + 4, &w1, 4u);
+        d += 8;
+        s += 8;
+        n -= 8u;
+    }
+    if (n >= 4u) {
+        uint32_t w;
+        memcpy(&w, s, 4u);
+        memcpy(d, &w, 4u);
+        d += 4;
+        s += 4;
+        n -= 4u;
+    }
+    if (n >= 2u) {
+        uint16_t h;
+        memcpy(&h, s, 2u);
+        memcpy(d, &h, 2u);
+        d += 2;
+        s += 2;
+        n -= 2u;
+    }
+    if (n != 0u) {
+        *d = *s;
+    }
+}
+
+static void sifirla(uint8_t *d, size_t n)
+{
+    const uint32_t z = 0u;
+    while (n >= 8u) {
+        memcpy(d, &z, 4u);
+        memcpy(d + 4, &z, 4u);
+        d += 8;
+        n -= 8u;
+    }
+    if (n >= 4u) {
+        memcpy(d, &z, 4u);
+        d += 4;
+        n -= 4u;
+    }
+    if (n >= 2u) {
+        const uint16_t h = 0u;
+        memcpy(d, &h, 2u);
+        d += 2;
+        n -= 2u;
+    }
+    if (n != 0u) {
+        *d = 0u;
+    }
+}
+
+static uint16_t crc_bas(void)
+{
+    uint16_t crc;
+    crc_init(&crc);
+    return crc;
+}
+
+static uint16_t crc_blok(uint16_t crc, const uint8_t *p, size_t n)
+{
+    for (size_t i = 0; i < n; ++i) {
+        crc = tel_crc_adim(crc, p[i]);
+    }
+    return crc;
+}
+
+/* CRC_EXTRA ilk argümandır: boy ile yan yana karışabilecek iki tamsayı olmasın. */
+static uint16_t crc_hesapla(uint8_t crc_extra, const uint8_t *p, size_t n)
+{
+    return tel_crc_adim(crc_blok(crc_bas(), p, n), crc_extra);
 }
 
 /* ------------------------------------------------------------------ */
@@ -124,18 +238,6 @@ static uint8_t gonderilen_yon(uint8_t rol)
 {
     return rol == (uint8_t)IDA_LINK_ROL_KART ? (uint8_t)IDA_LINK_YON_KART_SIM
                                              : (uint8_t)IDA_LINK_YON_SIM_KART;
-}
-
-/* CRC_EXTRA ilk argümandır: boy ile yan yana karışabilecek iki tamsayı olmasın. */
-static uint16_t crc_hesapla(uint8_t crc_extra, const uint8_t *p, size_t n)
-{
-    uint16_t crc;
-    crc_init(&crc);
-    for (size_t i = 0; i < n; ++i) {
-        crc_accumulate(p[i], &crc);
-    }
-    crc_accumulate(crc_extra, &crc);
-    return crc;
 }
 
 /* ------------------------------------------------------------------ */
@@ -217,19 +319,21 @@ static int baslik_denetle(ida_link_alici_t *a)
     return 1;
 }
 
-/* Tamamlanan aday (kural 3, 4). 1: kabul edildi ve *c dolduruldu. */
-static int cerceve_bitir(ida_link_alici_t *a, ida_link_cerceve_t *c)
+/* Tamamlanan adayın sağlama sonrası denetimi ve teslimi (kural 3, 4). Adayın baytları:
+   ozel_tampon[0, dolu) ve ardından p[0, ...) (dolu + p'den okunan = 12 + len; dolu >= 10).
+   hesaplanan: [1, 10 + len) baytlarının CRC'si + CRC_EXTRA. 1: kabul edildi ve *c
+   dolduruldu; reddedilirse *c'ye dokunulmaz. */
+static int cerceve_teslim(ida_link_alici_t *a, ida_link_cerceve_t *c, const tablo_satiri_t *s,
+                          size_t dolu, const uint8_t *p, uint16_t hesaplanan)
 {
     const uint8_t *t = a->ozel_tampon;
-    if (a->ozel_satir >= IDA_LINK_TABLO_N) {
-        return 0;  /* ulaşılamaz: satır başlık denetiminde kurulur */
-    }
-    const tablo_satiri_t *s = &TABLO[a->ozel_satir];
     const uint8_t len = t[1];
     const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)len;
-    const uint16_t gelen = (uint16_t)((uint16_t)t[govde] | (uint16_t)((uint16_t)t[govde + 1u] << 8));
+    const uint8_t g0 = govde < dolu ? t[govde] : p[govde - dolu];
+    const uint8_t g1 = govde + 1u < dolu ? t[govde + 1u] : p[govde + 1u - dolu];
+    const uint16_t gelen = (uint16_t)((uint16_t)g0 | (uint16_t)((uint16_t)g1 << 8));
 
-    if (crc_hesapla(s->crc_extra, &t[1], govde - 1u) != gelen) {
+    if (hesaplanan != gelen) {
         a->sayac.rx_crc_err++;
         return 0;
     }
@@ -259,9 +363,31 @@ static int cerceve_bitir(ida_link_alici_t *a, ida_link_cerceve_t *c)
     c->compid = t[6];
     c->len = len;
     c->yuk_azami = s->yuk_azami;
-    memcpy(c->yuk, &t[IDA_LINK_BASLIK_BOYU], len);
-    memset(&c->yuk[len], 0, (size_t)IDA_LINK_YUK_AZAMI - len);
+    /* Yük: önce tampondaki kısmı, sonra gelen parçadaki kısmı. */
+    size_t tamp_yuk = dolu - IDA_LINK_BASLIK_BOYU;
+    if (tamp_yuk > len) {
+        tamp_yuk = len;
+    }
+    kopyala(c->yuk, &t[IDA_LINK_BASLIK_BOYU], tamp_yuk);
+    if (tamp_yuk < len) {
+        /* tamp_yuk < len iken dolu = 10 + tamp_yuk: kalan yük p[0]'dan başlar. */
+        kopyala(&c->yuk[tamp_yuk], p, (size_t)len - tamp_yuk);
+    }
+    sifirla(&c->yuk[len], (size_t)IDA_LINK_YUK_AZAMI - len);
     return 1;
+}
+
+/* Tamamlanan aday, bütün baytları tamponda (bayt bayt yol). */
+static int cerceve_bitir(ida_link_alici_t *a, ida_link_cerceve_t *c)
+{
+    const uint8_t *t = a->ozel_tampon;
+    if (a->ozel_satir >= IDA_LINK_TABLO_N) {
+        return 0;  /* ulaşılamaz: satır başlık denetiminde kurulur */
+    }
+    const tablo_satiri_t *s = &TABLO[a->ozel_satir];
+    const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)t[1];
+    const uint16_t crc = crc_hesapla(s->crc_extra, &t[1], govde - 1u);
+    return cerceve_teslim(a, c, s, govde + 2u, t, crc);
 }
 
 /* Tek bayt; 1: bu baytla bir çerçeve kabul edildi. */
@@ -294,6 +420,52 @@ static int bayt_isle(ida_link_alici_t *a, uint8_t b, ida_link_cerceve_t *c)
     return 0;
 }
 
+/* Blok yolu açık mı: başlığı geçmiş, gövdesi eksik ve tutarlı bir aday. Tutarlılık
+   (ozel_hedef = 12 + len <= tampon boyu) iyi kurulmuş örnekte hep sağlanır; bozulmuş örnek
+   bayt bayt yola düşer, orada tampon sınırı denetlenir (tampon dışına yazılmaz). */
+static int govde_bekliyor(const ida_link_alici_t *a)
+{
+    return a->ozel_durum == DURUM_ADAY && a->ozel_dolu >= IDA_LINK_BASLIK_BOYU &&
+           a->ozel_dolu < a->ozel_hedef &&
+           a->ozel_hedef == (uint16_t)(IDA_LINK_EK_BOY + a->ozel_tampon[1]);
+}
+
+/* Başlığı geçmiş adayın kalan baytları (yük + sağlama) blok hâlinde (MP5 §9.6 md. 3).
+   veri[0, n) eldeki baytlardır (n >= 1); govde_bekliyor(a) doğrudur. Tüketilen bayt
+   sayısını döndürür; *kabul = 1 ise bu baytlarla bir çerçeve teslim edildi. Bayt bayt yolla
+   aynı sonucu verir: aday parçada tamamlanmıyorsa baytlar tampona eklenir; tamamlanıyorsa
+   aday kapanır (durum boşta) ve kural 3–4 bayt bayt yoldaki sırayla uygulanır. */
+static size_t govde_isle(ida_link_alici_t *a, const uint8_t *veri, size_t n,
+                         ida_link_cerceve_t *c, int *kabul)
+{
+    const size_t dolu = a->ozel_dolu;
+    const size_t kalan = (size_t)a->ozel_hedef - dolu;
+    if (n < kalan) {
+        kopyala(&a->ozel_tampon[dolu], veri, n);
+        a->ozel_dolu = (uint16_t)(dolu + n);
+        *kabul = 0;
+        return n;
+    }
+    a->ozel_durum = DURUM_BOSTA;
+    a->ozel_dolu = 0u;
+    if (a->ozel_satir >= IDA_LINK_TABLO_N) {
+        *kabul = 0;  /* ulaşılamaz: satır başlık denetiminde kurulur */
+        return kalan;
+    }
+    const tablo_satiri_t *s = &TABLO[a->ozel_satir];
+    const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)a->ozel_tampon[1];
+    uint16_t crc;
+    if (dolu >= govde) {
+        crc = crc_blok(crc_bas(), &a->ozel_tampon[1], govde - 1u);
+    } else {
+        crc = crc_blok(crc_bas(), &a->ozel_tampon[1], dolu - 1u);
+        crc = crc_blok(crc, veri, govde - dolu);
+    }
+    crc = tel_crc_adim(crc, s->crc_extra);
+    *kabul = cerceve_teslim(a, c, s, dolu, veri, crc);
+    return kalan;
+}
+
 ida_link_rc_t ida_link_al(ida_link_alici_t *a, const uint8_t *veri, size_t n,
                           size_t *tuketilen, ida_link_cerceve_t *cerceve)
 {
@@ -303,13 +475,24 @@ ida_link_rc_t ida_link_al(ida_link_alici_t *a, const uint8_t *veri, size_t n,
     if (!rol_gecerli(a->ozel_rol)) {
         return IDA_LINK_HATA_ROL;
     }
-    for (size_t i = 0; i < n; ++i) {
-        a->sayac.rx_bytes++;
-        if (bayt_isle(a, veri[i], cerceve)) {
-            *tuketilen = i + 1u;
+    /* rx_bytes tüketilen bayt sayısı kadar, çağrı başına bir kez artar (MP5 §9.6 md. 6);
+       çağıran sayacı yalnız dönüşten sonra görür, sonuç bayt bayt saymakla aynıdır. */
+    size_t i = 0;
+    while (i < n) {
+        int kabul = 0;
+        if (govde_bekliyor(a)) {
+            i += govde_isle(a, &veri[i], n - i, cerceve, &kabul);
+        } else {
+            kabul = bayt_isle(a, veri[i], cerceve);
+            ++i;
+        }
+        if (kabul) {
+            a->sayac.rx_bytes += (uint32_t)i;
+            *tuketilen = i;
             return IDA_LINK_CERCEVE;
         }
     }
+    a->sayac.rx_bytes += (uint32_t)n;
     *tuketilen = n;
     return IDA_LINK_BEKLE;
 }
@@ -370,9 +553,18 @@ ida_link_rc_t ida_link_gonder(ida_link_gonderici_t *g, uint32_t msgid,
         return IDA_LINK_HATA_BOY;
     }
 
-    /* Kırpma (A1-K05): sondaki sıfırlar atılır, ilk bayt kalır. */
+    /* Kırpma (A1-K05): sondaki sıfırlar atılır, ilk bayt kalır. Önce dört baytlık sözcükler
+       (len >= 5 iken; en az bir bayt kalır), sonra bayt bayt (MP5 §9.6 md. 5). */
     const uint8_t *yuk = (const uint8_t *)mesaj;
     uint8_t len = s->yuk_azami;
+    while (len >= 5u) {
+        uint32_t w;
+        memcpy(&w, &yuk[len - 4u], 4u);
+        if (w != 0u) {
+            break;
+        }
+        len = (uint8_t)(len - 4u);
+    }
     while (len > 1u && yuk[len - 1u] == 0u) {
         --len;
     }
@@ -392,9 +584,16 @@ ida_link_rc_t ida_link_gonder(ida_link_gonderici_t *g, uint32_t msgid,
     cikis[7] = (uint8_t)(msgid & 0xFFu);
     cikis[8] = (uint8_t)((msgid >> 8) & 0xFFu);
     cikis[9] = (uint8_t)((msgid >> 16) & 0xFFu);
-    memcpy(&cikis[IDA_LINK_BASLIK_BOYU], yuk, len);
+    /* Yük kopyası ve CRC aynı geçişte. */
+    uint16_t crc = crc_blok(crc_bas(), &cikis[1], IDA_LINK_BASLIK_BOYU - 1u);
+    uint8_t *o = &cikis[IDA_LINK_BASLIK_BOYU];
+    for (size_t i = 0; i < len; ++i) {
+        const uint8_t b = yuk[i];
+        o[i] = b;
+        crc = tel_crc_adim(crc, b);
+    }
+    crc = tel_crc_adim(crc, s->crc_extra);
     const size_t govde = IDA_LINK_BASLIK_BOYU + (size_t)len;
-    const uint16_t crc = crc_hesapla(s->crc_extra, &cikis[1], govde - 1u);
     cikis[govde] = (uint8_t)(crc & 0xFFu);
     cikis[govde + 1u] = (uint8_t)(crc >> 8);
 
@@ -420,8 +619,13 @@ ida_link_rc_t ida_link_coz(const ida_link_cerceve_t *cerceve, uint32_t msgid,
     if (mesaj_boyu != s->yapi_boyu) {
         return IDA_LINK_HATA_BOY;
     }
-    memset(mesaj, 0, mesaj_boyu);
-    memcpy(mesaj, cerceve->yuk, s->yuk_azami);
+    /* Yapı bir kez yazılır: ilk yuk_azami bayt yükten, kalanı (varsa) sıfır. Sonuç "önce
+       sıfırla, sonra yuk_azami bayt kopyala" ile aynıdır (yapi_boyu >= yuk_azami). */
+    uint8_t *m = (uint8_t *)mesaj;
+    kopyala(m, cerceve->yuk, s->yuk_azami);
+    if (mesaj_boyu > s->yuk_azami) {
+        sifirla(&m[s->yuk_azami], mesaj_boyu - s->yuk_azami);
+    }
     return IDA_LINK_TAMAM;
 }
 

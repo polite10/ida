@@ -94,9 +94,23 @@ static void test_sema_ozeti_kanonik_metin(void)
 
 static void test_tablo_ve_port_islevleri(void)
 {
+    /* Toplam sayı sabitlenmez: modüller (W3, W4) kendi bloklarına parametre ekler. A4'ün
+       adlandırdığı (çerçeve bloğu 0x01xx) dokuz parametre kimlikleriyle bulunur ve sayı
+       bunlardan az değildir. */
+    static const uint16_t A4_KIMLIKLERI[9] = {0x0101u, 0x0102u, 0x0103u, 0x0104u, 0x0105u,
+                                              0x0106u, 0x0107u, 0x0108u, 0x0109u};
     const uint16_t n = ida_core_param_count();
-    TEST_ASSERT_EQUAL_UINT16(9u, n);
+    TEST_ASSERT_TRUE(n >= 9u);
     ida_param_desc_t d;
+    for (uint32_t a = 0u; a < 9u; a++) {
+        bool bulundu = false;
+        for (uint16_t i = 0u; i < n; i++) {
+            TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_desc(i, &d));
+            bulundu = bulundu || (d.id == A4_KIMLIKLERI[a]);
+        }
+        TEST_ASSERT_TRUE_MESSAGE(bulundu, "A4 parametresi tabloda yok");
+    }
+    /* Tablonun tutarlılığı: kimlikler kesin artan (dolayısıyla tekil), desc ve find uyumlu. */
     ida_param_desc_t onceki = {0};
     for (uint16_t i = 0u; i < n; i++) {
         TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_desc(i, &d));
@@ -140,6 +154,14 @@ static void test_tablo_ve_port_islevleri(void)
     TEST_ASSERT_EQUAL_UINT32(20u, v.v.u32); /* T_imu_stale, ms */
     TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, 0x0106u, &v));
     TEST_ASSERT_EQUAL_FLOAT(0.1f, v.v.f32);
+    /* get her girişte desc ile uyumlu: kimlik, tip ve (varsayılan bloklu kurulumda) değer. */
+    for (uint16_t i = 0u; i < n; i++) {
+        TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_desc(i, &d));
+        TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, d.id, &v));
+        TEST_ASSERT_EQUAL_UINT16(d.id, v.id);
+        TEST_ASSERT_EQUAL_UINT8(d.type, v.type);
+        TEST_ASSERT_EQUAL_HEX32(d.def.v.u32, v.v.u32);
+    }
 }
 
 

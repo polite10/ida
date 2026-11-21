@@ -14,12 +14,19 @@
 #                 içermesi eklenir (yasak kimlik, çekirdek kökünün içinde)
 #   dolayli_kok : kaynak değişmeden, kopyadaki iskelet.h'ye çekirdek dışındaki nötr adlı bir
 #                 başlığın içermesi eklenir (yasak kök)
+#   kaynak_dizini_stm32 : (Clang) kaynak_dizini kipindeki taşınmış derleyici kaynak dizininin
+#                 include/ dizinine stm32u5xx.h konur ve kopyadaki iskelet.h onu <...> ile
+#                 içerir: sistem kökündeki yasak kimlik yine yakalanmalı
 #
-#  Karşı örnek:
+#  Karşı örnekler:
 #   temiz       : bozma yok; yapılandırma, derleme ve başlık denetimi geçer
+#   asan        : temiz + IDA_SANITIZER=ON (GCC/Clang); -fsanitize=address derleyicinin yok
+#                 sayma listesini (<kaynak dizini>/share/asan_ignorelist.txt) bağımlılığa yazar
+#   kaynak_dizini : (Clang) asan + derleyicinin kaynak dizini sürüm taşıyan, farklı adlı bir
+#                 Xcode dizinine taşınmış gibi (-resource-dir; calistir.cmake kurar)
 #
 # tests/CMakeLists.txt bu projeyi CTest ile bütün kiplerde koşturur (derleme sonrası kipler
-# calistir.cmake ile).
+# calistir.cmake ile; sanitizer ve -resource-dir bayraklarını o verir).
 cmake_minimum_required(VERSION 3.25)
 project(ida_cekirdek_siniri_denemesi LANGUAGES C)
 
@@ -35,7 +42,7 @@ set(BUILD_TESTING OFF)
 
 set(_kaynak "${CMAKE_CURRENT_SOURCE_DIR}/kaynak")
 
-if(IDA_DENEME_KIPI MATCHES "^dolayli_")
+if(IDA_DENEME_KIPI MATCHES "^(dolayli_|kaynak_dizini_stm32$)")
   # Gerçek çekirdeğe dokunulmaz: derleme dizinine kopyalanır ve kopyanın başlığı bozulur.
   set(_kopya "${CMAKE_CURRENT_BINARY_DIR}/kopya/core")
   file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/kopya")
@@ -45,6 +52,8 @@ if(IDA_DENEME_KIPI MATCHES "^dolayli_")
     set(_ek "#include \"stm32u5xx.h\"")
   elseif(IDA_DENEME_KIPI STREQUAL "dolayli_kok")
     set(_ek "#include \"${_kaynak}/platform_baslik.h\"")
+  elseif(IDA_DENEME_KIPI STREQUAL "kaynak_dizini_stm32")
+    set(_ek "#include <stm32u5xx.h>")   # derleyicinin kaynak dizininin include/'undan
   else()
     message(FATAL_ERROR "Bilinmeyen kip: ${IDA_DENEME_KIPI}")
   endif()
@@ -67,7 +76,7 @@ else()
       TARGET_DIRECTORY ida_core PROPERTIES GENERATED TRUE)
   elseif(IDA_DENEME_KIPI STREQUAL "genex")
     target_sources(ida_core PRIVATE "$<1:${_kaynak}/notr.c>")
-  elseif(NOT IDA_DENEME_KIPI STREQUAL "temiz")
+  elseif(NOT IDA_DENEME_KIPI MATCHES "^(temiz|asan|kaynak_dizini)$")
     message(FATAL_ERROR "Bilinmeyen kip: ${IDA_DENEME_KIPI}")
   endif()
 endif()

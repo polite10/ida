@@ -1,4 +1,111 @@
 /*
  * kontrol_param.def — kontrol ve itki tahsisi parametreleri. Sahibi: W3 kontrol işi. Kimlik
- * bloğu 0x05xx. Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ * bloğu 0x05xx. Satır biçimi cerceve/cerceve_param.def başındadır.
+ *
+ * Kaynaklar ve etiketler:
+ *  - İtici geometrisi (0x0501–0x0530): scenarios/ida0.toml `arac.iticiler.t1…t8` (A5 3.3;
+ *    tablonun kendisi orada [T] etiketlidir). `r` gövde referans noktasına göre konum (m),
+ *    `e` pozitif komutun itki yönü (birim; dikeyde +z aşağı). Sıra kartın gördüğü itici
+ *    sırasıdır (kanal 0–7 = t1–t8). Tahsis matrisi bunlardan kurulur (A5-K25; 02 §2.5).
+ *    A5-K52 türetim yapmadığı için başka bir araçta bu değerler otopilot bloğuyla verilir.
+ *  - İtki modeli (0x0531–0x0538): şekil polinomu ida0.toml `sekil_polinomu`; azami itkiler
+ *    ida0'ın 12/16 V uç değerlerinden 04 §2.7.2'nin kuvvet yasasıyla 15,6 V (`v_sabit`) için
+ *    hesaplandı (ileri 36,3827·1,3^1,207 ≈ 49,94 N; geri 28,6354·1,3^1,180 ≈ 39,02 N) —
+ *    TAHMİN, ölçüm değil; batarya gerilimiyle ölçekleme bu sürümde yok. THR_U_MIN: ESC dur
+ *    ölü bandı 1500 ± 25 µs, 1 µs nicem, 400 µs/birim ⇒ 26/400 = 0,065 (02 §2.5; A4-K54).
+ *  - Sınırlar, referans hızları ve kazançlar (0x0539–0x055B): İDA-0 için elle seçilmiş
+ *    başlangıç değerleri — hepsi TAHMİN; ayarı Z1'de fizikle yapılacak (W3-kontrol md. 5).
+ *
+ * Birimler: kuvvet N, moment N·m, hız m/s, açısal hız rad/s, kazançlar SI tutarlı
+ * (ör. W_KP N·s/m, W_KI N/m, RATE_KP N·m·s/rad, ATT_KP 1/s, DEP_KP 1/s).
  */
+/* ---- İtici geometrisi (A5 3.3; ida0.toml) ------------------------------------------------ */
+IDA_PARAM(0x0501u, T1_RX, F32, B, -2.0f, 2.0f, 0.156f, kon_t1_rx)
+IDA_PARAM(0x0502u, T1_RY, F32, B, -2.0f, 2.0f, 0.111f, kon_t1_ry)
+IDA_PARAM(0x0503u, T1_RZ, F32, B, -2.0f, 2.0f, 0.085f, kon_t1_rz)
+IDA_PARAM(0x0504u, T1_EX, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t1_ex)
+IDA_PARAM(0x0505u, T1_EY, F32, B, -1.0f, 1.0f, -0.70710678f, kon_t1_ey)
+IDA_PARAM(0x0506u, T1_EZ, F32, B, -1.0f, 1.0f, 0.0f, kon_t1_ez)
+IDA_PARAM(0x0507u, T2_RX, F32, B, -2.0f, 2.0f, 0.156f, kon_t2_rx)
+IDA_PARAM(0x0508u, T2_RY, F32, B, -2.0f, 2.0f, -0.111f, kon_t2_ry)
+IDA_PARAM(0x0509u, T2_RZ, F32, B, -2.0f, 2.0f, 0.085f, kon_t2_rz)
+IDA_PARAM(0x050Au, T2_EX, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t2_ex)
+IDA_PARAM(0x050Bu, T2_EY, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t2_ey)
+IDA_PARAM(0x050Cu, T2_EZ, F32, B, -1.0f, 1.0f, 0.0f, kon_t2_ez)
+IDA_PARAM(0x050Du, T3_RX, F32, B, -2.0f, 2.0f, -0.156f, kon_t3_rx)
+IDA_PARAM(0x050Eu, T3_RY, F32, B, -2.0f, 2.0f, 0.111f, kon_t3_ry)
+IDA_PARAM(0x050Fu, T3_RZ, F32, B, -2.0f, 2.0f, 0.085f, kon_t3_rz)
+IDA_PARAM(0x0510u, T3_EX, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t3_ex)
+IDA_PARAM(0x0511u, T3_EY, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t3_ey)
+IDA_PARAM(0x0512u, T3_EZ, F32, B, -1.0f, 1.0f, 0.0f, kon_t3_ez)
+IDA_PARAM(0x0513u, T4_RX, F32, B, -2.0f, 2.0f, -0.156f, kon_t4_rx)
+IDA_PARAM(0x0514u, T4_RY, F32, B, -2.0f, 2.0f, -0.111f, kon_t4_ry)
+IDA_PARAM(0x0515u, T4_RZ, F32, B, -2.0f, 2.0f, 0.085f, kon_t4_rz)
+IDA_PARAM(0x0516u, T4_EX, F32, B, -1.0f, 1.0f, 0.70710678f, kon_t4_ex)
+IDA_PARAM(0x0517u, T4_EY, F32, B, -1.0f, 1.0f, -0.70710678f, kon_t4_ey)
+IDA_PARAM(0x0518u, T4_EZ, F32, B, -1.0f, 1.0f, 0.0f, kon_t4_ez)
+IDA_PARAM(0x0519u, T5_RX, F32, B, -2.0f, 2.0f, 0.12f, kon_t5_rx)
+IDA_PARAM(0x051Au, T5_RY, F32, B, -2.0f, 2.0f, 0.218f, kon_t5_ry)
+IDA_PARAM(0x051Bu, T5_RZ, F32, B, -2.0f, 2.0f, 0.0f, kon_t5_rz)
+IDA_PARAM(0x051Cu, T5_EX, F32, B, -1.0f, 1.0f, 0.0f, kon_t5_ex)
+IDA_PARAM(0x051Du, T5_EY, F32, B, -1.0f, 1.0f, 0.0f, kon_t5_ey)
+IDA_PARAM(0x051Eu, T5_EZ, F32, B, -1.0f, 1.0f, 1.0f, kon_t5_ez)
+IDA_PARAM(0x051Fu, T6_RX, F32, B, -2.0f, 2.0f, 0.12f, kon_t6_rx)
+IDA_PARAM(0x0520u, T6_RY, F32, B, -2.0f, 2.0f, -0.218f, kon_t6_ry)
+IDA_PARAM(0x0521u, T6_RZ, F32, B, -2.0f, 2.0f, 0.0f, kon_t6_rz)
+IDA_PARAM(0x0522u, T6_EX, F32, B, -1.0f, 1.0f, 0.0f, kon_t6_ex)
+IDA_PARAM(0x0523u, T6_EY, F32, B, -1.0f, 1.0f, 0.0f, kon_t6_ey)
+IDA_PARAM(0x0524u, T6_EZ, F32, B, -1.0f, 1.0f, 1.0f, kon_t6_ez)
+IDA_PARAM(0x0525u, T7_RX, F32, B, -2.0f, 2.0f, -0.12f, kon_t7_rx)
+IDA_PARAM(0x0526u, T7_RY, F32, B, -2.0f, 2.0f, 0.218f, kon_t7_ry)
+IDA_PARAM(0x0527u, T7_RZ, F32, B, -2.0f, 2.0f, 0.0f, kon_t7_rz)
+IDA_PARAM(0x0528u, T7_EX, F32, B, -1.0f, 1.0f, 0.0f, kon_t7_ex)
+IDA_PARAM(0x0529u, T7_EY, F32, B, -1.0f, 1.0f, 0.0f, kon_t7_ey)
+IDA_PARAM(0x052Au, T7_EZ, F32, B, -1.0f, 1.0f, 1.0f, kon_t7_ez)
+IDA_PARAM(0x052Bu, T8_RX, F32, B, -2.0f, 2.0f, -0.12f, kon_t8_rx)
+IDA_PARAM(0x052Cu, T8_RY, F32, B, -2.0f, 2.0f, -0.218f, kon_t8_ry)
+IDA_PARAM(0x052Du, T8_RZ, F32, B, -2.0f, 2.0f, 0.0f, kon_t8_rz)
+IDA_PARAM(0x052Eu, T8_EX, F32, B, -1.0f, 1.0f, 0.0f, kon_t8_ex)
+IDA_PARAM(0x052Fu, T8_EY, F32, B, -1.0f, 1.0f, 0.0f, kon_t8_ey)
+IDA_PARAM(0x0530u, T8_EZ, F32, B, -1.0f, 1.0f, 1.0f, kon_t8_ez)
+/* ---- İtki modeli ve eğrinin tersi (04 §2.7.2; A5-K104; A4-K54) --------------------------- */
+IDA_PARAM(0x0531u, THR_FMAX_FWD, F32, B, 1.0f, 1000.0f, 49.94f, kon_fmax_ileri)   /* N, TAHMİN */
+IDA_PARAM(0x0532u, THR_FMAX_REV, F32, B, 1.0f, 1000.0f, 39.02f, kon_fmax_geri)    /* N, TAHMİN */
+IDA_PARAM(0x0533u, THR_SHAPE_C0, F32, B, -10000.0f, 10000.0f, 8.9f, kon_sekil_c0)    /* u¹ */
+IDA_PARAM(0x0534u, THR_SHAPE_C1, F32, B, -10000.0f, 10000.0f, 176.0f, kon_sekil_c1)  /* u³ */
+IDA_PARAM(0x0535u, THR_SHAPE_C2, F32, B, -10000.0f, 10000.0f, -404.1f, kon_sekil_c2) /* u⁵ */
+IDA_PARAM(0x0536u, THR_SHAPE_C3, F32, B, -10000.0f, 10000.0f, 389.9f, kon_sekil_c3)  /* u⁷ */
+IDA_PARAM(0x0537u, THR_SHAPE_C4, F32, B, -10000.0f, 10000.0f, -140.3f, kon_sekil_c4) /* u⁹ */
+IDA_PARAM(0x0538u, THR_U_MIN, F32, B, 0.0f, 0.5f, 0.065f, kon_u_min)  /* sıfırdan farklı en küçük |komut| */
+/* ---- İtici durumu ve çıkış değişim hızı -------------------------------------------------- */
+IDA_PARAM(0x0539u, THR_OFF_MASK, U32, A, 0u, 255u, 0u, kon_itici_disi)  /* bit i: t(i+1) devre dışı */
+IDA_PARAM(0x053Au, THR_SLEW, F32, A, 1.0f, 100000.0f, 250.0f, kon_itki_egim) /* N/s, itici başına */
+/* ---- Çıkış sınırları (genelleştirilmiş kuvvet ve setpoint) ------------------------------- */
+IDA_PARAM(0x0540u, LIM_FXY, F32, A, 0.0f, 1000.0f, 40.0f, kon_lim_fxy)   /* N, X ve Y ayrı ayrı */
+IDA_PARAM(0x0541u, LIM_FZ, F32, A, 0.0f, 1000.0f, 80.0f, kon_lim_fz)     /* N */
+IDA_PARAM(0x0542u, LIM_MKM, F32, A, 0.0f, 100.0f, 10.0f, kon_lim_mkm)    /* N·m, K ve M */
+IDA_PARAM(0x0543u, LIM_MN, F32, A, 0.0f, 100.0f, 10.0f, kon_lim_mn)      /* N·m */
+IDA_PARAM(0x0544u, LIM_W, F32, A, 0.0f, 5.0f, 0.5f, kon_lim_w)           /* m/s, dikey hız setpoint'i */
+IDA_PARAM(0x0545u, LIM_V, F32, A, 0.0f, 5.0f, 1.0f, kon_lim_v)           /* m/s, yatay hız setpoint'i */
+IDA_PARAM(0x0546u, LIM_PQ, F32, A, 0.0f, 5.0f, 0.8f, kon_lim_pq)         /* rad/s */
+IDA_PARAM(0x0547u, LIM_R, F32, A, 0.0f, 5.0f, 0.6f, kon_lim_r)           /* rad/s */
+/* ---- Basamak yumuşatma (referans değişim hızı) ------------------------------------------- */
+IDA_PARAM(0x0548u, REF_DEP_RATE, F32, A, 0.01f, 5.0f, 0.25f, kon_ref_derinlik_hizi) /* m/s */
+IDA_PARAM(0x0549u, REF_YAW_RATE, F32, A, 0.01f, 5.0f, 0.35f, kon_ref_yon_hizi)      /* rad/s */
+/* ---- Kazançlar --------------------------------------------------------------------------- */
+IDA_PARAM(0x0550u, DEP_KP, F32, A, 0.0f, 20.0f, 0.8f, kon_derinlik_kp)     /* 1/s: derinlik → w_sp */
+IDA_PARAM(0x0551u, W_KP, F32, A, 0.0f, 1000.0f, 60.0f, kon_w_kp)           /* N·s/m */
+IDA_PARAM(0x0552u, W_KI, F32, A, 0.0f, 1000.0f, 30.0f, kon_w_ki)           /* N/m */
+IDA_PARAM(0x0553u, BUOY_FF, F32, A, -50.0f, 50.0f, 1.82f, kon_yuzerlik_ff) /* N, NED aşağı; B − W */
+IDA_PARAM(0x0554u, ATT_KP_RP, F32, A, 0.0f, 50.0f, 2.0f, kon_tutum_kp)     /* 1/s: yalpa, baş-kıç */
+IDA_PARAM(0x0555u, ATT_KP_Y, F32, A, 0.0f, 50.0f, 1.5f, kon_yon_kp)        /* 1/s: yön */
+IDA_PARAM(0x0556u, RATE_KP_PQ, F32, A, 0.0f, 100.0f, 3.0f, kon_pq_kp)      /* N·m·s/rad */
+IDA_PARAM(0x0557u, RATE_KI_PQ, F32, A, 0.0f, 100.0f, 3.0f, kon_pq_ki)      /* N·m/rad */
+IDA_PARAM(0x0558u, RATE_KP_R, F32, A, 0.0f, 100.0f, 4.0f, kon_r_kp)        /* N·m·s/rad */
+IDA_PARAM(0x0559u, RATE_KI_R, F32, A, 0.0f, 100.0f, 4.0f, kon_r_ki)        /* N·m/rad */
+IDA_PARAM(0x055Au, VEL_KP, F32, A, 0.0f, 1000.0f, 40.0f, kon_v_kp)         /* N·s/m */
+IDA_PARAM(0x055Bu, VEL_KI, F32, A, 0.0f, 1000.0f, 10.0f, kon_v_ki)         /* N/m */
+/* Sönüm ileri beslemesi (02 §2.5): setpoint hızı × katsayı. İDA-0'ın doğrusal sönümü +
+   karesel sönümün ~0,05 m/s'deki eğimi; TAHMİN. */
+IDA_PARAM(0x055Cu, W_DAMP_FF, F32, A, 0.0f, 1000.0f, 40.0f, kon_w_sonum)   /* N·s/m */
+IDA_PARAM(0x055Du, V_DAMP_FF, F32, A, 0.0f, 1000.0f, 20.0f, kon_v_sonum)   /* N·s/m */
