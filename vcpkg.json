@@ -1,0 +1,12 @@
+{
+  "name": "ida",
+  "version-string": "0.0.1",
+  "description": "İDA simülasyon laboratuvarı, PC tarafı bağımlılıkları (W2-depo)",
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
+  "dependencies": [
+    "eigen3"
+  ],
+  "overrides": [
+    { "name": "eigen3", "version": "5.0.1" }
+  ]
+}

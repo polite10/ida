@@ -1,0 +1,6 @@
+# CI statik analiz araçları (pip, --require-hashes --only-binary=:all:).
+# clang-tidy 21.1.6: PyPI'deki ikili dağıtım (LLVM clang-tidy + kaynak başlıkları);
+# özetler PyPI'nin yayımladığı değerlerdir (macOS arm64 ve Windows x64 tekerlekleri).
+clang-tidy==21.1.6 \
+    --hash=sha256:12634548feceb2bce89b65d94550f1b92359ebc19c35cf72b93855cd18845ef9 \
+    --hash=sha256:8f29fbc3e8aa0552810dd0e3e69f3158f8dbf0edb425e0437798e9db9d0a28a6

@@ -1,0 +1,102 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "taban",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "host",
+      "hidden": true,
+      "inherits": "taban",
+      "cacheVariables": { "IDA_HEDEF": "host" }
+    },
+    {
+      "name": "fw",
+      "hidden": true,
+      "inherits": "taban",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi-cm33.cmake",
+      "cacheVariables": { "IDA_HEDEF": "fw" }
+    },
+    {
+      "name": "host-debug",
+      "displayName": "PC, hata ayıklama",
+      "inherits": "host",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "host-asan",
+      "displayName": "PC, ASan (+ UBSan Clang'da)",
+      "inherits": "host",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "IDA_SANITIZER": "ON" }
+    },
+    {
+      "name": "host-release",
+      "displayName": "PC, sürüm",
+      "inherits": "host",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "fw-debug",
+      "displayName": "Kart, hata ayıklama (-Og -g3, GCC -fanalyzer)",
+      "inherits": "fw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-Og -g3",
+        "CMAKE_CXX_FLAGS_DEBUG": "-Og -g3",
+        "CMAKE_ASM_FLAGS_DEBUG": "-g3",
+        "IDA_GCC_ANALYZER": "ON"
+      }
+    },
+    {
+      "name": "fw-release",
+      "displayName": "Kart, sürüm (-O2 -g)",
+      "inherits": "fw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O2 -g -DNDEBUG",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g"
+      }
+    },
+    {
+      "name": "fw-measure",
+      "displayName": "Kart, ölçüm (-O2 -g, IDA_OLCUM=1)",
+      "inherits": "fw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -g -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O2 -g -DNDEBUG",
+        "CMAKE_ASM_FLAGS_RELEASE": "-g",
+        "IDA_OLCUM": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "host-debug", "configurePreset": "host-debug" },
+    { "name": "host-asan", "configurePreset": "host-asan" },
+    { "name": "host-release", "configurePreset": "host-release" },
+    { "name": "fw-debug", "configurePreset": "fw-debug" },
+    { "name": "fw-release", "configurePreset": "fw-release" },
+    { "name": "fw-measure", "configurePreset": "fw-measure" }
+  ],
+  "testPresets": [
+    {
+      "name": "taban",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    { "name": "host-debug", "inherits": "taban", "configurePreset": "host-debug" },
+    { "name": "host-asan", "inherits": "taban", "configurePreset": "host-asan" },
+    { "name": "host-release", "inherits": "taban", "configurePreset": "host-release" },
+    { "name": "fw-debug", "inherits": "taban", "configurePreset": "fw-debug" },
+    { "name": "fw-release", "inherits": "taban", "configurePreset": "fw-release" }
+  ]
+}

@@ -1,0 +1,3 @@
+# sim/ — simülatör sunucusu (C++20)
+
+Fizik, çevre, sensörler, sonar, HIL köprüsü, kayıt ve laboratuvar API'sini içeren sim sunucusu bu dizinde yazılacaktır (iskelet §7; bölüm 04, 05, 06). Fizik çekirdeği görselleştirmeden bağımsızdır ve başsız çalışır. Bu sürümde yalnız A2 sözleşmesinin tel ve paylaşımlı bellek yapıları vardır (`include/ida/a2_wire.h`); bu başlık sözleşmenin parçasıdır, yalnız sözleşme işiyle değişir ve `tests/sozlesme-basliklari/` tarafından Clang ve MSVC ile C++20 olarak derlenir. PC tarafı C++20, `CXX_EXTENSIONS OFF` ile ve `cmake/IdaAyarlar.cmake`'deki uyarı ve kayan nokta politikasıyla derlenir; bağımlılıklar kökteki `vcpkg.json` (sürüm sabit) ve küçük başlık-yalnız olanlar için CPM ile alınır.

@@ -1,0 +1,21 @@
+# Satır sonları (W2-depo). Depodaki metin dosyaları LF'dir; Windows'ta da LF açılır.
+# Gerekçe: bash betikleri (tools/) CRLF ile çalışmaz; belge denetimi ve altın dosyalar
+# bayt düzeyinde karşılaştırılır.
+* text=auto eol=lf
+
+# Windows'a özgü betikler CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Sözleşmelerin bayt düzeyinde özetlenen dosyaları: hiçbir çeviri yapılmaz (A7 "W2 depo
+# iskeletinden beklenen": assets/** -text; A5 altın çözümlenmiş senaryo kanonik baytlardır).
+assets/** -text
+scenarios/** -text
+
+# İkili dosyalar.
+*.glb binary
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary
+*.whl binary

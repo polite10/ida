@@ -1,0 +1,3 @@
+# assets/ — sahne ve model varlıkları (A7)
+
+Varlık kümeleri (`assets/<kume_kimligi>/`: bir `manifest.json` ve onun adını verdiği `.glb` dosyaları) ve manifest şeması (`manifest.schema.json`) bu dizindedir (iskelet §7; A7 sözleşmesi). `ornek/` A5 örnek senaryolarının atıf verdiği uygunluk örneğidir; ikili dosyaları yoktur. Manifestin baytları özetlendiği için `.gitattributes` bu dizinde satır sonu çevirisini kapatır (`-text`; A7 "W2 depo iskeletinden beklenen"). Türetilmiş çıktılar yalnız derleme dizinine yazılır, buraya yazılmaz (A7-K08). Büyük ikili dosyaların doğrudan git'te mi Git LFS'te mi tutulacağı açık karardır (A7-A06).
