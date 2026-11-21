@@ -1,0 +1,44 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://betikler/ana.gd" id="1_ana"]
+[ext_resource type="Script" path="res://betikler/su.gd" id="2_su"]
+[ext_resource type="Script" path="res://betikler/operator_kamerasi.gd" id="3_kam"]
+[ext_resource type="Script" path="res://betikler/gostergeler.gd" id="4_gos"]
+[ext_resource type="Script" path="res://betikler/hud.gd" id="5_hud"]
+
+[node name="Ana" type="Node"]
+script = ExtResource("1_ana")
+
+[node name="A2" type="IdaA2Istemci" parent="."]
+
+[node name="Dünya" type="Node3D" parent="."]
+
+[node name="Su" type="Node3D" parent="."]
+script = ExtResource("2_su")
+
+[node name="Işıklar" type="Node3D" parent="."]
+
+[node name="Göstergeler" type="Node3D" parent="."]
+script = ExtResource("4_gos")
+
+[node name="Operatör" type="SubViewportContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+[node name="Görüş" type="SubViewport" parent="Operatör"]
+handle_input_locally = false
+size = Vector2i(1920, 1080)
+render_target_update_mode = 4
+
+[node name="Kamera" type="Camera3D" parent="Operatör/Görüş"]
+near = 0.02
+far = 4000.0
+fov = 62.0
+script = ExtResource("3_kam")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("5_hud")

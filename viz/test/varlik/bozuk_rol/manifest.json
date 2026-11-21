@@ -1,0 +1,119 @@
+{
+  "sema_surumu": "1.0",
+  "kume_kimligi": "bozuk_rol",
+  "kume_surumu": 1,
+  "aciklama": "Görselleştirici sınama kümesi (viz/arac/model-uret/uret.py --deneme): rol",
+  "birimler": {
+    "uzunluk": "m",
+    "aci": "rad",
+    "kutle": "kg",
+    "zaman": "s"
+  },
+  "eksenler": {
+    "gltf": "sag_el_y_yukari_z_on",
+    "gltf_govde": [
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        -1,
+        0
+      ]
+    ],
+    "gltf_godot_yerel": [
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        -1
+      ]
+    ]
+  },
+  "uretim": {
+    "disa_aktarici": {
+      "arac": "betik",
+      "surum": "1"
+    }
+  },
+  "malzemeler": [
+    {
+      "kimlik": "deneme_malzeme",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.01,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.5,
+        "puruzluluk_gamma_p": 0.5,
+        "kaynak": "tahmin"
+      }
+    }
+  ],
+  "varliklar": [
+    {
+      "kimlik": "deneme",
+      "tur": "hedef",
+      "dosya": "deneme.glb",
+      "sha256": "067a2de5cae73ddd8782ef57847364e825ca9be7dbc930abe6cb2bd7cf3ae4b0",
+      "bayt": 3820,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.12,
+          -0.06,
+          -0.03
+        ],
+        "en_buyuk": [
+          0.12,
+          0.06,
+          0.03
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "deneme_malzeme"
+        },
+        {
+          "gltf_malzeme": 1,
+          "malzeme": "deneme_malzeme"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "kutu",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 2,
+          "ad": "COL_kutu",
+          "ayristirma": "yok"
+        }
+      ]
+    }
+  ]
+}
