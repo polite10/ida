@@ -1,0 +1,29 @@
+{
+  "name": "ida-web-panelleri",
+  "version": "0.1.0",
+  "private": true,
+  "description": "İDA laboratuvarı web panelleri: A3 istemci kitaplığı, sahte A3 sunucusu ve paneller",
+  "type": "module",
+  "engines": {
+    "node": ">=22.4"
+  },
+  "scripts": {
+    "katalog": "node arac/uret-katalog.mjs",
+    "denetle": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "derle": "node arac/uret-katalog.mjs --denetle && npm run denetle && node arac/derle.mjs",
+    "gelistir": "node arac/gelistir.mjs",
+    "sahte": "node arac/derle.mjs --yalniz-sahte && node .derleme/sahte-a3.mjs",
+    "test": "npm run denetle && node arac/test.mjs",
+    "olc": "node arac/panel-olcum.mjs"
+  },
+  "dependencies": {
+    "uplot": "1.6.32"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/ws": "8.18.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "ws": "8.22.1"
+  }
+}

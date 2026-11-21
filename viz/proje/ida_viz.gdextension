@@ -1,0 +1,15 @@
+; İDA A2 istemcisi (viz/eklenti). godot-cpp 10.0.0-stable, API 4.7 (07 §2.10).
+; Kitaplık `cmake -DIDA_VIZ=ON` derlemesinde bu dizindeki bin/ altına yazılır (depoya girmez).
+
+[configuration]
+
+entry_symbol = "ida_viz_baslat"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+
+macos.debug = "res://bin/libida_viz.dylib"
+macos.release = "res://bin/libida_viz.dylib"
+windows.debug.x86_64 = "res://bin/ida_viz.dll"
+windows.release.x86_64 = "res://bin/ida_viz.dll"
