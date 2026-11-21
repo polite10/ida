@@ -453,7 +453,7 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
     };
     const ida_komut_baglam_t kb = {
         .now_w = cg->now,
-        .daraldi = c->emn.d.herhangi,
+        .daraldi = c->emn.d.herhangi || ida_gor_daraldi(&c->gor), /* A4-K45; W3-K9 */
         .imu_red = cg->imu_red,
         .imu_lag = cg->imu_lag,
         .armed = c->emn.armed,

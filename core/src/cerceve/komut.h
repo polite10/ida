@@ -21,7 +21,8 @@
 /* Bir kabul edilen çağrının komut işleme bağlamı (çağrı boyunca sabit). */
 typedef struct {
     ida_wtime_t now_w;    /* kullanılan now_w (A4-K10)                         */
-    bool daraldi;         /* (b) adımında daraltıcı girdi uygulandı (A4-K45)   */
+    bool daraldi;         /* (b) adımında daraltıcı girdi ya da görev adımında arıza
+                             daraltması uygulandı (A4-K45; W3-K9)              */
     bool imu_red;         /* step'in IMU'su reddedildi (A4-K103)               */
     bool imu_lag;         /* IMU_LAG mandalı kurulu (A4-K108)                  */
     bool armed;

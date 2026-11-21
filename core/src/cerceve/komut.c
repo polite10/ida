@@ -154,7 +154,7 @@ static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_bagl
         } else if (b->param_store == (uint8_t)IDA_PSTORE_BUSY) {
             ack(r, ret((uint16_t)IDA_REASON_PARAM_BUSY));
         } else {
-            ida_gor_komut(&c->gor, &c->emn, b, cmd, r);
+            ida_gor_komut(c, b, cmd, r);
         }
         break;
     case IDA_CMD_HEARTBEAT:
@@ -164,7 +164,7 @@ static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_bagl
     case IDA_CMD_MISSION_ITEM:
     case IDA_CMD_MISSION_END:
     case IDA_CMD_MISSION_CTL:
-        ida_gor_komut(&c->gor, &c->emn, b, cmd, r);
+        ida_gor_komut(c, b, cmd, r);
         break;
     case IDA_CMD_MANUAL:
         ida_kon_komut(&c->kon, b, cmd, r);

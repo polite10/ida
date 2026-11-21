@@ -1,4 +1,27 @@
 /*
  * gorev_param.def — görev, kip ve arıza güvenliği parametreleri. Sahibi: W3 güdüm ve görev
- * işi. Kimlik bloğu 0x04xx. Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ * işi. Kimlik bloğu 0x04xx. Satır biçimi cerceve/cerceve_param.def başındadır.
+ *
+ * A4-K52 (yer istasyonu kaybının süreleri) ve A4-K76 (batarya ve sızıntı eşikleri, arıza
+ * eylemleri) bunları çekirdek parametresi yapar. Süreler duvar saatinde ms (IDA_PT_U32;
+ * ns'ye int64_t'de çevrilir, zaman/zaman.h ida_ms_ns). Bütün varsayılanlar TAHMİNDİR
+ * (02 §4.1, §4.3; İDA-0 4S paketi için 04 §2.7: 12 V asgari güvenli); ölçülmedi.
+ * Hepsi B sınıfıdır (yalnız silahsızken): arıza eşikleri emniyete girer.
+ * Grup koşulları (ida_gor_param_grup): BATT_KRIT_V < BATT_DUSUK_V; GCS_KAYIP_MS < GCS_KAYIP2_MS.
  */
+IDA_PARAM(0x0401u, GCS_KAYIP_MS,     U32, B, 500u,   30000u,   3000u,   gor_gcs1_ms)        /* A4-K52; 02 §4.3 (3 s) */
+IDA_PARAM(0x0402u, GCS_KAYIP2_MS,    U32, B, 1000u,  600000u,  60000u,  gor_gcs2_ms)        /* A4-K52; 02 §4.3 (60 s) */
+IDA_PARAM(0x0403u, SIZINTI_N,        U32, B, 1u,     20u,      2u,      gor_sizinti_n)      /* A4-K76; ardışık ıslak örnek */
+IDA_PARAM(0x0404u, SIZINTI_BAYAT_MS, U32, B, 200u,   10000u,   2000u,   gor_sizinti_bayat_ms) /* 02 §4.1 */
+IDA_PARAM(0x0405u, BATT_DUSUK_V,     F32, B, 0.0f,   60.0f,    13.2f,   gor_batt_dusuk_v)   /* A4-K76 */
+IDA_PARAM(0x0406u, BATT_KRIT_V,      F32, B, 0.0f,   60.0f,    12.4f,   gor_batt_krit_v)    /* A4-K76; ≥ 12 V (04 §2.7) */
+IDA_PARAM(0x0407u, BATT_HIST_V,      F32, B, 0.0f,   5.0f,     0.3f,    gor_batt_hist_v)    /* temizleme histerezisi */
+IDA_PARAM(0x0408u, BATT_SURE_MS,     U32, B, 1000u,  60000u,   10000u,  gor_batt_sure_ms)   /* 02 §4.3 (10 s) */
+IDA_PARAM(0x0409u, BATT_KRIT2_MS,    U32, B, 1000u,  600000u,  60000u,  gor_batt_krit2_ms)  /* 02 §4.3 (60 s) */
+IDA_PARAM(0x040Au, BATT_BAYAT_MS,    U32, B, 200u,   10000u,   2000u,   gor_batt_bayat_ms)  /* 02 §4.1 */
+IDA_PARAM(0x040Bu, EST_KOTU_MS,      U32, B, 100u,   10000u,   2000u,   gor_est_kotu_ms)    /* 02 §4.3 (2 s) */
+IDA_PARAM(0x040Cu, EST_BOZUK_MS,     U32, B, 1000u,  300000u,  30000u,  gor_est_bozuk_ms)   /* 02 §4.3 (30 s) */
+IDA_PARAM(0x040Du, EST_OK_MS,        U32, B, 100u,   10000u,   2000u,   gor_est_ok_ms)      /* 02 §4.3 (2 s) */
+IDA_PARAM(0x040Eu, IMU_TAZE_MS,      U32, B, 100u,   10000u,   1000u,   gor_imu_taze_ms)    /* 02 §4.3 (1 s) */
+IDA_PARAM(0x040Fu, YUZEY_D,          F32, B, 0.0f,   2.0f,     0.3f,    gor_yuzey_d)        /* m; yüzey eşiği */
+IDA_PARAM(0x0410u, YUKSELME_HIZI,    F32, B, 0.05f,  1.0f,     0.25f,   gor_yukselme_hizi)  /* m/s; 02 §2.4 v_asc */

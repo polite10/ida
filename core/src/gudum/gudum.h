@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "cerceve/komut.h"
+#include "gorev/gorev.h"
 #include "ida/port.h"
 #include "param/param.h"
 
@@ -26,5 +27,9 @@ void ida_gud_komut(ida_gud_t *g, const ida_komut_baglam_t *b, const ida_cmd_t *c
 void ida_gud_adim(ida_gud_t *g, const ida_core_t *c);
 bool ida_gud_tutarli(const ida_gud_t *g);
 uint8_t ida_gud_param_grup(const ida_prm_kume_t *p);
+/* Kontrol modülünün tek istek erişimcisi (kontrol.c istek_al). Dilim 1: etkin kipin ve arıza
+   eyleminin isteği (ida_gor_istek); güdüm hedefleri (GUIDED_SP, görev) dilim 2'de buraya
+   eklenir. GEÇİCİ tip: birleştirmede ida_kon_istek_t (kontrol/kontrol.h). */
+void ida_gud_kon_istegi(const ida_gud_t *g, const ida_core_t *c, ida_gor_kon_istek_t *i);
 
 #endif /* IDA_CORE_GUDUM_H */
