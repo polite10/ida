@@ -115,3 +115,4 @@ add_subdirectory(zincir)        # W3-zincir kapalı çevrim düzeneği (Z1; fizi
 add_subdirectory(kabul/oturum)  # ida_link üst katmanı bağımsız kabul testleri (W3-oturum)
 add_subdirectory("${PROJECT_SOURCE_DIR}/firmware/test" firmware-test)  # kart yazılımının donanımsız modülleri (W3-kart)
 add_subdirectory(butunleme)     # W4-kopru: sim sunucusunun bütünleme testleri (Z1 A1 üzerinden, HIL 1x)
+add_subdirectory(z2)            # W4-z2: Z1'in kartta (HIL 1x, seri) ölçüm programı; CTest'e girmez
