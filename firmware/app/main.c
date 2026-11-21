@@ -18,6 +18,12 @@
  *   0x48415441 ("HATA")  tanımsız komut -> UsageFault -> hata kaydı ve sıfırlama
  *   0x4B495744 ("KIWD")  bir sonraki parametre kaydı sürerken (1 KB yazıldıktan sonra) ana
  *                        döngü durur -> IWDG; kayıt yarım kalır (W3-kart dilim 2 kabul 5)
+ *   0x54584452 ("TXDR")  gönderim taşıması durur (sürücüye çerçeve verilmez): kritik kuyruk
+ *                        dolar -> güvenli kapanış (sol bulgu 1); komut silinene kadar sürer
+ *
+ * Güvenli kapanış (app/kapanis.c): kritik çerçeve kuyruğa alınamazsa ya da gerçek rastgele sayı
+ * üretilemezse platform güvenli beklemeye girer (çekirdek çağrılmaz, oturum biter, SIM_HELLO
+ * yanıtlanmaz; A1-K22, K110, K13).
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -31,6 +37,7 @@
 #include "ida_link/ust.h"
 #include "istatistik.h"
 #include "kalici.h"
+#include "kapanis.h"
 #include "olcum.h"
 #include "saglik.h"
 #include "seri.h"
@@ -51,6 +58,7 @@
 #define SINAMA_IWDG 0x49574447u
 #define SINAMA_HATA 0x48415441u
 #define SINAMA_KAYIT_IWDG 0x4B495744u
+#define SINAMA_TX_DUR 0x54584452u
 
 volatile uint32_t ida_fw_olcum[IDA_OL_SAYI] __attribute__((used));
 #if defined(IDA_OLCUM)
@@ -61,6 +69,7 @@ static ida_link_ust_t ust;
 static ida_link_ust_ayar_t ust_ayar;
 static ida_link_platform_t ust_plat;
 static ida_gonderim_t gon;
+static ida_kapanis_t kapanis;
 static ida_kalici_t kal;
 static ida_in_t girdi;
 static ida_out_t cikti;
@@ -174,6 +183,11 @@ static void f_bekle(void *ctx)
 static bool t_bos(void *ctx)
 {
     (void)ctx;
+#if defined(IDA_OLCUM)
+    if (ida_fw_sinama_komutu == SINAMA_TX_DUR) {
+        return false; /* sınama: taşıma durmuş gibi */
+    }
+#endif
     return ida_seri_gonderim_bos();
 }
 
@@ -319,6 +333,16 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_gon_q1_azami] = gon.q[0].azami;
     o[IDA_OL_gon_q2_azami] = gon.q[1].azami;
     o[IDA_OL_gon_q3_azami] = gon.q[2].azami;
+    o[IDA_OL_gon_gecersiz_ret] = gon.gecersiz_ret;
+    o[IDA_OL_gon_temizlenen] = gon.temizlenen;
+    o[IDA_OL_gon_kritik_hata] = gon.kritik_hata ? 1u : 0u;
+    o[IDA_OL_kapanis_neden] = kapanis.neden;
+    o[IDA_OL_gon_sira_giris_kesinti] = gon.sira_giris.kesinti;
+    o[IDA_OL_gon_sira_giris_eksik] = gon.sira_giris.eksik;
+    o[IDA_OL_gon_sira_kuyruk_kesinti] = gon.sira_kuyruk.kesinti;
+    o[IDA_OL_gon_sira_kuyruk_eksik] = gon.sira_kuyruk.eksik;
+    o[IDA_OL_gon_sira_cikis_kesinti] = gon.sira_cikis.kesinti;
+    o[IDA_OL_gon_sira_cikis_eksik] = gon.sira_cikis.eksik;
     o[IDA_OL_link_durum] = (uint32_t)ida_link_ust_durum(&ust);
     o[IDA_OL_link_sess] = ida_link_ust_sess(&ust);
     o[IDA_OL_say_rx_bytes] = say[IDA_LINK_SAY_RX_BYTES];
@@ -590,6 +614,7 @@ int main(void)
     ida_ist_sifirla(&periyot_ist);
     ida_ist_sifirla(&skart_ist);
     ida_gon_kur(&gon);
+    ida_kapanis_kur(&kapanis);
 
     /* Kalıcı bellek: geçerli parametre bloğu ve açılış sayacı (bloklayıcı; 2 s IWDG içinde). */
     const ida_kal_flash_t fl = {NULL, f_taban, f_sil, f_yaz16, f_durum};
@@ -687,6 +712,14 @@ int main(void)
             alim();
             ida_link_ust_poll_tx(&ust);
             cagri();
+            /* Güvenli kapanış (kritik çıktı kaybı; A1-K110): çağrı penceresi dışında. */
+            const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon, false, &ust);
+            if (kn != IDA_KAPANIS_YOK) {
+                ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX : IDA_CAG_NEDEN_RNG);
+                ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
+                ida_bsp_led_yesil(false);
+                ida_bsp_led_kirmizi(true);
+            }
             /* Platformun Tablo 3.11b sayaçları (ust.h: platform diziye doğrudan yazar). */
             ust.say[IDA_LINK_SAY_STAMP_COARSE] = stamp_coarse;
             ust.say[IDA_LINK_SAY_TX_FRAMES] = gon.tx_frames;
@@ -750,7 +783,7 @@ int main(void)
             }
             capraz_denetim();
             olcum_guncelle(simdi);
-            if (led.yesil) {
+            if (led.yesil && kapanis.neden == IDA_KAPANIS_YOK) {
                 ida_bsp_led_yesil_cevir();
             }
         }

@@ -186,9 +186,104 @@ static void test_surucu_reddi(void)
     TEST_ASSERT_EQUAL_UINT32(1u, cikar(0)); /* çerçeve kaybolmadı */
 }
 
+/* MAVLink v2 biçiminde, sıra baytı seq olan sahte çerçeve. */
+static void v2(uint8_t *b, size_t n, uint8_t seq)
+{
+    memset(b, 0x55, n);
+    b[0] = 0xFDu;
+    b[4] = seq;
+}
+
+/* Sol bulgu 1 (karşı örnek): kritik kuyruk dolunca çerçeve sessizce kaybolmaz; ret sayılır ve
+   kalıcı kritik_hata kurulur (platform güvenli kapanışa geçer; A1-K110). */
+static void test_kritik_ret_hata(void)
+{
+    uint8_t b[32];
+    mesgul = true; /* taşıma durmuş */
+    for (uint32_t i = 0u; i < IDA_GON_KRITIK_N; i++) {
+        v2(b, sizeof b, (uint8_t)i);
+        TEST_ASSERT_TRUE(ida_gon_ekle(&g, IDA_GON_SINIF_KRITIK, b, sizeof b, 0));
+    }
+    TEST_ASSERT_FALSE(ida_gon_kritik_hata(&g));
+    v2(b, sizeof b, (uint8_t)IDA_GON_KRITIK_N);
+    TEST_ASSERT_FALSE(ida_gon_ekle(&g, IDA_GON_SINIF_KRITIK, b, sizeof b, 0));
+    TEST_ASSERT_EQUAL_UINT32(1u, g.kritik_ret);
+    TEST_ASSERT_TRUE(ida_gon_kritik_hata(&g));
+    /* Kalıcıdır: kuyruk boşalsa da kalkmaz. */
+    mesgul = false;
+    while (cikar(0) != 0u) {
+    }
+    TEST_ASSERT_TRUE(ida_gon_kritik_hata(&g));
+}
+
+/* Geçersiz çerçeve ayrı sayılır; kritik sınıfta geçersiz çerçeve de kritik hatadır. */
+static void test_gecersiz_sayilir(void)
+{
+    uint8_t b[16];
+    v2(b, sizeof b, 0u);
+    TEST_ASSERT_FALSE(ida_gon_ekle(&g, IDA_GON_SINIF_ZORUNLU, b, 0, 0));
+    TEST_ASSERT_FALSE(ida_gon_ekle(&g, 9u, b, sizeof b, 0));
+    TEST_ASSERT_EQUAL_UINT32(2u, g.gecersiz_ret);
+    TEST_ASSERT_FALSE(ida_gon_kritik_hata(&g));
+    TEST_ASSERT_FALSE(ida_gon_ekle(&g, IDA_GON_SINIF_KRITIK, NULL, sizeof b, 0));
+    TEST_ASSERT_TRUE(ida_gon_kritik_hata(&g));
+}
+
+/* Sıra sürekliliği: verilen (giriş), kuyruğa giren ve taşımaya verilen çerçevelerde ayrı ayrı;
+   boşluk reddedilen ya da atılan çerçevenin sayacıyla açıklanır. */
+static void test_sira_boslugu_sayacla_aciklanir(void)
+{
+    uint8_t b[32];
+    uint8_t s = 250u; /* sarma da sınanır */
+    mesgul = true;
+    for (uint32_t i = 0u; i < IDA_GON_KRITIK_N; i++) {
+        v2(b, sizeof b, s++);
+        TEST_ASSERT_TRUE(ida_gon_ekle(&g, IDA_GON_SINIF_KRITIK, b, sizeof b, 0));
+    }
+    v2(b, sizeof b, s++); /* reddedilir */
+    TEST_ASSERT_FALSE(ida_gon_ekle(&g, IDA_GON_SINIF_KRITIK, b, sizeof b, 0));
+    v2(b, sizeof b, s++);
+    TEST_ASSERT_TRUE(ida_gon_ekle(&g, IDA_GON_SINIF_ZORUNLU, b, sizeof b, 0));
+    TEST_ASSERT_EQUAL_UINT32(0u, g.sira_giris.kesinti);  /* üst katman boşluk bırakmadı */
+    TEST_ASSERT_EQUAL_UINT32(1u, g.sira_kuyruk.kesinti); /* ret: kritik_ret = 1 */
+    TEST_ASSERT_EQUAL_UINT32(1u, g.sira_kuyruk.eksik);
+    TEST_ASSERT_EQUAL_UINT32(g.kritik_ret + g.zorunlu_ret, g.sira_kuyruk.eksik);
+    /* Üst katmanın atladığı numara giriş noktasında görünür. */
+    s++;
+    v2(b, sizeof b, s++);
+    TEST_ASSERT_TRUE(ida_gon_ekle(&g, IDA_GON_SINIF_ZORUNLU, b, sizeof b, 0));
+    TEST_ASSERT_EQUAL_UINT32(1u, g.sira_giris.kesinti);
+    /* Taşımaya verilenler: kuyruktaki sırayla (öncelik sırası farklı olabilir: yalnız sayım). */
+    mesgul = false;
+    uint32_t verilen = 0u;
+    while (cikar(0) != 0u) {
+        verilen++;
+    }
+    TEST_ASSERT_EQUAL_UINT32(IDA_GON_KRITIK_N + 2u, verilen);
+    TEST_ASSERT_EQUAL_UINT32(verilen, g.tx_frames);
+}
+
+/* (iii) atma ve temizleme taşıma noktasındaki boşluğu açıklar. */
+static void test_atma_ve_temizleme_sayilir(void)
+{
+    uint8_t b[16];
+    mesgul = true;
+    for (uint32_t i = 0u; i < IDA_GON_KAYBED_N + 2u; i++) {
+        v2(b, sizeof b, (uint8_t)i);
+        TEST_ASSERT_TRUE(ida_gon_ekle(&g, IDA_GON_SINIF_KAYBED, b, sizeof b, 0));
+    }
+    TEST_ASSERT_EQUAL_UINT32(2u, g.tx_dropped);
+    ida_gon_temizle(&g);
+    TEST_ASSERT_EQUAL_UINT32(IDA_GON_KAYBED_N, g.temizlenen);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_kritik_ret_hata);
+    RUN_TEST(test_gecersiz_sayilir);
+    RUN_TEST(test_sira_boslugu_sayacla_aciklanir);
+    RUN_TEST(test_atma_ve_temizleme_sayilir);
     RUN_TEST(test_oncelik_sirasi);
     RUN_TEST(test_surucuye_tek_cerceve);
     RUN_TEST(test_zorunlu_tasma_false);

@@ -11,9 +11,10 @@ add_library(ida_fw_saf_host STATIC
   "${_fw}/app/istatistik.c"
   "${_fw}/app/saglik.c"
   "${_fw}/app/gonderim.c"
+  "${_fw}/app/kapanis.c"
   "${_fw}/app/kalici.c")
 target_include_directories(ida_fw_saf_host PUBLIC "${_fw}/link" "${_fw}/bsp" "${_fw}/app")
-target_link_libraries(ida_fw_saf_host PUBLIC ida_link ida_core)
+target_link_libraries(ida_fw_saf_host PUBLIC ida_link_ust ida_link ida_core)
 ida_ayar_uygula(ida_fw_saf_host CEKIRDEK)
 
 function(_ida_fw_birim ad)
@@ -28,6 +29,15 @@ _ida_fw_birim(alim)
 _ida_fw_birim(acilis)
 _ida_fw_birim(istatistik)
 _ida_fw_birim(gonderim)
+_ida_fw_birim(gonderim_oturum)
+# Karşı örnek (sol bulgu 1): platformun kapanış kararı olmadan aynı bütünleşik test düşer.
+add_executable(ida_fw_test_gonderim_oturum_karsi test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_karsi PRIVATE IDA_TEST_KAPANIS_YOK=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_karsi PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_karsi CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_karsi_ornek COMMAND ida_fw_test_gonderim_oturum_karsi)
+set_tests_properties(firmware.birim.gonderim_oturum_karsi_ornek PROPERTIES WILL_FAIL TRUE)
 _ida_fw_birim(kalici)
 _ida_fw_birim(saglik)
 

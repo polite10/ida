@@ -54,13 +54,14 @@ add_library(ida_fw_saf STATIC
   app/istatistik.c
   app/saglik.c
   app/gonderim.c
+  app/kapanis.c
   app/kalici.c)
 ida_ayar_uygula(ida_fw_saf CEKIRDEK)
 target_compile_options(ida_fw_saf PRIVATE -fstack-usage -Wshadow)
 target_include_directories(ida_fw_saf PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/link" "${CMAKE_CURRENT_SOURCE_DIR}/bsp"
   "${CMAKE_CURRENT_SOURCE_DIR}/app")
-target_link_libraries(ida_fw_saf PUBLIC ida_link ida_core)
+target_link_libraries(ida_fw_saf PUBLIC ida_link_ust ida_link ida_core)
 target_compile_options(ida_fw_saf PRIVATE -Wimplicit-fallthrough)
 
 # ---- BSP, bağlantı sürücüsü, uygulama ----------------------------------------------------

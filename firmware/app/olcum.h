@@ -21,7 +21,7 @@
 #include <stdint.h>
 
 #define IDA_FW_OLCUM_MAGIC UINT32_C(0x4F414449) /* "IDAO" */
-#define IDA_FW_OLCUM_SURUM 2u
+#define IDA_FW_OLCUM_SURUM 3u
 
 /* clang-format off */
 #define IDA_FW_OLCUM_ALANLARI(X, XK) \
@@ -53,6 +53,9 @@
     X(tx_bayt) X(tx_ret) X(tx_doluluk_azami) \
     X(gon_tx_frames) X(gon_tx_dropped) X(gon_crit_stall) X(gon_kritik_ret) X(gon_zorunlu_ret) \
     X(gon_yazma_ret) X(gon_kritik_bekleme_en_kotu_us) X(gon_q1_azami) X(gon_q2_azami) X(gon_q3_azami) \
+    X(gon_gecersiz_ret) X(gon_temizlenen) X(gon_kritik_hata) X(kapanis_neden) \
+    X(gon_sira_giris_kesinti) X(gon_sira_giris_eksik) X(gon_sira_kuyruk_kesinti) \
+    X(gon_sira_kuyruk_eksik) X(gon_sira_cikis_kesinti) X(gon_sira_cikis_eksik) \
     X(link_durum) X(link_sess) \
     X(say_rx_bytes) X(say_rx_frames) X(say_rx_crc_err) X(say_rx_unknown_msgid) X(say_rx_iflag) \
     X(say_rx_bad_len) X(say_rx_wrong_sys) X(say_rx_overflow) X(say_rx_resync_bytes) X(say_rx_seq_gap) \
