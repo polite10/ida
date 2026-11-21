@@ -31,7 +31,8 @@ add_executable(ida_sensor_test
   test/test_gecerlilik.cpp
   test/test_rastgele.cpp
   test/test_ariza.cpp
-  test/test_sure.cpp)
+  test/test_sure.cpp
+  test/test_duzeltme.cpp)
 target_include_directories(ida_sensor_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_sensor_test PRIVATE ida_sensor)
 ida_sensor_ayar(ida_sensor_test)
@@ -58,7 +59,16 @@ set(_ida_sensor_testleri
   ariza_desenleri
   ariza_akis_bagimsizligi
   kurulum_hatalari
-  sure)                    # kabul 8 (ölçüm; eşik yok)
+  sure                     # kabul 8 (ölçüm; eşik yok)
+  # sol incelemesinin karşı örnekleri (docs/gorevler/inceleme/W4-sensor-sol.md) ve W4-K4–K9
+  dvl_irtifa_egik
+  gnss_jeoit
+  ariza_donma_bilesik
+  ariza_temsil_araligi
+  ariza_suzgecli_imu
+  ornek_sayaci_64
+  emniyet_revizyon
+  kurulum_sureleri)
 foreach(_ad IN LISTS _ida_sensor_testleri)
   add_test(NAME sim.sensor.${_ad} COMMAND ida_sensor_test ${_ad})
 endforeach()

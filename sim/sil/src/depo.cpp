@@ -11,6 +11,20 @@
 
 #include "ida/port.h"
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace ida::sil {
 
 namespace {
@@ -56,6 +70,145 @@ bool dosya_oku(const std::string& yol, std::vector<std::uint8_t>& v)
     v.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     return !f.bad();
 }
+
+// Kalıcı yazım için en küçük platform katmanı (A4-K84): yaz, aygıta kadar kalıcılaştır, kapat.
+#if defined(_WIN32)
+class Dosya {
+public:
+    ~Dosya() { (void)kapat(); }
+    bool ac(const std::filesystem::path& p)
+    {
+        h_ = ::CreateFileW(p.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        return h_ != INVALID_HANDLE_VALUE;
+    }
+    bool yaz(const std::vector<std::uint8_t>& v)
+    {
+        std::size_t i = 0;
+        while (i < v.size()) {
+            const std::size_t kalan = v.size() - i;
+            const DWORD parca = static_cast<DWORD>(kalan > 0x100000u ? 0x100000u : kalan);
+            DWORD yazilan = 0;
+            if (::WriteFile(h_, v.data() + i, parca, &yazilan, nullptr) == 0 || yazilan == 0u) {
+                return false;
+            }
+            i += yazilan;
+        }
+        return true;
+    }
+    bool kalicilastir() { return ::FlushFileBuffers(h_) != 0; }
+    bool kapat()
+    {
+        if (h_ == INVALID_HANDLE_VALUE) {
+            return true;
+        }
+        const bool ok = ::CloseHandle(h_) != 0;
+        h_ = INVALID_HANDLE_VALUE;
+        return ok;
+    }
+
+private:
+    HANDLE h_ = INVALID_HANDLE_VALUE;
+};
+
+bool yeniden_adlandir(const std::filesystem::path& eski, const std::filesystem::path& yeni)
+{
+    return ::MoveFileExW(eski.c_str(), yeni.c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+}
+
+bool dizini_kalicilastir(const std::filesystem::path&)
+{
+    return true;   // MOVEFILE_WRITE_THROUGH: adlandırma diske yazılınca döner
+}
+#else
+// macOS'ta fsync veriyi sürücüye verir ama sürücünün önbelleğinden kalıcı ortama yazılmasını
+// beklemez; F_FULLFSYNC bunu ister. Desteklemeyen dosya sisteminde fsync'e düşülür.
+bool fd_kalicilastir(int fd)
+{
+#if defined(F_FULLFSYNC)
+    if (::fcntl(fd, F_FULLFSYNC) == 0) {
+        return true;
+    }
+#endif
+    for (;;) {
+        if (::fsync(fd) == 0) {
+            return true;
+        }
+        if (errno != EINTR) {
+            return false;
+        }
+    }
+}
+
+class Dosya {
+public:
+    ~Dosya() { (void)kapat(); }
+    bool ac(const std::filesystem::path& p)
+    {
+        fd_ = ::open(p.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        return fd_ >= 0;
+    }
+    bool yaz(const std::vector<std::uint8_t>& v)
+    {
+        std::size_t i = 0;
+        while (i < v.size()) {
+            const ssize_t r = ::write(fd_, v.data() + i, v.size() - i);
+            if (r < 0 && errno == EINTR) {
+                continue;
+            }
+            if (r <= 0) {
+                return false;
+            }
+            i += static_cast<std::size_t>(r);
+        }
+        return true;
+    }
+    bool kalicilastir() { return fd_kalicilastir(fd_); }
+    bool kapat()
+    {
+        if (fd_ < 0) {
+            return true;
+        }
+        const bool ok = ::close(fd_) == 0;
+        fd_ = -1;
+        return ok;
+    }
+
+private:
+    int fd_ = -1;
+};
+
+bool yeniden_adlandir(const std::filesystem::path& eski, const std::filesystem::path& yeni)
+{
+    return ::rename(eski.c_str(), yeni.c_str()) == 0;   // aynı dizinde, eskinin yerine atomik
+}
+
+// Adlandırmanın kendisi dizin girdisidir: dizin de kalıcılaştırılır.
+bool dizini_kalicilastir(const std::filesystem::path& hedef)
+{
+    std::filesystem::path dizin = hedef.parent_path();
+    if (dizin.empty()) {
+        dizin = ".";
+    }
+    const int fd = ::open(dizin.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    bool ok = false;
+    for (;;) {
+        if (::fsync(fd) == 0) {
+            ok = true;
+            break;
+        }
+        if (errno != EINTR) {
+            break;
+        }
+    }
+    (void)::close(fd);
+    return ok;
+}
+#endif
 
 }  // namespace
 
@@ -146,34 +299,50 @@ std::vector<std::uint8_t> Depo::kodla(const std::optional<Blok>& b) const
     return v;
 }
 
-bool Depo::atomik_yaz(const std::vector<std::uint8_t>& icerik, bool* dogrulama_hatasi) const
+// Adım izine ekler; sınamanın enjekte ettiği adımda false (adım yapılmadan başarısız sayılır).
+bool Depo::adim(Adim a)
+{
+    iz_.push_back(a);
+    return !hata_.has_value() || *hata_ != a;
+}
+
+bool Depo::atomik_yaz(const std::vector<std::uint8_t>& icerik, bool* dogrulama_hatasi)
 {
     *dogrulama_hatasi = false;
     const std::filesystem::path hedef(yol_);
     std::filesystem::path gecici = hedef;
     gecici += ".yeni";
-    {
-        std::ofstream f(gecici, std::ios::binary | std::ios::trunc);
-        if (!f) {
-            return false;
-        }
-        f.write(reinterpret_cast<const char*>(icerik.data()),
-                static_cast<std::streamsize>(icerik.size()));
-        f.flush();
-        if (!f) {
-            return false;
-        }
-    }
-    std::vector<std::uint8_t> geri;
     std::error_code ec;
-    if (!dosya_oku(gecici.string(), geri) || geri != icerik) {
-        *dogrulama_hatasi = true;
+    const auto vazgec = [&gecici, &ec]() {
         std::filesystem::remove(gecici, ec);
         return false;
+    };
+    // (1) geçici dosyaya yaz, (2) kalıcılaştır, kapat.
+    Dosya f;
+    if (!adim(Adim::Yazma) || !f.ac(gecici) || !f.yaz(icerik)) {
+        f.kapat();
+        return vazgec();
     }
-    std::filesystem::rename(gecici, hedef, ec);   // aynı dizinde: eskinin yerine atomik
-    if (ec) {
-        std::filesystem::remove(gecici, ec);
+    if (!adim(Adim::Kalicilastirma) || !f.kalicilastir()) {
+        f.kapat();
+        return vazgec();
+    }
+    if (!f.kapat()) {
+        return vazgec();
+    }
+    // (3) geri okuyup karşılaştır: tutmazsa eski dosya yerinde kalır.
+    std::vector<std::uint8_t> geri;
+    if (!adim(Adim::Dogrulama) || !dosya_oku(gecici.string(), geri) || geri != icerik) {
+        *dogrulama_hatasi = true;
+        return vazgec();
+    }
+    // (4) eskinin yerine adlandır (POSIX rename atomik; Windows MoveFileExW write-through).
+    if (!adim(Adim::YenidenAdlandirma) || !yeniden_adlandir(gecici, hedef)) {
+        return vazgec();
+    }
+    // (5) dizin girdisini kalıcılaştır (POSIX). Başarısızsa yeni içerik yerindedir ama
+    // kalıcılığı güvencede değildir: OK verilmez (A4-K84).
+    if (!adim(Adim::DizinKaliciligi) || !dizini_kalicilastir(hedef)) {
         return false;
     }
     return true;

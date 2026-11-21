@@ -3,8 +3,9 @@
 //
 // Sim sunucusuna kartla aynı A1 mesajlarıyla, 127.0.0.1 üzerindeki TCP ile istemci olarak
 // bağlanır (A1-K97 … K101); kopunca yeniden dener. Platformun kart yazılımından farkı:
-//   - saat sim zamanıdır: son kabul edilen zaman çerçevesinin t_sim_ns'i (A4-K11, A1-K121);
-//     TF alındığı an güncellenir, parti üyeleri önceki TF'nin zamanıyla damgalanır;
+//   - saat sim zamanıdır: protokol modülünün kabul ettiği (partiyi kapatan) son zaman
+//     çerçevesinin t_sim_ns'i (A4-K11, A1-K121); her çekirdek ömrü (açılış, REBOOT) 0'dan
+//     başlar (W4-K10); çağrı girdisindeki bütün alım damgaları çağrının now_w'sidir (A4-K14);
 //   - ızgara tick'i, T_bağ ve duyuru yoktur (A1-K100; ida_link_ust SIL rolü);
 //   - her step ve tick'ten önce tam N_bg arka plan çağrısı, oturum sonu çağrısından önce hiç
 //     (A1-K121 (iii), A4-K95);
@@ -99,6 +100,8 @@ struct Istatistik {
 // çağrısından hemen önce) koşucunun iş parçacığından çağrılır.
 struct Kancalar {
     std::function<void(int tur, const ida_in_t& girdi)> cagri_icinde;
+    // Çekirdek döndükten sonra, put_out'tan önce (çıktıya hata enjeksiyonu ve gözlem için).
+    std::function<void(int tur, const ida_in_t& girdi, ida_out_t& cikti)> cagri_sonrasi;
 };
 
 class Kosucu {

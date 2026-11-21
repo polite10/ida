@@ -57,6 +57,7 @@ add_executable(ida_sil_test
   test/test_belirlenim.cpp
   test/test_birim.cpp
   test/test_destek.cpp
+  test/test_duzeltme.cpp
   test/test_komut.cpp
   test/test_oturum.cpp
   test/test_param.cpp
@@ -76,7 +77,14 @@ set(_ida_sil_testleri
   komut_yolu           # kabul 2
   param_deposu         # kabul 3 (REBOOT dahil)
   pencere              # kabul 4 (W3-K10)
-  belirlenim)          # kabul 5
+  belirlenim           # kabul 5
+  # sol incelemesinin karşı örnekleri (docs/gorevler/inceleme/W4-sil-sol.md) ve W4-K10
+  alim_damgasi         # bulgu 1 (A4-K14)
+  tf_reddi             # bulgu 2
+  depo_kalicilik       # bulgu 3 (A4-K84)
+  reboot_tfsiz_kapanis # bulgu 5, W4-K10 (b)
+  durdur_gonderim      # bulgu 6
+  core_ok_sifir)       # notlar: health.core_ok = 0
 foreach(_ad IN LISTS _ida_sil_testleri)
   add_test(NAME sim.sil.${_ad}
     COMMAND ida_sil_test ${_ad} "${CMAKE_CURRENT_BINARY_DIR}/test_gecici")

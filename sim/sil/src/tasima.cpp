@@ -32,6 +32,10 @@ namespace ida::sil::tasima {
 
 namespace {
 
+// Engellenen gönderimde durdurma isteğinin en geç fark edilme süresi (duvar saati; çıktıyı
+// etkilemez).
+constexpr int kYazmaBeklemesiMs = 50;
+
 #if defined(_WIN32)
 using Uzunluk = int;
 constexpr int kGonderBayrak = 0;
@@ -50,6 +54,18 @@ void tutamac_kapat(Tutamac t)
 void miras_kapat(SOCKET s)
 {
     (void)::SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
+}
+
+// Engellemesiz kip: gönderim durdurma isteğiyle uyandırılabilsin (bekleme WSAPoll'da).
+void engellemesiz(SOCKET s)
+{
+    u_long bir = 1;
+    (void)::ioctlsocket(s, FIONBIO, &bir);
+}
+
+bool bekletir()
+{
+    return ::WSAGetLastError() == WSAEWOULDBLOCK;
 }
 
 int bekle(Tutamac t, short olay, int zaman_asimi_ms)
@@ -83,6 +99,20 @@ int bekle(Tutamac t, short olay, int zaman_asimi_ms)
     p.fd = t;
     p.events = olay;
     return ::poll(&p, 1u, zaman_asimi_ms);
+}
+
+// Engellemesiz kip: gönderim durdurma isteğiyle uyandırılabilsin (bekleme poll'da).
+void engellemesiz(int fd)
+{
+    const int bayrak = ::fcntl(fd, F_GETFL, 0);
+    if (bayrak >= 0) {
+        (void)::fcntl(fd, F_SETFL, bayrak | O_NONBLOCK);
+    }
+}
+
+bool bekletir()
+{
+    return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
 // Soket exec ile alt süreçlere geçmez (macOS'ta SOCK_CLOEXEC yok).
@@ -222,6 +252,7 @@ Soket Soket::baglan(std::uint16_t port, std::string* hata)
         return Soket();
     }
     nodelay_ac(sonuc.t_);
+    engellemesiz(yerli(sonuc.t_));   // bağlantı engelleyici kipte kuruldu
     return sonuc;
 }
 
@@ -242,7 +273,13 @@ long long Soket::oku(std::uint8_t* tampon, std::size_t kapasite, int zaman_asimi
         return -1;
     }
     const int n = ::recv(yerli(t_), reinterpret_cast<char*>(tampon), static_cast<int>(istek), 0);
-    return n > 0 ? static_cast<long long>(n) : -1;   // 0: karşı taraf kapattı; < 0: hata
+    if (n > 0) {
+        return static_cast<long long>(n);
+    }
+    if (n < 0 && bekletir()) {
+        return 0;
+    }
+    return -1;   // 0: karşı taraf kapattı; < 0: hata
 #else
     if (r < 0) {
         return errno == EINTR ? 0 : -1;
@@ -255,27 +292,41 @@ long long Soket::oku(std::uint8_t* tampon, std::size_t kapasite, int zaman_asimi
         if (n < 0 && errno == EINTR) {
             continue;
         }
+        if (n < 0 && bekletir()) {
+            return 0;
+        }
         return -1;   // 0: karşı taraf kapattı; < 0: hata
     }
 #endif
 }
 
-bool Soket::yaz(const std::uint8_t* veri, std::size_t n)
+bool Soket::yaz(const std::uint8_t* veri, std::size_t n, const std::atomic<bool>* dur)
 {
     std::size_t yazilan = 0;
     while (gecerli() && yazilan < n) {
+        if (dur != nullptr && dur->load()) {
+            return false;   // durdurma: kısmi yazım kalır, bağlantı bırakılır
+        }
         const std::size_t kalan = n - yazilan;
         const std::size_t istek =
             kalan > static_cast<std::size_t>(INT_MAX) ? static_cast<std::size_t>(INT_MAX) : kalan;
 #if defined(_WIN32)
         const int r = ::send(yerli(t_), reinterpret_cast<const char*>(veri + yazilan),
                              static_cast<int>(istek), kGonderBayrak);
+        if (r < 0 && bekletir()) {
+            (void)bekle(t_, POLLOUT, kYazmaBeklemesiMs);   // karşı taraf okuyunca ya da süre
+            continue;
+        }
         if (r <= 0) {
             return false;
         }
 #else
         const ssize_t r = ::send(yerli(t_), veri + yazilan, istek, kGonderBayrak);
         if (r < 0 && errno == EINTR) {
+            continue;
+        }
+        if (r < 0 && bekletir()) {
+            (void)bekle(t_, POLLOUT, kYazmaBeklemesiMs);
             continue;
         }
         if (r <= 0) {
@@ -285,6 +336,14 @@ bool Soket::yaz(const std::uint8_t* veri, std::size_t n)
         yazilan += static_cast<std::size_t>(r);
     }
     return yazilan == n;
+}
+
+void Soket::alim_tamponu(int bayt)
+{
+    if (gecerli()) {
+        (void)::setsockopt(yerli(t_), SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char*>(&bayt),
+                           static_cast<Uzunluk>(sizeof bayt));
+    }
 }
 
 void Soket::yazmayi_kapat()
@@ -399,6 +458,7 @@ Soket Dinleyici::kabul(int zaman_asimi_ms)
     sigpipe_kapat(s);
 #endif
     nodelay_ac(sonuc.t_);
+    engellemesiz(yerli(sonuc.t_));
     return sonuc;
 }
 

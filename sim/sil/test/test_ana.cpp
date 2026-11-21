@@ -17,6 +17,12 @@ int test_param_deposu(const Baglam&);
 int test_pencere(const Baglam&);
 int test_belirlenim(const Baglam&);
 int test_program(const Baglam&);
+int test_alim_damgasi(const Baglam&);
+int test_tf_reddi(const Baglam&);
+int test_reboot_tfsiz_kapanis(const Baglam&);
+int test_core_ok_sifir(const Baglam&);
+int test_durdur_gonderim(const Baglam&);
+int test_depo_kalicilik(const Baglam&);
 }  // namespace ida::sil::test
 
 int main(int argc, char** argv)
@@ -38,6 +44,12 @@ int main(int argc, char** argv)
         {"pencere", test_pencere},
         {"belirlenim", test_belirlenim},
         {"program", test_program},
+        {"alim_damgasi", test_alim_damgasi},
+        {"tf_reddi", test_tf_reddi},
+        {"reboot_tfsiz_kapanis", test_reboot_tfsiz_kapanis},
+        {"core_ok_sifir", test_core_ok_sifir},
+        {"durdur_gonderim", test_durdur_gonderim},
+        {"depo_kalicilik", test_depo_kalicilik},
     };
     if (argc < 2) {
         std::fprintf(stderr, "kullanım: ida_sil_test <ad> [geçici dizin]\n");

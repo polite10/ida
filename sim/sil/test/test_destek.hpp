@@ -68,6 +68,12 @@ public:
     // Çerçeveyi yalnız kodlar (gönderilen kayda girmez).
     std::vector<std::uint8_t> kodla(std::uint32_t msgid, const void* m, std::size_t boy);
     void bayt_gonder(const std::uint8_t* p, std::size_t n);
+    // Durdurulabilir gönderim (gönderilen kayda girmez); başarısız ya da durdurulduysa false.
+    bool bayt_gonder_durdurulabilir(const std::uint8_t* p, std::size_t n,
+                                    const std::atomic<bool>* dur);
+    // Okuyucu iş parçacığını durdurur; bağlantı açık kalır, alınmayan baytlar birikir.
+    void okumayi_durdur();
+    void alim_tamponu(int bayt) { soket_.alim_tamponu(bayt); }
 
     // Okuma imlecinden sonraki, msgid'li ve koşulu tutan ilk çerçeveyi bekler; bulunca imleç
     // onun ardına geçer. Zaman aşımında false.
@@ -159,6 +165,13 @@ public:
     void simple(std::uint32_t cmd_id, std::uint8_t type, std::uint16_t arg);
     void param_set(std::uint32_t cmd_id, std::uint16_t id, std::uint8_t type, std::uint32_t bits);
     void guided(std::uint32_t cmd_id, std::uint8_t mask, float depth, float yaw);
+    void emniyet(std::uint32_t seq, std::int64_t t, std::uint32_t rev);
+    void batarya(std::uint32_t seq, std::int64_t t);   // 16 V (eşikler 13,2 / 12,4 V)
+    void sizinti(std::uint32_t seq, std::int64_t t);   // kuru
+    // Kamera algılama partisi başlığı ve tek kaydı (A8).
+    void algilama(std::uint32_t batch_seq, std::uint32_t det_seq, std::int64_t t);
+    // Ping360 satırı: 240 örnek, tek parça (önce DATA, sonra HEAD).
+    void ping360(std::uint32_t seq, std::int64_t t);
     // Sayılan üyelerle TF'yi gönderir ve sayacı sıfırlar.
     void tf(std::uint32_t seq, std::int64_t t, bool imu_var);
 

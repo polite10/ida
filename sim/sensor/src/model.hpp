@@ -190,6 +190,7 @@ inline constexpr std::size_t kAzamiKanal = 8;
 //   3–6 beam_dist, 7 altitude; BATT 0 voltage, 1 current, 2 temp_c; LEAK ve SAFETY kanalsız.
 struct TemelKayit {
     OlcumBasligi hdr{};
+    std::uint64_t ornek_no = 0;   // model içi örnek numarası (64 bit; RNG sayacı)
     std::array<double, kAzamiKanal> k{};
     std::array<double, kAzamiKanal> sigma_nom{};   // gürültü artışı için örnek başına σ
     std::uint8_t n_kanal = 0;
@@ -244,6 +245,8 @@ public:
     virtual std::size_t halka_ihtiyaci(std::int64_t adim_ns) const = 0;
 
     const SensorAyari& ayar() const { return a_; }
+    // Model içi örnek sayacını kurar (yalnız testler: 2³² sarımının sınanması).
+    void ornek_sayaci_kur(std::uint64_t n) { ornek_ = n; }
 
 protected:
     TemelKayit yeni_kayit(std::int64_t t_meas, std::uint32_t window, std::int64_t t_hazir,
@@ -253,7 +256,8 @@ protected:
     Akis acilis_;
     Akis olcum_;
     Akis zamanlama_;
-    std::uint32_t seq_ = 0;
+    // Model içi örnek sayacı (A5-K110 `n`, 64 bit); teldeki seq bunun 2³² kalanıdır.
+    std::uint64_t ornek_ = 0;
 };
 
 // Türüne göre modeli kurar; ayar hatası varsa nullptr ve `hata`.

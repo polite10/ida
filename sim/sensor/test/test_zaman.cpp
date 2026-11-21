@@ -14,7 +14,6 @@ struct Beklenen {
     std::uint32_t pencere;    // window_ns
 };
 
-std::int64_t ust_kontrol(std::int64_t t) { return ((t + 4 * kAdim - 1) / (4 * kAdim)) * 4 * kAdim; }
 
 }  // namespace
 
@@ -46,7 +45,9 @@ int test_zaman_hiz_gecikme()
     const Beklenen tablo[] = {
         {SensorTuru::imu, 5'000'000, 0, 5'000'000},
         {SensorTuru::manyetometre, 10'000'000, 1'000'000, 0},
-        {SensorTuru::basinc, 40'000'000, 19'750'000, 18'750'000},
+        // Basınç: fiziksel bitiş t_meas + 19,75 ms; teslim üretim sınırından (20 ms) önce olamaz
+        // (W4-K9).
+        {SensorTuru::basinc, 40'000'000, 20'000'000, 18'750'000},
         {SensorTuru::gnss, 200'000'000, 120'000'000, 0},
         {SensorTuru::batarya_olcer, 100'000'000, 1'000'000, 100'000'000},
         {SensorTuru::sizinti, 100'000'000, 0, 0},
@@ -62,8 +63,8 @@ int test_zaman_hiz_gecikme()
             DOGRULA(d, h.window_ns == b.pencere, ad + ": window_ns");
             DOGRULA(d, h.t_teslim_ns - h.t_meas_ns == b.teslim, ad + ": t_teslim − t_meas");
             DOGRULA(d, h.t_hazir_ns % kAdim == 0, ad + ": t_hazır adım sınırında değil");
-            DOGRULA(d, h.t_meas_ns <= h.t_hazir_ns && h.t_hazir_ns <= ust_kontrol(h.t_teslim_ns),
-                    ad + ": nedensellik (t_meas ≤ t_hazır ≤ t_teslim'in üst kontrol sınırı)");
+            DOGRULA(d, h.t_meas_ns <= h.t_hazir_ns && h.t_hazir_ns <= h.t_teslim_ns,
+                    ad + ": nedensellik (t_meas ≤ t_hazır ≤ t_teslim; W4-K9)");
             if (i > 0) {
                 DOGRULA(d, h.t_meas_ns - v[i - 1].hdr.t_meas_ns == b.periyot, ad + ": örnekleme aralığı");
             }
@@ -139,7 +140,7 @@ int test_zaman_dvl()
         const auto& h = v[i].hdr;
         DOGRULA(d, h.seq == i, "DVL seq kesintili");
         DOGRULA(d, h.t_tx_ns % kAdim == 0, "t_tx adım sınırında değil");
-        DOGRULA(d, h.t_tx_ns < h.t_meas_ns && h.t_meas_ns < h.t_hazir_ns && h.t_hazir_ns <= ust_kontrol(h.t_teslim_ns),
+        DOGRULA(d, h.t_tx_ns < h.t_meas_ns && h.t_meas_ns < h.t_hazir_ns && h.t_hazir_ns <= h.t_teslim_ns,
                 "DVL nedensellik");
         DOGRULA(d, h.t_meas_ns - h.t_tx_ns == tx_meas, "t_meas − t_tx = r̄/c");
         DOGRULA(d, h.t_teslim_ns - h.t_meas_ns == tx_meas + 5'000'000 + iletim,

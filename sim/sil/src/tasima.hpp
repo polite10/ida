@@ -5,6 +5,7 @@
 // yalnız durdurma isteğini görmek içindir: koşucunun davranışı ve çıktısı ona bağlı değildir.
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -37,11 +38,16 @@ public:
     // > 0: okunan bayt; 0: zaman aşımı (veri yok); < 0: bağlantı kapandı ya da hata.
     long long oku(std::uint8_t* tampon, std::size_t kapasite, int zaman_asimi_ms);
 
-    // Bütün baytları yazar; bağlantı koptuysa false.
-    bool yaz(const std::uint8_t* veri, std::size_t n);
+    // Bütün baytları yazar; bağlantı koptuysa false. Soket engellemesizdir: karşı taraf
+    // okumazken yazım POLLOUT ile bekler ve *dur true olunca (en geç ~50 ms içinde) yazılan
+    // kısmı bırakıp false döner; dur NULL ise yazım bitene ya da bağlantı kopana kadar sürer.
+    bool yaz(const std::uint8_t* veri, std::size_t n, const std::atomic<bool>* dur = nullptr);
 
     // Gönderme yönünü kapatır (karşı taraf akışın sonunu görür); okuma sürer.
     void yazmayi_kapat();
+
+    // İşletim sisteminin alım tamponu (SO_RCVBUF), bayt; sınamalar için.
+    void alim_tamponu(int bayt);
 
     void kapat();
 

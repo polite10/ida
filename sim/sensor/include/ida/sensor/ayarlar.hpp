@@ -181,6 +181,10 @@ struct SensorOrtami {                 // ortam (05'in okuduğu alanlar)
         std::optional<double> ses_hizi;  // m/s; DVL etkinse zorunlu (bu dilim)
     } su{};
     std::optional<OrtamOrijin> orijin;
+    // Jeoit yüksekliği N (m): GNSS `alt_mm` = (h_elipsoit − N), ortalama deniz seviyesine göre
+    // (A4 §3.3; W4-K7). Kabul: 0 m (sim dünyasında jeoit modeli yok; değer bu ayarın
+    // değeridir, sessiz varsayım değil). A5'e anahtar eklenmesi küçük sürüm notudur.
+    double jeoit_yuksekligi = 0.0;
     std::optional<Vek3> manyetik_alan;  // T, NED
     struct Akinti {
         Vek3 hiz_ned{};               // m/s (dinamik basınç için bağıl hız)

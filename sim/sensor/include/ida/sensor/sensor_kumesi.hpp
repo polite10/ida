@@ -64,6 +64,7 @@ struct Sayaclar {
     std::uint64_t nan_reddi = 0;               // 05 §4: model çıktısı sonlu değil
     std::uint64_t uretilen = 0;                // kuyruğa giren kayıt
     std::uint64_t kayip = 0;                   // kayıp arızasıyla teslim edilmeyen
+    std::uint64_t aralik_reddi = 0;            // arıza zinciri sonrası temsil edilemeyen değer
 };
 
 class SensorKumesi {

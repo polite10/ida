@@ -119,7 +119,8 @@ TemelKayit Model::yeni_kayit(std::int64_t t_meas, std::uint32_t window, std::int
     r.hdr.sensor_id = a_.kimlik;
     r.hdr.tur = a_.tur;
     r.hdr.inst = a_.inst;
-    r.hdr.seq = seq_++;
+    r.ornek_no = ornek_++;
+    r.hdr.seq = static_cast<std::uint32_t>(r.ornek_no & 0xFFFFFFFFu);
     r.hdr.t_meas_ns = t_meas;
     r.hdr.window_ns = window;
     r.hdr.t_hazir_ns = t_hazir;
@@ -186,6 +187,25 @@ public:
         }
         if (p_.suzgec_etkin) {
             alfa_ = 1.0 - std::exp(-h / ns_s(p_.suzgec_tau_ns));
+            // Süzgeçli çıktının örnek başına nominal σ'sı (gürültü artışı arızası için; A5 Tablo
+            // 3.10-A): adım gürültüsü σ_h'nin birinci derece süzgeçten (durağan AR(1),
+            // a = 1 − α) geçip pencerede yamuk ortalanmış hâli:
+            //   σ² = σ_h² · α²/(1 − a²) · Σ_i Σ_j w_i w_j a^|i−j|, w = (½, 1, …, 1, ½)/N.
+            const std::size_t n = static_cast<std::size_t>(periyot_ / adim_ns_);
+            const double ar = 1.0 - alfa_;
+            double toplam = 0.0;
+            for (std::size_t i = 0; i <= n; ++i) {
+                const double wi = (i == 0 || i == n) ? 0.5 : 1.0;
+                for (std::size_t j = 0; j <= n; ++j) {
+                    const double wj = (j == 0 || j == n) ? 0.5 : 1.0;
+                    const double fark = static_cast<double>(i > j ? i - j : j - i);
+                    toplam += wi * wj * std::pow(ar, fark);
+                }
+            }
+            const double carpan = std::sqrt(alfa_ * alfa_ / (1.0 - ar * ar) * toplam) / static_cast<double>(n);
+            for (std::size_t i = 0; i < 6; ++i) {
+                suzgec_nominal_[i] = suzgec_gurultu_[i] * carpan;
+            }
         }
         deger_.assign(static_cast<std::size_t>(periyot_ / adim_ns_) + 2, {});
     }
@@ -243,7 +263,7 @@ public:
         }
         TemelKayit kayit =
             yeni_kayit(b.t_ns, static_cast<std::uint32_t>(periyot_), b.t_ns, b.t_ns);
-        const std::uint64_t ornek = kayit.hdr.seq;
+        const std::uint64_t ornek = kayit.ornek_no;
         bool doymus = false;
         for (std::size_t i = 0; i < 6; ++i) {
             double y = ort[i] / static_cast<double>(n);
@@ -255,7 +275,7 @@ public:
                 doymus = true;
             }
             kayit.k[i] = kuantala(y, lsb_[i]);
-            kayit.sigma_nom[i] = p_.suzgec_etkin ? 0.0 : beyaz_[i];
+            kayit.sigma_nom[i] = p_.suzgec_etkin ? suzgec_nominal_[i] : beyaz_[i];
         }
         kayit.k[6] = sicaklik(b);
         kayit.n_kanal = 7;
@@ -293,7 +313,7 @@ private:
     Vek3 omega_ie_n_{};
     std::array<Mat3, 2> sm_{};
     std::array<double, 6> b_on_{}, b_t_{}, kappa_{}, gm_{}, gm_sigma_{}, gm_phi_{};
-    std::array<double, 6> beyaz_{}, suzgec_gurultu_{}, fs_{}, lsb_{};
+    std::array<double, 6> beyaz_{}, suzgec_gurultu_{}, suzgec_nominal_{}, fs_{}, lsb_{};
     double alfa_ = 0.0;
     std::array<double, 6> y_{};
     bool y_hazir_ = false;
@@ -358,7 +378,7 @@ public:
         TemelKayit r = yeni_kayit(b.t_ns, 0, b.t_ns, b.t_ns + p_.teslim_gecikmesi_ns);
         for (std::size_t j = 0; j < 3; ++j) {
             r.k[j] = v[j] + p_.gurultu_sigma *
-                                olcum_.normal(r.hdr.seq, c2_kodla(static_cast<std::uint32_t>(j), 0, 0));
+                                olcum_.normal(r.ornek_no, c2_kodla(static_cast<std::uint32_t>(j), 0, 0));
             r.sigma_nom[j] = p_.gurultu_sigma;
         }
         r.n_kanal = 3;
@@ -419,7 +439,7 @@ public:
             double y = std::numeric_limits<double>::quiet_NaN();
             if (tamam) {
                 y = p[0] + ofset_ + p_.sicaklik_kats * (sicaklik(b) - kSicaklikReferansi) +
-                    p_.gurultu_sigma * olcum_.normal(r.hdr.seq, c2_kodla(0, 0, 0));
+                    p_.gurultu_sigma * olcum_.normal(r.ornek_no, c2_kodla(0, 0, 0));
                 y = kuantala(y, p_.kuantalama);
                 if (y > kBasincAzami || y < 0.0) {
                     y = std::clamp(y, 0.0, kBasincAzami);
@@ -513,7 +533,7 @@ public:
         }
         const fizik::DurumAnlik& d = b.halka->al(b.adim_no)->d;
         TemelKayit r = yeni_kayit(b.t_ns, 0, b.t_ns, b.t_ns + p_.teslim_gecikmesi_ns);
-        const std::uint64_t ornek = r.hdr.seq;
+        const std::uint64_t ornek = r.ornek_no;
         izleme(b.t_ns, su_kalinligi(d), ornek);
         const std::size_t n_sv = edinim_ ? 0u : static_cast<std::size_t>(std::count(iz_.begin(), iz_.end(), true));
 
@@ -731,8 +751,9 @@ private:
         std::int64_t t_tx = 0, t_meas = 0, t_rapor = 0, t_hazir = 0, t_teslim = 0;
         std::array<double, 4> menzil{};
         std::uint8_t gecerli = 0;     // bit i: ışın i geçerli
+        double irtifa = -1.0;         // dönüştürücüden tabana dik mesafe (A4 §3.3, W4-K8)
         bool cozum = false;
-        std::uint32_t seq = 0;
+        std::uint64_t seq = 0;    // model içi ping numarası (64 bit)
     };
 
     void arama_sirasi_kur(int m)
@@ -755,7 +776,6 @@ private:
         const double ca = std::cos(p_.isin_acisi);
         std::array<bool, 4> isabet{};
         std::array<double, 4> menzil{};
-        double irtifa_top = 0.0;
         int n_isabet = 0;
         for (std::size_t i = 0; i < 4; ++i) {
             const Vek3 dn = carp(r_nb, carp(r_bs_, isin_[i]));
@@ -769,7 +789,6 @@ private:
             }
             isabet[i] = true;
             menzil[i] = r;
-            irtifa_top += r * ca;
             ++n_isabet;
         }
         const bool yakin = yakin_deneme_;
@@ -790,10 +809,13 @@ private:
             }
         }
         p.cozum = n_gecerli >= (p_.uc_isinla_cozum ? 3 : 4);
-        mod_mantigi(b.t_ns, mod, yakin, p.cozum, n_isabet > 0 ? irtifa_top / static_cast<double>(n_isabet) : -1.0);
+        // İrtifa: düz, yatay tabana dik mesafe (A4 §3.3 "dibe dik mesafe"; W4-K8). 05 §2.3.5'in
+        // ışın menzili · cos(ışın açısı) ortalaması eğik araçta bundan farklıdır; A4 geçerlidir.
+        p.irtifa = n_isabet > 0 ? taban_ - donusturucu[2] : -1.0;
+        mod_mantigi(b.t_ns, mod, yakin, p.cozum, p.irtifa);
 
         // Nedensel zaman zinciri (05 §2.3.5).
-        p.seq = seq_;
+        p.seq = ornek_;
         const double r_ort = p.cozum ? r_top / static_cast<double>(n_gecerli) : md.h_max / ca;
         p.t_meas = p.cozum ? p.t_tx + std::llround(r_ort / c_ * 1e9) : p.t_tx;
         p.t_rapor = p.t_tx + std::llround(2.0 * r_ort / c_ * 1e9) + p_.islem_suresi_ns;
@@ -807,7 +829,7 @@ private:
         }
         p.t_teslim = p.t_rapor + std::llround(iletim);
         p.t_hazir = ust_sinir(p.t_rapor, adim_ns_);
-        ++seq_;
+        ++ornek_;
         bekleyen_.push_back(p);
 
         // Sonraki ping: kullanılacak modun hız aralığından düzgün [T].
@@ -877,7 +899,8 @@ private:
         r.hdr.sensor_id = a_.kimlik;
         r.hdr.tur = a_.tur;
         r.hdr.inst = a_.inst;
-        r.hdr.seq = p.seq;
+        r.ornek_no = p.seq;
+        r.hdr.seq = static_cast<std::uint32_t>(p.seq & 0xFFFFFFFFu);
         r.hdr.t_meas_ns = p.t_meas;
         r.hdr.window_ns = 0;
         r.hdr.t_tx_ns = p.t_tx;
@@ -887,7 +910,6 @@ private:
         r.n_kanal = 8;
         r.beam_valid = p.gecerli;
         r.dvl_flags = kDvlDipIzi;
-        const double ca = std::cos(p_.isin_acisi);
         for (std::size_t i = 0; i < 4; ++i) {
             r.k[3 + i] = (p.gecerli & (1u << i)) != 0 ? p.menzil[i] : -1.0;
         }
@@ -924,8 +946,6 @@ private:
             }
             Mat3 hwh{};
             Vek3 hwu{};
-            double r_irtifa = 0.0;
-            int n = 0;
             for (std::size_t i = 0; i < 4; ++i) {
                 if ((p.gecerli & (1u << i)) == 0) {
                     continue;
@@ -937,8 +957,6 @@ private:
                         hwh[a][c] += w * isin_[i][a] * isin_[i][c];
                     }
                 }
-                r_irtifa += p.menzil[i] * ca;
-                ++n;
             }
             Mat3 kov{};
             if (ters(hwh, kov)) {
@@ -958,7 +976,7 @@ private:
                     r.dvl_fom = std::sqrt(std::max({kov[0][0], kov[1][1], kov[2][2]}));
                     r.dvl_flags = static_cast<std::uint8_t>(r.dvl_flags | kDvlKovaryansVar);
                 }
-                r.k[7] = r_irtifa / static_cast<double>(n);
+                r.k[7] = p.irtifa;
                 r.dvl_flags = static_cast<std::uint8_t>(r.dvl_flags | kDvlHizGecerli);
                 if (doymus) {
                     r.hdr.flags |= kBayrakDoymus;
@@ -1024,9 +1042,9 @@ public:
                                   b.t_ns + p_.teslim_gecikmesi_ns);
         bool doymus = false;
         const double va = vi[0] / p_.gerilim_bolucu +
-                          p_.analog_gurultu_sigma * olcum_.normal(r.hdr.seq, c2_kodla(0, 0, 0));
+                          p_.analog_gurultu_sigma * olcum_.normal(r.ornek_no, c2_kodla(0, 0, 0));
         const double ia = p_.akim_ofseti + vi[1] / p_.akim_olcegi +
-                          p_.analog_gurultu_sigma * olcum_.normal(r.hdr.seq, c2_kodla(1, 0, 0));
+                          p_.analog_gurultu_sigma * olcum_.normal(r.ornek_no, c2_kodla(1, 0, 0));
         const double va_q = adc(va, doymus);
         const double ia_q = adc(ia, doymus);
         r.k[0] = tamam ? va_q * p_.gerilim_bolucu : std::numeric_limits<double>::quiet_NaN();
@@ -1098,7 +1116,7 @@ public:
             const bool algilandi =
                 islak_bas_[i] >= 0 && b.t_ns - islak_bas_[i] >= p_.algilama_gecikmesi_ns;
             const bool sahte =
-                olcum_.duzgun(r.hdr.seq, c2_kodla(static_cast<std::uint32_t>(i), 0, 0)) <
+                olcum_.duzgun(r.ornek_no, c2_kodla(static_cast<std::uint32_t>(i), 0, 0)) <
                 p_.sahte_pozitif_orani;
             if (algilandi || sahte) {
                 r.mask = static_cast<std::uint8_t>(r.mask | (1u << i));
@@ -1132,6 +1150,7 @@ public:
         const EmniyetDurumu& e = b.dis->emniyet;
         anahtar_ = {e.acil_durdurma, e.fis[0], e.fis[1], e.pim[0], e.pim[1], e.dolu[0], e.dolu[1]};
         bekleyen_.fill(-1);
+        onceki_rev_ = e.emniyet_revizyonu;
         son_bitler_ = bitler(e);
     }
 
@@ -1151,6 +1170,8 @@ public:
             } else {
                 if (bekleyen_[i] < 0) {
                     bekleyen_[i] = b.t_ns + p_.anahtar_gecikmesi_ns;
+                    // Gevşetmeden önceki revizyon: algılanana dek örnek bunu taşır (W4-K4, K5).
+                    bekleyen_rev_[i] = onceki_rev_;
                 }
                 if (b.t_ns >= bekleyen_[i]) {
                     anahtar_[i] = yetkili[i];
@@ -1159,6 +1180,7 @@ public:
             }
         }
         const std::array<std::uint32_t, 4> simdi = bitler(e);
+        onceki_rev_ = e.emniyet_revizyonu;
         const bool degisti = simdi != son_bitler_;
         const bool periyodik = zam_.tetik(b.adim_no);
         if (!degisti && !periyodik) {
@@ -1173,7 +1195,11 @@ public:
     }
 
 private:
-    // Algılanan anahtarlar + t anındaki izin ve revizyon (A1-K56).
+    // Algılanan anahtarlar, t anındaki izin (A1-K56) ve gösterilen durumun revizyonu (W4-K4, K5;
+    // EMNİYET): bekleyen gevşetme yoksa güncel revizyon; varsa en erken bekleyen gevşetmeden
+    // önceki revizyon. Bu, o gevşetme yokken yetkili olan revizyondur; arada gecikmesiz
+    // algılanmış bir kısıtlama varsa (karışık durum) daha eski revizyon gönderilir: kart o
+    // revizyonla izin açamaz (kısıtlayan okuma).
     std::array<std::uint32_t, 4> bitler(const EmniyetDurumu& e) const
     {
         std::array<std::uint32_t, 4> s{};
@@ -1187,6 +1213,13 @@ private:
             s[1 + t] = v;
         }
         s[3] = e.emniyet_revizyonu;
+        std::int64_t en_erken = -1;
+        for (std::size_t i = 0; i < bekleyen_.size(); ++i) {
+            if (bekleyen_[i] >= 0 && (en_erken < 0 || bekleyen_[i] < en_erken)) {
+                en_erken = bekleyen_[i];
+                s[3] = bekleyen_rev_[i];
+            }
+        }
         return s;
     }
 
@@ -1195,6 +1228,8 @@ private:
     std::int64_t adim_ns_;
     std::array<bool, 7> anahtar_{};       // estop, fis0, fis1, pim0, pim1, dolu0, dolu1
     std::array<std::int64_t, 7> bekleyen_{};
+    std::array<std::uint32_t, 7> bekleyen_rev_{};
+    std::uint32_t onceki_rev_ = 0;        // önceki adım sınırındaki yetkili revizyon
     std::array<std::uint32_t, 4> son_bitler_{};
     Zamanlayici zam_;
 };

@@ -120,10 +120,12 @@ struct Kosucu::Ic {
     std::unique_ptr<ida_out_t> cikti;
     ida_link_platform_t plat{};
     ida_link_alici_t on_alici{};   // çerçeve sınırları ve TF zamanı (yalnız gözlem)
+    std::unique_ptr<ida_ping360_t> ping_kopya;   // A4-K14 damgalı Ping360 satırı
 
     Depo depo;
     bool ilk_init = true;
-    std::int64_t saat = 0;          // platform saati: sim zamanı, ns (A4-K11)
+    std::int64_t saat = 0;          // platform saati: sim zamanı, ns (A4-K11); ömür başı 0
+    std::int64_t son_now_w = 0;     // bu çekirdek ömründe verilen son now_w (A4-K09)
     std::uint32_t boot_count = 0;
     bool boot_ok = false;
     std::uint32_t nonce_deneme = 0; // A1-K114 <deneme>; her açılışta 0
@@ -152,6 +154,7 @@ struct Kosucu::Ic {
           l(std::make_unique<ida_link_ust_t>()),
           girdi(std::make_unique<ida_in_t>()),
           cikti(std::make_unique<ida_out_t>()),
+          ping_kopya(std::make_unique<ida_ping360_t>()),
           depo(ayar.depo_yolu, ayar.onceki_acilis),
           alim(kAlimTamponu)
     {
@@ -241,6 +244,11 @@ struct Kosucu::Ic {
                           std::to_string(kCekirdekAlani) + " B");
             return false;
         }
+        // W4-K10: her çekirdek ömrü (açılış, REBOOT, sim zamanının geri başlaması) platform
+        // saatini 0'dan başlatır (kart yeniden açılışının karşılığı); init'in now_w'si ilk TF'yi
+        // aşmaz (A4-K11) ve TF'siz bir oturum sonu çağrısında saat geri gitmez (A4-K09).
+        saat = 0;
+        son_now_w = 0;
         const Depo::Acilis a = depo.acilis_ayir();
         boot_count = a.ok ? a.boot_count : 0u;
         boot_ok = a.ok;
@@ -303,10 +311,9 @@ struct Kosucu::Ic {
         bg_dilim = 0u;
         pstore = static_cast<std::uint8_t>(IDA_PSTORE_IDLE);
         pfail = static_cast<std::uint8_t>(IDA_PSFAIL_NONE);
-        // A4 3.6 param_gen: init'te kalıcı bloğun kuşağı, blok yoksa 0. Sözleşme SIL'de 0
-        // yazar; bu koşucunun deposu kalıcı olduğundan (blok kaynağı FLASH) kart kuralı
-        // uygulanır: kuşak yeniden başlatmada korunur ve sonraki kayıt ondan büyük olur.
-        pgen = b.has_value() ? b->gen : 0u;
+        // A4 3.6, W4-K10 (a): SIL'de init sonrasında param_gen = 0; saklı bloğun kuşağı yalnız
+        // kalici_blok bilgisinde (BOARD_HELLO, STATUS) taşınır.
+        pgen = 0u;
         yeniden_baslat_istendi = false;
         izlenen_oturum = 0u;
         ilk_tf_bekleniyor = true;
@@ -356,6 +363,38 @@ struct Kosucu::Ic {
         }
     }
 
+    // A4-K14: SIL'de zaman çerçevesinin, örneklerin, algılama kayıtlarının ve parti
+    // başlıklarının alım damgası çağrının now_w'sidir. Modül damgaları alım anındaki platform
+    // saatiyle koyar (üyeler partiyi kapatan TF'den önce gelir); çağrı girdisi burada
+    // tamamlanır. Ping360 satırı modülün belleğindedir (const): kopyası damgalanır.
+    void alim_damgalari(ida_in_t& in)
+    {
+        const ida_wtime_t w = in.now_w;
+        if (in.tf.present) {
+            in.tf.t_rx = w;
+        }
+        if (in.imu_present) {
+            in.imu.hdr.t_rx = w;
+        }
+        const std::size_t n_ornek = std::min<std::size_t>(in.n_samples, IDA_PORT_MAX_SAMPLES);
+        for (std::size_t i = 0; i < n_ornek; ++i) {
+            in.samples[i].hdr.t_rx = w;
+        }
+        const std::size_t n_bas = std::min<std::size_t>(in.n_det_batch, IDA_PORT_MAX_DET_BATCH);
+        for (std::size_t i = 0; i < n_bas; ++i) {
+            in.det_batch_t_rx[i] = w;
+        }
+        const std::size_t n_kayit = std::min<std::size_t>(in.n_det, IDA_PORT_MAX_DET_IN);
+        for (std::size_t i = 0; i < n_kayit; ++i) {
+            in.det_t_rx[i] = w;
+        }
+        if (in.ping360 != nullptr) {
+            *ping_kopya = *in.ping360;
+            ping_kopya->hdr.t_rx = w;
+            in.ping360 = ping_kopya.get();
+        }
+    }
+
     void cagrilari_yap()
     {
         while (!guvenli) {
@@ -372,6 +411,13 @@ struct Kosucu::Ic {
             in.plat.prev_overrun = false;   // SIL: süre çekirdeğe verilmez (A1-K102)
             in.plat.tx_stalled = false;
             in.plat.prev_call_ns = 0u;      // A4 3.6: 0 = ölçülmedi
+            // A4-K09: platform saati bir çekirdek ömründe azalmaz. Olağan akışta now_w zaten
+            // azalmaz (TF zamanı ya da son TF'nin zamanı); bu yalnız korumadır.
+            if (in.now_w.ns < son_now_w) {
+                in.now_w.ns = son_now_w;
+            }
+            son_now_w = in.now_w.ns;
+            alim_damgalari(in);             // A4-K14: SIL'de alım damgası = çağrının now_w'si
             if (tur != IDA_LINK_CAGRI_OTURUM_SONU) {
                 for (std::uint32_t i = 0; i < ayar.n_bg; ++i) {   // A1-K121 (iii), A4-K95
                     const ida_bg_rc_t b = ida_core_background(cekirdek, in.now_w);
@@ -391,10 +437,16 @@ struct Kosucu::Ic {
                                     : ida_core_tick(cekirdek, &in, cikti.get());
             ist.cekirdek.ekle(gecen_ns(cbas));
             bg_dilim = 0u;
+            if (kanca.cagri_sonrasi) {
+                kanca.cagri_sonrasi(static_cast<int>(tur), in, *cikti);
+            }
             ida_link_ust_put_out(l.get(), &in, rc, cikti.get());
             // --- çağrı penceresi kapandı ---
             ist.tur.ekle(gecen_ns(bas));
-            ist.cagri[static_cast<std::size_t>(tur)] += 1u;
+            const auto tur_i = static_cast<std::size_t>(tur);
+            if (tur_i < sizeof ist.cagri / sizeof ist.cagri[0]) {
+                ist.cagri[tur_i] += 1u;
+            }
             kayitlari_isle(*cikti);
             if (rc != IDA_RC_NOT_INIT && !cikti->health.core_ok) {
                 // A4-K89: iç tutarlılık kaybı mandallıdır. Kartta gözetim beslenmez; burada
@@ -413,9 +465,10 @@ struct Kosucu::Ic {
         if (gidecek.empty()) {
             return;
         }
-        if (!kopuk && !soket.yaz(gidecek.data(), gidecek.size())) {
+        // Karşı taraf okumazken yazım bekler; durdur() bu beklemeyi keser (bağlantı bırakılır).
+        if (!kopuk && !soket.yaz(gidecek.data(), gidecek.size(), &dur)) {
             kopuk = true;
-            gunluk(2, "yazma başarısız: bağlantı koptu");
+            gunluk(2, dur.load() ? "yazma durduruldu" : "yazma başarısız: bağlantı koptu");
         }
         gidecek.clear();
     }
@@ -449,23 +502,32 @@ struct Kosucu::Ic {
         ida_link_ust_rx(l.get(), p, n, duvar(saat));
     }
 
-    // TF'nin sim zamanı platform saatine girer (A4-K11, A1-K121). Oturumun ilk TF'si saatten
-    // küçükse sim zamanı geri başlamıştır: *geri = true (TF modüle verilmez).
-    void tf_gozle(const ida_link_cerceve_t& c, bool* geri)
+    std::uint32_t kapanan_parti() const
     {
-        mavlink_ida_time_frame_t m{};
-        if (ida_link_coz(&c, MAVLINK_MSG_ID_IDA_TIME_FRAME, &m, sizeof m) != IDA_LINK_TAMAM) {
-            return;
-        }
+        std::uint32_t say[IDA_LINK_SAY_N] = {};
+        ida_link_ust_sayaclar(l.get(), say);
+        return say[IDA_LINK_SAY_BATCH_CLOSED];
+    }
+
+    // TF modüle verildikten sonra: modül partiyi kapattıysa (TF'yi kabul ettiyse) sim zamanı
+    // platform saatine girer (A4-K11, A1-K121). Kabul kuralı (oturum, sess, DUP/OLD; A1-K25,
+    // K31) yalnız modüldedir: kabul, modülün batch_closed sayacının artmasından okunur;
+    // reddedilen TF saati ve zamanlayıcıları ilerletmez. Oturumun kabul edilen ilk TF'si
+    // saatten küçükse sim zamanı geri başlamıştır: *geri = true.
+    void tf_sonrasi(const ida_link_cerceve_t& c, std::uint32_t kapanan_once, bool* geri)
+    {
         std::uint32_t say[IDA_LINK_SAY_N] = {};
         ida_link_ust_sayaclar(l.get(), say);
         if (say[IDA_LINK_SAY_SESSIONS] != izlenen_oturum) {
             izlenen_oturum = say[IDA_LINK_SAY_SESSIONS];
             ilk_tf_bekleniyor = true;
         }
-        const std::uint16_t s = ida_link_ust_sess(l.get());
-        if (s == 0u || m.sess != s) {
-            return;   // oturum dışı ya da eski oturum: modül atar, saat değişmez
+        if (say[IDA_LINK_SAY_BATCH_CLOSED] == kapanan_once) {
+            return;   // DUP, OLD, oturum dışı ya da eski oturum: modül attı
+        }
+        mavlink_ida_time_frame_t m{};
+        if (ida_link_coz(&c, MAVLINK_MSG_ID_IDA_TIME_FRAME, &m, sizeof m) != IDA_LINK_TAMAM) {
+            return;
         }
         const bool gecerli = m.t_sim_ns >= 0 && m.t_sim_ns <= IDA_TIME_MAX_NS;
         if (ilk_tf_bekleniyor) {
@@ -486,22 +548,26 @@ struct Kosucu::Ic {
         std::size_t i = 0;
         while (i < n) {
             std::size_t t = 0;
-            ida_link_cerceve_t c;
+            ida_link_cerceve_t c{};
             const ida_link_rc_t rc = ida_link_al(&on_alici, p + i, n - i, &t, &c);
             if (rc != IDA_LINK_CERCEVE || t == 0u || t > n - i) {
                 rx_ver(p + i, n - i);   // çerçeve tamamlanmadı: yarım aday modülde bekler
                 return true;
             }
-            if (c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME) {
+            const bool tf = c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME;
+            const std::uint32_t kapanan_once = tf ? kapanan_parti() : 0u;
+            rx_ver(p + i, t);
+            i += t;
+            if (tf) {
                 bool geri = false;
-                tf_gozle(c, &geri);
+                tf_sonrasi(c, kapanan_once, &geri);
                 if (geri) {
+                    // Bekleyen parti çekirdeğe verilmez: bağlantı kapanınca modül oturumu
+                    // bitirir ve partiyi siler (A1-K22 (1)); çekirdek yeniden kurulur.
                     geri_donus = true;
                     return false;
                 }
             }
-            rx_ver(p + i, t);
-            i += t;
             cerceve_sonrasi();
             if (kopuk || guvenli || cekirdek_hatasi || dur.load()) {
                 return false;
@@ -606,7 +672,6 @@ struct Kosucu::Ic {
                 gunluk(2, "sim zamanı geri başladı: çekirdek yeniden kuruluyor");
                 ++ist.geri_donus;
                 ++ist.yeniden_kurulum;
-                saat = 0;
                 geri_donus = false;
                 if (!kur(static_cast<std::uint8_t>(IDA_RESET_SIL_REBOOT))) {
                     return Cikis::Cekirdek;
