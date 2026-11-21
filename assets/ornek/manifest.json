@@ -1,0 +1,125 @@
+{
+  "sema_surumu": "1.0",
+  "kume_kimligi": "ornek",
+  "kume_surumu": 1,
+  "aciklama": "A7 uygunluk ornegi (W1-uyum P3-11): A5 ornek senaryolarinin atif verdigi butun varliklari (arac ida0, torpido torpido_ida0, hedef hedef_ornek, statik havuz havuz_ornek) icerir. Ikili dosyalar YOKTUR: atif verilen .glb dosyalari depoda bulunmaz, sha256 ve bayt alanlari yer tutucudur; bu kume calisma zamaninda yuklenemez (A7-K06, A7-K51) ve yalniz sema, dugum tablosu, malzeme atamasi, A5 ile capraz tutarlilik (A7-K29, A7-K52, A7-K56) ve kimlik eslemesi icin kullanilir. Geometri 04 yer tutucu aglarindan: govde yuzerlik kutusu 0,40 x 0,48 x 0,07135 m, carpisma kutusu 0,46 x 0,58 x 0,38 m; torpido 0,20 m x 0,04 m sferoid; havuz 25 m x 12,5 m, taban 3 m. Akustik degerler tahmindir.",
+  "birimler": { "uzunluk": "m", "aci": "rad", "kutle": "kg", "zaman": "s" },
+  "eksenler": {
+    "gltf": "sag_el_y_yukari_z_on",
+    "gltf_govde": [[0, 0, 1], [-1, 0, 0], [0, -1, 0]],
+    "gltf_godot_yerel": [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]
+  },
+  "uretim": {
+    "disa_aktarici": { "arac": "elle", "surum": "0" }
+  },
+  "malzemeler": [
+    {
+      "kimlik": "govde_plastik",
+      "optik": { "model": "gltf_metalik_puruzluluk" },
+      "akustik": {
+        "geri_sacilim_mu": 0.01,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.5,
+        "puruzluluk_gamma_p": 0.5,
+        "kaynak": "tahmin",
+        "dayanak": "750 kHz'te yansiticilik bilinmiyor (05 2.4.1, 10 2.10); kalibrasyon A5'te"
+      }
+    },
+    {
+      "kimlik": "hedef_boyali_metal",
+      "optik": { "model": "gltf_metalik_puruzluluk" },
+      "akustik": {
+        "geri_sacilim_mu": 0.05,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.9,
+        "puruzluluk_gamma_p": 0.3,
+        "kaynak": "tahmin",
+        "dayanak": "yer tutucu; kalibrasyon A5'te"
+      }
+    },
+    {
+      "kimlik": "havuz_beton",
+      "optik": { "model": "gltf_metalik_puruzluluk" },
+      "akustik": {
+        "geri_sacilim_mu": 0.02,
+        "gelis_yasasi": "cos1",
+        "ayna_yansima_rs": 0.6,
+        "puruzluluk_gamma_p": 0.7,
+        "kaynak": "tahmin",
+        "dayanak": "yer tutucu; Ping360 havuz kayitlariyla uydurulacak (05 7)"
+      }
+    }
+  ],
+  "varliklar": [
+    {
+      "kimlik": "ida0",
+      "tur": "arac",
+      "dosya": "ida0.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bayt": 20,
+      "referans": { "dugum": 0, "ad": "REF" },
+      "sinir_kutusu_govde_m": { "en_kucuk": [-0.23, -0.29, -0.19], "en_buyuk": [0.23, 0.29, 0.19] },
+      "malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "govde_plastik" } ],
+      "gorsel": [
+        { "dugum": 1, "ad": "govde", "kosul": "her_zaman" },
+        { "dugum": 2, "ad": "torpido_1", "kosul": "tup_1_dolu" },
+        { "dugum": 3, "ad": "torpido_2", "kosul": "tup_2_dolu" }
+      ],
+      "yuzerlik": [
+        { "dugum": 4, "ad": "BUOY_govde", "kosul": "her_zaman", "hacim_m3": 0.0136992, "hacim_merkezi_govde_m": [0.0, 0.0, -0.01], "en_uzun_kenar_m": 0.6248199740 },
+        { "dugum": 5, "ad": "BUOY_tup_1", "kosul": "tup_1_dolu", "hacim_m3": 0.00016755, "hacim_merkezi_govde_m": [0.0, 0.10, 0.10], "en_uzun_kenar_m": 0.02 },
+        { "dugum": 6, "ad": "BUOY_tup_2", "kosul": "tup_2_dolu", "hacim_m3": 0.00016755, "hacim_merkezi_govde_m": [0.0, -0.10, 0.10], "en_uzun_kenar_m": 0.02 }
+      ],
+      "carpisma": [ { "dugum": 7, "ad": "COL_govde", "ayristirma": "yok" } ],
+      "baglanti_noktalari": [
+        { "dugum": 8, "ad": "MNT_kamera0", "tur": "montaj", "konum_govde_m": [0.21, 0.0, -0.02], "q_govde": [1.0, 0.0, 0.0, 0.0] },
+        { "dugum": 9, "ad": "TUBE_1", "tur": "tup", "konum_govde_m": [0.0, 0.10, 0.10], "q_govde": [1.0, 0.0, 0.0, 0.0] },
+        { "dugum": 10, "ad": "TUBE_2", "tur": "tup", "konum_govde_m": [0.0, -0.10, 0.10], "q_govde": [1.0, 0.0, 0.0, 0.0] }
+      ]
+    },
+    {
+      "kimlik": "torpido_ida0",
+      "tur": "torpido",
+      "dosya": "torpido_ida0.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bayt": 20,
+      "referans": { "dugum": 0, "ad": "REF" },
+      "sinir_kutusu_govde_m": { "en_kucuk": [-0.10, -0.02, -0.02], "en_buyuk": [0.10, 0.02, 0.02] },
+      "malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "govde_plastik" } ],
+      "gorsel": [ { "dugum": 1, "ad": "torpido", "kosul": "her_zaman" } ],
+      "carpisma": [ { "dugum": 2, "ad": "COL_torpido", "ayristirma": "yok" } ]
+    },
+    {
+      "kimlik": "hedef_ornek",
+      "tur": "hedef",
+      "dosya": "hedef_ornek.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bayt": 20,
+      "referans": { "dugum": 0, "ad": "REF" },
+      "sinir_kutusu_govde_m": { "en_kucuk": [-0.5, -0.25, -0.25], "en_buyuk": [0.5, 0.25, 0.25] },
+      "malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "hedef_boyali_metal" } ],
+      "gorsel": [ { "dugum": 1, "ad": "hedef", "kosul": "her_zaman" } ],
+      "carpisma": [ { "dugum": 2, "ad": "COL_hedef", "ayristirma": "yok" } ],
+      "isabet_bolgeleri": [ { "dugum": 3, "ad": "HIT_govde" } ]
+    },
+    {
+      "kimlik": "havuz_ornek",
+      "tur": "statik",
+      "dosya": "havuz_ornek.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bayt": 20,
+      "taban_derinligi_m": 3.0,
+      "referans": { "dugum": 0, "ad": "REF" },
+      "sinir_kutusu_govde_m": { "en_kucuk": [-12.7, -6.45, -0.5], "en_buyuk": [12.7, 6.45, 3.2] },
+      "malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "havuz_beton" } ],
+      "gorsel": [ { "dugum": 1, "ad": "havuz", "kosul": "her_zaman" } ],
+      "carpisma": [
+        { "dugum": 2, "ad": "COL_taban", "ayristirma": "yok" },
+        { "dugum": 3, "ad": "COL_duvar_kuzey", "ayristirma": "yok" },
+        { "dugum": 4, "ad": "COL_duvar_guney", "ayristirma": "yok" },
+        { "dugum": 5, "ad": "COL_duvar_dogu", "ayristirma": "yok" },
+        { "dugum": 6, "ad": "COL_duvar_bati", "ayristirma": "yok" }
+      ]
+    }
+  ]
+}

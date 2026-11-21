@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ida.local/sozlesmeler/a7/manifest-1.0.schema.json",
+  "title": "A7 varlık kümesi manifesti",
+  "description": "Sözleşme: docs/sozlesmeler/A7-sahne.md (sürüm 1.0-aday). Bu şema sözleşmenin parçasıdır ve onunla çelişemez; şemanın sınayamadığı kurallar (dosya varlığı, özetler, geometri denetimleri) sözleşmededir.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sema_surumu", "kume_kimligi", "kume_surumu", "birimler", "eksenler", "uretim", "malzemeler", "varliklar"],
+  "properties": {
+    "sema_surumu": { "const": "1.0" },
+    "kume_kimligi": { "$ref": "#/$defs/kimlik" },
+    "kume_surumu": { "type": "integer", "minimum": 1 },
+    "aciklama": { "type": "string", "maxLength": 1000 },
+    "birimler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uzunluk", "aci", "kutle", "zaman"],
+      "properties": {
+        "uzunluk": { "const": "m" },
+        "aci": { "const": "rad" },
+        "kutle": { "const": "kg" },
+        "zaman": { "const": "s" }
+      }
+    },
+    "eksenler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gltf", "gltf_govde", "gltf_godot_yerel"],
+      "properties": {
+        "gltf": { "const": "sag_el_y_yukari_z_on" },
+        "gltf_govde": { "const": [[0, 0, 1], [-1, 0, 0], [0, -1, 0]] },
+        "gltf_godot_yerel": { "const": [[-1, 0, 0], [0, 1, 0], [0, 0, -1]] }
+      }
+    },
+    "uretim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disa_aktarici"],
+      "properties": {
+        "disa_aktarici": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arac", "surum"],
+          "properties": {
+            "arac": { "enum": ["blender", "betik", "elle"] },
+            "surum": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "ayarlar": {
+              "type": "object",
+              "additionalProperties": { "type": ["string", "number", "boolean"] }
+            }
+          }
+        },
+        "kaynaklar": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["yol", "sha256"],
+            "properties": {
+              "yol": { "type": "string", "pattern": "^kaynak/[a-z0-9_]{1,48}\\.[a-z0-9]{1,8}$" },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "araclar": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coacd": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["surum", "kaynak_isleme"],
+          "properties": {
+            "surum": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+            "kaynak_isleme": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          }
+        }
+      }
+    },
+    "malzemeler": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/malzeme" }
+    },
+    "varliklar": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/varlik" }
+    }
+  },
+  "$defs": {
+    "kimlik": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "vektor3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "kuaterniyon": {
+      "description": "w, x, y, z; birim (|‖q‖ − 1| ≤ 1e-6, sözleşmede)",
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number", "minimum": -1, "maximum": 1 }
+    },
+    "dugum_indeksi": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "kosul": { "enum": ["her_zaman", "tup_1_dolu", "tup_2_dolu"] },
+    "malzeme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kimlik", "optik", "akustik"],
+      "properties": {
+        "kimlik": { "$ref": "#/$defs/kimlik" },
+        "aciklama": { "type": "string", "maxLength": 200 },
+        "optik": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model"],
+          "properties": {
+            "model": { "const": "gltf_metalik_puruzluluk" }
+          }
+        },
+        "akustik": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["geri_sacilim_mu", "gelis_yasasi", "ayna_yansima_rs", "puruzluluk_gamma_p", "kaynak"],
+          "properties": {
+            "geri_sacilim_mu": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "gelis_yasasi": { "enum": ["lambert_cos2", "cos1"] },
+            "ayna_yansima_rs": { "type": "number", "minimum": -1, "maximum": 1 },
+            "puruzluluk_gamma_p": { "type": "number", "minimum": 0, "maximum": 1 },
+            "kaynak": { "enum": ["tahmin", "literatur", "olcum"] },
+            "dayanak": { "type": "string", "maxLength": 300 }
+          }
+        }
+      }
+    },
+    "rol_girdisi": {
+      "type": "object",
+      "required": ["dugum", "ad"],
+      "properties": {
+        "dugum": { "$ref": "#/$defs/dugum_indeksi" },
+        "ad": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "coacd_ayarlari": {
+      "description": "CoACD 1.0.14 Params yapısının (src/config.h) 19 algoritma ayarının hepsi. rv_k ve dmc_esigi kitaplık API'sinde açılmaz; 1.0.14'te Params kurucusunun değerleriyle sabittir (sözleşme A7-K41).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "esik", "gercek_metrik", "yaklasim", "on_isleme", "on_isleme_cozunurlugu",
+        "ornekleme_cozunurlugu", "mcts_dugum", "mcts_yineleme", "mcts_derinlik",
+        "birlestirme", "azami_parca", "kose_siniri", "azami_parca_kosesi",
+        "disari_uzatma", "disari_uzatma_payi", "pca", "tohum", "rv_k", "dmc_esigi"
+      ],
+      "properties": {
+        "rv_k": { "const": 0.3 },
+        "dmc_esigi": { "const": 0.55 },
+        "esik": { "type": "number", "minimum": 0.01, "maximum": 1 },
+        "gercek_metrik": { "type": "boolean" },
+        "yaklasim": { "const": "ch" },
+        "on_isleme": { "enum": ["on", "off"] },
+        "on_isleme_cozunurlugu": { "type": "integer", "minimum": 20, "maximum": 100 },
+        "ornekleme_cozunurlugu": { "type": "integer", "minimum": 1000, "maximum": 10000 },
+        "mcts_dugum": { "type": "integer", "minimum": 10, "maximum": 40 },
+        "mcts_yineleme": { "type": "integer", "minimum": 60, "maximum": 2000 },
+        "mcts_derinlik": { "type": "integer", "minimum": 2, "maximum": 7 },
+        "birlestirme": { "type": "boolean" },
+        "azami_parca": { "type": "integer", "minimum": -1, "maximum": 1024 },
+        "kose_siniri": { "type": "boolean" },
+        "azami_parca_kosesi": { "type": "integer", "minimum": 4, "maximum": 1024 },
+        "disari_uzatma": { "type": "boolean" },
+        "disari_uzatma_payi": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pca": { "type": "boolean" },
+        "tohum": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      }
+    },
+    "varlik": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kimlik", "tur", "dosya", "sha256", "bayt", "referans", "sinir_kutusu_govde_m", "malzeme_atamasi", "gorsel", "carpisma"],
+      "allOf": [
+        {
+          "if": { "properties": { "tur": { "not": { "const": "statik" } } } },
+          "then": { "not": { "required": ["taban_derinligi_m"] } }
+        }
+      ],
+      "properties": {
+        "taban_derinligi_m": {
+          "description": "Yalnız statik varlıkta, isteğe bağlı: varlığın kendi gövde çerçevesinde REF noktasından +z ekseni boyunca taban üst yüzeyine uzaklık, m. Yerel uzunluktur, dünya su derinliği değildir (A7-K56).",
+          "type": "number", "exclusiveMinimum": 0, "maximum": 11000
+        },
+        "kimlik": { "$ref": "#/$defs/kimlik" },
+        "tur": { "enum": ["arac", "torpido", "hedef", "statik"] },
+        "dosya": { "type": "string", "pattern": "^[a-z0-9_]{1,48}\\.glb$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bayt": { "type": "integer", "minimum": 20, "maximum": 20971520 },
+        "referans": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dugum", "ad"],
+          "properties": {
+            "dugum": { "$ref": "#/$defs/dugum_indeksi" },
+            "ad": { "const": "REF" }
+          }
+        },
+        "sinir_kutusu_govde_m": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["en_kucuk", "en_buyuk"],
+          "properties": {
+            "en_kucuk": { "$ref": "#/$defs/vektor3" },
+            "en_buyuk": { "$ref": "#/$defs/vektor3" }
+          }
+        },
+        "malzeme_atamasi": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gltf_malzeme", "malzeme"],
+            "properties": {
+              "gltf_malzeme": { "type": "integer", "minimum": 0, "maximum": 65535 },
+              "malzeme": { "$ref": "#/$defs/kimlik" }
+            }
+          }
+        },
+        "gorsel": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/rol_girdisi" }],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad", "kosul"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^(?!COL_|BUOY_|SON_|REF$|MNT_|THR_|TUBE_|HIT_)[A-Za-z0-9_.\\-]{1,64}$" },
+              "kosul": { "$ref": "#/$defs/kosul" }
+            }
+          }
+        },
+        "yuzerlik": {
+          "type": "array",
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/rol_girdisi" }],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad", "kosul", "hacim_m3", "hacim_merkezi_govde_m", "en_uzun_kenar_m"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^BUOY_[A-Za-z0-9_]{1,59}$" },
+              "kosul": { "$ref": "#/$defs/kosul" },
+              "hacim_m3": { "type": "number", "exclusiveMinimum": 0 },
+              "hacim_merkezi_govde_m": { "$ref": "#/$defs/vektor3" },
+              "en_uzun_kenar_m": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        },
+        "carpisma": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/rol_girdisi" },
+              {
+                "if": { "properties": { "ayristirma": { "const": "coacd" } } },
+                "then": { "required": ["coacd", "turetilmis_ozet", "ortu_toleransi_m"] },
+                "else": { "not": { "anyOf": [{ "required": ["coacd"] }, { "required": ["turetilmis_ozet"] }, { "required": ["ortu_toleransi_m"] }] } }
+              }
+            ],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad", "ayristirma"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^COL_[A-Za-z0-9_]{1,60}$" },
+              "ayristirma": { "enum": ["yok", "coacd"] },
+              "coacd": { "$ref": "#/$defs/coacd_ayarlari" },
+              "ortu_toleransi_m": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+              "turetilmis_ozet": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "macos-arm64": { "$ref": "#/$defs/sha256" },
+                  "windows-x64": { "$ref": "#/$defs/sha256" }
+                }
+              }
+            }
+          }
+        },
+        "akustik": {
+          "type": "array",
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/rol_girdisi" }],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^SON_[A-Za-z0-9_]{1,60}$" }
+            }
+          }
+        },
+        "baglanti_noktalari": {
+          "type": "array",
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/rol_girdisi" }],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad", "tur", "konum_govde_m", "q_govde"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^(MNT_[a-z0-9_]{1,32}|THR_[1-8]|TUBE_[12])$" },
+              "tur": { "enum": ["montaj", "itici", "tup"] },
+              "konum_govde_m": { "$ref": "#/$defs/vektor3" },
+              "q_govde": { "$ref": "#/$defs/kuaterniyon" }
+            }
+          }
+        },
+        "isabet_bolgeleri": {
+          "type": "array",
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/rol_girdisi" }],
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dugum", "ad"],
+            "properties": {
+              "dugum": true,
+              "ad": { "type": "string", "pattern": "^HIT_[A-Za-z0-9_]{1,60}$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
