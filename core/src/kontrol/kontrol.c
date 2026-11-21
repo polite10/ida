@@ -374,6 +374,49 @@ static bool kinematik_coz(const ida_euler_t *e, const float omega[3], uint8_t tu
     return ok;
 }
 
+/* Gövde kuvvetinin NED aşağı bileşeni (R: gövde → NED). */
+static float ned_asagi(const ida_m3_t *r, const float tau[IDA_TAH_EKSEN])
+{
+    return (r->m[2][0] * tau[IDA_EKS_X]) + (r->m[2][1] * tau[IDA_EKS_Y]) +
+           (r->m[2][2] * tau[IDA_EKS_Z]);
+}
+
+/* Derinleşme yasağı, tahsis girdisinde (sol 3. tur bulgu 2; EMNİYET): bütün kanallar
+   birleşip gövde ekseni kırpmalarından geçtikten SONRA NED aşağı kuvvet ≤ tutma olur. Önce
+   gövde Z yukarıya çekilir (LIM_FZ içinde), yetmezse X ve Y aynı oranda küçültülür (eksen
+   sınırları korunur; X = Y = 0 iken aşağı bileşen r22·Z ≤ 0 olduğundan her zaman
+   sağlanabilir); duruş dikeye çok yakınsa (r22 küçük) Z aşağı katkı veremez (Z ≤ 0). */
+static void yasak_girdi(float tau[IDA_TAH_EKSEN], const ida_m3_t *r, float tutma, float lim_fz,
+                        bool dalis)
+{
+    float asim = ned_asagi(r, tau) - tutma;
+    if (!(asim > 0.0f)) {
+        return;
+    }
+    const float r22 = r->m[2][2];
+    if (dalis && (r22 > 1.0e-3f)) {
+        float z_yeni = tau[IDA_EKS_Z] - (asim / r22);
+        if (z_yeni < -lim_fz) {
+            z_yeni = -lim_fz;
+        }
+        tau[IDA_EKS_Z] = z_yeni;
+    } else if ((r22 * tau[IDA_EKS_Z]) > 0.0f) {
+        tau[IDA_EKS_Z] = 0.0f;
+    } else {
+        /* Z aşağı katkı vermiyor */
+    }
+    asim = ned_asagi(r, tau) - tutma;
+    if (asim > 0.0f) {
+        const float yatay = (r->m[2][0] * tau[IDA_EKS_X]) + (r->m[2][1] * tau[IDA_EKS_Y]);
+        float o = 0.0f;
+        if (yatay > asim) {
+            o = (yatay - asim) / yatay;
+        }
+        tau[IDA_EKS_X] = tau[IDA_EKS_X] * o;
+        tau[IDA_EKS_Y] = tau[IDA_EKS_Y] * o;
+    }
+}
+
 static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t *g, float dt)
 {
     const ida_kon_istek_t *s = &g->istek;
@@ -569,6 +612,9 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
     tau[IDA_EKS_K] = kirp(tau[IDA_EKS_K], lim_m[0]);
     tau[IDA_EKS_M] = kirp(tau[IDA_EKS_M], lim_m[1]);
     tau[IDA_EKS_N] = kirp(tau[IDA_EKS_N], lim_m[2]);
+    if (yasak) {
+        yasak_girdi(tau, &r, tutma_z, z->lim_fz, dalis);
+    }
 
     /* Tahsis: itici başına değişim hızı penceresi tahsisin sınırlarına katılır (sol bulgu 2);
        öncelik bu sınırlar altında korunur. */
@@ -586,6 +632,20 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
     }
     ida_tah_dagit(&k->tah, (uint8_t)(dalis ? IDA_TAH_DALIS : IDA_TAH_YUZEY), tau, alt, ust, f,
                   tau_a);
+    if (yasak) {
+        /* Tahsis sonrası (doyma, öncelik ve değişim hızı penceresi istenenden sapabilir;
+           EMNİYET): gerçekleşen NED aşağı kuvvet tutmayı aşıyorsa bütün itici kuvvetleri aynı
+           oranda küçültülür (tahsis doğrusal: τ = B f; aşağı bileşen de aynı oranda küçülür).
+           Değişim hızı penceresi bu durumda aşılabilir: emniyet önceliklidir. */
+        const float fa = ned_asagi(&r, tau_a);
+        if (fa > (tutma_z + 1.0e-4f)) {
+            const float o = tutma_z / fa; /* 0 ≤ o < 1 (tutma_z ≥ 0, fa > tutma_z) */
+            for (uint32_t i = 0u; i < IDA_TAH_ITICI; i++) {
+                f[i] = f[i] * o;
+            }
+            ida_tah_uret(&k->tah, f, tau_a);
+        }
+    }
     float kal[IDA_TAH_EKSEN];
     for (uint32_t j = 0u; j < IDA_TAH_EKSEN; j++) {
         kal[j] = sk(&ok, tau[j] - tau_a[j]);
