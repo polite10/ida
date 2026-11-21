@@ -32,7 +32,16 @@ foreach(_kip yol kaynak uretilen genex)
 endforeach()
 # Derleme sonrası katman: kaynak değişmeden başlığa eklenen yasak içerme (dolaylı) derlenir
 # ama gerçek başlık bağımlılıkları denetimi düşer; temiz çekirdekte aynı denetim geçer.
-foreach(_kip temiz dolayli_ad dolayli_kok)
+# Sanitizer'lı derleme (GCC/Clang) ve derleyicinin kaynak dizininin farklı adlı bir Xcode
+# dizininde olması (Clang; -resource-dir ile taklit) da sınanır (calistir.cmake).
+set(_derleme_sonrasi_kipler temiz dolayli_ad dolayli_kok)
+if(NOT MSVC)
+  list(APPEND _derleme_sonrasi_kipler asan)
+  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    list(APPEND _derleme_sonrasi_kipler kaynak_dizini kaynak_dizini_stm32)
+  endif()
+endif()
+foreach(_kip IN LISTS _derleme_sonrasi_kipler)
   add_test(NAME host.cekirdek_siniri.${_kip}
     COMMAND "${CMAKE_COMMAND}"
             "-DIDA_KOK=${PROJECT_SOURCE_DIR}"
@@ -50,6 +59,18 @@ set_tests_properties(host.cekirdek_siniri.dolayli_ad PROPERTIES
   PASS_REGULAR_EXPRESSION "yasak kimlikli başlık \\(cekirdek kökünde\\): [^\n]*stm32u5xx\\.h")
 set_tests_properties(host.cekirdek_siniri.dolayli_kok PROPERTIES
   PASS_REGULAR_EXPRESSION "çekirdek ve sistem kökleri dışından başlık: [^\n]*platform_baslik\\.h")
+foreach(_kip asan kaynak_dizini)
+  if(_kip IN_LIST _derleme_sonrasi_kipler)
+    set_tests_properties(host.cekirdek_siniri.${_kip} PROPERTIES
+      PASS_REGULAR_EXPRESSION "cekirdek-stm32 denemesi: başlık denetimi GEÇTİ"
+      FAIL_REGULAR_EXPRESSION "İDA çekirdek sınırı ihlali")
+  endif()
+endforeach()
+if("kaynak_dizini_stm32" IN_LIST _derleme_sonrasi_kipler)
+  # Derleyicinin kaynak dizini sistem köküdür ama oradaki ST başlığı yine yasaktır.
+  set_tests_properties(host.cekirdek_siniri.kaynak_dizini_stm32 PROPERTIES
+    PASS_REGULAR_EXPRESSION "yasak kimlikli başlık \\(sistem kökünde\\): [^\n]*Xcode_99\\.9\\.app/[^\n]*/include/stm32u5xx\\.h")
+endif()
 
 # ---- cmake/ modülleri başka dizinlerden çağrılınca da çalışır ---------------------------
 # (include_guard tuzağı): denetim işlevi ve MAVLink üretimi iki kardeş dizinden; boş betik
@@ -89,4 +110,5 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 add_subdirectory(duman)
 add_subdirectory(kabul/cekirdek)
 add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
+add_subdirectory(kabul/oturum)  # ida_link üst katmanı bağımsız kabul testleri (W3-oturum)
 add_subdirectory("${PROJECT_SOURCE_DIR}/firmware/test" firmware-test)  # kart yazılımının donanımsız modülleri (W3-kart)

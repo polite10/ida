@@ -24,8 +24,11 @@
 #
 # Sistem kökleri: GCC/Clang'de CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES (/usr/local/include ve
 # /opt/homebrew/include hariç: oradaki başlıklar derleyicinin değil, kurulmuş kitaplıklarındır);
-# MSVC'de yalnız araç takımının include dizini ve UCRT (Windows SDK'nın um/shared/winrt
-# dizinleri sistem kökü sayılmaz).
+# Clang'de ayrıca derleyicinin kaynak dizini (`-print-resource-dir`): -fsanitize=address
+# derleyicinin varsayılan yok sayma listesini (<kaynak dizini>/share/asan_ignorelist.txt)
+# bağımlılık olarak depfile'a yazar; bu dosya derleyicinindir. MSVC'de yalnız araç takımının
+# include dizini ve UCRT (Windows SDK'nın um/shared/winrt dizinleri sistem kökü sayılmaz).
+# Sistem köklerinde de kimlik denetimi (ST/CMSIS/RTOS, işletim sistemi API başlığı) yapılır.
 
 include_guard(GLOBAL)
 
@@ -108,6 +111,31 @@ function(ida_cekirdek_sinirini_denetle hedef)
   endforeach()
 endfunction()
 
+# Clang'in kaynak dizinini (resource dir) derleyiciye sorarak döndürür; Clang değilse ya da
+# yanıt alınamazsa boş. Sabit yol varsayılmaz: Xcode'un kurulu olduğu dizinin adı (ör.
+# /Applications/Xcode_26.6.app) ne olursa olsun derleyicinin kendi yanıtı kullanılır.
+# CMAKE_C_FLAGS sorguya katılır (ör. -resource-dir, --target derlemede de aynı yanıtı verir).
+function(_ida_clang_kaynak_dizini cikti)
+  set(${cikti} "" PARENT_SCOPE)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    return()
+  endif()
+  separate_arguments(_bayraklar NATIVE_COMMAND "${CMAKE_C_COMPILER_ARG1} ${CMAKE_C_FLAGS}")
+  execute_process(
+    COMMAND "${CMAKE_C_COMPILER}" ${_bayraklar} -print-resource-dir
+    OUTPUT_VARIABLE _d ERROR_VARIABLE _hata RESULT_VARIABLE _rc
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT _rc EQUAL 0 OR _d STREQUAL "" OR NOT IS_ABSOLUTE "${_d}" OR NOT IS_DIRECTORY "${_d}")
+    # Sessiz geçiş değildir: kök eklenmezse denetim kaynak dizinindeki dosyayı kök dışı sayar
+    # ve düşer (yanlış negatif değil, yanlış pozitif).
+    message(WARNING
+      "Çekirdek başlık denetimi: Clang kaynak dizini alınamadı (${CMAKE_C_COMPILER} "
+      "-print-resource-dir; çıkış ${_rc}): '${_d}' ${_hata}")
+    return()
+  endif()
+  set(${cikti} "${_d}" PARENT_SCOPE)
+endfunction()
+
 # Derleyicinin sistem başlık köklerini döndürür (açıklama dosyanın başında).
 function(_ida_sistem_kokleri cikti)
   set(_l "")
@@ -127,6 +155,10 @@ function(_ida_sistem_kokleri cikti)
       endif()
       list(APPEND _l "${_d}")
     endforeach()
+    _ida_clang_kaynak_dizini(_kaynak_dizini)
+    if(_kaynak_dizini)
+      list(APPEND _l "${_kaynak_dizini}")
+    endif()
   endif()
   if(NOT _l)
     message(FATAL_ERROR "Çekirdek başlık denetimi: derleyicinin sistem başlık kökleri bulunamadı")

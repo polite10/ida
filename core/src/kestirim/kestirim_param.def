@@ -1,4 +1,69 @@
 /*
  * kestirim_param.def — kestirim parametreleri. Sahibi: W3 kestirim işi. Kimlik bloğu 0x02xx.
- * Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ * Satır biçimi cerceve/cerceve_param.def başındadır. Hepsi B sınıfıdır (yalnız silahsızken
+ * değişir): montaj, gürültü ve eşikler silahlıyken değişirse kestirimin tutarlılığı sınanmamış
+ * bir geçişe girer. Varsayılanlar mimarın İDA-0 araç dosyasından (scenarios/ida0.toml montajları,
+ * A5 ürün profilleri) ve 02 §2.3'ten alınmış başlangıç değerleridir; gürültü, eşik ve süre
+ * değerleri TAHMİNDİR (SIL'de ayarlanacak). Süreler ms (U32), açılar rad, uzunluklar m.
+ *
+ * Yalnız hizalamada okunanlar: KES_D_MS, KES_HIZ_S, BARO_KAL, BARO_KAL_D, BARO_P_ATM; ötekiler
+ * her çağrıda okunur.
  */
+/* Füzyon ufku ve çıkış öngörücüsü (02 §2.3.2) */
+IDA_PARAM(0x0201u, KES_D_MS,     U32, B, 20u,      200u,     150u,      kes_d_ms)     /* ufuk gecikmesi D */
+IDA_PARAM(0x0202u, KES_TAU_O,    F32, B, 0.05f,    5.0f,     0.25f,     kes_tau_o)    /* s, öngörücü zaman sabiti */
+IDA_PARAM(0x0203u, KES_HIZ_S,    F32, B, 0.2f,     10.0f,    1.0f,      kes_hiz_s)    /* s, durağan hizalama süresi */
+IDA_PARAM(0x0204u, HIZ_W_MAX,    F32, B, 0.001f,   1.0f,     0.1f,      hiz_w_max)    /* rad/s, hizalamada |ω| sınırı */
+IDA_PARAM(0x0205u, HIZ_A_MAX,    F32, B, 0.01f,    5.0f,     0.5f,      hiz_a_max)    /* m/s², hizalamada ||f||−g sınırı */
+/* Montajlar (A4-K42; gövde referans noktası O_b'ye göre; A5 montaj.konum / yonelim) */
+IDA_PARAM(0x0206u, IMU_L_X,      F32, B, -10.0f,   10.0f,    0.0f,      imu_l_x)
+IDA_PARAM(0x0207u, IMU_L_Y,      F32, B, -10.0f,   10.0f,    0.0f,      imu_l_y)
+IDA_PARAM(0x0208u, IMU_L_Z,      F32, B, -10.0f,   10.0f,    -0.03f,    imu_l_z)
+IDA_PARAM(0x0209u, IMU_ROLL,     F32, B, -3.15f,   3.15f,    0.0f,      imu_roll)     /* sensör → gövde, ZYX */
+IDA_PARAM(0x020Au, IMU_PITCH,    F32, B, -3.15f,   3.15f,    0.0f,      imu_pitch)
+IDA_PARAM(0x020Bu, IMU_YAW,      F32, B, -3.15f,   3.15f,    0.0f,      imu_yaw)
+IDA_PARAM(0x020Cu, MAG_ROLL,     F32, B, -3.15f,   3.15f,    0.0f,      mag_roll)
+IDA_PARAM(0x020Du, MAG_PITCH,    F32, B, -3.15f,   3.15f,    0.0f,      mag_pitch)
+IDA_PARAM(0x020Eu, MAG_YAW,      F32, B, -3.15f,   3.15f,    0.0f,      mag_yaw)
+IDA_PARAM(0x020Fu, BARO_L_X,     F32, B, -10.0f,   10.0f,    -0.19f,    baro_l_x)
+IDA_PARAM(0x0210u, BARO_L_Y,     F32, B, -10.0f,   10.0f,    0.0f,      baro_l_y)
+IDA_PARAM(0x0211u, BARO_L_Z,     F32, B, -10.0f,   10.0f,    -0.03f,    baro_l_z)
+/* Ortam */
+IDA_PARAM(0x0212u, BARO_P_ATM,   F32, B, 50000.0f, 120000.0f, 101325.0f, baro_p_atm)  /* Pa; BARO_KAL = 0 iken */
+IDA_PARAM(0x0213u, BARO_KAL,     U32, B, 0u,       1u,       1u,        baro_kal)     /* 1: P_atm ilk basınçtan */
+IDA_PARAM(0x0214u, BARO_KAL_D,   F32, B, -1.0f,    10.0f,    0.0f,      baro_kal_d)   /* m, kalibrasyonda O_b derinliği */
+IDA_PARAM(0x0215u, SU_RHO,       F32, B, 900.0f,   1100.0f,  1000.0f,   su_rho)       /* kg/m³ */
+IDA_PARAM(0x0216u, YER_G,        F32, B, 9.7f,     9.9f,     9.80665f,  yer_g)        /* m/s² */
+IDA_PARAM(0x0217u, MAG_DEC,      F32, B, -3.15f,   3.15f,    0.10507f,  mag_dec)      /* rad, manyetik sapma */
+IDA_PARAM(0x0218u, MAG_B,        F32, B, 1.0e-5f,  1.0e-4f,  4.7816e-5f, mag_b)       /* T, beklenen alan normu */
+IDA_PARAM(0x0219u, MAG_B_TOL,    F32, B, 0.05f,    1.0f,     0.2f,      mag_b_tol)    /* oran, norm kapısı */
+/* Süreç gürültüsü (yoğunluklar) */
+IDA_PARAM(0x021Au, Q_GYRO,       F32, B, 1.0e-6f,  0.1f,     1.0e-4f,   q_gyro)       /* rad/s/√Hz */
+IDA_PARAM(0x021Bu, Q_ACC,        F32, B, 1.0e-5f,  1.0f,     2.0e-3f,   q_acc)        /* m/s²/√Hz */
+IDA_PARAM(0x021Cu, Q_BG,         F32, B, 1.0e-8f,  0.01f,    1.0e-5f,   q_bg)         /* rad/s/√s */
+IDA_PARAM(0x021Du, Q_BA,         F32, B, 1.0e-7f,  0.1f,     2.0e-4f,   q_ba)         /* m/s²/√s */
+/* Ölçüm gürültüsü (1σ) ve kapılar (02 §2.3.4) */
+IDA_PARAM(0x021Eu, R_BARO,       F32, B, 1.0e-4f,  10.0f,    0.02f,     r_baro)       /* m */
+IDA_PARAM(0x021Fu, R_MAG,        F32, B, 1.0e-3f,  1.0f,     0.05f,     r_mag)        /* rad, yön */
+IDA_PARAM(0x0220u, R_GRAV,       F32, B, 1.0e-3f,  10.0f,    0.5f,      r_grav)       /* m/s², eksen başına */
+IDA_PARAM(0x0221u, GRAV_ESIK,    F32, B, 0.05f,    5.0f,     1.0f,      grav_esik)    /* m/s², ||f||−g kısma sınırı */
+IDA_PARAM(0x0222u, KAPI_G1,      F32, B, 1.0f,     100.0f,   9.0f,      kapi_g1)      /* ki-kare eşiği, 1 boyut */
+IDA_PARAM(0x0223u, KAPI_G3,      F32, B, 1.0f,     100.0f,   14.16f,    kapi_g3)      /* ki-kare eşiği, 3 boyut */
+/* Başlangıç kovaryansı P₀ (1σ) */
+IDA_PARAM(0x0224u, P0_TILT,      F32, B, 1.0e-3f,  1.0f,     0.05f,     p0_tilt)      /* rad */
+IDA_PARAM(0x0225u, P0_YAW,       F32, B, 1.0e-3f,  3.15f,    0.2f,      p0_yaw)       /* rad */
+IDA_PARAM(0x0226u, P0_BG,        F32, B, 1.0e-5f,  0.1f,     0.01f,     p0_bg)        /* rad/s */
+IDA_PARAM(0x0227u, P0_BA,        F32, B, 1.0e-4f,  2.0f,     0.2f,      p0_ba)        /* m/s² */
+IDA_PARAM(0x0228u, P0_V,         F32, B, 1.0e-3f,  10.0f,    0.1f,      p0_v)         /* m/s */
+IDA_PARAM(0x0229u, P0_P,         F32, B, 1.0e-3f,  100.0f,   1.0f,      p0_p)         /* m */
+/* Sağlık düzeyi ve geçerlilik (02 §2.3.6, §4.1) */
+IDA_PARAM(0x022Au, SIG_TILT,     F32, B, 0.005f,   1.0f,     0.1f,      sig_tilt)     /* rad; üstü BAD */
+IDA_PARAM(0x022Bu, SIG_YAW,      F32, B, 0.01f,    3.15f,    0.3f,      sig_yaw)      /* rad; üstü yön geçersiz */
+IDA_PARAM(0x022Cu, SIG_DEPTH,    F32, B, 0.01f,    10.0f,    0.5f,      sig_depth)    /* m; üstü derinlik geçersiz */
+IDA_PARAM(0x022Du, SIG_HPOS,     F32, B, 0.1f,     1000.0f,  10.0f,     sig_hpos)     /* m; σ_max (DEGRADED) */
+IDA_PARAM(0x022Eu, KES_RED_MS,   U32, B, 100u,     10000u,   1000u,     kes_red_ms)   /* sürekli ret süresi (duvar) */
+IDA_PARAM(0x022Fu, MAG_RESET_MS, U32, B, 500u,     60000u,   3000u,     mag_reset_ms) /* sürekli retten sonra yön sıfırlaması */
+IDA_PARAM(0x0230u, T_BARO_STALE, U32, B, 20u,      5000u,    200u,      t_baro_stale) /* ms, 02 §4.1 */
+IDA_PARAM(0x0231u, T_MAG_STALE,  U32, B, 20u,      5000u,    500u,      t_mag_stale)  /* ms, 02 §4.1 */
+IDA_PARAM(0x0232u, IMU_GAP_MAX,  U32, B, 10u,      2000u,    500u,      imu_gap_max)  /* ms; aşılırsa yeniden hizalama */
+IDA_PARAM(0x0233u, BARO_RESET_MS, U32, B, 500u,     60000u,   2000u,     baro_reset_ms) /* sürekli retten sonra derinlik sıfırlaması */
