@@ -17,7 +17,11 @@ void tearDown(void);
 void setUp(void) {}
 void tearDown(void) {}
 
-#define CEKIRDEK_BELLEK 8192u
+/* Çekirdek örneğinin tamponu (statik; yığında değil). sizeof(ida_core_t) modüller doldukça
+   büyüyor (W2 iskeleti 2160 B; kestirim ve kontrolle birlikte 8 KB'ı aştı; görev, güdüm,
+   atış kontrol ve sonar henüz gelmedi). 64 KB bu büyümeye geniş pay bırakır ve kartta
+   768 KB'lık SRAM1'in yalnız %8'idir; gerçek boy her koşuda ida_core_info ile denetlenir. */
+#define CEKIRDEK_BELLEK 65536u
 typedef union {
     uint64_t hiza;
     long double hiza2;

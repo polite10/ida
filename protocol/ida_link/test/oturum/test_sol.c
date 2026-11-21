@@ -16,7 +16,10 @@ void setUp(void)
 }
 void tearDown(void) {}
 
-#define CEKIRDEK_BELLEK 8192u
+/* Çekirdek örneğinin tamponu (statik; yığında değil); boy gerekçesi test_uctan_uca.c'de:
+   modüller doldukça büyüyen ida_core_t'ye geniş pay, kartta SRAM1'in %8'i. Gerçek boy
+   ida_core_info ile denetlenir. */
+#define CEKIRDEK_BELLEK 65536u
 typedef union {
     uint64_t hiza;
     long double hiza2;
