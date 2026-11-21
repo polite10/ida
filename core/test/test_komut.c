@@ -113,9 +113,10 @@ static void test_317_yer_tutucu_satirlari(void)
        yok: etkisiz) görev modülünce uygulanır (W3-K8): ACCEPTED / NONE. */
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(3u)->ack);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(3u)->reason);
-    for (uint32_t id = 4u; id <= 6u; id++) {
-        desteksiz_bekle(id);
-    }
+    desteksiz_bekle(4u); /* MANUAL: bu sürümde yok */
+    /* GUIDED_SP güdümce uygulanır (W3-zincir): mask = 0 → OUT_OF_RANGE (3.17, A4-K50). */
+    ret_bekle(5u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    desteksiz_bekle(6u); /* MISSION_BEGIN: görev dilim 2 */
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(7u)->ack);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(7u)->reason);
     ret_bekle(8u, (uint16_t)IDA_REASON_BAD_MODE);

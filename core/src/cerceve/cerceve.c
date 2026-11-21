@@ -68,6 +68,8 @@ static int32_t ustune_yazilacak_bozuk(const ida_core_t *c)
                          bool_bayti_gecerli(&c->emn.inst0_var) &&
                          (((uint32_t)c->emn.inst0_tube[0] & ~tup_tanimli) == 0u) &&
                          (((uint32_t)c->emn.inst0_tube[1] & ~tup_tanimli) == 0u) &&
+                         (c->emn.kusak_tumleyen == (0xFFFFFFFFu ^ c->emn.kusak)) &&
+                         (((uint32_t)c->emn.hedef_iptal & ~(uint32_t)IDA_EMN_IPTAL_TUMU) == 0u) &&
                          ida_fc_tutarli(&c->fc);
     return gecerli ? 0 : 3;
 }

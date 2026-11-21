@@ -188,8 +188,16 @@ static uint32_t kestirim_kosullari(ida_gor_t *g, const ida_emn_t *yetki, const i
     uint32_t e = 0u;
     const uint8_t est = gi->est_level;
     const uint32_t ok_ms = ida_prm_u32(p, IDA_PRM_gor_est_ok_ms);
-    say((est == (uint8_t)IDA_EST_OK) || (est == (uint8_t)IDA_EST_DEGRADED), &g->est_ok_say,
-        &g->est_ok_bas_ns, now);
+    /* Süzgecin kesintisiz sağlıklı olduğu süre (EST_KOTU ve SAYISAL mandallarının temizleme
+       koşulu). Sayısal çökme mandalı kuruluyken yayımlanan düzey hep FAULT'tur; o durumda
+       mandaldan bağımsız süzgeç düzeyi (ida_kes_suzgec_duzey) sayılır: yeniden hizalanmış ve
+       sağlıklı süzgeç FAILSAFE_RESET'e izin verir, toparlanmamış süzgeç vermez (EMNİYET). */
+    const uint8_t suz = gi->suzgec_duzey;
+    const bool yeterli = (est == (uint8_t)IDA_EST_OK) || (est == (uint8_t)IDA_EST_DEGRADED);
+    const bool suzgec_yeterli =
+        (est == (uint8_t)IDA_EST_FAULT) &&
+        ((suz == (uint8_t)IDA_EST_OK) || (suz == (uint8_t)IDA_EST_DEGRADED));
+    say(yeterli || suzgec_yeterli, &g->est_ok_say, &g->est_ok_bas_ns, now);
     const bool konum = ida_gor_yatay_gecerli(gi->gecerlilik);
     const bool yatay_gerekli = (yetki->mode == (uint8_t)IDA_MODE_AUTO) ||
                                (yetki->mode == (uint8_t)IDA_MODE_STATION_KEEP);

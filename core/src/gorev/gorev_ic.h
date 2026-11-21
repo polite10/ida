@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "gorev/gorev.h"
+#include "kestirim/kestirim.h"
 #include "telemetri/telemetri.h"
 
 /* ---- Kip tablosu (kip.c; 02 §2.6, A4-K127) ---------------------------------------------- */
@@ -74,7 +75,7 @@ enum ida_gor_kosul {
    (AUTO), kip düşmesi (STATION_KEEP) ve konum kaybı koşulu bunu kullanır. */
 static inline bool ida_gor_yatay_gecerli(uint8_t gecerlilik)
 {
-    const uint8_t yatay = (uint8_t)(IDA_GOR_G_KONUM | IDA_GOR_G_YATAY_HIZ);
+    const uint8_t yatay = (uint8_t)(IDA_KES_G_KONUM | IDA_KES_G_YATAY_HIZ);
     return (gecerlilik & yatay) == yatay;
 }
 
@@ -99,13 +100,15 @@ bool ida_gor_ariza_arm_reddi(uint8_t kosul);
 typedef struct {
     int64_t now_ns;          /* kullanılan now_w (A4-K10)                                   */
     uint8_t est_level;       /* IDA_EST_*                                                   */
-    uint8_t gecerlilik;      /* IDA_GOR_G_* (W3-K5; ida_kes_gecerlilik)                     */
+    uint8_t suzgec_duzey;    /* IDA_EST_*: çökme mandalından bağımsız süzgeç düzeyi
+                                (ida_kes_suzgec_duzey; yalnız est_level FAULT iken okunur) */
+    uint8_t gecerlilik;      /* IDA_KES_G_* (W3-K5; ida_kes_gecerlilik)                     */
     bool imu_bayat;          /* A4-K39 (çerçevenin hesabıyla aynı)                          */
     bool imu_lag;            /* A4-K37 mandalı (yalnız günlük için; eylem üretmez, A4-K108) */
     bool param_ok;           /* A4-K78                                                      */
-    float nav_derinlik;      /* m (yalnız IDA_GOR_G_DERINLIK iken kullanılır)               */
-    float nav_yon;           /* rad (yalnız IDA_GOR_G_YON iken)                             */
-    float nav_ne[2];         /* m (yalnız IDA_GOR_G_KONUM iken)                             */
+    float nav_derinlik;      /* m (yalnız IDA_KES_G_DERINLIK iken kullanılır)               */
+    float nav_yon;           /* rad (yalnız IDA_KES_G_YON iken)                             */
+    float nav_ne[2];         /* m (yalnız IDA_KES_G_KONUM iken)                             */
     const ida_param_t *prm;
 } ida_gor_girdi_t;
 

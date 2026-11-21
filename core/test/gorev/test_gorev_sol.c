@@ -48,9 +48,9 @@ static ortam_t O2;
 static uint8_t gecerlilik_turet(uint8_t est)
 {
     const uint8_t dikey =
-        (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON | IDA_GOR_G_DERINLIK | IDA_GOR_G_DIKEY_HIZ);
+        (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_YON | IDA_KES_G_DERINLIK | IDA_KES_G_DIKEY_HIZ);
     if (est == IDA_EST_OK) {
-        return (uint8_t)(dikey | IDA_GOR_G_YATAY_HIZ | IDA_GOR_G_KONUM);
+        return (uint8_t)(dikey | IDA_KES_G_YATAY_HIZ | IDA_KES_G_KONUM);
     }
     return (est == IDA_EST_DEGRADED) ? dikey : (uint8_t)0u;
 }
@@ -305,7 +305,7 @@ static void test_b3_yalniz_yatay_hiz_kaybi(void)
     ortam_kur(o);
     kip_kur(o, (uint8_t)IDA_MODE_AUTO);
     o->g_elle = true;
-    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)~IDA_GOR_G_YATAY_HIZ);
+    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)(0xFFu ^ IDA_KES_G_YATAY_HIZ));
     o->now += 5 * MS;
     adim(o);
     TEST_ASSERT_TRUE((o->g.etkin & IDA_GOR_K_BIT(IDA_GOR_K_EST_BOZUK)) != 0u);
@@ -320,7 +320,7 @@ static void test_b3_yalniz_konum_kaybi(void)
     ortam_kur(o);
     kip_kur(o, (uint8_t)IDA_MODE_AUTO);
     o->g_elle = true;
-    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)~IDA_GOR_G_KONUM);
+    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
     o->now += 5 * MS;
     adim(o);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_HOLD, o->g.fs_level);
@@ -328,7 +328,7 @@ static void test_b3_yalniz_konum_kaybi(void)
     ortam_kur(o);
     kip_kur(o, (uint8_t)IDA_MODE_STATION_KEEP);
     o->g_elle = true;
-    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)~IDA_GOR_G_YATAY_HIZ);
+    o->gi.gecerlilik = (uint8_t)(gecerlilik_turet(IDA_EST_OK) & (uint8_t)(0xFFu ^ IDA_KES_G_YATAY_HIZ));
     o->now += 5 * MS;
     adim(o);
     TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DEPTH_HOLD, o->e.mode);
@@ -369,9 +369,9 @@ static void test_b5_tanimsiz_ariza_duzeyi(void)
     /* Çağrı sonu: silahsız, düzey DISARM, istek kapalı, genişletme engelli. */
     TEST_ASSERT_FALSE(o->e.armed);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, o->g.fs_level);
-    ida_gor_kon_istek_t ist;
+    ida_kon_istek_t ist;
     ida_gor_istek(&o->g, &o->e, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, ist.kip);
     TEST_ASSERT_TRUE(o->g.adim_daralt);
     const ida_cmd_result_t r = komut(o, (uint8_t)IDA_CMD_ARM, 0u);
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, r.ack);
@@ -406,7 +406,7 @@ static void test_k7_guided_yatay_istemez(void)
     /* GUIDED derinlik bileşeni ister. */
     ortam_kur(o);
     o->g_elle = true;
-    o->gi.gecerlilik = (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON);
+    o->gi.gecerlilik = (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_YON);
     o->now += 5 * MS;
     adim(o);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_BAD_MODE,
@@ -470,9 +470,9 @@ static void b5_cagri_sonu(int64_t *t)
     TEST_ASSERT_FALSE(C.emn.armed);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, OUT.status.fs_level);
     TEST_ASSERT_TRUE(OUT.is_safe);
-    ida_gor_kon_istek_t ist;
+    ida_kon_istek_t ist;
     ida_gud_kon_istegi(&C.gud, &C, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, ist.kip);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, ds_sonuc(&OUT, 60u)->reason);
     *t += 5 * DS_MS;
     ds_girdi(&IN, *t, 4u, true);

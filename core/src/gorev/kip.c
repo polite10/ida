@@ -69,6 +69,7 @@ uint8_t ida_gor_kip_uygula(ida_emn_t *yetki, uint8_t olay, ida_gunluk_t *gun, in
 {
     const uint8_t h = ida_gor_kip_gecis(yetki->mode, olay);
     if (h == (uint8_t)IDA_GOR_KIP_SILAHSIZ) {
+        ida_emn_kusak_artir(yetki); /* EMNİYET: saklı hedefler geçersiz */
         if (yetki->armed) {
             yetki->armed = false;
             gunluk_yaz(gun, now_ns, (uint16_t)IDA_LOG_ARM_CHANGE, 0,
@@ -85,6 +86,7 @@ uint8_t ida_gor_kip_uygula(ida_emn_t *yetki, uint8_t olay, ida_gunluk_t *gun, in
     if ((h < IDA_GOR_KIP_SAYI) && (h != yetki->mode)) {
         const uint8_t onceki = yetki->mode;
         yetki->mode = h;
+        ida_emn_kusak_artir(yetki); /* EMNİYET: kip değişimi saklı hedefleri geçersiz kılar */
         gunluk_yaz(gun, now_ns, (uint16_t)IDA_LOG_MODE_CHANGE, (int32_t)h, (int32_t)onceki);
     }
     return h;

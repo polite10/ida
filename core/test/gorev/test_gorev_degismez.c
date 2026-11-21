@@ -140,10 +140,10 @@ static void cevre(duzenek_t *d)
         d->gi.est_level = (uint8_t)IDA_EST_OK;
     }
     const uint8_t dikey =
-        (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON | IDA_GOR_G_DERINLIK | IDA_GOR_G_DIKEY_HIZ);
+        (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_YON | IDA_KES_G_DERINLIK | IDA_KES_G_DIKEY_HIZ);
     const uint8_t est = d->gi.est_level;
     uint8_t v = (est == (uint8_t)IDA_EST_OK)
-                    ? (uint8_t)(dikey | IDA_GOR_G_YATAY_HIZ | IDA_GOR_G_KONUM)
+                    ? (uint8_t)(dikey | IDA_KES_G_YATAY_HIZ | IDA_KES_G_KONUM)
                     : ((est == (uint8_t)IDA_EST_DEGRADED) ? dikey : (uint8_t)0u);
     if (zar(d, 100u) < 5u) {
         v = (uint8_t)(v & (uint8_t)~(1u << zar(d, 6u))); /* tek bileşen kaybı */
@@ -226,7 +226,7 @@ static void daralt(duzenek_t *d)
         d->oturum = false;
     }
     if ((c->emn.d.kapanan == 0u) && (zar(d, 100u) < 20u)) {
-        c->emn.kisitli = (uint8_t)(c->emn.kisitli & (uint8_t)~IDA_EMN_ESTOP);
+        c->emn.kisitli = (uint8_t)(c->emn.kisitli & (uint8_t)(0xFFu ^ IDA_EMN_ESTOP));
     }
     in->plat.link_state = d->oturum ? (uint8_t)IDA_LINK_RUNNING : (uint8_t)IDA_LINK_NONE;
 }
@@ -384,7 +384,7 @@ static void cagri(duzenek_t *d, bool denetle)
         d->yineleme_denetimi++;
     }
 
-    ida_gor_kon_istek_t ist;
+    ida_kon_istek_t ist;
     ida_gor_istek(&c->gor, &c->emn, &ist);
     if (denetle) {
         /* D1 */
@@ -412,7 +412,7 @@ static void cagri(duzenek_t *d, bool denetle)
             TEST_ASSERT_TRUE(c->gor.fs_level < (uint8_t)IDA_FS_HOLD);
         }
         /* D5 */
-        if (ist.kip != (uint8_t)IDA_GOR_KON_KIP_KAPALI) {
+        if (ist.kip != (uint8_t)IDA_KON_KIP_KAPALI) {
             TEST_ASSERT_TRUE(c->emn.armed);
             TEST_ASSERT_TRUE(c->gor.fs_level < (uint8_t)IDA_FS_PASSIVE_SURFACE);
             TEST_ASSERT_TRUE((c->emn.mode != (uint8_t)IDA_MODE_INIT) &&

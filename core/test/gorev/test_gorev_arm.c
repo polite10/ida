@@ -95,9 +95,9 @@ static bool g_elle;
 static uint8_t gecerlilik_turet(uint8_t est)
 {
     const uint8_t dikey =
-        (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON | IDA_GOR_G_DERINLIK | IDA_GOR_G_DIKEY_HIZ);
+        (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_YON | IDA_KES_G_DERINLIK | IDA_KES_G_DIKEY_HIZ);
     if (est == IDA_EST_OK) {
-        return (uint8_t)(dikey | IDA_GOR_G_YATAY_HIZ | IDA_GOR_G_KONUM);
+        return (uint8_t)(dikey | IDA_KES_G_YATAY_HIZ | IDA_KES_G_KONUM);
     }
     return (est == IDA_EST_DEGRADED) ? dikey : (uint8_t)0u;
 }
@@ -356,7 +356,7 @@ static void test_md2_daraltmayla_ayni_adim(void)
 
 /* ---- Kontrol isteği (kapsam md.4; W3-kontrol'ün ida_kon_istek_t'si) --------------------- */
 
-static void istek_al(ortam_t *o, ida_gor_kon_istek_t *ist)
+static void istek_al(ortam_t *o, ida_kon_istek_t *ist)
 {
     ida_gor_istek(&o->g, &o->e, ist);
 }
@@ -364,13 +364,13 @@ static void istek_al(ortam_t *o, ida_gor_kon_istek_t *ist)
 static void test_istek(void)
 {
     ortam_t *o = &O;
-    ida_gor_kon_istek_t ist;
+    ida_kon_istek_t ist;
     /* Silahsız: KAPALI, alanlar 0. */
     ortam_kur(o);
     o->e.mode = (uint8_t)IDA_MODE_DEPTH_HOLD;
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, ist.kip);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.derinlik);
     /* DEPTH_HOLD, silahlı, kestirim DEGRADED (havuz): derinlik ve yön tutulur, X/Y operatörden. */
     o->gi.est_level = (uint8_t)IDA_EST_DEGRADED;
@@ -379,35 +379,35 @@ static void test_istek(void)
     o->gi.nav_derinlik = 2.5f; /* araç hareket etti; hedef yakalanan değer */
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_DALIS, ist.kip);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_DERINLIK, ist.dikey);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_TUTUM_ACI, ist.tutum);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YON_ACI, ist.yon_kanali);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YATAY_KUVVET, ist.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_DALIS, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_DERINLIK, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_TUTUM_ACI, ist.tutum);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YON_ACI, ist.yon_kanali);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YATAY_KUVVET, ist.yatay);
     TEST_ASSERT_EQUAL_FLOAT(2.0f, ist.derinlik);
     TEST_ASSERT_EQUAL_FLOAT(0.5f, ist.yon);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.yalpa);
     /* Acil durdurma itkiye girmez (W3-K1). */
     o->e.kisitli = (uint8_t)IDA_EMN_TUMU;
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_DALIS, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_DALIS, ist.kip);
     /* Yön bileşeni gider: yön açısal hız 0; derinlik bileşeni gider: dikey kuvvet 0. */
     g_elle = true;
-    o->gi.gecerlilik = (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_DERINLIK | IDA_GOR_G_DIKEY_HIZ);
+    o->gi.gecerlilik = (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_DERINLIK | IDA_KES_G_DIKEY_HIZ);
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YON_HIZ, ist.yon_kanali);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YON_HIZ, ist.yon_kanali);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.yon_hizi);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_DERINLIK, ist.dikey);
-    o->gi.gecerlilik = (uint8_t)IDA_GOR_G_TUTUM;
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_DERINLIK, ist.dikey);
+    o->gi.gecerlilik = (uint8_t)IDA_KES_G_TUTUM;
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_KUVVET, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_KUVVET, ist.dikey);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.kuvvet[2]);
     o->gi.gecerlilik = 0u;
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_TUTUM_HIZ, ist.tutum);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_TUTUM_HIZ, ist.tutum);
     g_elle = false;
 
     /* MANUAL: kuvvet ve moment kanalları (operatör, A4-K49). */
@@ -417,32 +417,32 @@ static void test_istek(void)
     arm_kabul_bekle(o, "MANUAL");
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_DALIS, ist.kip);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_KUVVET, ist.dikey);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_TUTUM_MOMENT, ist.tutum);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YON_MOMENT, ist.yon_kanali);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YATAY_KUVVET, ist.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_DALIS, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_KUVVET, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_TUTUM_MOMENT, ist.tutum);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YON_MOMENT, ist.yon_kanali);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YATAY_KUVVET, ist.yatay);
     /* HEARTBEAT kaybı MANUAL'da HOLD: operatör kanalı yok, derinlik/yön tutulur, konum OK ise
        yatay hız 0. */
     o->besle_hb = false;
     ilerle(o, 3500);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_HOLD, o->g.fs_level);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_DERINLIK, ist.dikey);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YON_ACI, ist.yon_kanali);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YATAY_HIZ, ist.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_DERINLIK, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YON_ACI, ist.yon_kanali);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YATAY_HIZ, ist.yatay);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.hiz[0]);
     /* 60 s: SURFACE → yükselme hızı. */
     ilerle(o, 57000);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_HIZ, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_HIZ, ist.dikey);
     TEST_ASSERT_EQUAL_FLOAT(-0.25f, ist.dikey_hiz);
     /* Yüzeye çıktı: YUZEY (dikey kapalı). */
     o->gi.nav_derinlik = 0.2f;
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_YUZEY, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_YUZEY, ist.kip);
 
     /* HOLD, konum yok: yatay itki sıfır (kuvvet 0). */
     ortam_kur(o);
@@ -453,7 +453,7 @@ static void test_istek(void)
     o->besle_hb = false;
     ilerle(o, 3500);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YATAY_KUVVET, ist.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YATAY_KUVVET, ist.yatay);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.kuvvet[0]);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, ist.kuvvet[1]);
 
@@ -464,8 +464,8 @@ static void test_istek(void)
     arm_kabul_bekle(o, "SK");
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YATAY_HIZ, ist.yatay);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_DIKEY_DERINLIK, ist.dikey);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YATAY_HIZ, ist.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_DIKEY_DERINLIK, ist.dikey);
 
     /* PASSIVE_SURFACE: KAPALI, arm korunur (02 §4.2). */
     ortam_kur(o);
@@ -473,13 +473,13 @@ static void test_istek(void)
     bir_adim(o);
     arm_kabul_bekle(o, "STB");
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_YON_HIZ, ist.yon_kanali);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_YON_HIZ, ist.yon_kanali);
     o->gi.imu_bayat = true;
     bir_adim(o);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_PASSIVE_SURFACE, o->g.fs_level);
     TEST_ASSERT_TRUE(o->e.armed);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, ist.kip);
 
     /* Sızıntı algılayıcısı bayat: derinleşme yok (hedef, bulunulan derinliğe kırpılır). */
     ortam_kur(o);
@@ -491,7 +491,7 @@ static void test_istek(void)
     o->gi.nav_derinlik = 2.0f;
     ilerle(o, 2500);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_DALIS, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_DALIS, ist.kip);
     TEST_ASSERT_EQUAL_FLOAT(2.0f, ist.derinlik);
 
     /* DISARMED kipinde silahlı (A4-K127 bağımsız): motorlar nötr. */
@@ -499,7 +499,7 @@ static void test_istek(void)
     arm_kabul_bekle(o, "DISARMED kipi");
     bir_adim(o);
     istek_al(o, &ist);
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, ist.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, ist.kip);
     TEST_ASSERT_EQUAL_UINT8(0u, ida_gor_itici_disi(&o->g));
 }
 
@@ -618,12 +618,12 @@ static void test_cekirdek_gunluk_yolu(void)
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_MODE_CHANGE));
     TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_ARM_CHANGE));
     /* Güdüm erişimcisi (kontrol modülünün tek okuma noktası) aynı isteği verir. */
-    ida_gor_kon_istek_t a;
-    ida_gor_kon_istek_t b;
+    ida_kon_istek_t a;
+    ida_kon_istek_t b;
     ida_gud_kon_istegi(&C.gud, &C, &a);
     ida_gor_istek(&C.gor, &C.emn, &b);
     TEST_ASSERT_EQUAL_MEMORY(&b, &a, sizeof(a));
-    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_KON_KIP_KAPALI, a.kip);
+    TEST_ASSERT_EQUAL_UINT8(IDA_KON_KIP_KAPALI, a.kip);
 }
 
 static void test_cekirdek_ornekler_ve_param_grubu(void)

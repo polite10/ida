@@ -42,10 +42,14 @@ ida_core_birim_testi(kontrol_tahsis kontrol/test_tahsis.c)
 ida_core_birim_testi(kontrol_dongu kontrol/test_dongu.c)
 ida_core_birim_testi(kontrol_guvenli kontrol/test_guvenli.c)
 ida_core_birim_testi(kontrol_sol_bulgulari kontrol/test_sol_bulgulari.c)
+ida_core_birim_testi(kontrol_dalis_yasak kontrol/test_dalis_yasak.c)
 ida_core_birim_testi(gorev_kip_ariza gorev/test_gorev_kip_ariza.c)
 ida_core_birim_testi(gorev_arm gorev/test_gorev_arm.c)
 ida_core_birim_testi(gorev_degismez gorev/test_gorev_degismez.c)
 ida_core_birim_testi(gorev_sol gorev/test_gorev_sol.c)
+ida_core_birim_testi(gudum gudum/test_gudum.c)
+ida_core_birim_testi(gudum_gecis gudum/test_gudum_gecis.c)
+ida_core_birim_testi(gorev_cokme gorev/test_gorev_cokme.c)
 
 # ---- A4-K22: çekirdek nesnelerinde yazılabilir veri bölümüne düşen simge yok --------------
 # Sanitizer derlemesi araç simgeleri (ASan global tanımları) eklediği için orada kurulmaz.

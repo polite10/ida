@@ -170,7 +170,7 @@ static void sahibine_ver(ida_core_t *c, const ida_in_t *in, const ida_komut_bagl
         ida_kon_komut(&c->kon, b, cmd, r);
         break;
     case IDA_CMD_GUIDED_SP:
-        ida_gud_komut(&c->gud, b, cmd, r);
+        ida_gud_komut(c, b, cmd, r);
         break;
     case IDA_CMD_PARAM_SET:
     case IDA_CMD_PARAM_GET:

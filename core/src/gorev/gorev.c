@@ -129,9 +129,9 @@ static void nav_goruntusu(ida_gor_t *g, const ida_gor_girdi_t *gi)
     /* W3-K5: kipler kestirimin genel düzeyine değil bileşenlerin geçerliliğine bakar. */
     const uint8_t v = gi->gecerlilik;
     g->gecerlilik = v;
-    g->nav_tutum_var = (v & IDA_GOR_G_TUTUM) != 0u;
-    g->nav_yon_var = ((v & IDA_GOR_G_YON) != 0u) && ida_sonlu(gi->nav_yon);
-    g->nav_derinlik_var = ((v & IDA_GOR_G_DERINLIK) != 0u) && ida_sonlu(gi->nav_derinlik);
+    g->nav_tutum_var = (v & IDA_KES_G_TUTUM) != 0u;
+    g->nav_yon_var = ((v & IDA_KES_G_YON) != 0u) && ida_sonlu(gi->nav_yon);
+    g->nav_derinlik_var = ((v & IDA_KES_G_DERINLIK) != 0u) && ida_sonlu(gi->nav_derinlik);
     g->nav_konum_var = ida_gor_yatay_gecerli(v) && ida_sonlu(gi->nav_ne[0]) &&
                        ida_sonlu(gi->nav_ne[1]);
     g->nav_derinlik = g->nav_derinlik_var ? gi->nav_derinlik : 0.0f;
@@ -147,6 +147,7 @@ static void nav_goruntusu(ida_gor_t *g, const ida_gor_girdi_t *gi)
    düzeyi değişiminde (her iki yönde; eski hedefe geri dönülmez). */
 static void tut_yakala(ida_gor_t *g)
 {
+    g->ref_kusak = g->ref_kusak + 1u; /* kontrol eski hedefin referansını bırakır */
     g->tut_derinlik_var = g->nav_derinlik_var;
     g->tut_derinlik = g->nav_derinlik;
     g->tut_yon_var = g->nav_yon_var;
@@ -154,6 +155,13 @@ static void tut_yakala(ida_gor_t *g)
     g->tut_konum_var = g->nav_konum_var;
     g->tut_ne[0] = g->nav_ne[0];
     g->tut_ne[1] = g->nav_ne[1];
+}
+
+/* Görevin hedef iptal bitini temizler: yalnız tutma hedefleri yeniden yakalandıktan sonra
+   çağrılır (EMNİYET; ida_emn_t.hedef_iptal). */
+static void tut_iptal_temizle(ida_emn_t *yetki)
+{
+    yetki->hedef_iptal = (uint8_t)(yetki->hedef_iptal & (uint8_t)(0xFFu ^ IDA_EMN_IPTAL_GOR));
 }
 
 /* ---- Arm ön koşulu (A4 §3.17 ARM satırı; W3-K3) ---------------------------------------- */
@@ -226,11 +234,16 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     /* 2. Arıza eylemi (kipin son hâline göre). */
     ida_gor_ariza_degerlendir(g, yetki, gi, gun);
     g->dalis_yasak = (g->etkin & IDA_GOR_K_BIT(IDA_GOR_K_SIZINTI_BAYAT)) != 0u;
+    if (g->dalis_yasak && !g->onceki_dalis_yasak) {
+        g->ref_kusak = g->ref_kusak + 1u; /* derinlik hedefi bulunulan derinliğe kırpılır */
+    }
+    g->onceki_dalis_yasak = g->dalis_yasak;
 
     /* 3. Silahsızlandırma (kısıtlayan): DISARM arıza eylemi. Sanal emniyet girdileri araç
        silahlandırmasına girmez (W3-K1). */
     if (yetki->armed && (g->fs_level >= (uint8_t)IDA_FS_DISARM)) {
         yetki->armed = false;
+        ida_emn_kusak_artir(yetki);
         gunluk_yaz(gun, now, (uint16_t)IDA_LOG_ARM_CHANGE, 0, (int32_t)IDA_REASON_NOT_ARMABLE);
     }
     /* Bu adımın arıza daraltması (W3-K2): eylem ağırlaştı, silahsızlandırıldı ya da kip düştü.
@@ -238,9 +251,13 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     g->adim_daralt =
         (g->fs_level > onceki_fs) || (armed0 && !yetki->armed) || kip_dustu || bozulma;
 
-    /* 4. Tutma hedefleri. */
-    if ((yetki->mode != g->son_kip) || (g->fs_level != onceki_fs)) {
+    /* 4. Tutma hedefleri: kip, arıza düzeyi ya da daraltma kuşağı değiştiyse (reddedilen ya
+       da out NULL çağrıdaki silahsızlandırma ve kip daralması dahil; EMNİYET) bulunulan
+       durumdan yeniden yakalanır. */
+    if ((yetki->mode != g->son_kip) || (g->fs_level != onceki_fs) ||
+        ((yetki->hedef_iptal & IDA_EMN_IPTAL_GOR) != 0u)) {
         tut_yakala(g);
+        tut_iptal_temizle(yetki);
     }
     g->son_kip = yetki->mode;
 
@@ -249,27 +266,14 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     g->arm_engeli = arm_engeli_hesapla(g, yetki);
 }
 
-/* GEÇİCİ (W3-K5): W3-kestirim birleşince gövde `return ida_kes_gecerlilik(&c->kes);` olur.
-   Yer tutucu kestirimde düzeyden türetilir: OK → bütün bileşenler; DEGRADED → tutum, yön,
-   derinlik, dikey hız; diğerleri → hiçbiri. */
-static uint8_t gecerlilik_al(const ida_core_t *c, uint8_t est)
-{
-    (void)c;
-    const uint8_t dikey = (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON | IDA_GOR_G_DERINLIK |
-                                    IDA_GOR_G_DIKEY_HIZ);
-    if (est == (uint8_t)IDA_EST_OK) {
-        return (uint8_t)(dikey | IDA_GOR_G_YATAY_HIZ | IDA_GOR_G_KONUM);
-    }
-    return (est == (uint8_t)IDA_EST_DEGRADED) ? dikey : (uint8_t)0u;
-}
-
 static void girdi_topla(const ida_core_t *c, ida_gor_girdi_t *gi)
 {
     ida_wtime_t now;
     now.ns = c->cer.now_izi_ns; /* kullanılan now_w (A4-K10; cerceve.c now_guncelle) */
     gi->now_ns = now.ns;
     gi->est_level = ida_kes_duzey(&c->kes);
-    gi->gecerlilik = gecerlilik_al(c, gi->est_level);
+    gi->suzgec_duzey = ida_kes_suzgec_duzey(&c->kes);
+    gi->gecerlilik = ida_kes_gecerlilik(&c->kes); /* W3-K5 */
     gi->imu_bayat = ida_imz_bayat(&c->imz, now, &c->prm);
     gi->imu_lag = c->imz.lag;
     gi->param_ok = c->prm.param_ok;
@@ -331,6 +335,8 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
     if (h == (uint8_t)IDA_GOR_KIP_SILAHSIZ) {
         (void)ida_gor_kip_uygula(yetki, olay, gun, b->now_w.ns); /* tanımsız kip: silahsız */
         g->son_kip = yetki->mode;
+        tut_yakala(g);
+        tut_iptal_temizle(yetki);
         ret(r, (uint16_t)IDA_REASON_BAD_MODE);
         return;
     }
@@ -357,6 +363,7 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
         ida_gor_ariza_kip_degisti(g, yetki->mode, gun, b->now_w.ns);
         g->arm_engeli = arm_engeli_hesapla(g, yetki);
         tut_yakala(g);
+        tut_iptal_temizle(yetki); /* kendi kip değişiminin mandalı: hedefler yeniden yakalandı */
     }
     g->son_kip = yetki->mode;
     kabul(r);
@@ -422,7 +429,16 @@ void ida_gor_komut_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t *
 void ida_gor_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *cmd,
                    ida_cmd_result_t *r)
 {
+    const uint32_t mandal0 = c->gor.mandal;
     ida_gor_komut_ic(&c->gor, &c->emn, b, cmd, r, &c->prm, &c->gun);
+    /* FAILSAFE_RESET kabulü kestirimin sayısal çökme mandalını da kaldırır (02 §2.3.6;
+       kestirim.h ida_kes_ariza_temizle). EMNİYET: yalnız bu komut mandallı arıza eylemlerini
+       gerçekten temizlediyse (etkisiz kabulde değil); kestirim mandalı ancak filtre yeniden
+       hizalanmışsa kalkar. */
+    if ((cmd->type == (uint8_t)IDA_CMD_FAILSAFE_RESET) &&
+        (r->ack == (uint8_t)IDA_ACK_ACCEPTED) && (mandal0 != 0u) && (c->gor.mandal == 0u)) {
+        (void)ida_kes_ariza_temizle(&c->kes);
+    }
 }
 
 /* ---- Durum, tutarlılık, parametre grubu ------------------------------------------------- */
@@ -492,7 +508,7 @@ bool ida_gor_tutarli(const ida_gor_t *g)
         b_gecerli(&g->nav_derinlik_var) && b_gecerli(&g->nav_konum_var) &&
         b_gecerli(&g->yuzeyde) && b_gecerli(&g->dalis_yasak) &&
         b_gecerli(&g->tut_derinlik_var) && b_gecerli(&g->tut_yon_var) &&
-        b_gecerli(&g->tut_konum_var);
+        b_gecerli(&g->tut_konum_var) && b_gecerli(&g->onceki_dalis_yasak);
     if (!bool_gecerli) {
         return false;
     }

@@ -30,55 +30,11 @@
 #include "cerceve/komut.h"
 #include "emniyet/emniyet.h"
 #include "ida/port.h"
+#include "kontrol/kontrol.h"
 #include "param/param.h"
 
-/* ---- Kestirim bileşenlerinin geçerliliği (W3-K5) ----------------------------------------
-   GEÇİCİ: W3-kestirim'in IDA_KES_G_* bitleriyle aynı değerler (kestirim/kestirim.h,
-   ida_kes_gecerlilik). O dal birleşince bu tanımlar kalkar ve gorev.c'deki gecerlilik_al
-   tek satırla ida_kes_gecerlilik(&c->kes) olur. */
-#define IDA_GOR_G_TUTUM     0x01u
-#define IDA_GOR_G_YON       0x02u
-#define IDA_GOR_G_DERINLIK  0x04u
-#define IDA_GOR_G_DIKEY_HIZ 0x08u
-#define IDA_GOR_G_YATAY_HIZ 0x10u
-#define IDA_GOR_G_KONUM     0x20u
-
-/* ---- Kontrol isteği ---------------------------------------------------------------------
-   GEÇİCİ: W3-kontrol'ün ida_kon_istek_t'siyle (kontrol/kontrol.h, is/w3-kontrol) alan alan
-   aynıdır; birleştirmede bu yapı ve IDA_GOR_KON_* kalkar, yerlerine ida_kon_istek_t ve
-   IDA_KON_* kullanılır. */
-#define IDA_GOR_KON_KIP_KAPALI 0u /* itki sıfır                                         */
-#define IDA_GOR_KON_KIP_YUZEY  1u /* yüzey: X, Y, N; dikey iticiler kapalı (02 §2.5)    */
-#define IDA_GOR_KON_KIP_DALIS  2u /* dalış: altı eksen                                  */
-#define IDA_GOR_KON_DIKEY_DERINLIK 0u
-#define IDA_GOR_KON_DIKEY_HIZ      1u
-#define IDA_GOR_KON_DIKEY_KUVVET   2u
-#define IDA_GOR_KON_TUTUM_ACI    0u
-#define IDA_GOR_KON_TUTUM_HIZ    1u
-#define IDA_GOR_KON_TUTUM_MOMENT 2u
-#define IDA_GOR_KON_YON_ACI    0u
-#define IDA_GOR_KON_YON_HIZ    1u
-#define IDA_GOR_KON_YON_MOMENT 2u
-#define IDA_GOR_KON_YATAY_HIZ    0u
-#define IDA_GOR_KON_YATAY_KUVVET 1u
-
-typedef struct {
-    uint8_t kip;         /* IDA_GOR_KON_KIP_*                                              */
-    uint8_t dikey;       /* IDA_GOR_KON_DIKEY_*                                            */
-    uint8_t tutum;       /* IDA_GOR_KON_TUTUM_*                                            */
-    uint8_t yon_kanali;  /* IDA_GOR_KON_YON_*                                              */
-    uint8_t yatay;       /* IDA_GOR_KON_YATAY_*                                            */
-    float derinlik;      /* m, yüzeyden aşağı                                              */
-    float dikey_hiz;     /* m/s, aşağı +                                                   */
-    float yalpa;         /* rad                                                            */
-    float bas_kic;       /* rad                                                            */
-    float yalpa_hizi;    /* rad/s, gövde p                                                 */
-    float bas_kic_hizi;  /* rad/s, gövde q                                                 */
-    float yon;           /* rad                                                            */
-    float yon_hizi;      /* rad/s, gövde r                                                 */
-    float hiz[2];        /* m/s: ileri, yan (yön çerçevesi)                                */
-    float kuvvet[6];     /* N, N·m: gövde X, Y, Z, K, M, N                                 */
-} ida_gor_kon_istek_t;
+/* Kestirim bileşenlerinin geçerliliği (W3-K5): kestirim/kestirim.h'nin IDA_KES_G_* bitleri
+   (ida_kes_gecerlilik). Kontrol isteği: kontrol/kontrol.h'nin ida_kon_istek_t'si (IDA_KON_*). */
 
 /* ---- Modül durumu ------------------------------------------------------------------------ */
 
@@ -118,7 +74,7 @@ typedef struct {
     int64_t sizinti_rx_ns[IDA_PORT_MAX_INST]; /* inst başına son kabul edilen örnek     */
     /* Kestirim ve IMU zamanlayıcıları */
     uint8_t est_level;         /* adım anındaki kestirim düzeyi                            */
-    uint8_t gecerlilik;        /* adım anındaki bileşen geçerliliği (IDA_GOR_G_*)          */
+    uint8_t gecerlilik;        /* adım anındaki bileşen geçerliliği (IDA_KES_G_*)          */
     bool est_ok_say;           /* düzey yeterli (OK ya da DEGRADED) sürüyor                 */
     int64_t est_ok_bas_ns;
     bool konum_say;            /* konum geçerli sürüyor                                    */
@@ -147,6 +103,10 @@ typedef struct {
     float tut_derinlik;
     float tut_yon;
     float tut_ne[2];
+    /* Kuşaklar (sol bulgular 1, 2; EMNİYET) */
+    uint32_t ref_kusak;        /* kontrol isteğinin referans kuşağı: tutma hedefi her yeniden
+                                  yakalandığında ve derinleşme yasağı başladığında artar    */
+    bool onceki_dalis_yasak;
     /* Görev (dilim 2) */
     uint8_t mission_state;     /* IDA_MS_*                                                  */
     uint16_t mission_item;
@@ -175,9 +135,9 @@ uint8_t ida_gor_param_grup(const ida_prm_kume_t *p);
 
 /* Kontrol isteği: durumun saf işlevi; komutlardan sonra (kontrol adımında) çağrılır. Kontrol
    modülü onu güdüm erişimcisi ida_gud_kon_istegi (gudum.h) üzerinden okur. */
-void ida_gor_istek(const ida_gor_t *g, const ida_emn_t *yetki, ida_gor_kon_istek_t *ist);
-/* Devre dışı itici maskesi (bit i: A5 itici sırasında itici i); kontrol tahsisi okur.
-   Dilim 1'de itici arızası saptanmaz: 0. */
+void ida_gor_istek(const ida_gor_t *g, const ida_emn_t *yetki, ida_kon_istek_t *ist);
+/* Devre dışı itici maskesi (bit i: A5 itici sırasında itici i); kontrol tahsisi okur
+   (kontrol.c ida_kon_girdi_topla). Dilim 1'de itici arızası saptanmaz: 0. */
 uint8_t ida_gor_itici_disi(const ida_gor_t *g);
 
 #endif /* IDA_CORE_GOREV_H */

@@ -107,9 +107,9 @@ static void leak(ortam_t *o, uint8_t inst, uint8_t mask)
 static uint8_t gecerlilik_turet(uint8_t est)
 {
     const uint8_t dikey =
-        (uint8_t)(IDA_GOR_G_TUTUM | IDA_GOR_G_YON | IDA_GOR_G_DERINLIK | IDA_GOR_G_DIKEY_HIZ);
+        (uint8_t)(IDA_KES_G_TUTUM | IDA_KES_G_YON | IDA_KES_G_DERINLIK | IDA_KES_G_DIKEY_HIZ);
     if (est == IDA_EST_OK) {
-        return (uint8_t)(dikey | IDA_GOR_G_YATAY_HIZ | IDA_GOR_G_KONUM);
+        return (uint8_t)(dikey | IDA_KES_G_YATAY_HIZ | IDA_KES_G_KONUM);
     }
     return (est == IDA_EST_DEGRADED) ? dikey : (uint8_t)0u;
 }
