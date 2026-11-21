@@ -19,6 +19,18 @@ Her iş, kapsamındaki özellikleri bu iki hedefe en erken katkı verecek sıray
 - Sözleşmenin yanlış ya da uygulanamaz olduğunu düşündüğün yerde sözleşmeye uy; uyamıyorsan o parçayı yazma ve "Sözleşme çelişkileri" başlığında raporla. Sözleşmede olmayan mesaj, alan, ret nedeni ya da durum uydurulmaz.
 - Mimari bölümleri (`docs/mimari/01–09`) taslaktır ve fikir kaynağıdır; iskelet (`00-iskelet.md`, 0.12) ve sözleşmelerle çeliştikleri yerde geçersizdir.
 
+## Mimar kararları (W3 sırasında; 2026-11-21)
+
+İş belgelerindeki "emniyet kısıtı" ifadesi iki bağımsız rapora göre iki biçimde okundu; aşağıdaki kararlar iş belgelerinin önüne geçer.
+
+- **W3-K1 Acil durdurma ve araç.** Çekirdekte sanal emniyet girdilerinin (acil durdurma, fiş, pim) etkin değeri yalnız atış kontrol izinlerini kapatır (A4-K116: "acil durdurmada iki tüp"; engel biti `ESTOP`). Araç silahlandırmasının (`ARM`) ön koşulu değildir ve itki kapısında yer almaz: A4 §3.17'nin `ARM` satırı kapalı listedir. İticilerin acil durdurmada kesilmesi sim sunucusundaki bağımsız engeldir (iskelet §5). Emniyet gevşetmesi W4'te kalır; Z1 ve Z2 ona bağlı değildir.
+- **W3-K2 "Emniyet kısıtı" tanımı.** W3 belgelerinde bu ifade, çağrıda uygulanan daraltmayı anlatır (A4-K44'ün daraltıcı girdileri: `DISARM`, `SESSION_END`, daraltıcı kip isteği, arıza eyleminin daraltması). Daraltma uygulanan çağrıda genişletici etkisizdir; sanal emniyet girdileri bu tanıma girmez.
+- **W3-K3 `ARM` ön koşulları.** Yalnız A4 §3.17'deki satır: olay kimliği kullanılabilir, parametreler geçerli ve kayıt meşgul değil, kestirim düzeyi yeterli, arıza eylemi yok, arm reddi gerektiren arıza kaydı yok. Kestirim düzeyi `OK` ya da `DEGRADED` yeterlidir (havuzda GNSS yoktur; konumu gerektiren kipler kendi denetimini `SET_MODE`'da yapar); `INIT`, `BAD`, `FAULT`'ta ret. Bağlantı durumu ayrı bir ön koşul değildir; bağlantı kaybı bir arıza eylemi üretiyorsa ret o yoldan gelir. Yalnız uyarı düzeyindeki (`WARN`) bir arıza, kaydı "arm reddi gerektirir" diye tanımlı değilse arm'ı engellemez; sızıntı ve düşük batarya arm'ı engeller.
+- **W3-K4 İtki kapısı.** İtki isteği şu durumlarda sıfırdır: silahsız; kestirim `INIT`, `BAD` ya da `FAULT`; arıza eylemi itkisiz düzeyde (edilgen yüzeye çıkış ve üstü); geçersiz ya da kapalı istek; sayısal çökme. Acil durdurma bu listede değildir (W3-K1).
+- **W3-K5 Kip ve kestirim bileşenleri.** Kiplerin ön koşulu ve kip × arıza matrisi, kestirimin genel düzeyine değil kipin gerektirdiği bileşenlerin geçerliliğine bakar (`ida_kes_gecerlilik`: tutum, yön, derinlik, dikey hız; sonraki dilimde yatay hız ve konum). Derinlik ve yön tutma kipleri tutum, yön ve derinlik geçerliyken sürer; kestirim düzeyinin `DEGRADED` olması (havuzda GNSS yok, yüzeyde DVL kilidi yok) bu kipleri tek başına sonlandırmaz ve yüzeye çıkış eylemi başlatmaz. Konum hedefli kipler (`GUIDED`, `AUTO`) yatay geçerlilik ister. 02 §4.3'teki "EST_DEGRADED → 30 s sonra yüzeye çık" satırı yalnız konum gerektiren kiplere uygulanır.
+- **W3-K6 Parametre sayısı testi.** `core/test/test_param.c` toplam parametre sayısını sabitlemez (W3-kontrol işinde düzeltildi); parametre ekleyen işler bu testi kendi dallarında kırık görür, birleştirmede düzelir.
+- **Açık nokta (karar değil):** acil durdurma etkinken sim iticileri keser ama çekirdek itki istemeyi sürdürür; denetleyicinin bu sürede birikmesi Z1'de gözlenirse A4'ün küçük sürüm artışında ele alınır.
+
 ## Dosya sahipliği
 
 - Yalnız iş belgesinde sana verilen dizinlere yaz. Başka işin dizinine dokunma; gereksinimini raporla.
