@@ -14,8 +14,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -154,6 +156,22 @@ double yuzdelik(std::vector<std::int64_t> v, double q)
         std::min<double>(static_cast<double>(v.size() - 1), std::floor(q * static_cast<double>(v.size()))));
     return 1e-6 * static_cast<double>(v[i]);
 }
+
+// printf biçimli metni belleğe ekler (fopen yerine akış; MSVC C4996).
+struct Metin {
+    std::string s;
+    void operator()(const char* bicim, ...)
+    {
+        char t[2048];
+        va_list ap;
+        va_start(ap, bicim);
+        const int n = std::vsnprintf(t, sizeof t, bicim, ap);
+        va_end(ap);
+        if (n > 0) {
+            s.append(t, static_cast<std::size_t>(std::min<int>(n, static_cast<int>(sizeof t) - 1)));
+        }
+    }
+};
 
 int kullanim()
 {
@@ -313,15 +331,15 @@ int main(int argc, char** argv)
     }
     std::printf("ida_z2 %s: %d kalan\n", kalan == 0 ? "GECTI" : "KALDI", kalan);
     if (!json_yolu.empty()) {
-        std::FILE* f = std::fopen(json_yolu.c_str(), "w");
-        if (f != nullptr) {
-            std::fprintf(f, "{\"kip\": \"%s\", \"tohum\": %llu, \"sure_s\": %.3f, \"kalan\": %d, \"olcu\": {", kip.c_str(),
+        Metin f;
+        {
+            f("{\"kip\": \"%s\", \"tohum\": %llu, \"sure_s\": %.3f, \"kalan\": %d, \"olcu\": {", kip.c_str(),
                          static_cast<unsigned long long>(a.tohum), a.sure_s, kalan);
             for (std::size_t i = 0; i < g_olcu.size(); ++i) {
-                std::fprintf(f, "%s\"%s\": [%.6f, %s]", i == 0 ? "" : ", ", g_olcu[i].ad.c_str(), g_olcu[i].deger,
+                f("%s\"%s\": [%.6f, %s]", i == 0 ? "" : ", ", g_olcu[i].ad.c_str(), g_olcu[i].deger,
                              g_olcu[i].gecti ? "true" : "false");
             }
-            std::fprintf(f,
+            f(
                          "}, \"sayac\": {\"parti\": %llu, \"kacirilan\": %llu, \"birlesik\": %llu, \"gec_yanit\": %llu, "
                          "\"esz_uygulanan\": %llu, \"esz_iptal\": %llu, \"cagri_cakismasi\": %llu, \"son_tarih\": %llu, "
                          "\"sim_gecikmesi\": %llu, \"alan_ret\": %llu, \"bag_ret\": %llu, \"crc\": %llu, "
@@ -350,10 +368,10 @@ int main(int argc, char** argv)
                          1e-6 * static_cast<double>(z.gec_yazim_en_cok_ns),
                          static_cast<unsigned long long>(z.gercek_zaman_kacirma));
             for (std::size_t i = 0; i < kutu.size(); ++i) {
-                std::fprintf(f, "%s%llu", i == 0 ? "" : ", ", static_cast<unsigned long long>(kutu[i]));
+                f("%s%llu", i == 0 ? "" : ", ", static_cast<unsigned long long>(kutu[i]));
             }
-            std::fprintf(f, "]}}\n");
-            std::fclose(f);
+            f("]}}\n");
+            std::ofstream(json_yolu, std::ios::binary) << f.s;
         }
     }
     return kalan == 0 ? 0 : 3;
