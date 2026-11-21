@@ -17,6 +17,7 @@
 #include "ida/kopru/param_blogu.hpp"
 #include "ida/kopru/tasima.hpp"
 #include "ida/port.h"
+#include "geri_okuma.hpp"
 #include "ida/sunucu/sunucu.hpp"
 #include "ortak.hpp"
 #include "rastgele.hpp"
@@ -319,14 +320,14 @@ VAKA("A1-K56.sunucu_acil_darbe") {
     KONTROL(k.kos(tam_itki()), "kos tamamlanır");
     ozet(k);
     const auto partiler = k.son_oturum();
-    const Parti* p1 = nullptr;
-    const Parti* p2 = nullptr;
     bool tek = true;
-    for (std::size_t i = 0; i < partiler.size(); ++i) {
-        tek = tek && partiler[i]->emniyet.size() <= 1u;
-        if (p1 == nullptr && partiler[i]->tf.t >= 301'400'000) {
-            p1 = partiler[i];
-            p2 = (i + 1 < partiler.size()) ? partiler[i + 1] : nullptr;
+    std::uint32_t rev_basma = 0;  // basılı durumun revizyonu (senaryoda tek basma var)
+    for (const Parti* p : partiler) {
+        tek = tek && p->emniyet.size() <= 1u;
+        for (const auto& s : p->emniyet) {
+            if (s.estop == 1u && rev_basma == 0u) {
+                rev_basma = s.safety_rev;
+            }
         }
     }
     for (const Parti* p : partiler) {
@@ -340,14 +341,31 @@ VAKA("A1-K56.sunucu_acil_darbe") {
         }
     }
     KONTROL(tek, "A1-K34: partide en çok bir IDA_SAFETY");
-    KONTROL(p1 != nullptr && p2 != nullptr, "partiler alındı");
-    if (p1 != nullptr && p2 != nullptr) {
-        KONTROL(p1->tf.t == 305 * kMs, "düzenek: pencere (300, 305] ms; gözlenen " << p1->tf.t);
-        KONTROL(p1->emniyet.size() == 1u && p1->emniyet.front().estop == 1u,
-                "A1-K56: aynı pencerede basılıp kalkan acil durdurma o partide basılı bildirilir");
-        KONTROL(p2->emniyet.size() == 1u && p2->emniyet.front().estop == 0u,
-                "A1-K56: kalkma sonraki partide bildirilir");
+    KONTROL(rev_basma != 0u, "basılı durum en az bir partide görüldü");
+    // Senaryo atamaları sonraki ilk fizik sınırında uygulanır: basma 302,5 ms, kalkma 305 ms
+    // (yetkili durumdaki anlar).
+    const auto sinira = [](double s) {
+        const auto ns = static_cast<std::int64_t>(std::llround(s * 1e9));
+        return ((ns + kH - 1) / kH) * kH;
+    };
+    for (const auto& s : k.sonuc.satirlar) {
+        const auto t = static_cast<std::int64_t>(std::llround(s.t_s * 1e9));
+        if (t == 300 * kMs || t == 310 * kMs) {
+            KONTROL(s.estop == 0u, "düzenek: yetkili durumda acil durdurma 300 ve 310 ms'de etkin değil");
+        }
     }
+    GeriOkumaBeklentisi b;
+    b.ad = "acil durdurma";
+    b.kisitli = [](const mavlink_ida_safety_t& s) { return s.estop != 0u; };
+    b.t_kisit = sinira(0.3014);
+    b.t_gevset = sinira(0.3041);
+    b.gecikme = anahtar_gecikmesi_ns();
+    // Senaryoda tek basma ve tek kalkma var: basılı durum yalnız basma revizyonuyla, gevşek
+    // durum yalnız başka revizyonlarla (öncesi ve kalkış) var olmuştur.
+    b.gecmiste = [rev_basma](bool kisitli, std::uint32_t rev) {
+        return kisitli ? rev == rev_basma : rev != rev_basma;
+    };
+    geri_okuma_denetle(partiler, b);
 }
 
 VAKA("W3-K1.rastgele_cerceveler_acil") {

@@ -91,6 +91,9 @@ public:
     std::uint16_t varsayilan_pwm = 1600;
     bool varsayilan_acik = true;   // false: TF'ye hiç yanıt verilmez (tek seferlikler dışında)
     bool emniyet_kaydi_uret = true;
+    // Verilirse her sınırda sinir_isle(b)'den sonra ölçüm kayıtlarını üretir (köprüye
+    // olcum_ekle ile verir); taklit emniyet kaydı ve IMU üretilmez.
+    std::function<void(std::uint64_t, std::int64_t)> olcum_uretici;
     std::uint64_t parti_sayisi = 0;
     std::uint64_t emniyet_kaydi_sayisi = 0;
 

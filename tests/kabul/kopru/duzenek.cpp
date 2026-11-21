@@ -144,10 +144,16 @@ void Duzenek::adim() {
         sinir_sonrasi(b_);
     }
     pompa();
-    if (emniyet_kaydi_uret) {
+    if (olcum_uretici) {
+        olcum_uretici(b_, t);  // gerçek sensör kümesi (taklit kayıtlar ve IMU üretilmez)
+    } else if (emniyet_kaydi_uret) {
         emniyet_kaydi(t);
     }
-    if (b_ % 4u == 0u) {
+    if (b_ % 4u == 0u && olcum_uretici) {
+        const std::int64_t w_tn = (kip_ == ida::kopru::CalistirmaKipi::sil) ? -1 : dv;
+        k.parti_kapat(t, dv, w_tn);
+        pompa();
+    } else if (b_ % 4u == 0u) {
         ida::sensor::Olcum o;
         o.hdr.tur = ida::sensor::SensorTuru::imu;
         o.hdr.sensor_id = 1;
