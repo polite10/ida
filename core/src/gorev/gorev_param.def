@@ -1,0 +1,4 @@
+/*
+ * gorev_param.def — görev, kip ve arıza güvenliği parametreleri. Sahibi: W3 güdüm ve görev
+ * işi. Kimlik bloğu 0x04xx. Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ */

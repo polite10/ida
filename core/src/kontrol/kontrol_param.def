@@ -1,0 +1,4 @@
+/*
+ * kontrol_param.def — kontrol ve itki tahsisi parametreleri. Sahibi: W3 kontrol işi. Kimlik
+ * bloğu 0x05xx. Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ */

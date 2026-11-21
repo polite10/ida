@@ -87,4 +87,5 @@ set_tests_properties(host.cmake_moduller.bos_yol PROPERTIES
 
 # ---- vcpkg bağımlılık düzeneğinin dumanı (Eigen) ----------------------------------------
 add_subdirectory(duman)
+add_subdirectory(kabul/cekirdek)
 add_subdirectory(kabul/protokol)  # ida_link tel katmanı bağımsız kabul testleri (W2-protokol)
