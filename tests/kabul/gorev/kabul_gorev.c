@@ -96,7 +96,7 @@ bool kg_olasi(kg_rng_t *r, uint32_t binde)
 /* ---- Durum ------------------------------------------------------------------------ */
 
 #define KG_HAVUZ ((size_t)1 << 20)
-#define KG_PENCERE 32
+#define KG_PENCERE 32u
 
 typedef union {
     long double ld;
@@ -114,8 +114,8 @@ static unsigned char g_anlik_bellek[KG_HAVUZ];
 
 typedef struct {
     uint32_t id[KG_PENCERE];
-    int n;
-    int bas;
+    unsigned n;
+    unsigned bas;
 } kg_pencere_t;
 
 /* Bir önceki çağrının sonundaki gözlenen durum. */
@@ -272,7 +272,7 @@ static size_t blok_kur(bool bozuk)
     memset(&bilgi, 0, sizeof bilgi);
     ida_core_info(&bilgi);
     KG_DOGRULA(n <= KG_PARAM_AZAMI, "param_count %u > 997 (A4 §3.10)", (unsigned)n);
-    for (unsigned iu = 0; iu < (unsigned)n; ++iu) {
+    for (unsigned iu = 0; iu < (unsigned)n && iu < KG_PARAM_AZAMI; ++iu) {
         ida_param_desc_t d;
         uint32_t ham;
         memset(&d, 0, sizeof d);
@@ -283,7 +283,7 @@ static size_t blok_kur(bool bozuk)
         g_kayit[iu].ham = ham;
     }
     /* id'ye göre artan sıra (A4 §3.10). */
-    for (size_t i = 1; i < (size_t)n; ++i) {
+    for (size_t i = 1; i < (size_t)n && i < KG_PARAM_AZAMI; ++i) {
         kg_pkayit_t t = g_kayit[i];
         size_t j = i;
         while (j > 0u && g_kayit[j - 1u].id > t.id) {
@@ -300,7 +300,7 @@ static size_t blok_kur(bool bozuk)
     le16(&g_blok[6], 0u);
     le64(&g_blok[8], bilgi.param_schema_hash);
     le32(&g_blok[16], (uint32_t)yuk);
-    for (size_t i = 0; i < (size_t)n; ++i) {
+    for (size_t i = 0; i < (size_t)n && i < KG_PARAM_AZAMI; ++i) {
         uint8_t *r = &g_blok[IDA_PBLOB_HDR_SIZE + i * IDA_PBLOB_REC_SIZE];
         le16(&r[0], g_kayit[i].id);
         r[2] = g_kayit[i].type;
@@ -335,7 +335,7 @@ void kg_kur(const kg_kurulum_t *k)
     KG_DOGRULA(bilgi.core_align > 0u && (size_t)bilgi.core_align <= _Alignof(kg_havuz_t), "core_align %lu",
                (unsigned long)bilgi.core_align);
     memset(&M, 0, sizeof M);
-    M.boy = (size_t)bilgi.core_size;
+    M.boy = (size_t)bilgi.core_size <= KG_HAVUZ ? (size_t)bilgi.core_size : KG_HAVUZ; /* C6386 */
     memset(g_havuz.b, 0x5A, M.boy);
 
     memset(&ii, 0, sizeof ii);
@@ -392,7 +392,8 @@ uint32_t kg_yeni_id(void)
 ida_cmd_t *kg_komut_id(ida_in_t *in, uint8_t type, uint32_t cmd_id)
 {
     KG_DOGRULA(in->n_cmds < IDA_PORT_MAX_CMDS, "komut dizisi dolu");
-    ida_cmd_t *c = &in->cmds[in->n_cmds];
+    unsigned yer = in->n_cmds < IDA_PORT_MAX_CMDS ? in->n_cmds : IDA_PORT_MAX_CMDS - 1u; /* C6386 */
+    ida_cmd_t *c = &in->cmds[yer];
     in->n_cmds = (uint8_t)(in->n_cmds + 1u);
     memset(c, 0, sizeof *c);
     c->cmd_id = cmd_id;
@@ -434,7 +435,8 @@ static int64_t ornek_zamani(const ida_in_t *in)
 ida_sample_t *kg_ornek(ida_in_t *in, uint8_t type, uint8_t inst)
 {
     KG_DOGRULA(in->n_samples < IDA_PORT_MAX_SAMPLES, "örnek dizisi dolu");
-    ida_sample_t *s = &in->samples[in->n_samples];
+    unsigned yer = in->n_samples < IDA_PORT_MAX_SAMPLES ? in->n_samples : IDA_PORT_MAX_SAMPLES - 1u; /* C6386 */
+    ida_sample_t *s = &in->samples[yer];
     in->n_samples = (uint8_t)(in->n_samples + 1u);
     memset(s, 0, sizeof *s);
     M.ornek_seq[type & 15u]++;
@@ -455,7 +457,7 @@ ida_sample_t *kg_ornek(ida_in_t *in, uint8_t type, uint8_t inst)
 
 ida_sample_t *kg_ornek_bul_ya_da_ekle(ida_in_t *in, uint8_t type)
 {
-    for (unsigned i = 0; i < in->n_samples; ++i) {
+    for (unsigned i = 0; i < in->n_samples && i < IDA_PORT_MAX_SAMPLES; ++i) {
         if (in->samples[i].hdr.type == type && in->samples[i].hdr.inst == 0u) {
             return &in->samples[i];
         }
@@ -467,7 +469,7 @@ ida_sample_t *kg_emniyet(ida_in_t *in, uint8_t inst, uint8_t estop, uint8_t tube
 {
     ida_sample_t *s = NULL;
     /* Aynı inst'in periyodik örneği varsa onun yerine yazılır (tek örnek). */
-    for (unsigned i = 0; i < in->n_samples; ++i) {
+    for (unsigned i = 0; i < in->n_samples && i < IDA_PORT_MAX_SAMPLES; ++i) {
         if (in->samples[i].hdr.type == IDA_SENS_SAFETY && in->samples[i].hdr.inst == inst) {
             s = &in->samples[i];
         }
@@ -677,14 +679,14 @@ static void pencere_ekle(kg_pencere_t *p, uint32_t id)
         p->id[(p->bas + p->n) % KG_PENCERE] = id;
         p->n++;
     } else {
-        p->id[p->bas] = id;
-        p->bas = (p->bas + 1) % KG_PENCERE;
+        p->id[p->bas % KG_PENCERE] = id;
+        p->bas = (p->bas + 1u) % KG_PENCERE;
     }
 }
 
 static bool pencerede(const kg_pencere_t *p, uint32_t id)
 {
-    for (int i = 0; i < p->n; ++i) {
+    for (unsigned i = 0; i < p->n && i < KG_PENCERE; ++i) {
         if (p->id[(p->bas + i) % KG_PENCERE] == id) {
             return true;
         }
@@ -870,6 +872,14 @@ static uint32_t arm_izinli(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, 
 
 /* ---- Çağrı ve değişmezler --------------------------------------------------------- */
 
+/* results[i]; indis sınırı açıkça denetlenir (MSVC /analyze C6385). */
+static const ida_cmd_result_t *sonuc_al(const ida_out_t *o, unsigned i)
+{
+    unsigned yer = i < IDA_PORT_MAX_RESULTS ? i : IDA_PORT_MAX_RESULTS - 1u;
+    KG_DOGRULA(i < IDA_PORT_MAX_RESULTS, "sonuç indisi %u sınır dışı", i);
+    return &o->results[yer];
+}
+
 static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, bool kapanma)
 {
     const kg_onceki_t *P = &M.P;
@@ -900,7 +910,7 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
         if ((bitler & (1u << i)) == 0u) {
             continue;
         }
-        const ida_cmd_result_t *r = &o->results[k++];
+        const ida_cmd_result_t *r = sonuc_al(o, k++);
         KG_DOGRULA(r->cmd_id == in->narrow.cmd_id[i] && r->kind == IDA_RES_ACK && r->ack == IDA_ACK_ACCEPTED &&
                        r->reason == IDA_REASON_NONE,
                    "mandal biti %u sonucu (id %lu, ack %u, neden %u); ACCEPTED bekleniyordu (A4-K43, K46, K114)", i,
@@ -936,7 +946,7 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
        yeniden hesap) dışarıdan ayrılamadığı için bu çağrıda NARROWED izinlidir, şart değildir. */
     bool kip_komut_kabul = false;
     for (unsigned j = 0; j < nk; ++j) {
-        if (in->cmds[j].type == IDA_CMD_SET_MODE && o->results[nbit + j].ack == IDA_ACK_ACCEPTED) {
+        if (in->cmds[j].type == IDA_CMD_SET_MODE && sonuc_al(o, nbit + j)->ack == IDA_ACK_ACCEPTED) {
             kip_komut_kabul = true;
         }
     }
@@ -952,7 +962,7 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
     bool fsr_kabul = false;
     for (unsigned j = 0; j < nk; ++j) {
         const ida_cmd_t *c = &in->cmds[j];
-        const ida_cmd_result_t *r = &o->results[nbit + j];
+        const ida_cmd_result_t *r = sonuc_al(o, nbit + j);
         KG_DOGRULA(r->cmd_id == c->cmd_id, "cmds[%u] sonucunun kimliği %lu, komutunki %lu (A4-K43)", j,
                    (unsigned long)r->cmd_id, (unsigned long)c->cmd_id);
         if (c->type == IDA_CMD_ARM) {
@@ -996,7 +1006,7 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
         if (c->type == IDA_CMD_ARM) {
             bool sonra_kip = false;
             for (unsigned q = j + 1u; q < nk; ++q) {
-                if (in->cmds[q].type == IDA_CMD_SET_MODE && o->results[nbit + q].ack == IDA_ACK_ACCEPTED) {
+                if (in->cmds[q].type == IDA_CMD_SET_MODE && sonuc_al(o, nbit + q)->ack == IDA_ACK_ACCEPTED) {
                     sonra_kip = true;
                 }
             }
@@ -1069,7 +1079,7 @@ static void degismezler(const ida_in_t *in, ida_rc_t rc, const ida_out_t *o, boo
     }
     /* D2 (A4-K104; görev md.3): GUIDED/AUTO'ya giriş yalnız kabul edilen genişleticiyle. */
     if (o->status.mode != P->mode && (o->status.mode == IDA_MODE_GUIDED || o->status.mode == IDA_MODE_AUTO)) {
-        KG_DOGRULA(kip_kabul[o->status.mode] || fsr_kabul,
+        KG_DOGRULA(kip_kabul[o->status.mode & 7u] || fsr_kabul,
                    "kip %u → %u, ama bu çağrıda o hedefe ACCEPTED SET_MODE ya da FAILSAFE_RESET yok (A4-K104; görev md.3)",
                    (unsigned)P->mode, (unsigned)o->status.mode);
         g_sayac.guided_giris++;
@@ -1179,7 +1189,7 @@ const ida_cmd_result_t *kg_sonuc(int j)
     unsigned nbit = (unsigned)bit_sayisi((uint32_t)(g_son_in.narrow.mask & IDA_NARROW_DEFINED));
     KG_DOGRULA(j >= 0 && (unsigned)j < g_son_in.n_cmds && nbit + (unsigned)j < M.son.n_results,
                "cmds[%d] için sonuç yok", j);
-    return &M.son.results[nbit + (unsigned)j];
+    return sonuc_al(&M.son, nbit + (unsigned)j);
 }
 
 int kg_komut_dizini(uint8_t type)

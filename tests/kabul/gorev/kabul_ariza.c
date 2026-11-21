@@ -46,6 +46,16 @@ static const char *const ARIZA_ADI[AR_N] = {
     "GNSS ve DVL kaybı", "kestirim bozulması", "bağlantı kaybı", "yer istasyonu kaybı", "oturum sonu",
 };
 
+/* Arıza adı; sınır dışında "?" (MSVC /analyze C6385). */
+static const char *ariza_adi(ariza_t a)
+{
+    int i = (int)a;
+    if (i < 0 || (size_t)i >= sizeof ARIZA_ADI / sizeof ARIZA_ADI[0]) {
+        return "?";
+    }
+    return ARIZA_ADI[i];
+}
+
 static void ariza_ayarla(ariza_t a, bool aktif)
 {
     kg_dunya_t *d = kg_dunya();
@@ -106,7 +116,7 @@ static void vaka(const baslangic_t *b, ariza_t a, uint8_t *fs_azami)
     uint8_t fs = 0u;
     bool kip_genis_oldu = false;
 
-    kg_baglam("md3 %s / %s: arıza", b->ad, ARIZA_ADI[a]);
+    kg_baglam("md3 %s / %s: arıza", b->ad, ariza_adi((ariza_t)a));
     if (a == AR_OTURUM_SONU) {
         (void)kg_cagir(kg_girdi(KG_OTURUM_SONU));
     }
@@ -122,7 +132,7 @@ static void vaka(const baslangic_t *b, ariza_t a, uint8_t *fs_azami)
             kip_genis_oldu = true;
         }
     }
-    kg_baglam("md3 %s / %s: kaldırıldı", b->ad, ARIZA_ADI[a]);
+    kg_baglam("md3 %s / %s: kaldırıldı", b->ad, ariza_adi((ariza_t)a));
     ariza_ayarla(a, false);
     for (int i = 0; i < 400; ++i) {
         (void)kg_adim();
@@ -133,7 +143,7 @@ static void vaka(const baslangic_t *b, ariza_t a, uint8_t *fs_azami)
         }
     }
     /* FAILSAFE_RESET (genişletici ama ARM değil): silahlandırmaz (A4-K104). */
-    kg_baglam("md3 %s / %s: FAILSAFE_RESET", b->ad, ARIZA_ADI[a]);
+    kg_baglam("md3 %s / %s: FAILSAFE_RESET", b->ad, ariza_adi((ariza_t)a));
     ida_in_t *in = kg_girdi(KG_OLAGAN);
     (void)kg_komut(in, (uint8_t)IDA_CMD_FAILSAFE_RESET);
     (void)kg_cagir(in);
@@ -142,7 +152,7 @@ static void vaka(const baslangic_t *b, ariza_t a, uint8_t *fs_azami)
         KG_DOGRULA(!kg_out()->armed || armed0, "FAILSAFE_RESET sonrası silahsız başlangıçta armed = 1 (A4-K104)");
     }
     KG_DOGRULA(!kip_genis_oldu, "kip GUIDED/AUTO'ya genişledi (başlangıç kipi %u; görev md.3)", (unsigned)kip0);
-    (void)printf("  md3 %-22s %-22s fs_azami=%u armed %d->%d kip %u->%u\n", b->ad, ARIZA_ADI[a], (unsigned)fs,
+    (void)printf("  md3 %-22s %-22s fs_azami=%u armed %d->%d kip %u->%u\n", b->ad, ariza_adi((ariza_t)a), (unsigned)fs,
                  (int)armed0, (int)kg_out()->armed, (unsigned)kip0, (unsigned)kg_out()->status.mode);
     *fs_azami = fs;
 }
@@ -188,7 +198,7 @@ static void test_md3_kip_ariza_matrisi(void)
         for (int a = 0; a < (int)AR_N; ++a) {
             uint8_t fs = 0u;
             kg_anlik_don();
-            kg_baglam("md3 %s / %s: başlangıç", b->ad, ARIZA_ADI[a]);
+            kg_baglam("md3 %s / %s: başlangıç", b->ad, ariza_adi((ariza_t)a));
             /* Önce silahlanma (kipten bağımsız; A4-K127), sonra kip seçimi. MANUAL gibi kiplerin
                silahlı olmayı ön koşul sayıp saymadığı uygulamanındır; bu yüzden sıra böyle. */
             if (b->silahli) {

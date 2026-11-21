@@ -314,7 +314,7 @@ static void test_md2_kabul(void)
     (void)kg_silahlan();
     const ida_out_t *o = kg_out();
     bool bulundu = false;
-    for (unsigned i = 0; i < o->n_logs; ++i) {
+    for (unsigned i = 0; i < o->n_logs && i < IDA_PORT_MAX_LOGS; ++i) {
         if (o->logs[i].code == IDA_LOG_ARM_CHANGE) {
             KG_DOGRULA(o->logs[i].arg0 == 1 && o->logs[i].arg1 == 0, "ARM_CHANGE arg0 %ld arg1 %ld (3.15)",
                        (long)o->logs[i].arg0, (long)o->logs[i].arg1);
