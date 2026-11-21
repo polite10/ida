@@ -106,7 +106,6 @@ static void dongu_sifirla(ida_kon_t *k)
     }
     k->i_v[0] = 0.0f;
     k->i_v[1] = 0.0f;
-    k->ref_kusak_var = 0u;
     cikti_sifirla(k);
 }
 
@@ -234,23 +233,21 @@ static void kanal_degisimi(ida_kon_t *k, const ida_kon_istek_t *s)
     k->son_yatay = s->yatay;
 }
 
-/* Referans kuşağı değişti (sol bulgu 2; EMNİYET): hedefin kaynağı değişti (arıza eylemine
-   geçiş, tutma hedefinin yeniden yakalanması, güdüm hedefinin iptali, derinleşme yasağı).
-   Eski hedefe göre yumuşatılmış derinlik ve yön referansları ölçülen durumdan yeniden kurulur;
-   eski hedefe giderken biriken öteleme integralleri (dikey, yatay) sıfırlanır. Açısal hız
-   integralleri korunur: moment bozucusunu (ör. zayıflamış itici) karşılarlar ve sıfırlanmaları
-   tutumda geçici sapma yaratır. */
-static void referans_kusagi(ida_kon_t *k, const ida_kon_istek_t *s)
+/* Kontrolün iptal biti kurulu (sol bulgu 2 ve 3. tur bulgu 1; EMNİYET): hedefin kaynağı
+   değişti. Eski hedefe göre yumuşatılmış derinlik ve yön referansları ölçülen durumdan yeniden
+   kurulur; eski hedefe giderken biriken öteleme integralleri (dikey, yatay) sıfırlanır. Açısal
+   hız integralleri korunur: moment bozucusunu (ör. zayıflamış itici) karşılarlar ve
+   sıfırlanmaları tutumda geçici sapma yaratır (HOLD geçişinde moment değişimi itki değişim hızı
+   sınırının içinde kalır; zincir.z1 HOLD testi). */
+static void referans_yenile(ida_kon_t *k, const ida_kon_girdi_t *g)
 {
-    if ((k->ref_kusak_var == 1u) && (k->son_ref_kusak != s->ref_kusak)) {
+    if (g->ref_yenile) {
         k->d_ref_var = 0u;
         k->psi_ref_var = 0u;
         k->i_w = 0.0f;
         k->i_v[0] = 0.0f;
         k->i_v[1] = 0.0f;
     }
-    k->son_ref_kusak = s->ref_kusak;
-    k->ref_kusak_var = 1u;
 }
 
 /* Koşullu integral (sarma önlemi; 02 §2.5): çıkış kendi sınırında ya da tahsis o yönde doymuş
@@ -679,7 +676,7 @@ void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_gird
         return;
     }
     kanal_degisimi(k, &g->istek);
-    referans_kusagi(k, &g->istek);
+    referans_yenile(k, g);
     kazanc_t z;
     kazanc_oku(prm, &z);
     if (!hesapla_etkin(k, &z, g, dt)) {
@@ -711,13 +708,17 @@ void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g)
     const uint8_t est = ida_kes_duzey(&c->kes);
     g->kestirim_yeterli = (est == (uint8_t)IDA_EST_OK) || (est == (uint8_t)IDA_EST_DEGRADED);
     g->itici_disi = ida_gor_itici_disi(&c->gor); /* görev modülünün itici arıza maskesi */
+    g->ref_yenile = (c->emn.hedef_iptal & IDA_EMN_IPTAL_KON) != 0u;
 }
 
-void ida_kon_adim(ida_kon_t *k, const ida_core_t *c)
+void ida_kon_adim(ida_kon_t *k, ida_core_t *c)
 {
     ida_kon_girdi_t g;
     ida_kon_girdi_topla(c, &g);
     ida_kon_hesapla(k, &c->prm.yururluk, &g);
+    /* ida_kon_hesapla her yolda belleği sıfırladı: etkin değilse dongu_sifirla, etkinse
+       referans_yenile (ref_yenile). Bit ancak bundan sonra temizlenir (EMNİYET). */
+    c->emn.hedef_iptal = (uint8_t)(c->emn.hedef_iptal & (uint8_t)(0xFFu ^ IDA_EMN_IPTAL_KON));
 }
 
 void ida_kon_itki(const ida_kon_t *k, float thr[IDA_PORT_N_THR], bool *cokme)
@@ -736,7 +737,6 @@ static bool kanal_gecerli(uint8_t v, uint8_t en_cok)
 bool ida_kon_tutarli(const ida_kon_t *k)
 {
     bool t = (k->onb_var <= 1u) && (k->cokme <= 1u) && (k->t_var <= 1u) &&
-             (k->ref_kusak_var <= 1u) &&
              (k->d_ref_var <= 1u) && (k->psi_ref_var <= 1u) &&
              kanal_gecerli(k->son_kip, IDA_KON_KIP_DALIS) &&
              kanal_gecerli(k->son_dikey, IDA_KON_DIKEY_KUVVET) &&
