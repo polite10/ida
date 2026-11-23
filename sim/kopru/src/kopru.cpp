@@ -153,9 +153,7 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     esz_bekleyen.clear();
     esz_muaf.clear();
     ilk_yanit_alindi = false;
-    parti_acan.clear();
-    parti_acan_sira.clear();
-    reddedilen_yanit.clear();
+    kume.temizle();
     olay_bekleyen.clear();
     karari_bekleyen.clear();
     sonuc_kuyrugu.clear();

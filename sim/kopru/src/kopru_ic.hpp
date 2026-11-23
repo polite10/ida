@@ -68,6 +68,21 @@ struct Yuva {
 struct BekleyenOlay {
     mavlink_ida_event_t ev{};
     std::uint64_t adim = 0;                // uygulamaya çalışılacağı sınır
+    bool gec = false;                      // A1-K83: kendi sınırından sonra uygulanacak (sayıldı)
+};
+
+// sol-2 #2, #3, #11 (EMNİYET): bir partinin olay–yanıt kümesi. Yanıt (IDA_ACTUATOR) önce
+// "alınmış"tır; saydığı olaylar (n_events) gelip küme topluca doğrulanınca (A1-K118, Tablo
+// 4.6b) kabul edilir. Kabulden önce hiçbir geçmişe (üretim sırası, yanit(n), yanıt süresi,
+// birleşim, canlılık) girmez; tutarsız küme reddedilir ve hiçbir izin açan olayı uygulanmaz.
+struct PartiKumesi {
+    bool act_var = false;                  // alınmış yanıt (bekleyen ya da karara bağlanmış)
+    mavlink_ida_actuator_t act{};
+    std::int64_t act_duvar = 0;            // yanıtın alım duvarı
+    std::set<std::uint64_t> olaylar;       // partinin ızgara dışı olayları (geliş zamanından bağımsız)
+    std::uint8_t acan = 0;                 // bit 0 SAFETY_OPEN, bit 1 FIRE
+    bool karar = false;                    // toplu doğrulama yapıldı
+    bool tutarli = false;
 };
 
 // W4-K12: bir revizyonun yetkili emniyet durumu. girdi: bit 0 estop, 1–2 fiş takılı, 3–4 pim
@@ -104,6 +119,19 @@ struct SiraliHarita {
     {
         const auto it = m.find(k);
         return it == m.end() ? nullptr : &it->second;
+    }
+    V* bul(std::uint32_t k)
+    {
+        const auto it = m.find(k);
+        return it == m.end() ? nullptr : &it->second;
+    }
+    // Yoksa varsayılanla ekler.
+    V& al(std::uint32_t k)
+    {
+        if (m.count(k) == 0u) {
+            koy(k, V{});
+        }
+        return m.find(k)->second;
     }
     void temizle()
     {
@@ -225,23 +253,10 @@ struct Kopru::Ic {
     std::vector<BekleyenOlay> olay_bekleyen;
     std::set<std::uint64_t> karari_bekleyen;
     std::map<std::uint64_t, SakliSonuc> sakli;         // A1-K81 (çalıştırma boyunca)
-    // sol #3: partideki izin açan olay türleri (bit 0 SAFETY_OPEN, bit 1 FIRE) ve tutarsız
-    // bulunup reddedilen yanıtlar; ekleme sırasıyla son 256 parti tutulur.
-    std::map<std::uint32_t, std::uint8_t> parti_acan;
-    std::set<std::uint32_t> reddedilen_yanit;
-    std::deque<std::uint32_t> parti_acan_sira;
-    void parti_acan_ekle(std::uint32_t seq, std::uint8_t bit)
-    {
-        if (parti_acan.count(seq) == 0u) {
-            parti_acan_sira.push_back(seq);
-            if (parti_acan_sira.size() > 256u) {
-                parti_acan.erase(parti_acan_sira.front());
-                reddedilen_yanit.erase(parti_acan_sira.front());
-                parti_acan_sira.pop_front();
-            }
-        }
-        parti_acan[seq] = static_cast<std::uint8_t>(parti_acan[seq] | bit);
-    }
+    // sol-2 #2, #3, #11: partilerin olay–yanıt kümeleri (ekleme sırasıyla son 256 parti).
+    SiraliHarita<PartiKumesi> kume{256};
+    bool kume_tamamla(std::uint32_t seq);   // true: yanıt şimdi kabul edildi
+    void yanit_kabul(std::uint32_t seq, const PartiKumesi& p);
     std::deque<mavlink_ida_event_result_t> sonuc_kuyrugu;
     std::deque<std::uint64_t> sakli_talep;
 
@@ -319,7 +334,7 @@ struct Kopru::Ic {
     void pencere_ac(std::int64_t t_onceki);
     void rev_artir();
     void izin_kapat(int tup);
-    void olay_karar(const BekleyenOlay& o, std::int64_t t);
+    void olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no);
     void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply);
     bool yuva_tamam(const Yuva& y) const;
     void yuva_tamamlandi_mi(std::uint32_t seq);

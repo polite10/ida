@@ -143,10 +143,11 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         esz_bekleyen.push_back(m);
         return true;
     }
-    // A1-K72: yuva doluysa ya da uygulama anı geçtiyse reddedilir. Reddedilen yanıt hiçbir
-    // geçmişi (üretim sırası, olay doğrulamasının dayanağı, yanıt süresi) değiştirmez (sol #2).
+    // A1-K72: yuva doluysa ya da uygulama anı geçtiyse reddedilir. Partinin ilk alınmış yanıtı
+    // (bekleyen, kabul ya da ret) yuvayı tutar: ikincisi yinelenendir (sol #2).
     const auto yv = yuvalar.find(m.batch_seq);
-    if (yv != yuvalar.end() && yv->second.act_var) {
+    const PartiKumesi* pk = kume.bul(m.batch_seq);
+    if ((yv != yuvalar.end() && yv->second.act_var) || (pk != nullptr && pk->act_var)) {
         ++say.yanit_ret_yinelenen;
         return false;
     }
@@ -155,16 +156,75 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         say.calistirma_gecersiz |= kGecGecYanit;
         return false;
     }
-    out_seq_var = true;
-    son_out_seq = m.out_seq;
-    gecen_yanit.koy(m.batch_seq, m);   // olay doğrulamasının dayanağı: yalnız kabul edilen yanıt
-    if (const TfKaydi* tw = tf_kayit.bul(m.batch_seq)) {
-        yanit_sure.koy(m.batch_seq, duvar - tw->duvar);
-        yanit_sureleri.push_back(duvar - tw->duvar);
+    // sol-2 #2, #11 (EMNİYET): yanıt saydığı olay kümesi tamamlanıp topluca doğrulanana dek
+    // bekler; kabul edilmeden hiçbir geçmişe girmez ve canlılığı yenilemez (false).
+    PartiKumesi& p = kume.al(m.batch_seq);
+    p.act_var = true;
+    p.act = m;
+    p.act_duvar = duvar;
+    return kume_tamamla(m.batch_seq);
+}
+
+// Kümenin tutarlılığı (A1-K118, Tablo 4.6b): izin açan olay varsa çağrı olağan step ve
+// RC OK; FIRE varsa ARMED = 1 ve IS_SAFE = 0. Yanıtın saymadığı, sonradan gelen olay da aynı
+// tür denetimine girer (A1-K118 yanıtın olayla tutarlılığını ister; sayım fazlası tek başına
+// ret nedeni değildir: kabul A1-K84.son_gecerlilik_siniri).
+namespace {
+bool kume_tutarli_mi(const PartiKumesi& p)
+{
+    if (p.acan == 0u) {
+        return true;
+    }
+    const std::uint16_t f = p.act.act_flags;
+    bool t = p.act.core_rc == IDA_RC_OK && (f & F(IDAW_ACT_FLAGS_SRC_TICK)) == 0u;
+    if ((p.acan & 2u) != 0u) {
+        t = t && (f & F(IDAW_ACT_FLAGS_ARMED)) != 0u && (f & F(IDAW_ACT_FLAGS_IS_SAFE)) == 0u;
+    }
+    return t;
+}
+}  // namespace
+
+bool Kopru::Ic::kume_tamamla(std::uint32_t seq)
+{
+    PartiKumesi* p = kume.bul(seq);
+    if (p == nullptr || !p->act_var || p->karar || p->olaylar.size() < p->act.n_events) {
+        return false;   // yanıt yok, karar verilmiş ya da küme eksik: bekler
+    }
+    p->karar = true;
+    p->tutarli = kume_tutarli_mi(*p);
+    if (!p->tutarli) {
+        ++say.alan_ret;
+        const auto yv = yuvalar.find(seq);
+        if (yv != yuvalar.end() && !yv->second.islendi) {
+            yv->second.reddedildi = true;
+        }
+        return false;
+    }
+    yanit_kabul(seq, *p);
+    return true;
+}
+
+// Toplu doğrulamadan geçen yanıt kabul edilmiş geçmişe girer. Uygulama anı geçmişse (küme geç
+// tamamlandı) yuvaya ve yanıt geçmişine girmez; yalnız olayların dayanağı olur.
+void Kopru::Ic::yanit_kabul(std::uint32_t seq, const PartiKumesi& p)
+{
+    const mavlink_ida_actuator_t& m = p.act;
+    const auto yv = yuvalar.find(seq);
+    if (yv == yuvalar.end() || yv->second.islendi || (sinir_var && son_sinir >= yv->second.adim)) {
+        return;
+    }
+    if (!out_seq_var || yeni(m.out_seq, son_out_seq)) {
+        out_seq_var = true;
+        son_out_seq = m.out_seq;
+    }
+    gecen_yanit.koy(seq, m);
+    if (const TfKaydi* tw = tf_kayit.bul(seq)) {
+        yanit_sure.koy(seq, p.act_duvar - tw->duvar);
+        yanit_sureleri.push_back(p.act_duvar - tw->duvar);
     }
     // Birleştirilen eski partiler (A1-K40, K75).
     for (std::uint32_t k = 1; k <= m.n_merged; ++k) {
-        const std::uint32_t sq = m.batch_seq - k;
+        const std::uint32_t sq = seq - k;
         const auto it = yuvalar.find(sq);
         if (it != yuvalar.end() && it->second.islendi && !it->second.birlesik && !it->second.act_var) {
             ++say.parti_kacirildi_birlesik;
@@ -175,8 +235,7 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     y.act_var = true;
     ilk_yanit_alindi = true;
     y.act = m;
-    yuva_tamamlandi_mi(m.batch_seq);
-    return true;
+    yuva_tamamlandi_mi(seq);
 }
 
 // ---------------------------------------------------------------- Olay (IDA_EVENT)
@@ -220,9 +279,6 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
     }
     karari_bekleyen.insert(m.event_id);
     ++say.olay_alinan;
-    if (m.kind == IDA_EVT_SAFETY_OPEN || m.kind == IDA_EVT_FIRE) {
-        parti_acan_ekle(m.batch_seq, m.kind == IDA_EVT_FIRE ? 2u : 1u);
-    }
     BekleyenOlay o;
     o.ev = m;
     // A1-K83: zamanında gelen olay yuvasıyla aynı sınırda; geç gelen ya da ızgara olayı
@@ -233,13 +289,36 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
     if (zamaninda) {
         o.adim = it->second.adim;
         it->second.olaylar.insert(m.event_id);
-        yuva_tamamlandi_mi(m.batch_seq);
     } else {
         o.adim = sinir_var ? son_sinir + 1u : 0u;
+        o.gec = true;
         ++say.olay_gec;
         say.calistirma_gecersiz |= kGecGecOlay;
     }
     olay_bekleyen.push_back(o);
+    // sol-2 #3: partinin olay kümesi (geliş zamanından bağımsız; ızgara olayları partiye
+    // sayılmaz, A1-K73). Küme tamamlanırsa bekleyen yanıt topluca doğrulanır; karar verilmiş
+    // kümeye sonradan gelen olay tutarlılığı yeniden denetler (yalnız kısıtlayan yönde).
+    if (!kapanis_sifir && m.call_kind != IDAW_CALL_KIND_TICK_GRID) {
+        PartiKumesi& p = kume.al(m.batch_seq);
+        p.olaylar.insert(m.event_id);
+        if (m.kind == IDA_EVT_SAFETY_OPEN) {
+            p.acan = static_cast<std::uint8_t>(p.acan | 1u);
+        } else if (m.kind == IDA_EVT_FIRE) {
+            p.acan = static_cast<std::uint8_t>(p.acan | 2u);
+        }
+        if (p.karar) {
+            if (p.tutarli && !kume_tutarli_mi(p)) {
+                p.tutarli = false;
+                ++say.alan_ret;
+            }
+        } else {
+            (void)kume_tamamla(m.batch_seq);
+        }
+    }
+    if (zamaninda) {
+        yuva_tamamlandi_mi(m.batch_seq);
+    }
     return true;
 }
 
@@ -285,7 +364,7 @@ void Kopru::Ic::sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::i
 }
 
 // Tek bir olayın kararı (A1-K82, K84, K86–K88, K106, K118). t: uygulama sınırının sim zamanı.
-void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
+void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no)
 {
     const mavlink_ida_event_t& e = o.ev;
     auto karar = [&](std::uint8_t r, std::int64_t t_apply) { sonuc_kuyruga(e.event_id, r, t_apply); };
@@ -319,29 +398,30 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t)
         karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
         return;
     }
-    // İzin açan olaylar: A1-K118 ve Tablo 4.6b tutarlılığı (sol #3). Yanıt, partisinin bütün
-    // izin açan olaylarıyla birlikte (ör. aynı partide FIRE varsa ARMED = 1, IS_SAFE = 0)
-    // denetlenir; tutarsızsa yanıt reddedilir ve o partinin hiçbir olayı izin açamaz. Karar
-    // yalnız kabul edilmiş, değişmez yuva yanıtına dayanır (sol #2).
-    const mavlink_ida_actuator_t* gy = gecen_yanit.bul(e.batch_seq);
-    bool tutarli = gy != nullptr && reddedilen_yanit.count(e.batch_seq) == 0u;
-    if (tutarli) {
-        const mavlink_ida_actuator_t& m = *gy;
-        const std::uint16_t f = m.act_flags;
-        tutarli = m.core_rc == IDA_RC_OK && (f & F(IDAW_ACT_FLAGS_SRC_TICK)) == 0u;
-        const auto pa = parti_acan.find(e.batch_seq);
-        const bool partide_fire = e.kind == IDA_EVT_FIRE || (pa != parti_acan.end() && (pa->second & 2u) != 0u);
-        if (partide_fire) {
-            tutarli = tutarli && (f & F(IDAW_ACT_FLAGS_ARMED)) != 0u && (f & F(IDAW_ACT_FLAGS_IS_SAFE)) == 0u;
+    // İzin açan olaylar (sol-2 #3, EMNİYET): genişletici etki yalnız partinin olay–yanıt kümesi
+    // tamamlanıp topluca doğrulandıysa (A1-K118, Tablo 4.6b) uygulanır. Küme eksikse olay bekler
+    // (son geçerlilik dolunca yukarıda REJ_EXPIRED); yanıt artık gelemiyorsa (yuvanın uygulama
+    // anı geldi ya da geçti) ya da küme tutarsızsa reddedilir.
+    const PartiKumesi* pk = kume.bul(e.batch_seq);
+    bool bekle = false;
+    bool tutarli = false;
+    if (pk != nullptr && pk->act_var) {
+        bekle = !pk->karar;
+        tutarli = pk->karar && pk->tutarli;
+    } else {
+        const auto yv = yuvalar.find(e.batch_seq);
+        bekle = yv != yuvalar.end() && !yv->second.islendi && yv->second.adim > adim_no;
+    }
+    if (bekle) {
+        BekleyenOlay b = o;
+        b.adim = adim_no + 1u;
+        if (!b.gec) {
+            b.gec = true;   // kendi sınırından sonra uygulanırsa geç olaydır (A1-K83)
+            ++say.olay_gec;
+            say.calistirma_gecersiz |= kGecGecOlay;
         }
-        if (!tutarli) {
-            ++say.alan_ret;
-            reddedilen_yanit.insert(e.batch_seq);
-            const auto yv = yuvalar.find(e.batch_seq);
-            if (yv != yuvalar.end() && !yv->second.islendi) {
-                yv->second.reddedildi = true;
-            }
-        }
+        olay_bekleyen.push_back(b);
+        return;
     }
     const auto tup = static_cast<std::size_t>(e.tube);
     const bool rev_tamam = !say.emniyet_rev_doydu && e.safety_rev == emn.emniyet_revizyonu;
@@ -469,7 +549,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         return x.ev.event_id < y.ev.event_id;
     });
     for (const BekleyenOlay& o : bu) {
-        i.olay_karar(o, t);
+        i.olay_karar(o, t, adim_no);
     }
     if (i.sonuc_kuyrugu.size() > kQSonuc) {
         // A1-K111: E16'nın varsayımı bozuldu: protokol hatası, oturum sonu.

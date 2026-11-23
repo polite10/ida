@@ -46,6 +46,7 @@ add_executable(ida_kopru_test
   test/test_oturum.cpp
   test/test_yuva.cpp
   test/test_emniyet.cpp
+  test/test_emniyet3.cpp
   test/test_parti.cpp
   test/test_emniyet2.cpp
   test/test_tasima.cpp)
@@ -84,6 +85,12 @@ set(_ida_kopru_testleri
   sira_tanisi  # W4-K14 ve seq tanısı
   yazma_sinirli  # sol B: #7 #8
   aygit_kalkti  # sol B: #7 #8
+  emniyet_rev_ileri  # sol-2 EMNİYET: #1 #2 #3 #11
+  reddedilen_yanit_gecmis  # sol-2 EMNİYET: #1 #2 #3 #11
+  eksik_kume_tutarsiz  # sol-2 EMNİYET: #1 #2 #3 #11
+  eksik_kume_gelmez  # sol-2 EMNİYET: #1 #2 #3 #11
+  eksik_kume_tutarli  # sol-2 EMNİYET: #1 #2 #3 #11
+  tutarsiz_yanit_canlilik  # sol-2 EMNİYET: #1 #2 #3 #11
   bellek_tasima
   tcp_tasima
   pty_tasima)

@@ -396,9 +396,10 @@ std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t d
         m.seq = o.hdr.seq;
         m.safety_rev = y.safety_rev;
         // W4-K12 (2), (3) (EMNİYET): gönderilen durum, gönderilen revizyonun yetkili durumundan
-        // alan alan en az o kadar kısıtlayıcı olmalıdır. Revizyon, kaydın kendi revizyonu ve
-        // öncekiler arasından seçilir: tam eşleşen en yeni; yoksa durumun en az o kadar
-        // kısıtlayıcı olduğu en yeni. Hiçbiri yoksa kaydın revizyonu kalır ve sayılır.
+        // alan alan en az o kadar kısıtlayıcı olmalıdır. Revizyon köprünün bütün yetkili
+        // geçmişinden seçilir (kaydın revizyonu üst sınır değildir; sol-2 #1): tam eşleşen en
+        // yeni; yoksa durumun en az o kadar kısıtlayıcı olduğu en yeni. Hiçbiri yoksa kaydın
+        // revizyonu kalır, durum o revizyonun yetkili durumuyla birleştirilir ve sayılır.
         {
             const std::uint8_t kod = emniyet_kodu(y);
             std::uint32_t secilen = m.safety_rev;
@@ -406,9 +407,6 @@ std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t d
             bool bulundu = false;
             std::uint32_t kisit_rev = 0;
             for (auto r = i.rev_girdi.rbegin(); r != i.rev_girdi.rend(); ++r) {
-                if (r->first > m.safety_rev) {
-                    continue;
-                }
                 if ((kod & 0x1Fu) == (r->second.girdi & 0x1Fu) &&
                     ((kod & 0x60u) & static_cast<std::uint8_t>(~r->second.izin_acilan)) == 0u) {
                     secilen = r->first;
