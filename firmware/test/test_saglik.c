@@ -3,6 +3,7 @@
  * sol bulgu 3 (alım ilerleme gözetimi), 5 (200 Hz sayaç sarması), 6 (başlatma sonucu LED).
  */
 #include "saglik.h"
+#include <stddef.h>
 #include "unity.h"
 
 void setUp(void);
@@ -85,7 +86,7 @@ static void test_sol3_rx_tuketimi_durunca_beslenmez(void)
         }
         ida_rx_gozetim_guncelle(&g, true, false, t);
         ida_saglik_girdi_t s = {true, true, son_cagri,
-                                ida_rx_gozetim_tamam(&g, true, t, S_US), false, t, S_US};
+                                ida_rx_gozetim_tamam(&g, true, t, S_US), false, t, S_US, false};
         ret = ida_saglik_degerlendir(&s);
     }
     TEST_ASSERT_EQUAL_HEX32(IDA_SAGLIK_RX, ret);
@@ -121,7 +122,7 @@ static void test_rx_gozetim_yeni_bekleme_hemen_ret_edilmez(void)
 
 static void test_saglik_kosullari(void)
 {
-    ida_saglik_girdi_t s = {true, true, 100000u, true, false, 110000u, S_US};
+    ida_saglik_girdi_t s = {true, true, 100000u, true, false, 110000u, S_US, false};
     TEST_ASSERT_EQUAL_HEX32(0u, ida_saglik_degerlendir(&s));
     s.core_ok = false;
     TEST_ASSERT_EQUAL_HEX32(IDA_SAGLIK_CORE_OK, ida_saglik_degerlendir(&s));
@@ -145,6 +146,91 @@ static void test_sol6_baglanti_basarisiz_led(void)
     TEST_ASSERT_FALSE(l.kirmizi);
 }
 
+/* Sol genel bulgu 7: tur başına ayrıştırma sınırı B_AYR toplamdır; her okumaya kalan kapasite
+   verilir (çok bloklu tur). */
+static size_t blok_boylari[8];
+static size_t blok_i, blok_n;
+static size_t verilen_azami[8];
+static size_t islenen;
+
+static size_t t_oku(void *ctx, uint8_t *h, size_t azami)
+{
+    (void)ctx;
+    (void)h;
+    if (blok_i >= blok_n) {
+        return 0u;
+    }
+    verilen_azami[blok_i] = azami;
+    size_t n = blok_boylari[blok_i];
+    if (n > azami) {
+        n = azami; /* sürücü kalanını sonraki okumada verir */
+        blok_boylari[blok_i] -= n;
+    } else {
+        blok_i++;
+    }
+    return n;
+}
+
+static void t_isle(void *ctx, const uint8_t *b, size_t n)
+{
+    (void)ctx;
+    (void)b;
+    islenen += n;
+}
+
+static void test_alim_turu_b_ayr_toplami(void)
+{
+    static uint8_t tampon[1024];
+    const size_t boylar[] = {300u, 400u, 300u, 500u};
+    for (size_t i = 0u; i < 4u; i++) {
+        blok_boylari[i] = boylar[i];
+    }
+    blok_n = 4u;
+    blok_i = 0u;
+    islenen = 0u;
+    const size_t n = ida_alim_turu(tampon, sizeof tampon, t_oku, t_isle, NULL);
+    TEST_ASSERT_EQUAL_UINT(1024u, n);
+    TEST_ASSERT_EQUAL_UINT(1024u, islenen);
+    TEST_ASSERT_EQUAL_UINT(1024u, verilen_azami[0]);
+    TEST_ASSERT_EQUAL_UINT(724u, verilen_azami[1]);
+    TEST_ASSERT_EQUAL_UINT(324u, verilen_azami[2]);
+    TEST_ASSERT_EQUAL_UINT(24u, verilen_azami[3]);
+    TEST_ASSERT_EQUAL_UINT(476u, blok_boylari[3]); /* kalan bir sonraki tura */
+}
+
+/* Sol genel bulgu 8: ardışık arıza sayacı, NORMAL + RUNNING kesintisiz 30 s sonra bir kez
+   temizlenir; koşul bozulunca süre baştan sayılır. */
+static void test_kararli_calisma_30_s(void)
+{
+    ida_kararli_t z;
+    ida_kararli_kur(&z);
+    const uint64_t s30 = 30000000u;
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 1000000u, s30));
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 20000000u, s30));
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, false, 25000000u, s30)); /* bozuldu */
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 26000000u, s30));
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 55000000u, s30));
+    TEST_ASSERT_TRUE(ida_kararli_guncelle(&z, true, 56000000u, s30));
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 90000000u, s30)); /* bir kez */
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, false, 91000000u, s30));
+    TEST_ASSERT_FALSE(ida_kararli_guncelle(&z, true, 92000000u, s30)); /* süre baştan */
+    TEST_ASSERT_TRUE(ida_kararli_guncelle(&z, true, 122000000u, s30));
+}
+
+/* Flash işlem gözetimi: işlem yokken ya da sınır içinde tutar. */
+static void test_islem_gozetimi(void)
+{
+    ida_islem_gozetim_t g;
+    ida_islem_gozetim_kur(&g);
+    TEST_ASSERT_TRUE(ida_islem_tamam(&g, 5000000u, 20000u));
+    ida_islem_basladi(&g, 1000u);
+    TEST_ASSERT_TRUE(ida_islem_tamam(&g, 20999u, 20000u));
+    TEST_ASSERT_FALSE(ida_islem_tamam(&g, 21001u, 20000u));
+    ida_islem_bitti(&g, 21500u);
+    TEST_ASSERT_TRUE(ida_islem_tamam(&g, 50000000u, 20000u));
+    TEST_ASSERT_EQUAL_UINT32(20500u, g.en_uzun_us);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -156,5 +242,8 @@ int main(void)
     RUN_TEST(test_rx_gozetim_yeni_bekleme_hemen_ret_edilmez);
     RUN_TEST(test_saglik_kosullari);
     RUN_TEST(test_sol6_baglanti_basarisiz_led);
+    RUN_TEST(test_alim_turu_b_ayr_toplami);
+    RUN_TEST(test_kararli_calisma_30_s);
+    RUN_TEST(test_islem_gozetimi);
     return UNITY_END();
 }

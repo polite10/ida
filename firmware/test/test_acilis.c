@@ -103,6 +103,31 @@ static void test_bozulan_kayit_reddedilir(void)
     TEST_ASSERT_EQUAL_UINT8(1u, s.ardisik_ariza); /* sıfırdan kuruldu, sonra +1 */
 }
 
+/* Sol genel bulgu 8: kararlı çalışmadan sonra ardışık arıza sayacı temizlenir; kayıt CRC'siyle
+   tutarlı kalır, hata alanları korunur; geçersiz kayıt kurulur. */
+static void test_ardisik_temizlenir(void)
+{
+    ida_acilis_kaydi_t k;
+    ida_kayit_kur(&k);
+    k.ardisik_ariza = 2u;
+    k.ariza_var = 1u;
+    k.pc = 0x08001234u;
+    ida_kayit_muhurle(&k);
+    ida_kayit_ardisik_temizle(&k);
+    TEST_ASSERT_EQUAL_UINT32(0u, k.ardisik_ariza);
+    TEST_ASSERT_EQUAL_INT(1, ida_kayit_gecerli(&k));
+    TEST_ASSERT_EQUAL_UINT32(1u, k.ariza_var);
+    TEST_ASSERT_EQUAL_HEX32(0x08001234u, k.pc);
+    /* Sonraki açılış (IWDG) bir'den başlar. */
+    ida_acilis_sonuc_t s;
+    ida_kayit_acilis(&k, IDA_CSR_IWDGRSTF, &s);
+    TEST_ASSERT_EQUAL_UINT8(1u, s.ardisik_ariza);
+    memset(&k, 0x5A, sizeof k); /* bozuk */
+    ida_kayit_ardisik_temizle(&k);
+    TEST_ASSERT_EQUAL_INT(1, ida_kayit_gecerli(&k));
+    TEST_ASSERT_EQUAL_UINT32(0u, k.ardisik_ariza);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -112,5 +137,6 @@ int main(void)
     RUN_TEST(test_ardisik_ariza_sayaci);
     RUN_TEST(test_ardisik_ariza_doyar);
     RUN_TEST(test_bozulan_kayit_reddedilir);
+    RUN_TEST(test_ardisik_temizlenir);
     return UNITY_END();
 }

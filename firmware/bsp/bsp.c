@@ -313,6 +313,15 @@ const ida_acilis_sonuc_t *ida_bsp_acilis(void)
     return &acilis;
 }
 
+void ida_bsp_ardisik_temizle(void)
+{
+    /* Hata işleyicisi de bu kayda yazar: güncelleme kesintisiz yapılır. */
+    const uint32_t m = __get_PRIMASK();
+    __disable_irq();
+    ida_kayit_ardisik_temizle(&ida_bsp_noinit_kayit);
+    __set_PRIMASK(m);
+}
+
 const ida_acilis_kaydi_t *ida_bsp_kayit(void)
 {
     return &ida_bsp_noinit_kayit;

@@ -71,6 +71,7 @@
     X(kal_sayac_deneme) X(kal_acilis_cevrim) X(kal_kayit_sure_us) X(kal_kayit_en_kotu_tur_cevrim) \
     X(fl_silme_sayisi) X(fl_yazma_sayisi) X(fl_silme_en_kotu_cevrim) X(fl_yazma_en_kotu_cevrim) \
     X(fl_hata) X(fl_ecc_nmi) X(fl_eccc_nvm) X(fl_eccc_diger) X(fl_eccd_diger) X(fl_ecc_son) \
+    X(fl_islem_en_uzun_us) X(ardisik_kayit) X(ardisik_temizleme) \
     X(yigin_boyu) X(yigin_en_yuksek) \
     X(reset_cause) X(reset_flags) X(ardisik_ariza) X(kayit_gecerliydi) X(fpscr) \
     X(onceki_ariza) X(ariza_sayisi) X(ariza_cfsr) X(ariza_hfsr) X(ariza_pc) X(ariza_lr) \

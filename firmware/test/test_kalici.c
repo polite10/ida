@@ -13,6 +13,7 @@
  * Bu testler mantığın kanıtıdır; donanımdaki kesinti davranışının kanıtı değildir.
  */
 #include "kalici.h"
+#include "saglik.h"
 #include "unity.h"
 
 #include <string.h>
@@ -311,6 +312,98 @@ static void test_sayac_tukenir(void)
     ac();
     TEST_ASSERT_EQUAL_UINT8(0u, k.boot_count_ok);
     TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, k.boot_count);
+}
+
+/* Sol genel bulgu 6: geçerli üst sınır A4 IDA_BOOT_COUNT_MAX = 0xFFFFFFFE. 0xFFFFFFFD'den
+   0xFFFFFFFE ayrılır (geçerli); 0xFFFFFFFE ya da 0xFFFFFFFF'ten sonra sayaç tükenmiştir
+   (boot_count_ok = 0, yeni kayıt yazılmaz). */
+static void test_sayac_ust_siniri(void)
+{
+    sayac_kaydi_koy(0u, 0xFFFFFFFDu);
+    ac();
+    TEST_ASSERT_EQUAL_UINT8(1u, k.boot_count_ok);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFEu, k.boot_count);
+    const uint32_t yazma0 = yazma;
+    ac();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0u, k.boot_count_ok, "0xFFFFFFFE'den sonra sayaç tükenmiş");
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFEu, k.boot_count);
+    TEST_ASSERT_EQUAL_UINT32(yazma0, yazma); /* 0xFFFFFFFF yazılmadı */
+    setUp();
+    sayac_kaydi_koy(0u, 0xFFFFFFFFu);
+    ac();
+    TEST_ASSERT_EQUAL_UINT8(0u, k.boot_count_ok);
+}
+
+/* Sol genel bulgu 5: durum() sürekli "sürüyor" dönen flash'ta kayıt sonsuza dek BUSY kalır;
+   platformun işlem gözetimi (saglik.h) sınır aşılınca sağlık koşulunu başarısız kılar
+   (IWDG beslenmez). Kalıcı bellek modülünün işlemleri gözetimden geçirilir. */
+static ida_islem_gozetim_t goz;
+static uint64_t saat_us;
+
+static int g_sil(void *ctx, uint32_t s)
+{
+    const int r = m_sil(ctx, s);
+    if (r == 0) {
+        ida_islem_basladi(&goz, saat_us);
+    }
+    return r;
+}
+
+static int g_yaz16(void *ctx, uint32_t ofs, const uint8_t q[IDA_KAL_QW])
+{
+    const int r = m_yaz16(ctx, ofs, q);
+    if (r == 0) {
+        ida_islem_basladi(&goz, saat_us);
+    }
+    return r;
+}
+
+static int g_durum(void *ctx)
+{
+    const int d = m_durum(ctx);
+    if (d != 1) {
+        ida_islem_bitti(&goz, saat_us);
+    }
+    return d;
+}
+
+static const ida_kal_flash_t FG = {NULL, m_taban, g_sil, g_yaz16, g_durum, m_ecc};
+
+static void test_surekli_mesgul_flash_sagligi_bozar(void)
+{
+    static uint8_t b[64];
+    blob_kur(b, sizeof b, 5u);
+    ac();
+    ida_kal_acilis(&k, &FG, NULL, NULL);
+    ida_islem_gozetim_kur(&goz);
+    saat_us = 1000000u;
+    /* Olağan: işlemler sınır içinde biter, gözetim tutar. */
+    ida_kal_kaydet(&k, b, sizeof b, 3u);
+    for (uint32_t i = 0u; i < 20000u && ida_kal_mesgul(&k); i++) {
+        saat_us += 100u;
+        ida_kal_adim(&k);
+        TEST_ASSERT_TRUE(ida_islem_tamam(&goz, saat_us, IDA_FLASH_ISLEM_SINIR_US));
+    }
+    TEST_ASSERT_EQUAL_UINT8(IDA_KAL_OK, k.store);
+    /* Sürekli meşgul: kayıt BUSY kalır; sınır aşılınca gözetim tutmaz. */
+    busy_n = 1000000000;
+    ida_kal_kaydet(&k, b, sizeof b, 4u);
+    bool tutmadi = false;
+    for (uint32_t i = 0u; i < 1000u; i++) {
+        saat_us += 1000u; /* 1 ms */
+        ida_kal_adim(&k);
+        if (!ida_islem_tamam(&goz, saat_us, IDA_FLASH_ISLEM_SINIR_US)) {
+            tutmadi = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(ida_kal_mesgul(&k));
+    TEST_ASSERT_TRUE_MESSAGE(tutmadi, "süren flash işlemi sınırı aşınca gözetim tutmamalı");
+    ida_saglik_girdi_t gi = {0};
+    gi.cekirdek_normal = false;
+    gi.rx_tamam = true;
+    gi.flash_asim = !ida_islem_tamam(&goz, saat_us, IDA_FLASH_ISLEM_SINIR_US);
+    TEST_ASSERT_EQUAL_HEX32(IDA_SAGLIK_FLASH, ida_saglik_degerlendir(&gi));
 }
 
 static void test_yazma_hatasi_sayac_ayrilamaz(void)
@@ -618,6 +711,8 @@ int main(void)
     RUN_TEST(test_ff_yazilmis_yuva);
     RUN_TEST(test_cop_veri);
     RUN_TEST(test_sayac_tukenir);
+    RUN_TEST(test_sayac_ust_siniri);
+    RUN_TEST(test_surekli_mesgul_flash_sagligi_bozar);
     RUN_TEST(test_yazma_hatasi_sayac_ayrilamaz);
     RUN_TEST(test_ecc_bozuk_sayac_kaydi_reddedilir);
     RUN_TEST(test_parametre_kaydi_ve_acilis);

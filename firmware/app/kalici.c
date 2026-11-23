@@ -138,8 +138,8 @@ static void sayac_artir(ida_kalici_t *k, void (*bekle)(void *), void *bctx)
     }
     k->boot_count = enb;
     k->boot_count_ok = 0u;
-    if (var && enb == 0xFFFFFFFFu) {
-        return; /* tükendi: sarma yok (01 §2.9) */
+    if (var && enb >= IDA_BOOT_COUNT_MAX) {
+        return; /* tükendi: geçerli üst sınır A4 IDA_BOOT_COUNT_MAX; sarma yok (01 §2.9) */
     }
     const uint32_t yeni = var ? enb + 1u : 1u;
     uint32_t s = var ? enb_s : 0u;

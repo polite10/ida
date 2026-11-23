@@ -7,6 +7,7 @@
 #define IDA_FW_SAGLIK_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -46,11 +47,52 @@ void ida_rx_gozetim_guncelle(ida_rx_gozetim_t *g, bool bekleyen, bool ilerledi,
 bool ida_rx_gozetim_tamam(const ida_rx_gozetim_t *g, bool bekleyen, uint64_t simdi_us,
                           uint64_t s_us);
 
+/* ---- flash işlem gözetimi (01 §2.8 koşul 7; sol genel bulgu 5) -----------------------------
+   Her donanım işleminin (sayfa silme, quad-word yazımı) başlangıcı ve bitişi izlenir; süren bir
+   işlem sınırı aşarsa sağlık koşulu tutmaz (IWDG beslenmez, kart sıfırlanır; kayıt yarım kalır
+   ve eski blok geçerli kalır). Sınır: kartta ölçülen en uzun işlemler (üst sınır ölçümleri,
+   W3-kart dilim 2: silme ≤ 1,74 ms, quad-word ≤ 0,49 ms; yoklama aralığı dahil) üzerine geniş
+   pay. Veri sayfasının (DS13543) en büyük işlem süreleri bu çalışmada doğrulanmadı. */
+#define IDA_FLASH_ISLEM_SINIR_US 20000u
+
+typedef struct {
+    uint8_t var;          /* işlem sürüyor */
+    uint64_t bas_us;
+    uint32_t en_uzun_us;  /* tanı: biten en uzun işlem */
+} ida_islem_gozetim_t;
+
+void ida_islem_gozetim_kur(ida_islem_gozetim_t *g);
+void ida_islem_basladi(ida_islem_gozetim_t *g, uint64_t simdi_us);
+void ida_islem_bitti(ida_islem_gozetim_t *g, uint64_t simdi_us);
+/* İşlem yoksa ya da süresi sınırı aşmadıysa true. */
+bool ida_islem_tamam(const ida_islem_gozetim_t *g, uint64_t simdi_us, uint64_t sinir_us);
+
+/* ---- kararlı çalışma (01 §2.8: ardışık arıza sayacının temizlenmesi; sol genel bulgu 8) -----
+   Koşul (NORMAL ve oturum RUNNING) kesintisiz sinir_us sürünce bir kez true döner; koşul
+   bozulunca süre baştan sayılır. */
+typedef struct {
+    uint8_t suruyor;
+    uint8_t bildirildi;
+    uint64_t bas_us;
+} ida_kararli_t;
+
+void ida_kararli_kur(ida_kararli_t *k);
+bool ida_kararli_guncelle(ida_kararli_t *k, bool kosul, uint64_t simdi_us, uint64_t sinir_us);
+
+/* ---- alım turu (01 §2.4; sol genel bulgu 7) --------------------------------------------------
+   Bir turda en çok b_ayr bayt: her okumaya kalan kapasite verilir; oku() 0 dönünce tur biter.
+   Dönüş: bu turda işlenen bayt. */
+typedef size_t (*ida_tur_oku_f)(void *ctx, uint8_t *hedef, size_t azami);
+typedef void (*ida_tur_isle_f)(void *ctx, const uint8_t *b, size_t n);
+size_t ida_alim_turu(uint8_t *tampon, size_t b_ayr, ida_tur_oku_f oku, ida_tur_isle_f isle,
+                     void *ctx);
+
 /* ---- IWDG besleme kararı -------------------------------------------------------------------- */
 #define IDA_SAGLIK_CORE_OK     0x01u /* A4-K89: core_ok = 0                        */
 #define IDA_SAGLIK_CAGRI       0x02u /* koşul 2/3: çekirdek çağrısı ilerlemiyor     */
 #define IDA_SAGLIK_RX          0x04u /* koşul 5: bekleyen alım tüketilmiyor         */
 #define IDA_SAGLIK_ALIM_DURDU  0x08u /* DMA alım kanalı durdu, yeniden başlatılamadı */
+#define IDA_SAGLIK_FLASH       0x10u /* koşul 7: süren flash işlemi sınırı aştı      */
 
 typedef struct {
     bool cekirdek_normal; /* platform NORMAL'de (çekirdek çağrılıyor) */
@@ -60,6 +102,7 @@ typedef struct {
     bool alim_durdu;
     uint64_t simdi_us;
     uint64_t s_us;        /* ilerleme koşulu süresi (20 ms) */
+    bool flash_asim;      /* süren flash işlemi IDA_FLASH_ISLEM_SINIR_US'yi aştı */
 } ida_saglik_girdi_t;
 
 /* Tutmayan koşulların bitleri; 0 ise IWDG beslenir. */
