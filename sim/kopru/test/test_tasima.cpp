@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <thread>
 
 #if !defined(_WIN32)
@@ -154,6 +155,7 @@ int test_pty_tasima()
 }
 
 // sol #7: yazım süresiz tutmaz. Okumayan bir TCP karşı ucuna 64 MiB yazmak sınırlı sürede
+// (Winsock engellemesiz send: 1..n bayt ya da WSAEWOULDBLOCK; Microsoft "send function")
 // başarısız döner (eski döngü: 1 s beklemelerle sonsuza dek); yaz_biraz hiçbir zaman beklemez;
 // kısmi yazımlar konum korunarak birleşir.
 int test_yazma_sinirli()
@@ -183,13 +185,18 @@ int test_yazma_sinirli()
     const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t1).count();
     DOGRULA(d, k == 0 && us < 50'000, "dolu tamponda yaz_biraz 0 ve beklemesiz (" + std::to_string(us) + " µs)");
 
-    // Kısmi yazım: her çağrıda en çok 3 bayt yazan, her ikinci çağrıda ilerlemeyen uç.
+    // Platformdan bağımsız kısım (Windows CI'da düşen eski vaka): sahte uç, her çağrıda en çok
+    // 3 bayt yazar; her ikinci çağrıda ilerlemez; `durgun_sonra` çağrıdan sonra hiç ilerlemez.
     struct Kisitli final : Tasima {
         std::vector<std::uint8_t> al;
         int sayac = 0;
+        int sifir = 0;
+        int durgun_sonra = -1;   // < 0: hep ilerler
         long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
         {
-            if (++sayac % 2 == 0) {
+            ++sayac;
+            if ((durgun_sonra >= 0 && sayac > durgun_sonra) || sayac % 2 == 0) {
+                ++sifir;
                 return 0;
             }
             const std::size_t k = std::min<std::size_t>(n, 3);
@@ -210,7 +217,34 @@ int test_yazma_sinirli()
     for (std::size_t j = 0; j < w.size(); ++j) {
         w[j] = static_cast<std::uint8_t>(j * 7u);
     }
-    DOGRULA(d, ks.yaz(w.data(), w.size(), 2'000'000) && ks.al == w, "kısmi ve ilerlemesiz yazımlar birleşti");
+    using Saat = std::chrono::steady_clock;
+    auto ms_gecen = [](Saat::time_point t) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(Saat::now() - t).count();
+    };
+    // (1) Ara sıra ilerlemeyen uç: kısmi yazımlar sırayla birleşir. Süresi, uykunun platform
+    // çözünürlüğüne bağlı değildir (ilerlemesiz çağrıda önce sıra bırakılır).
+    std::size_t yazilan = 0;
+    auto t2 = Saat::now();
+    const bool ok1 = ks.yaz(w.data(), w.size(), 2'000'000, &yazilan);
+    std::printf("  tanı (1): sonuç %d, yazılan %zu/%zu, alınan %zu, çağrı %d (ilerlemesiz %d), %lld ms\n", ok1 ? 1 : 0,
+                yazilan, w.size(), ks.al.size(), ks.sayac, ks.sifir, static_cast<long long>(ms_gecen(t2)));
+    DOGRULA(d, ok1 && yazilan == w.size() && ks.al == w, "kısmi ve ilerlemesiz yazımlar birleşti");
+    // (2) Durgunlaşan uç: süre sınırında false; yazılan önek bildirilir, veri bozulmaz ya da
+    // yinelenmez; uç yeniden ilerleyince çağıran kaldığı konumdan sürdürür.
+    Kisitli ks2;
+    ks2.durgun_sonra = 20;   // 10 ilerlemeli çağrı: 30 bayt
+    t2 = Saat::now();
+    const bool ok2 = ks2.yaz(w.data(), w.size(), 200'000, &yazilan);
+    const auto ms2 = ms_gecen(t2);
+    std::printf("  tanı (2): sonuç %d, yazılan %zu, alınan %zu, çağrı %d (ilerlemesiz %d), %lld ms (sınır 200)\n",
+                ok2 ? 1 : 0, yazilan, ks2.al.size(), ks2.sayac, ks2.sifir, static_cast<long long>(ms2));
+    DOGRULA(d, !ok2 && ms2 >= 200 && ms2 < 1500, "durgun uca yazım süre sınırında başarısız döndü");
+    DOGRULA(d, yazilan == 30u && ks2.al.size() == 30u && std::equal(ks2.al.begin(), ks2.al.end(), w.begin()),
+            "yazılan önek bildirildi; veri bozulmadı ve yinelenmedi");
+    ks2.durgun_sonra = -1;
+    std::size_t kalan_yazilan = 0;
+    const bool ok3 = ks2.yaz(w.data() + yazilan, w.size() - yazilan, 2'000'000, &kalan_yazilan);
+    DOGRULA(d, ok3 && ks2.al == w, "kaldığı konumdan sürdürüldü (" + std::to_string(ks2.al.size()) + " bayt)");
     return d.hata;
 }
 
