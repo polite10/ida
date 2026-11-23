@@ -45,7 +45,7 @@ void Kopru::Ic::yuva_tamamlandi_mi(std::uint32_t seq)
     }
 }
 
-bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
+Canlilik Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
 {
     const std::uint16_t f = m.act_flags;
     const bool thr = (f & F(IDAW_ACT_FLAGS_THR_VALID)) != 0u;
@@ -71,12 +71,12 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     }
     if (!v2) {
         ++say.alan_ret;
-        return false;
+        return Canlilik::yok;
     }
     // V3
     if (esz ? (m.batch_seq != 0u && !tf_gonderildi(m.batch_seq)) : !tf_gonderildi(m.batch_seq)) {
         ++say.bag_ret;
-        return false;
+        return Canlilik::yok;
     }
     // V4 (Tablo 4.6a)
     bool v4 = true;
@@ -111,12 +111,12 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     }
     if (!v4) {
         ++say.alan_ret;
-        return false;
+        return Canlilik::yok;
     }
     // V5 (A1-K105)
     if (out_seq_var && !yeni(m.out_seq, son_out_seq)) {
         ++say.yanit_ret_eski_uretim;
-        return false;
+        return Canlilik::yok;
     }
     if ((f & F(IDAW_ACT_FLAGS_BATCH_INCOMPLETE)) != 0u) {
         ++say.batch_incomplete;
@@ -135,7 +135,7 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         out_seq_var = true;
         son_out_seq = m.out_seq;
         esz_bekleyen.push_back(m);
-        return true;
+        return Canlilik::aninda;   // ASYNC: beklemeden uygulanır
     }
     // A1-K72: yuva doluysa ya da uygulama anı geçtiyse reddedilir. Partinin ilk alınmış yanıtı
     // (bekleyen, kabul ya da ret) yuvayı tutar: ikincisi yinelenendir (sol #2).
@@ -143,20 +143,23 @@ bool Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
     const PartiKumesi* pk = kume.bul(m.batch_seq);
     if ((yv != yuvalar.end() && yv->second.act_var) || (pk != nullptr && pk->act_var)) {
         ++say.yanit_ret_yinelenen;
-        return false;
+        return Canlilik::yok;
     }
     if (yv == yuvalar.end() || yv->second.islendi || (sinir_var && son_sinir >= yv->second.adim)) {
         ++say.yanit_ret_gec;
         say.calistirma_gecersiz |= kGecGecYanit;
-        return false;
+        return Canlilik::yok;
     }
     // W4-K15 (2) (EMNİYET): yanıt kümesi topluca doğrulanana dek bekler; kabul edilmeden
-    // hiçbir geçmişe girmez ve canlılığı yenilemez (false). Hata dönüşü beklemez (4).
+    // hiçbir geçmişe girmez; canlılık katkısı kümeye bağlıdır (ek (7)). Hata dönüşü beklemez
+    // (4): kümesi hemen doğrulanır ve alım zamanı o anda işlenir.
     PartiKumesi& p = kume_al(m.batch_seq);
     p.act_var = true;
     p.act = m;
     p.act_duvar = duvar;
-    return kume_tamamla(m.batch_seq);
+    const Canlilik katki = kume_canliligi(m.batch_seq);
+    (void)kume_tamamla(m.batch_seq);
+    return katki;
 }
 
 namespace {
@@ -225,6 +228,7 @@ bool Kopru::Ic::kume_tamamla(std::uint32_t seq)
     const bool hata = hata_donusu(p->act);
     if (!hata && p->acan_id.size() > p->act.n_events) {
         p->durum = KumeDurumu::reddedildi;
+        p->canlilik_bekleyen = -1;   // ek (7): reddedilen kümenin alımları atılır
         ++say.kume_reddedilen;
         const std::vector<std::uint64_t> idler = p->acan_id;
         sayim_ihlali(idler);
@@ -235,6 +239,7 @@ bool Kopru::Ic::kume_tamamla(std::uint32_t seq)
     }
     if (!kume_tutarli_mi(*p)) {
         p->durum = KumeDurumu::reddedildi;
+        p->canlilik_bekleyen = -1;   // ek (7): reddedilen kümenin alımları atılır
         ++say.kume_reddedilen;
         ++say.alan_ret;
         const auto yv = yuvalar.find(seq);
@@ -244,8 +249,33 @@ bool Kopru::Ic::kume_tamamla(std::uint32_t seq)
         return false;
     }
     p->durum = KumeDurumu::dogrulandi;
+    if (p->canlilik_bekleyen >= 0) {
+        canlilik_isle(p->canlilik_bekleyen, true);   // ek (7): kümenin alımları şimdi işlenir
+        p->canlilik_bekleyen = -1;
+    }
     yanit_kabul(seq, *p);
     return true;
+}
+
+// Kümeye bağlı çerçevenin alım zamanı: bekleyen kümede biriktirilir (en son alım); doğrulanmış
+// kümede alındığı anda işlenir; reddedilmiş kümede katkı yoktur.
+Canlilik Kopru::Ic::kume_canliligi(std::uint32_t seq)
+{
+    PartiKumesi* p = kume.bul(seq);
+    if (p == nullptr) {
+        return Canlilik::yok;
+    }
+    switch (p->durum) {
+    case KumeDurumu::bekliyor:
+        p->canlilik_bekleyen = std::max(p->canlilik_bekleyen, duvar);
+        return Canlilik::kumeye_bagli;
+    case KumeDurumu::dogrulandi:
+    case KumeDurumu::uygulandi:
+        return Canlilik::aninda;
+    case KumeDurumu::reddedildi:
+        break;
+    }
+    return Canlilik::yok;
 }
 
 // Toplu doğrulamadan geçen yanıt kabul edilmiş geçmişe girer. Uygulama anı geçmişse (küme geç
@@ -284,7 +314,7 @@ void Kopru::Ic::yanit_kabul(std::uint32_t seq, const PartiKumesi& p)
 
 // ---------------------------------------------------------------- Olay (IDA_EVENT)
 
-bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
+Canlilik Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
 {
     // V2
     const std::int64_t ab = static_cast<std::int64_t>(m.apply_by_ns);
@@ -299,27 +329,33 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
     }
     if (!v2) {
         ++say.alan_ret;
-        return false;
+        return Canlilik::yok;
     }
     // V3
     const bool kapanis_sifir = m.kind == IDA_EVT_SAFETY_CLOSE && m.batch_seq == 0u && m.t_decide_ns == 0;
     if (!kapanis_sifir && (!tf_gonderildi(m.batch_seq) || tf_zamani(m.batch_seq) != m.t_decide_ns)) {
         ++say.bag_ret;
-        return false;
+        return Canlilik::yok;
     }
     // V4 ve Tablo 4.6b
     const bool acan = m.kind == IDA_EVT_SAFETY_OPEN || m.kind == IDA_EVT_FIRE;
     if (acan && (m.safety_rev == 0u || m.call_kind != IDAW_CALL_KIND_STEP)) {
         ++say.alan_ret;
-        return false;
+        return Canlilik::yok;
     }
-    // A1-K81: yineleme.
-    if (sakli.count(m.event_id) != 0u) {
+    // A1-K81: yineleme. Canlılık (W4-K15 ek (7)): uygulanmış olayın yinelemesi yeniler;
+    // reddedilmiş olayınki yenilemez. Kararı bekleyen olayın yinelemesi: SAFETY_CLOSE beklemeden
+    // uygulanır (yeniler); genişletici olay kümesine bağlıdır.
+    const auto sk = sakli.find(m.event_id);
+    if (sk != sakli.end()) {
         sakli_talep.push_back(m.event_id);
-        return true;   // geçerli yineleme
+        return sk->second.sonuc == IDA_EVR_APPLIED ? Canlilik::aninda : Canlilik::yok;
     }
     if (karari_bekleyen.count(m.event_id) != 0u) {
-        return true;
+        if (!acan || kapanis_sifir || m.call_kind == IDAW_CALL_KIND_TICK_GRID) {
+            return Canlilik::aninda;
+        }
+        return kume_canliligi(m.batch_seq);
     }
     // W4-K15: partinin olay kümesi (geliş zamanından bağımsız; ızgara olayları ve batch_seq = 0
     // kapanışları partiye sayılmaz, A1-K73). Karar verilmiş kümeye yeni kimlikli genişletici
@@ -329,7 +365,7 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
         pk = &kume_al(m.batch_seq);
         if (acan && pk->durum != KumeDurumu::bekliyor) {
             sayim_ihlali({m.event_id});
-            return false;
+            return Canlilik::yok;
         }
     }
     karari_bekleyen.insert(m.event_id);
@@ -360,18 +396,17 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
             pk->acan_id.push_back(m.event_id);
             pk->acan = static_cast<std::uint8_t>(pk->acan | (m.kind == IDA_EVT_FIRE ? 2u : 1u));
         }
-        const bool bekliyordu = pk->durum == KumeDurumu::bekliyor;
-        (void)kume_tamamla(m.batch_seq);   // bekliyorsa: tamamlanır, reddedilir ya da ihlal
-        if (durum != OturumDurumu::kosuyor && durum != OturumDurumu::hazir) {
-            return false;   // sayım ihlali oturumu bitirdi
-        }
-        // W4-K15 ek (7): kümeyi tamamlayıp topluca reddettiren olay canlılığı yenilemez.
-        const PartiKumesi* sonra = kume.bul(m.batch_seq);
-        if (bekliyordu && sonra != nullptr && sonra->durum == KumeDurumu::reddedildi) {
-            return false;
-        }
     }
-    return durum == OturumDurumu::kosuyor || durum == OturumDurumu::hazir;
+    // Canlılık (W4-K15 ek (7)): SAFETY_CLOSE beklemeden uygulanır, alındığı anda yeniler;
+    // genişletici olayın alım zamanı kümesine bağlıdır (doğrulanınca işlenir, retle atılır).
+    const Canlilik katki = acan && pk != nullptr ? kume_canliligi(m.batch_seq) : Canlilik::aninda;
+    if (pk != nullptr) {
+        (void)kume_tamamla(m.batch_seq);   // bekliyorsa: tamamlanır, reddedilir ya da ihlal
+    }
+    if (durum != OturumDurumu::kosuyor && durum != OturumDurumu::hazir) {
+        return Canlilik::yok;   // sayım ihlali oturumu bitirdi
+    }
+    return katki;
 }
 
 // ---------------------------------------------------------------- Emniyet

@@ -201,6 +201,15 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     }
 }
 
+void Kopru::Ic::canlilik_isle(std::int64_t t, bool sess_tasir)
+{
+    son_rx_gecerli = std::max(son_rx_gecerli, t);
+    if (sess_tasir && durum == OturumDurumu::hazir) {
+        durum = OturumDurumu::kosuyor;   // A1-K27
+        ++say.oturum_kurulan;
+    }
+}
+
 void Kopru::Ic::yerel_sonuc(std::uint32_t cmd_id, std::uint8_t ack, std::uint16_t reason)
 {
     if (sonuclar.count(cmd_id) != 0u) {
@@ -442,13 +451,16 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         }
         return;
     }
-    // A1-K109 (sol #11): canlılık (T_bağ) ve HAZIR → KOSUYOR yalnız doğrulamadan geçen
-    // çerçeveyle güncellenir; reddedilen çerçevenin sayaç dışında etkisi yoktur.
-    auto gecerli = [this](bool sess_tasir) {
-        son_rx_gecerli = duvar;
-        if (sess_tasir && durum == OturumDurumu::hazir) {
-            durum = OturumDurumu::kosuyor;   // A1-K27
-            ++say.oturum_kurulan;
+    // A1-K109, W4-K15 ek (7): canlılık (T_bağ) ve HAZIR → KOSUYOR yalnız doğrulamadan geçen
+    // çerçeveyle güncellenir; reddedilen çerçevenin sayaç dışında etkisi yoktur. Çerçeve
+    // sınıflarına göre karar (BENIOKU "Olay kümesi" canlılık tablosu):
+    //   kümeye bağlı (olağan yanıt, genişletici olay ve yinelemesi)  küme doğrulanınca (Ic::kume_tamamla)
+    //   beklemeden uygulanan (SAFETY_CLOSE, hata dönüşü, ASYNC, uygulanmış olayın yinelemesi,
+    //   komut sonucu, durum ve öteki geçerli çerçeveler)                alındığı anda
+    auto gecerli = [this](bool sess_tasir) { canlilik_isle(duvar, sess_tasir); };
+    auto karar = [&](Canlilik katki) {
+        if (katki == Canlilik::aninda) {
+            gecerli(true);
         }
     };
     switch (fr.msgid) {
@@ -496,9 +508,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
-        if (yanit_al(m)) {
-            gecerli(true);
-        }
+        karar(yanit_al(m));
         return;
     }
     case MAVLINK_MSG_ID_IDA_EVENT: {
@@ -508,9 +518,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
             ++say.yanit_ret_oturum;
             return;
         }
-        if (olay_al(m)) {
-            gecerli(true);
-        }
+        karar(olay_al(m));
         return;
     }
     case MAVLINK_MSG_ID_IDA_CMD_RESULT: {

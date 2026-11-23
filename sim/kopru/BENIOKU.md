@@ -29,6 +29,17 @@ Parti `n`'in kümesi: `IDA_ACTUATOR(n)` ve `batch_seq = n` taşıyan, `TICK_GRID
 | her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan; `ACTUATOR`'dan sonra gelen yeni kimlikli olan sayıma girmez) | Beklemeden uygulanır (A1-K87); ihlal değildir |
 | her durum | — | Aynı `event_id`'li yineleme | A1-K81 (saklı sonuç); ihlal değildir |
 
+Canlılık (`T_bağ`; W4-K15 ek (7)): çerçevenin katkısına tek yerde karar verilir (`kopru.cpp` `kart_cercevesi`, `kopru_sinir.cpp` `kume_canliligi`). `T_bağ` denetimi yalnız işlenmiş canlılığa bakar; bekleyen küme zaman aşımını ertelemez.
+
+| Çerçeve | Katkı |
+|---|---|
+| Olağan yanıt (`OK`, `IMU_REJECTED`), genişletici olay | Kümeye bağlı: alım zamanı kümede bekler (en son alım); küme DOĞRULANDI olunca işlenir; küme reddedilir ya da tahliye edilirse atılır |
+| Genişletici olayın kararı bekleyen yinelemesi | Kümesi bekliyorsa kümeye bağlı; doğrulandıysa anında; reddedildiyse yok |
+| Saklı sonucu olan olayın yinelemesi (A1-K81) | Sonuç `APPLIED` ise anında; değilse yok |
+| `SAFETY_CLOSE` (ve yinelemesi), hata dönüşlü yanıt (`BAD_INPUT`, `NOT_INIT`), `ASYNC` çıktı | Anında |
+| Komut sonucu, `KEEPALIVE`, durum, seyrüsefer, günlük, sayaçlar, çağrı izi ve öteki geçerli çerçeveler | Anında |
+| Alan, bağ, oturum ya da sıra denetiminde reddedilen çerçeve; sayım ihlali | Yok |
+
 Sınır durumu (kısıtlayan yönde, bilerek): `ACTUATOR(n)`'den önce gelen bir `SAFETY_CLOSE(n)` sayıma girer; genişletici sayıyı o tamamlarsa sonradan gelen gerçek genişletici olay sayım ihlali sayılır ve oturum biter. A1-K90 sırasıyla `ACTUATOR(n)`'den önce gelen olaylar çağrı `n`'in kendi olaylarıdır; bu durum ancak sıra dışı teslimde (A1-K90 ihlali) doğar.
 
 Tablo en çok 256 partiyi tutar (ekleme sırasıyla); tahliye edilen bekleyen kümenin genişletici olayları `REJ_SAFE` alır (`kume_bekleyen_tahliye`, `kume_en_cok`).

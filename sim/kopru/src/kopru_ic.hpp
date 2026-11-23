@@ -82,6 +82,12 @@ struct BekleyenOlay {
 // genişletici olay: sayım ihlali (REJ_SAFE + PROTOCOL oturum sonu). SAFETY_CLOSE beklemez.
 enum class KumeDurumu : std::uint8_t { bekliyor, dogrulandi, uygulandi, reddedildi };
 
+// W4-K15 ek (7): bir kart çerçevesinin canlılık (T_bağ) katkısı. yok: katkı yok (reddedildi
+// ya da reddedilmiş/bekleyen kümenin yinelemesi); aninda: alındığı anda yenilenir (beklemeden
+// uygulanan çerçeveler); kumeye_bagli: alım zamanı kümede bekler, küme topluca doğrulanınca
+// işlenir, reddedilir ya da tahliye edilirse atılır.
+enum class Canlilik : std::uint8_t { yok, aninda, kumeye_bagli };
+
 struct PartiKumesi {
     KumeDurumu durum = KumeDurumu::bekliyor;
     bool act_var = false;                  // alınmış yanıt (bekleyen ya da karara bağlanmış)
@@ -90,6 +96,7 @@ struct PartiKumesi {
     std::set<std::uint64_t> olaylar;       // partinin ızgara dışı olayları (geliş zamanından bağımsız)
     std::vector<std::uint64_t> acan_id;    // genişletici olayların kimlikleri
     std::uint8_t acan = 0;                 // bit 0 SAFETY_OPEN, bit 1 FIRE
+    std::int64_t canlilik_bekleyen = -1;   // kümeye bağlı çerçevelerin en son alımı (W4-K15 ek (7))
 };
 
 // W4-K12: bir revizyonun yetkili emniyet durumu. girdi: bit 0 estop, 1–2 fiş takılı, 3–4 pim
@@ -333,8 +340,10 @@ struct Kopru::Ic {
     void sira_izle(std::uint8_t seq);
     bool tf_gonderildi(std::uint32_t seq) const;
     std::int64_t tf_zamani(std::uint32_t seq) const;
-    bool yanit_al(const mavlink_ida_actuator_t& m);   // false: reddedildi (A1-K109, K72)
-    bool olay_al(const mavlink_ida_event_t& m);   // false: reddedildi (A1-K109, K72)
+    Canlilik yanit_al(const mavlink_ida_actuator_t& m);   // A1-K109, K72; W4-K15 ek (7)
+    Canlilik olay_al(const mavlink_ida_event_t& m);       // A1-K109, K72; W4-K15 ek (7)
+    void canlilik_isle(std::int64_t t, bool sess_tasir);  // T_bağ ve HAZIR → KOSUYOR (A1-K27)
+    Canlilik kume_canliligi(std::uint32_t seq);           // bekleyen kümeye alım zamanı ekler
     bool sonuc_al(const mavlink_ida_cmd_result_t& m);   // false: reddedildi (A1-K109, K72)
     void yerel_sonuc(std::uint32_t cmd_id, std::uint8_t ack, std::uint16_t reason);
     std::size_t komut_yaz(Komut& k);

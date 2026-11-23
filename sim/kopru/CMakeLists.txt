@@ -46,6 +46,7 @@ add_executable(ida_kopru_test
   test/test_oturum.cpp
   test/test_yuva.cpp
   test/test_emniyet.cpp
+  test/test_emniyet5.cpp
   test/test_emniyet4.cpp
   test/test_emniyet3.cpp
   test/test_parti.cpp
@@ -103,6 +104,12 @@ set(_ida_kopru_testleri
   bekleyen_kume_siniri  # W4-K15 EMNİYET
   ret_eden_olay_canlilik  # W4-K15 ek (6) (7)
   gec_kapanis_tamamlamaz  # W4-K15 ek (6) (7)
+  canlilik_olay_yanit_ret  # W4-K15 ek (7) canlılık
+  canlilik_eksik_kume  # W4-K15 ek (7) canlılık
+  canlilik_ret_yineleme  # W4-K15 ek (7) canlılık
+  canlilik_bekleyen_yineleme  # W4-K15 ek (7) canlılık
+  canlilik_dogrulanan_kume  # W4-K15 ek (7) canlılık
+  canlilik_aninda  # W4-K15 ek (7) canlılık
   bellek_tasima
   tcp_tasima
   pty_tasima)
