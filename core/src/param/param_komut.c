@@ -191,6 +191,13 @@ static void sonuc_reddet(ida_cmd_result_t *r, uint16_t neden, ida_core_counters_
 static void save_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd_result_t *r,
                         ida_core_counters_t *cnt)
 {
+    /* Doğrulanamayan şema özetiyle blok üretilmez (A4 §3.10, K89): bozulma çerçevenin bütünlük
+       denetiminde de saptanır (core_ok, CORE_INTEGRITY); 3.17'nin kapalı listesinde en yakın
+       neden PARAM_INVALID'dir (seçilen okuma). */
+    if (!ida_prm_tutarli(p)) {
+        sonuc_reddet(r, (uint16_t)IDA_REASON_PARAM_INVALID, cnt);
+        return;
+    }
     if (!p->param_ok && !p->commit_uygulandi) {
         sonuc_reddet(r, (uint16_t)IDA_REASON_PARAM_INVALID, cnt);
         return;

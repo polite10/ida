@@ -49,7 +49,11 @@ typedef struct {
     uint8_t commit_indis[IDA_PORT_MAX_CMDS]; /* out->results[] indisleri              */
     bool save_bekliyor;                   /* ilk PARAM_SAVE ön koşulları geçti, karar sonda */
     uint8_t save_indis;
-    uint64_t sema_ozeti;                  /* ida_prm_kur'da bir kez hesaplanır (tablo sabit) */
+    /* Şema özetinin önbelleği ve tümleyeni (A4-K89): ida_prm_kur'da bir kez hesaplanır (tablo
+       sabit); ida_prm_tutarli ile çerçevenin bütünlük denetimine bağlıdır ve PARAM_SAVE
+       yalnız doğrulanan özetle blok üretir. */
+    uint64_t sema_ozeti;
+    uint64_t sema_ozeti_tumleyen;         /* UINT64_MAX ^ sema_ozeti                  */
     uint8_t blob[IDA_PRM_BLOB_BOYU];      /* son PARAM_SAVE bloğu (A4-K82, A4-K100)  */
 } ida_param_t;
 
@@ -73,6 +77,8 @@ uint64_t ida_prm_sema_ozeti_tablo(const ida_param_desc_t *tablo, uint16_t sayi);
 /* Örneğin tablodan türeyen sabitlerini kurar (şema özeti); ida_core_init'te, örnek
    sıfırlandıktan sonra ve blok çözülmeden önce bir kez çağrılır. */
 void ida_prm_kur(ida_param_t *p);
+/* Özet önbelleği tümleyeniyle tutarlı mı (A4-K89 tamamlayıcı kopya). */
+bool ida_prm_tutarli(const ida_param_t *p);
 /* İlişkili grup denetimleri (A4-K80 md. 8): 0 geçerli; modüllerin kancalarını da çağırır. */
 uint8_t ida_prm_grup(const ida_prm_kume_t *k);
 
@@ -89,6 +95,11 @@ uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, uint64_t sema_oz
 /* k'yi blok biçiminde yazar (blok en az IDA_PRM_BLOB_BOYU bayt); uzunluğu döner. sema_ozeti
    başlığa yazılan şema özetidir (ida_prm_sema_ozeti() ya da önbelleği). */
 uint32_t ida_prm_blok_kodla(const ida_prm_kume_t *k, uint64_t sema_ozeti, uint8_t *blok);
+/* Aynı kodlama, verilen tanım dizisi ve ham değerlerle (tablo[0..sayi-1], ham[0..sayi-1]; blok
+   en az IDA_PBLOB_HDR_SIZE + 8 × sayi bayt). ida_prm_blok_kodla bunu derlenmiş tabloyla
+   çağırır; derlenmiş tabloda olmayan tipleri (I32) sınayan birim testi için ayrıdır. */
+uint32_t ida_prm_blok_kodla_tablo(const ida_param_desc_t *tablo, uint16_t sayi,
+                                  const uint32_t *ham, uint64_t sema_ozeti, uint8_t *blok);
 /* CRC-32/ISO-HDLC, bayt başına tablolu (param/crc32.c). */
 uint32_t ida_crc32(const uint8_t *veri, uint32_t uzunluk);
 

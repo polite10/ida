@@ -43,7 +43,7 @@ static int32_t butunluk(const ida_core_t *c)
     if ((c->koruma_bas != IDA_KORUMA_BAS) || (c->koruma_son != IDA_KORUMA_SON)) {
         return 1;
     }
-    if (c->kurulu_tumleyen != (uint32_t)~c->kurulu) {
+    if ((c->kurulu_tumleyen != (uint32_t)~c->kurulu) || !ida_prm_tutarli(&c->prm)) {
         return 2;
     }
     /* Emniyet/FC alanları (b)'den önceki denetimle aynı; ardından modüllerin kendi
