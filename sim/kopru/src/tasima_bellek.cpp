@@ -9,26 +9,39 @@
 
 namespace ida::kopru {
 
-bool Tasima::yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us)
+bool Tasima::yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us, std::size_t* yazilan_cikti)
 {
     const auto son = std::chrono::steady_clock::now() + std::chrono::microseconds(sure_us);
     std::size_t yazilan = 0;
+    int ilerlemesiz = 0;   // ardışık ilerlemesiz çağrı
+    auto bitir = [&](bool sonuc) {
+        if (yazilan_cikti != nullptr) {
+            *yazilan_cikti = yazilan;
+        }
+        return sonuc;
+    };
     while (yazilan < n) {
         const long long k = yaz_biraz(p + yazilan, n - yazilan);
         if (k < 0) {
-            return false;
+            return bitir(false);
         }
         yazilan += static_cast<std::size_t>(k);
         if (yazilan < n) {
             if (std::chrono::steady_clock::now() >= son) {
-                return false;
+                return bitir(false);
             }
-            if (k == 0) {
+            if (k > 0) {
+                ilerlemesiz = 0;
+            } else if (++ilerlemesiz <= 64) {
+                std::this_thread::yield();
+            } else {
+                // Windows'ta Sleep ve sleep_for sistem saatinin tikine yuvarlanır (varsayılan
+                // ~15,6 ms; Microsoft "Sleep function", "timeBeginPeriod"): süre sınırı yine işler.
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
         }
     }
-    return true;
+    return bitir(true);
 }
 
 namespace {

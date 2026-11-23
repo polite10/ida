@@ -31,9 +31,13 @@ public:
     // Engellemeden yazabildiği kadarını yazar (sol #7): dönüş yazılan bayt (0: şu an ilerleme
     // yok), −1: kapandı ya da hata. Kısmi yazımın konumunu çağıran tutar.
     virtual long long yaz_biraz(const std::uint8_t* p, std::size_t n) = 0;
-    // n baytın tamamını en çok sure_us içinde yazar (kısmi yazımları birleştirir, ilerlemesiz
-    // yazımda kısa uykuyla bekler). false: kapandı, hata ya da süre doldu (bağlantı sorunu).
-    bool yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us = 2'000'000);
+    // n baytın tamamını en çok sure_us içinde yazar (kısmi yazımları birleştirir). İlerlemesiz
+    // yazımda önce iş parçacığı sırası bırakılır (ardışık 64 kez), sonra kısa uykuyla beklenir:
+    // uykunun çözünürlüğü platforma bağlıdır (Windows'ta varsayılan ~15,6 ms), ilerleme sürerken
+    // hız ona bağlı kalmaz. false: kapandı, hata ya da süre doldu (bağlantı sorunu). yazilan_cikti
+    // verilirse başarısızlıkta da yazılmış önekin boyu yazılır (çağıran o konumdan sürdürebilir).
+    bool yaz(const std::uint8_t* p, std::size_t n, std::int64_t sure_us = 2'000'000,
+             std::size_t* yazilan_cikti = nullptr);
     // En az 1, en çok n bayt okur; en çok bekle_us mikrosaniye bekler (0: beklemez).
     virtual OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us,
                             std::size_t& okunan) = 0;
