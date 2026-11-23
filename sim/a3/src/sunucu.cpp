@@ -2,6 +2,7 @@
 #include "ida/a3/sunucu.hpp"
 
 #include "cekirdek.hpp"
+#include "ida/a3/zaman.hpp"
 #include "rastgele.hpp"
 #include "soket.hpp"
 
@@ -22,6 +23,9 @@ struct Sunucu::Ic {
     std::unique_ptr<Cekirdek> cekirdek;
     std::map<BagId, ag::Tutamac> soketler;
     std::thread is;
+    std::thread tik_is;  // A3-K33: 50 Hz yayın tiki (yüksek çözünürlüklü bekleme; zaman.hpp)
+    ag::Tutamac uyan_oku = ag::gecersiz();
+    ag::Tutamac uyan_yaz = ag::gecersiz();
     std::atomic<bool> dur{false};
     mutable std::mutex sayac_kilidi;
     SunucuSayaclari son_sayaclar;
@@ -58,6 +62,37 @@ struct Sunucu::Ic {
         }
     }
 
+    // Tik iş parçacığı: her 20 ms'de uyandırma soketine bir bayt yazar. Windows'ta yoklama zaman
+    // aşımı sistem tikine (≈ 15,6 ms) yuvarlandığı için tik, zaman aşımına değil bu bayta bağlıdır.
+    void tik_dongusu()
+    {
+        auto sonraki = std::chrono::steady_clock::now();
+        while (!dur.load(std::memory_order_acquire)) {
+            sonraki += sure::yayin_tiki;
+            hassas_bekle(sonraki);
+            const auto simdi = std::chrono::steady_clock::now();
+            if (simdi - sonraki > std::chrono::milliseconds(100)) {
+                sonraki = simdi;  // uzun takılmadan sonra birikmiş tikleri koşma
+            }
+            const std::uint8_t b = 1;
+            (void)ag::yaz(uyan_yaz, &b, 1);  // tampon doluysa tik zaten bekliyor demektir
+        }
+    }
+
+    // Uyandırma soketindeki baytları boşaltır; bekleyen tik sayısını döndürür.
+    int tikleri_al()
+    {
+        std::uint8_t b[64];
+        int n = 0;
+        for (;;) {
+            const long long r = ag::oku(uyan_oku, b, sizeof b);
+            if (r <= 0) {
+                return n;
+            }
+            n += static_cast<int>(r);
+        }
+    }
+
     void dongu()
     {
         std::vector<std::uint8_t> tampon(64 * 1024);
@@ -77,6 +112,11 @@ struct Sunucu::Ic {
             }
             liste.clear();
             sira.clear();
+            {
+                ag::Yoklama y;
+                y.t = uyan_oku;
+                liste.push_back(y);
+            }
             if (!kapanis_basladi) {
                 ag::Yoklama y;
                 y.t = dinleyici;
@@ -93,10 +133,11 @@ struct Sunucu::Ic {
             const auto bekle = std::min<long long>(cekirdek->tike_kalan(simdi).count(), 20);
             ag::yokla(liste, static_cast<int>(bekle < 0 ? 0 : bekle));
             simdi = std::chrono::steady_clock::now();
-            std::size_t ilk = 0;
+            std::size_t ilk = 1;
+            const int tik_sayisi = liste[0].okunabilir ? tikleri_al() : 0;
             if (!kapanis_basladi) {
-                ilk = 1;
-                if (liste[0].okunabilir) {
+                ilk = 2;
+                if (liste[1].okunabilir) {
                     for (int n = 0; n < 64; ++n) {
                         const ag::Tutamac t = ag::kabul(dinleyici);
                         if (t == ag::gecersiz()) {
@@ -146,6 +187,10 @@ struct Sunucu::Ic {
                 }
             }
             cekirdek->dongu(simdi);
+            // Birikmiş tikler: en çok üçü koşulur (uzun takılmadan sonra hepsi koşulmaz).
+            for (int t = 0; t < tik_sayisi && t < 3; ++t) {
+                cekirdek->tik();
+            }
             yaz_hepsi();
             for (const BagId id : cekirdek->baglantilar()) {
                 if (cekirdek->kapatilmali(id)) {
@@ -190,7 +235,14 @@ std::unique_ptr<Sunucu> Sunucu::baslat(const SunucuAyari& ayar, KomutAlicisi& al
         ag::kapat(ic->dinleyici);
         return nullptr;
     }
+    if (!ag::uyandirma_cifti(ic->uyan_oku, ic->uyan_yaz)) {
+        hata = "uyandırma soketleri açılamadı";
+        ag::kapat(ic->dinleyici);
+        return nullptr;
+    }
+    ic->cekirdek->dis_tik(true);
     Ic* p = ic.get();
+    ic->tik_is = std::thread([p] { p->tik_dongusu(); });
     ic->is = std::thread([p] {
         // G/Ç iş parçacığındaki bir istisna sim sürecini sonlandırmaz: sunucu durur, soketler kapanır
         // ve günlüğe yazılır (A3-K43: panel bağlantıları çalıştırmayı etkilemez).
@@ -219,6 +271,14 @@ void Sunucu::durdur()
     if (ic_ && ic_->is.joinable()) {
         ic_->dur.store(true, std::memory_order_release);
         ic_->is.join();
+    }
+    if (ic_ && ic_->tik_is.joinable()) {
+        ic_->dur.store(true, std::memory_order_release);
+        ic_->tik_is.join();
+        ag::kapat(ic_->uyan_oku);
+        ag::kapat(ic_->uyan_yaz);
+        ic_->uyan_oku = ag::gecersiz();
+        ic_->uyan_yaz = ag::gecersiz();
     }
 }
 

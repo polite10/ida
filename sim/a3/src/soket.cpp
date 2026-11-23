@@ -289,6 +289,57 @@ Tutamac baglan(const std::string& adres, std::uint16_t port)
     return sar(s);
 }
 
+bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma)
+{
+    okuma = gecersiz();
+    yazma = gecersiz();
+    Tutamac d = gecersiz();
+    std::uint16_t port = 0;
+    std::string hata;
+    if (!dinle("127.0.0.1", 0, d, port, hata)) {
+        return false;
+    }
+    yazma = baglan("127.0.0.1", port);
+    if (yazma == gecersiz()) {
+        kapat(d);
+        return false;
+    }
+    // Kabul edilen ucun gerçekten `yazma` olduğu port eşleşmesiyle denetlenir (aynı anda başka
+    // bir yerel bağlantı gelirse o kapatılır).
+    auto yerel_port = [](Tutamac t) -> int {
+        sockaddr_in a{};
+        UzTip uz = static_cast<UzTip>(sizeof a);
+        return getsockname(ham(t), reinterpret_cast<sockaddr*>(&a), &uz) == 0 ? ntohs(a.sin_port) : -1;
+    };
+    auto karsi_port = [](Tutamac t) -> int {
+        sockaddr_in a{};
+        UzTip uz = static_cast<UzTip>(sizeof a);
+        return getpeername(ham(t), reinterpret_cast<sockaddr*>(&a), &uz) == 0 ? ntohs(a.sin_port) : -2;
+    };
+    const int beklenen = yerel_port(yazma);
+    for (int i = 0; i < 200 && okuma == gecersiz(); ++i) {
+        std::vector<Yoklama> l(1);
+        l[0].t = d;
+        yokla(l, 10);
+        const Tutamac t = kabul(d);
+        if (t == gecersiz()) {
+            continue;
+        }
+        if (karsi_port(t) == beklenen) {
+            okuma = t;
+        } else {
+            kapat(t);
+        }
+    }
+    kapat(d);
+    if (okuma == gecersiz()) {
+        kapat(yazma);
+        yazma = gecersiz();
+        return false;
+    }
+    return true;
+}
+
 void alim_tamponu(Tutamac t, int bayt)
 {
     setsockopt(ham(t), SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char*>(&bayt), static_cast<UzTip>(sizeof bayt));

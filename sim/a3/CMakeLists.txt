@@ -41,6 +41,7 @@ add_library(ida_a3 STATIC
   src/soket.cpp
   src/sunucu.cpp
   src/yayinci.cpp
+  src/zaman.cpp
   "${_ida_a3_uretim}/yukler.cpp")
 target_include_directories(ida_a3
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${_ida_a3_uretim}/include"

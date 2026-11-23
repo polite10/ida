@@ -74,6 +74,8 @@ public:
     }
     // Yük sınaması: her döngüde ek Ping360 satırı sayısı.
     void ek_ping360(int n) { ek_ping_.store(n, std::memory_order_relaxed); }
+    // Dünya döngüsü (5 ms) sayısı; fizik/durum her 4. döngüde yayınlanır.
+    std::uint64_t dongu_sayisi() const noexcept { return dongu_sayaci_.load(std::memory_order_relaxed); }
 
 private:
     struct Durum;
@@ -97,6 +99,7 @@ private:
     std::atomic<std::uint64_t> toplam_ns_{0};
     std::atomic<std::uint64_t> uzun_{0};
     std::atomic<int> ek_ping_{0};
+    std::atomic<std::uint64_t> dongu_sayaci_{0};
 };
 
 }  // namespace ida::a3::sahte

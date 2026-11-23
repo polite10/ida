@@ -9,6 +9,7 @@
 // bayrak, sınırlı bellek).
 #include "test_destek.hpp"
 
+#include <algorithm>
 #include <thread>
 
 namespace ida::a3::test {
@@ -93,6 +94,8 @@ int test_yavas_istemci()
     hizli.yaz(ws_istemci_cercevesi(1, std::string("{\"tur\":\"abone_ol\",\"istek_no\":1,\"kanallar\":") + kHepsi + "}"));
     s.dunya->olcum_sifirla();
     const auto bas = Saat::now();
+    const std::uint64_t dongu0 = s.dunya->dongu_sayisi();
+    const std::uint64_t tik0 = s.sunucu->sayaclar().tik;
     Saat::time_point son_fizik{};
     double en_buyuk_bosluk = 0.0;
     std::size_t fizik = 0;
@@ -159,6 +162,9 @@ int test_yavas_istemci()
     const std::uint64_t yuk_sayi = s.dunya->yayin_sayisi();
     const double yuk_ort = yuk_sayi > 0 ? static_cast<double>(s.dunya->toplam_yayin_ns()) / static_cast<double>(yuk_sayi) : 0.0;
     const std::uint64_t yuk_uzun = s.dunya->uzun_yayin();
+    const double pencere_s = std::chrono::duration<double>(Saat::now() - bas).count();
+    const std::uint64_t uretilen_fizik = (s.dunya->dongu_sayisi() - dongu0) / 4;  // her 4. dünya döngüsünde
+    const std::uint64_t tikler = s.sunucu->sayaclar().tik - tik0;
     const SunucuSayaclari say = s.sunucu->sayaclar();
     // 3) Yavaş istemci okumaya başlar: düşen Ping360 çerçevelerinden sonraki çerçevede bayrak (A3-K41)
     bool bayrak_goruldu = false;
@@ -192,7 +198,21 @@ int test_yavas_istemci()
                 static_cast<unsigned long long>(say.dusen_dizi), static_cast<unsigned long long>(say.ezilen_durum),
                 static_cast<unsigned long long>(say.azami_cikis_bayt), static_cast<unsigned long long>(say.azami_bellek_tahmini),
                 static_cast<unsigned long long>(s.sunucu->yayinci().halka_tasma()));
-    DOGRULA(d, fizik >= 400, "hızlı istemci yavaş olanı beklemeden aldı");
+    // Ölçüt (A3-K33, K39): hızlı istemci her tikte yeni değer varsa onu alır; beklenen en çok
+    // min(üretilen, tik). Üretim ve tik aynı hızda (50 Hz) ama bağımsız saatlerde koştuğu için iki
+    // üretim aynı tik aralığına düşebilir (biri ezilir); %70 bu evre kaymasına pay bırakır. Yavaş
+    // istemcinin sunucuyu bekletmesi ise teslimi saniyelerce durdurur: en büyük boşluk 500 ms'yi
+    // aşmamalı. Sayılar platformun zamanlayıcısından bağımsızdır (ikisi de gerçekleşen değerdir).
+    const std::uint64_t beklenen = std::min(uretilen_fizik, tikler);
+    std::printf("ÖLÇÜM: pencere %.2f s; sunucu tiki %llu (%.1f Hz); dünya fizik/durum üretimi %llu (%.1f Hz); hızlı istemci %zu çerçeve "
+                "(beklenen en çok %llu); en büyük boşluk %.1f ms\n",
+                pencere_s, static_cast<unsigned long long>(tikler), static_cast<double>(tikler) / pencere_s,
+                static_cast<unsigned long long>(uretilen_fizik), static_cast<double>(uretilen_fizik) / pencere_s, fizik,
+                static_cast<unsigned long long>(beklenen), en_buyuk_bosluk);
+    DOGRULA(d, beklenen > 0 && static_cast<double>(fizik) >= 0.7 * static_cast<double>(beklenen),
+            "hızlı istemci yavaş olanı beklemeden aldı: " + std::to_string(fizik) + " / " + std::to_string(beklenen));
+    DOGRULA(d, en_buyuk_bosluk < 500.0, "hızlı istemcide teslim durmadı (en büyük boşluk < 500 ms)");
+    DOGRULA(d, static_cast<double>(tikler) / pencere_s > 40.0, "yayın tiki ≈ 50 Hz (A3-K33): " + std::to_string(tikler));
     DOGRULA(d, say.dusen_dizi > 0, "yavaş istemcinin dizi kuyruğu düşürdü (A3-K41)");
     DOGRULA(d, bayrak_goruldu, "düşmeden sonraki çerçevede oncesinde_dusme");
     DOGRULA(d, kisitlayan_ms >= 0.0 && kisitlayan_ms < 1000.0, "kısıtlayan komut yavaş istemci varken uygulandı");

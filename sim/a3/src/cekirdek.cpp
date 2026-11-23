@@ -272,6 +272,7 @@ struct Cekirdek::Ic {
 
     std::array<RetSayaci, 4> retler{};
     bool tik_basladi = false;
+    bool dis_tik = false;
     Zaman sonraki_tik{};
     Zaman sonraki_bakim{};
     bool kapaniyor = false;
@@ -2680,6 +2681,9 @@ void Cekirdek::dongu(Zaman simdi)
         ic.bakim(simdi);
         ic.sonraki_bakim = simdi + std::chrono::seconds(1);
     }
+    if (ic.dis_tik) {
+        return;  // tik sunucunun tik iş parçacığından gelir (Cekirdek::tik)
+    }
     if (!ic.tik_basladi) {
         ic.tik_basladi = true;
         ic.sonraki_tik = simdi;
@@ -2693,8 +2697,15 @@ void Cekirdek::dongu(Zaman simdi)
     }
 }
 
+void Cekirdek::dis_tik(bool acik) { ic_->dis_tik = acik; }
+
+void Cekirdek::tik() { ic_->yayin_tiki(); }
+
 std::chrono::milliseconds Cekirdek::tike_kalan(Zaman simdi) const
 {
+    if (ic_->dis_tik) {
+        return sure::yayin_tiki;  // yalnız yedek uyanma; tik uyandırma soketinden gelir
+    }
     if (!ic_->tik_basladi || simdi >= ic_->sonraki_tik) {
         return std::chrono::milliseconds(0);
     }

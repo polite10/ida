@@ -45,6 +45,9 @@ int yokla(std::vector<Yoklama>& liste, int zaman_asimi_ms);
 
 // Sınamalar için: adrese bağlanır (engelleyici bağlanma, sonra engellemesiz). Başarısızsa gecersiz().
 Tutamac baglan(const std::string& adres, std::uint16_t port);
+// Uyandırma çifti: 127.0.0.1 üzerinde birbirine bağlı iki engellemesiz TCP soketi (Windows'ta
+// socketpair yoktur). Tik iş parçacığı `yazma`'ya bir bayt yazar, G/Ç döngüsü `okuma`'yı yoklar.
+bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma);
 // SO_RCVBUF / SO_SNDBUF (bayt).
 void alim_tamponu(Tutamac t, int bayt);
 void gonderim_tamponu(Tutamac t, int bayt);

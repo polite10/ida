@@ -85,6 +85,10 @@ public:
     void dongu(Zaman simdi);
     // Bir sonraki yayın tikine kalan süre (yoklama zaman aşımı için).
     std::chrono::milliseconds tike_kalan(Zaman simdi) const;
+    // Dış tik: açıkken `dongu` yayın tikini kendi çalıştırmaz; tik `tik()` ile verilir (sunucu
+    // bunu yüksek çözünürlüklü zamanlayıcılı tik iş parçacığından alır: A3-K33).
+    void dis_tik(bool acik);
+    void tik();
     // A3-K49: bütün WebSocket bağlantılarına 1001; yeni isteklere 503.
     void kapaniyor(Zaman simdi);
 

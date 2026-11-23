@@ -1,6 +1,8 @@
 // sahte_dunya.cpp — bkz. sahte_dunya.hpp.
 #include "sahte_dunya.hpp"
 
+#include "ida/a3/zaman.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -93,7 +95,7 @@ void SahteDunya::baslat()
             if (sonraki < simdi - std::chrono::milliseconds(50)) {
                 sonraki = simdi;
             }
-            std::this_thread::sleep_until(sonraki);
+            hassas_bekle(sonraki);  // Windows: sleep_until sistem tikine (≈ 15,6 ms) yuvarlanır
         }
     });
 }
@@ -505,6 +507,7 @@ void SahteDunya::adim()
         }
     }
     ++d.dongu;
+    dongu_sayaci_.fetch_add(1, std::memory_order_relaxed);
     if (ayar_.veri) {
         yayinla_();
     }
