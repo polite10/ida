@@ -205,6 +205,9 @@ def ozet(d):
                                      "tx_doluluk_azami", "rx_yeniden", "rx_durdu")}
     o["gonderim"] = {k[4:]: d[k] for k in d if k.startswith("gon_")}
     o["kapanis_neden"] = d.get("kapanis_neden")
+    o["kapanis"] = {k: d.get(k) for k in ("kapanis_neden", "kapanis_evre", "kapanis_oturum_sonu_teslim",
+                                          "son_armed", "son_mode", "son_fc_state", "son_fc_inhibit",
+                                          "son_link_event")}
     o["link"] = {"durum": d["link_durum"], "sess": d["link_sess"]}
     o["sayac"] = {k[4:]: d[k] for k in d if k.startswith("say_")}
     o["kalici"] = {k[4:]: d[k] for k in d if k.startswith("kal_")}
@@ -272,4 +275,10 @@ def ozet_oku(onayar="fw-release", elf=None):
 
 
 if __name__ == "__main__":
+    # Çıktı konsol kodlamasından bağımsız (Windows'ta cp1252 Türkçe karakteri yazamaz).
+    for _akis in (sys.stdout, sys.stderr):
+        try:
+            _akis.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     sys.exit(main(sys.argv[1:]))

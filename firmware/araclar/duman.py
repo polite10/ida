@@ -440,4 +440,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # Çıktı konsol kodlamasından bağımsız (Windows'ta cp1252 Türkçe karakteri yazamaz).
+    for _akis in (sys.stdout, sys.stderr):
+        try:
+            _akis.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     sys.exit(main(sys.argv[1:]))

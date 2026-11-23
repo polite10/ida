@@ -45,6 +45,10 @@ static uint32_t uye;
 static uint32_t olay_ctr;
 static bool olay_planli;
 static bool rng_bozuk; /* p_nonce gerçek rastgele sayı üretemiyor */
+/* Sahte çekirdeğin durumu ve platformun çağırıcı kapısı (main.c'deki çağırıcının taklidi). */
+static bool cek_silahli, cek_izin;
+static uint32_t cek_cagri, cek_oturum_sonu;
+static bool cagirici_normal;
 
 /* Sim'in aldığı çerçeveler (yalnız ilgilenilenler). */
 static uint32_t n_actuator, n_event, n_close, n_hello;
@@ -145,18 +149,26 @@ static void sahte_cekirdek(const ida_in_t *in, ida_link_cagri_t tur, ida_out_t *
     out->src = (uint8_t)((tur == IDA_LINK_CAGRI_STEP) ? IDA_SRC_STEP : IDA_SRC_TICK);
     out->seq = in->tf.present ? in->tf.seq : 0u;
     out->t_ref = in->tf.t;
-    out->armed = false;
-    out->is_safe = true;
+    cek_cagri++;
+    if (in->plat.link_event == IDA_LINKEV_SESSION_END) {
+        /* A4-K72, K73: oturum sonu çağrısı daraltır: silahsızlanma, izinler kapanır. */
+        cek_oturum_sonu++;
+        cek_silahli = false;
+        cek_izin = false;
+    }
+    out->armed = cek_silahli;
+    out->is_safe = !cek_silahli;
     out->fs_level = (uint8_t)IDA_FS_NONE;
     out->thr_valid = in->tf.present;
     out->valid_for_ns = in->tf.present ? IDA_VALID_FOR_DEFAULT_NS : 0u;
     out->health.core_ok = true;
     out->health.data_ok = true;
     out->status.mode = (uint8_t)IDA_MODE_DISARMED;
+    out->status.armed = cek_silahli;
     out->status.param_ok = true;
     out->status.events_ok = true;
     out->status.boot_count = BOOT;
-    out->fc.state = (uint8_t)IDA_FCS_SAFE;
+    out->fc.state = (uint8_t)(cek_izin ? IDA_FCS_PERMIT_OPEN : (cek_silahli ? IDA_FCS_ARMED : IDA_FCS_SAFE));
     if (olay_planli && in->tf.present) {
         olay_planli = false;
         olay_ctr++;
@@ -172,21 +184,38 @@ static void sahte_cekirdek(const ida_in_t *in, ida_link_cagri_t tur, ida_out_t *
     }
 }
 
-/* Ana döngünün bir turu: poll_tx, çağrılar (take → çekirdek → put_out), kapanış kararı,
-   gönderim pompası. */
+static ida_rc_t cekirdek_f(void *ctx, ida_link_cagri_t tur_, ida_in_t *in, ida_out_t *out)
+{
+    (void)ctx;
+    sahte_cekirdek(in, tur_, out);
+    return IDA_RC_OK;
+}
+
+/* Ana döngünün bir turu (main.c ile aynı sıra): poll_tx, çağrılar (take → kapı → çekirdek →
+   put_out; yasak başlayınca çağırıcı güvenli beklemeye geçer), kapanış kararı, gönderim pompası. */
 static void tur(void)
 {
     ida_link_ust_poll_tx(&l);
     for (int i = 0; i < 16; i++) {
-        const ida_link_cagri_t c = ida_link_ust_take(&l, &girdi);
-        if (c == IDA_LINK_CAGRI_YOK) {
+        const ida_kapanis_tur_t t =
+            ida_kapanis_cagri(&kap, &l, cagirici_normal, &girdi, &cikti, cekirdek_f, NULL);
+        if (t.tur == IDA_LINK_CAGRI_YOK) {
             break;
         }
-        sahte_cekirdek(&girdi, c, &cikti);
-        ida_link_ust_put_out(&l, &girdi, IDA_RC_OK, &cikti);
+        if (ida_kapanis_yasak(&kap)) {
+            cagirici_normal = false;
+        }
     }
 #if !defined(IDA_TEST_KAPANIS_YOK)
-    (void)ida_kapanis_denetle(&kap, &g, rng_bozuk, &l);
+    if (ida_kapanis_denetle(&kap, &g, rng_bozuk, &l) != IDA_KAPANIS_YOK) {
+#if defined(IDA_TEST_ESKI_SIRA)
+        cagirici_normal = false; /* karşı örnek: eski sıra, çağrı yasağı hemen */
+#else
+        if (ida_kapanis_yasak(&kap)) {
+            cagirici_normal = false;
+        }
+#endif
+    }
 #endif
     for (int i = 0; i < 64 && ida_gon_pompa(&g, &T, (uint64_t)(saat / 1000)) != 0u; i++) {
     }
@@ -262,6 +291,11 @@ void setUp(void)
     olay_ctr = 0u;
     olay_planli = false;
     rng_bozuk = false;
+    cek_silahli = false;
+    cek_izin = false;
+    cek_cagri = 0u;
+    cek_oturum_sonu = 0u;
+    cagirici_normal = true;
     n_actuator = n_event = n_close = n_hello = 0u;
     bozuk = 0u;
     memset(&son_close, 0, sizeof son_close);
@@ -373,6 +407,51 @@ static void test_durmus_tasimada_kritik_dolar_ve_safety_close(void)
     TEST_ASSERT_EQUAL_UINT32(0u, bozuk);
 }
 
+/* Sol bulgu 1, ikinci denetim (EMNİYET): çekirdek silahlı ve izin açıkken kritik ret olur.
+   Sıra: girdiler engellenir → oturum sonu çağrısı çalışabilir çekirdeğe teslim edilir (çekirdek
+   silahsızlanır, izinler kapanır) → ancak sonra çağrı yasağı. Teslim gönderimin başarısına bağlı
+   değildir (taşıma durmuş kalır). */
+static void test_silahli_kritik_ret_oturum_sonu_teslim(void)
+{
+    el_sikis(0x51000001u, 77u);
+    cek_silahli = true;
+    cek_izin = true;
+    periyot(1u);
+    periyot(2u);
+    TEST_ASSERT_TRUE(cikti.armed);
+    durdu = true; /* taşıma durur ve öyle kalır */
+    uint32_t s = 3u;
+    for (uint32_t i = 0u; i < IDA_GON_KRITIK_N; i++) {
+        periyot(s++);
+    }
+    TEST_ASSERT_FALSE(ida_gon_kritik_hata(&g));
+    periyot(s++); /* kritik ret ve kapanışın 1. adımı */
+    TEST_ASSERT_TRUE(ida_gon_kritik_hata(&g));
+    TEST_ASSERT_EQUAL_UINT8(IDA_KAPANIS_KRITIK, kap.neden);
+    saat += P_NS;
+    tur(); /* oturum sonu çağrısı */
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(1u, cek_oturum_sonu,
+                                     "oturum sonu çağrısı çekirdeğe teslim edilmeli (A1-K107, A4-K73)");
+    TEST_ASSERT_FALSE_MESSAGE(cek_silahli, "çekirdek silahsızlanmalı");
+    TEST_ASSERT_FALSE_MESSAGE(cek_izin, "izinler kapanmalı");
+    TEST_ASSERT_FALSE(cikti.status.armed);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)IDA_FCS_SAFE, cikti.fc.state);
+    TEST_ASSERT_EQUAL_UINT32(1u, kap.oturum_sonu_teslim);
+    TEST_ASSERT_TRUE(ida_kapanis_yasak(&kap));
+    TEST_ASSERT_FALSE(cagirici_normal);
+    /* Sonra hiçbir çekirdek çağrısı yok (taşıma akınca da, yeni partilerde de). */
+    const uint32_t cagri0 = cek_cagri;
+    durdu = false;
+    periyot(s++);
+    periyot(s++);
+    for (int i = 0; i < 50; i++) {
+        saat += P_NS;
+        tur();
+    }
+    TEST_ASSERT_EQUAL_UINT32(cagri0, cek_cagri);
+    TEST_ASSERT_TRUE(ida_link_ust_durum(&l) != IDA_LINK_UST_RUNNING);
+}
+
 /* Sol bulgu 4: RNG kurtarılamazsa sabit nonce ile el sıkışma sürdürülmez. Oturum modülü
    nonce 0'ı birkaç kez alınca sabit bir değer kullanır; platform aynı turda güvenli beklemeye
    geçer ve o duyuruyu kuyruktan siler; SESSION_ACCEPT oturum kurmaz. */
@@ -415,5 +494,6 @@ int main(void)
     RUN_TEST(test_akarken_kayip_yok);
     RUN_TEST(test_durmus_tasimada_kritik_dolar_ve_safety_close);
     RUN_TEST(test_rng_hatasi_el_sikismayi_durdurur);
+    RUN_TEST(test_silahli_kritik_ret_oturum_sonu_teslim);
     return UNITY_END();
 }
