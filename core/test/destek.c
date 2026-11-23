@@ -25,7 +25,7 @@ uint32_t ds_gecerli_blok(uint8_t *blok)
 {
     ida_prm_kume_t k;
     ida_prm_varsayilan(&k);
-    return ida_prm_blok_kodla(&k, blok);
+    return ida_prm_blok_kodla(&k, ida_prm_sema_ozeti(), blok);
 }
 
 ida_rc_t ds_kur(ida_core_t *c)

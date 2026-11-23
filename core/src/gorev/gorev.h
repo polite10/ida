@@ -104,8 +104,6 @@ typedef struct {
     float tut_yon;
     float tut_ne[2];
     /* Kuşaklar (sol bulgular 1, 2; EMNİYET) */
-    uint32_t ref_kusak;        /* kontrol isteğinin referans kuşağı: tutma hedefi her yeniden
-                                  yakalandığında ve derinleşme yasağı başladığında artar    */
     bool onceki_dalis_yasak;
     /* Görev (dilim 2) */
     uint8_t mission_state;     /* IDA_MS_*                                                  */

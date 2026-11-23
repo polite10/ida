@@ -21,7 +21,8 @@
  * mandal (b)/(b3)'te kurulur). Mandal kuruluyken saklı hedef ida_gud_adim çalışmasa da
  * hiçbir zaman uygulanmaz; bit yalnız hedef silindikten sonra temizlenir. Aynı çağrıda
  * daraltmadan sonra gelen GUIDED_SP geçerli yeni hedeftir. EMNİYET: silinen hedefe kendiliğinden dönülmez; araç görev modülünün tutma
- * hedefinde kalır ve kontrol referansını bulunulan durumdan yeniden kurar (ref_kusak).
+ * hedefinde kalır ve kontrol referansını bulunulan durumdan yeniden kurar (silinen hedef
+ * kontrolün iptal bitini kurar, IDA_EMN_IPTAL_KON).
  */
 #ifndef IDA_CORE_GUDUM_H
 #define IDA_CORE_GUDUM_H
@@ -53,8 +54,6 @@ typedef struct {
     uint8_t yatay;         /* IDA_GUD_YATAY_*                                               */
     uint32_t kusak;        /* hedefin saklandığı daraltma kuşağı (yalnız tanı; karar
                               ida_emn_t.hedef_iptal mandalınındır)                          */
-    uint32_t iptal;        /* saklı hedef her silindiğinde artar; kontrol isteğinin referans
-                              kuşağına eklenir (sol bulgu 2)                                */
     float derinlik;        /* m, yüzeyden aşağı                                             */
     float irtifa;          /* m, dipten yukarı                                              */
     float dikey_hiz;       /* m/s, NED aşağı +                                              */

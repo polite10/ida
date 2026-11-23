@@ -80,11 +80,6 @@ typedef struct {
                             derinlikten derin olamaz, aşağı yönlü dikey hız isteği üretilmez,
                             NED aşağı kuvvet yüzerlik dengelemesiyle (BUOY_FF, ≥ 0) sınırlıdır,
                             dikey integral aşağı yönde birikmez                            */
-    uint32_t ref_kusak;  /* referans kuşağı (sol bulgu 2; EMNİYET): hedefin kaynağı değişince
-                            (tutma hedefinin yeniden yakalanması, arıza eylemi geçişi, güdüm
-                            hedefinin iptali, derinleşme yasağının başlaması) artar; kontrol
-                            değişimi görünce derinlik ve yön referanslarını ölçülen durumdan
-                            yeniden kurar, öteleme integrallerini sıfırlar                 */
 } ida_kon_istek_t;
 
 /* ---- Bir adımın girdileri ---------------------------------------------------------------- */
@@ -98,6 +93,13 @@ typedef struct {
                                 fs_level ≥ PASSIVE_SURFACE; acil durdurma DEĞİL, W3-K1/K4) */
     bool kestirim_yeterli;   /* ida_kon_adim: est_level OK ya da DEGRADED                  */
     uint8_t itici_disi;      /* görevden devre dışı itici maskesi (THR_OFF_MASK ile VEYA)  */
+    bool ref_yenile;         /* kontrolün iptal biti kurulu (ida_emn_t.hedef_iptal,
+                                IDA_EMN_IPTAL_KON; sol bulgu 2 ve 3. tur bulgu 1; EMNİYET):
+                                hedefin kaynağı değişti (tutma hedefinin yeniden yakalanması,
+                                arıza eylemi geçişi, güdüm hedefinin iptali, derinleşme
+                                yasağının başlaması, daraltma); derinlik ve yön referansları
+                                ölçülen durumdan yeniden kurulur, öteleme integralleri
+                                sıfırlanır. Bit kontrol belleği sıfırlandıktan sonra temizlenir */
 } ida_kon_girdi_t;
 
 /* ---- Durum ------------------------------------------------------------------------------- */
@@ -141,9 +143,6 @@ typedef struct {
     uint8_t t_var;
     int64_t t_onceki_ns;
 
-    /* Son etkin adımın referans kuşağı (ida_kon_istek_t.ref_kusak); ref_kusak_var 0: yok. */
-    uint32_t son_ref_kusak;
-    uint8_t ref_kusak_var;
 } ida_kon_t;
 
 void ida_kon_kur(ida_kon_t *k);
@@ -154,8 +153,9 @@ void ida_kon_komut(ida_kon_t *k, const ida_komut_baglam_t *b, const ida_cmd_t *c
                    ida_cmd_result_t *r);
 /* Bir adımın girdilerini çekirdekten toplar (istek, nav, armed, kısıt, kestirim düzeyi). */
 void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g);
-/* Yalnız step OK'ta: ida_kon_girdi_topla + ida_kon_hesapla. */
-void ida_kon_adim(ida_kon_t *k, const ida_core_t *c);
+/* Yalnız step OK'ta: ida_kon_girdi_topla + ida_kon_hesapla; ardından kontrolün iptal biti
+   (c->emn.hedef_iptal, IDA_EMN_IPTAL_KON) temizlenir: bellek o adımda sıfırlanmıştır. */
+void ida_kon_adim(ida_kon_t *k, ida_core_t *c);
 /* Bir adım (çekirdekten bağımsız; testler doğrudan çağırır). prm: yürürlükteki küme. */
 void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_girdi_t *g);
 /* Son adımın itki önerisi (A5 itici sırası, [−1, 1]); sayısal çökmede *cokme = true. */
