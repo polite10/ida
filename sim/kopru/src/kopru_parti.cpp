@@ -452,7 +452,7 @@ std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t d
             }
             if (secilen != m.safety_rev) {
                 m.safety_rev = secilen;
-                ++i.say.emniyet_rev_geri;
+                ++i.say.emniyet_rev_duzeltme;
             }
         }
         m.flags = o.hdr.flags;

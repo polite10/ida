@@ -350,15 +350,27 @@ bool Kopru::Ic::olay_al(const mavlink_ida_event_t& m)
         say.calistirma_gecersiz |= kGecGecOlay;
     }
     olay_bekleyen.push_back(o);
-    if (pk != nullptr) {
+    // W4-K15 ek (6): ACTUATOR(n)'den sonra alınan yeni kimlikli SAFETY_CLOSE(n) uygulanır ama
+    // kümenin sayımına girmez (sonraki hata dönüşünün olayı olabilir; A1-K73). Küme yalnız
+    // ACTUATOR'dan önce alınan olaylarla ya da sayılmış genişletici olayların yinelemeleriyle
+    // tamamlanır.
+    if (pk != nullptr && (acan || !pk->act_var)) {
         pk->olaylar.insert(m.event_id);
         if (acan) {
             pk->acan_id.push_back(m.event_id);
             pk->acan = static_cast<std::uint8_t>(pk->acan | (m.kind == IDA_EVT_FIRE ? 2u : 1u));
         }
+        const bool bekliyordu = pk->durum == KumeDurumu::bekliyor;
         (void)kume_tamamla(m.batch_seq);   // bekliyorsa: tamamlanır, reddedilir ya da ihlal
+        if (durum != OturumDurumu::kosuyor && durum != OturumDurumu::hazir) {
+            return false;   // sayım ihlali oturumu bitirdi
+        }
+        // W4-K15 ek (7): kümeyi tamamlayıp topluca reddettiren olay canlılığı yenilemez.
+        const PartiKumesi* sonra = kume.bul(m.batch_seq);
+        if (bekliyordu && sonra != nullptr && sonra->durum == KumeDurumu::reddedildi) {
+            return false;
+        }
     }
-    // Sayım ihlali oturumu bitirdiyse çerçeve canlılık ve oturum durumu için sayılmaz.
     return durum == OturumDurumu::kosuyor || durum == OturumDurumu::hazir;
 }
 

@@ -336,6 +336,6 @@ int test_emniyet_rev_durum()
         DOGRULA(d, z.sk.emniyet.back().estop == 1u && z.sk.emniyet.back().safety_rev == rev_basili,
                 "(estop = 1) acil durdurmanın revizyonuyla gider (" + s(z.sk.emniyet.back().safety_rev) + ")");
     }
-    DOGRULA(d, z.k.sayaclar().emniyet_rev_geri == 1u, "emniyet_rev_geri 1");
+    DOGRULA(d, z.k.sayaclar().emniyet_rev_duzeltme == 1u, "emniyet_rev_duzeltme 1");
     return d.hata;
 }

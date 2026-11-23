@@ -101,6 +101,8 @@ set(_ida_kopru_testleri
   hata_donusu_canlilik  # W4-K15 EMNİYET
   eksik_kume_suresi  # W4-K15 EMNİYET
   bekleyen_kume_siniri  # W4-K15 EMNİYET
+  ret_eden_olay_canlilik  # W4-K15 ek (6) (7)
+  gec_kapanis_tamamlamaz  # W4-K15 ek (6) (7)
   bellek_tasima
   tcp_tasima
   pty_tasima)

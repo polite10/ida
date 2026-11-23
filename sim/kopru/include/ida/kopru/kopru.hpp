@@ -135,7 +135,7 @@ struct Sayaclar {
     std::uint64_t rx_sira_disi = 0, rx_kayip = 0;
     std::uint64_t estop_iptal = 0;              // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
     std::uint64_t emniyet_rev_eslesmedi = 0;     // W4-K12: uygun revizyon bulunamadı
-    std::uint64_t emniyet_rev_geri = 0;          // W4-K4: revizyonu durumuna göre geri alınan emniyet örneği
+    std::uint64_t emniyet_rev_duzeltme = 0;      // W4-K12, W4-K15 (5): revizyonu kaydınkinden farklı seçilen emniyet örneği
     std::uint64_t gecersiz_ornek = 0;           // VALID = 0 gönderilen sensör üyesi (çekirdek reddeder)
     std::uint64_t emniyet_birlesti = 0;          // aynı pencerede birleştirilen emniyet kayıtları
     std::uint64_t emniyet_ertelendi = 0;         // A1-K56: açılma sonraki partiye

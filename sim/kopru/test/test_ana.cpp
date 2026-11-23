@@ -14,6 +14,8 @@ int test_olay_yinelenen();
 int test_olay_suresi_gecmis();
 int test_olay_fire_kabul();
 int test_emniyet_ornegi();
+int test_ret_eden_olay_canlilik();
+int test_gec_kapanis_tamamlamaz();
 int test_emniyet_gecmis_tahliyesi();
 int test_sayim_ihlali_sonradan_fire();
 int test_sayim_ihlali_kucuk_sayi();
@@ -71,6 +73,8 @@ const Test kTestler[] = {
     {"olay_suresi_gecmis", test_olay_suresi_gecmis},
     {"olay_fire_kabul", test_olay_fire_kabul},
     {"emniyet_ornegi", test_emniyet_ornegi},
+    {"ret_eden_olay_canlilik", test_ret_eden_olay_canlilik},
+    {"gec_kapanis_tamamlamaz", test_gec_kapanis_tamamlamaz},
     {"emniyet_gecmis_tahliyesi", test_emniyet_gecmis_tahliyesi},
     {"sayim_ihlali_sonradan_fire", test_sayim_ihlali_sonradan_fire},
     {"sayim_ihlali_kucuk_sayi", test_sayim_ihlali_kucuk_sayi},

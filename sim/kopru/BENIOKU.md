@@ -16,18 +16,20 @@ Zaman yöneticisi her fizik sınırı `b` (t = b·h) için: `sinir_isle(b)` (A1-
 
 ## Olay kümesi (W4-K15, EMNİYET)
 
-Parti `n`'in kümesi: `IDA_ACTUATOR(n)` ve `batch_seq = n` taşıyan, `TICK_GRID` olmayan `n_events` farklı `event_id` (A1-K73). Küme durumu partinin ilk alınan yanıtı ya da olayıyla açılır (`kopru_ic.hpp` `PartiKumesi`, `kopru_sinir.cpp` `kume_tamamla`).
+Parti `n`'in kümesi: `IDA_ACTUATOR(n)` ve `batch_seq = n` taşıyan, `TICK_GRID` olmayan `n_events` farklı `event_id` (A1-K73). Sayıma giren olaylar (W4-K15 ek (6)): `ACTUATOR(n)`'den önce alınan her olay ve `ACTUATOR(n)`'den sonra alınan genişletici olaylar (sayılmış ama kaybolmuş olayın yinelemesi, H12). `ACTUATOR(n)`'den sonra alınan yeni kimlikli `SAFETY_CLOSE(n)` uygulanır ama sayıma girmez (sonraki hata dönüşünün olayı olabilir); sayılmış bir `SAFETY_CLOSE` kaybolup yinelemeyle gelirse küme tamamlanmaz, genişletici olaylar süreleri dolunca `REJ_EXPIRED` alır. Küme durumu partinin ilk alınan yanıtı ya da olayıyla açılır (`kopru_ic.hpp` `PartiKumesi`, `kopru_sinir.cpp` `kume_tamamla`).
 
 | Durum | Geçiş | Koşul | Etki |
 |---|---|---|---|
 | BEKLİYOR | → DOĞRULANDI | Yanıt var ve küme tam (hata dönüşü `BAD_INPUT`/`NOT_INIT`: olay beklemeden; `OK`/`IMU_REJECTED`: alınan olay sayısı ≥ `n_events`) ve topluca tutarlı (A1-K118, Tablo 4.6b: genişletici olay varsa `core_rc = OK`, `SRC_TICK = 0`; `FIRE` varsa `ARMED = 1`, `IS_SAFE = 0`) | Yanıt kabul edilir: üretim sırası, `yanit(n)`, yanıt süresi, birleşim, yuva; canlılık (`T_bağ`) yenilenir. Uygulama anı geçmişse yuvaya ve yanıt geçmişine girmez, yalnız olayların dayanağı olur |
-| BEKLİYOR | → REDDEDİLDİ | Küme tam, tutarsız | Yanıt hiçbir geçmişe girmez, canlılığı yenilemez; yuva kaçırılır; sayılan genişletici olaylar `REJ_SAFE` (`kume_reddedilen`, `alan_ret`) |
+| BEKLİYOR | → REDDEDİLDİ | Küme tam, tutarsız | Yanıt hiçbir geçmişe girmez, canlılığı yenilemez; kümeyi tamamlayan son çerçeve (yanıt ya da olay) da canlılığı yenilemez (W4-K15 ek (7)); yuva kaçırılır; sayılan genişletici olaylar `REJ_SAFE` (`kume_reddedilen`, `alan_ret`) |
 | BEKLİYOR | → REDDEDİLDİ + oturum sonu | Yanıt varken genişletici olay sayısı `n_events`'i aşıyor (yanıttan önce alınmış fazla olay) | Sayım ihlali: genişletici olaylar `REJ_SAFE`, `IDA_SESSION_CLOSE(PROTOCOL)`, oturum sonu iki tüpün iznini kapatır (`olay_sayim_ihlali`) |
 | BEKLİYOR | (kalır) | Yanıt yok ya da küme eksik | Genişletici olay bekler, her sınırda yeniden denenir (geç olay, A1-K83); son geçerlilikte `REJ_EXPIRED`. Yanıt artık gelemiyorsa (yuvanın uygulama anı geldi) `REJ_SAFE` |
 | DOĞRULANDI | → UYGULANDI | Yanıt `a_n`'de uygulandı | — |
 | DOĞRULANDI / UYGULANDI / REDDEDİLDİ | → oturum sonu | Aynı `batch_seq`'li **yeni** `event_id`'li genişletici olay | Sayım ihlali (yukarıdaki gibi); "sonradan tutarsızlaşma" ve geri alma yolu yoktur |
-| her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan) | Beklemeden uygulanır (A1-K87); ihlal değildir |
+| her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan; `ACTUATOR`'dan sonra gelen yeni kimlikli olan sayıma girmez) | Beklemeden uygulanır (A1-K87); ihlal değildir |
 | her durum | — | Aynı `event_id`'li yineleme | A1-K81 (saklı sonuç); ihlal değildir |
+
+Sınır durumu (kısıtlayan yönde, bilerek): `ACTUATOR(n)`'den önce gelen bir `SAFETY_CLOSE(n)` sayıma girer; genişletici sayıyı o tamamlarsa sonradan gelen gerçek genişletici olay sayım ihlali sayılır ve oturum biter. A1-K90 sırasıyla `ACTUATOR(n)`'den önce gelen olaylar çağrı `n`'in kendi olaylarıdır; bu durum ancak sıra dışı teslimde (A1-K90 ihlali) doğar.
 
 Tablo en çok 256 partiyi tutar (ekleme sırasıyla); tahliye edilen bekleyen kümenin genişletici olayları `REJ_SAFE` alır (`kume_bekleyen_tahliye`, `kume_en_cok`).
 

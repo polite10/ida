@@ -381,3 +381,73 @@ int test_bekleyen_kume_siniri()
     DOGRULA(d, sy.parti_kacirildi >= 290u, "eksik kümeli yuvalar kaçırıldı (" + s(sy.parti_kacirildi) + ")");
     return d.hata;
 }
+
+// W4-K15 ek (7), sol-4 #11: önce ACTUATOR(n, n_events = 1, IS_SAFE = 1) (bekler), sonra aynı
+// partinin FIRE'ı kümeyi tamamlar ve küme topluca reddedilir: o olayın alımı canlılığı
+// yenilemez (T_bağ dolar).
+int test_ret_eden_olay_canlilik()
+{
+    Denetci d;
+    SahteDuzenek z(hil());
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    gevsek_hazirla(z);
+    const std::uint32_t rev = z.k.dis_durum().emniyet.emniyet_revizyonu;
+    std::uint32_t hedef = 0;
+    std::int64_t t_hedef = 0;
+    z.sk.tf_kancasi = [&](const SahteKart::Tf& tf) {
+        hedef = tf.seq;
+        t_hedef = tf.t;
+        z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kSafe | kArmed), pwm_hepsi(1500), 1);   // bekler
+    };
+    (void)z.periyot();
+    const std::int64_t t0 = z.t;   // son geçerli alım en geç burada (önceki partinin yanıtı)
+    (void)z.sk.olay(IDAW_EVENT_KIND_FIRE, 0, hedef, t_hedef, rev);
+    std::vector<std::uint8_t> w;
+    w.swap(z.sk.giden);
+    z.k.al(w.data(), w.size(), t0 + 490'000'000);
+    z.k.zamanla(t0 + 505'000'000);
+    DOGRULA(d, z.k.sayaclar().kume_reddedilen == 1u, "küme topluca reddedildi");
+    DOGRULA(d, z.k.sayaclar().oturum_kopma == 1u,
+            "reddedilen kümeyi tamamlayan olay canlılığı yenilemedi: T_bağ doldu (kopma " +
+                s(z.k.sayaclar().oturum_kopma) + ")");
+    return d.hata;
+}
+
+// W4-K15 ek (6): eksik küme (SAFETY_OPEN alındı, n_events = 2, ikinci olay kayıp) +
+// ACTUATOR'dan sonra gelen yeni kimlikli SAFETY_CLOSE(n): kapanış uygulanır ama kümeyi
+// tamamlamaz; SAFETY_OPEN uygulanmaz, süresi dolunca REJ_EXPIRED.
+int test_gec_kapanis_tamamlamaz()
+{
+    Denetci d;
+    SahteDuzenek z(hil());
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    gevsek_hazirla(z);
+    const std::uint32_t rev = z.k.dis_durum().emniyet.emniyet_revizyonu;
+    std::uint64_t acma = 0, kapama = 0;
+    bool bir_kez = true;
+    z.sk.tf_kancasi = [&](const SahteKart::Tf& tf) {
+        if (bir_kez) {
+            bir_kez = false;
+            acma = z.sk.olay(IDAW_EVENT_KIND_SAFETY_OPEN, 0, tf.seq, tf.t, rev);
+            const std::size_t n = z.sk.giden.size();
+            (void)z.sk.olay(IDAW_EVENT_KIND_FIRE, 0, tf.seq, tf.t, rev);
+            (void)kes(z.sk, n);   // ikinci (sayılmış) olay kayboldu
+            z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600), 2);
+            // ACTUATOR'dan sonra yeni kimlikli SAFETY_CLOSE(n) (ör. sonraki hata dönüşünün olayı).
+            kapama = z.sk.olay(IDAW_EVENT_KIND_SAFETY_CLOSE, 1, tf.seq, tf.t, 0);
+            return;
+        }
+        z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600));
+    };
+    bool hic_acik = false;
+    z.sinir_kancasi = [&](std::uint64_t) { hic_acik = hic_acik || z.k.izin_acik(0); };
+    for (int n = 0; n < 8; ++n) {
+        (void)z.periyot();
+    }
+    hic_acik = hic_acik || z.k.izin_acik(0);
+    DOGRULA(d, sonuc_bul(z.sk, kapama) == IDA_EVR_APPLIED, "SAFETY_CLOSE uygulandı (" + s(sonuc_bul(z.sk, kapama)) + ")");
+    DOGRULA(d, !hic_acik, "SAFETY_OPEN uygulanmadı (izin hiç açılmadı)");
+    DOGRULA(d, sonuc_bul(z.sk, acma) == IDA_EVR_REJ_EXPIRED, "SAFETY_OPEN REJ_EXPIRED (" + s(sonuc_bul(z.sk, acma)) + ")");
+    DOGRULA(d, z.k.sayaclar().olay_sayim_ihlali == 0u, "ihlal yok");
+    return d.hata;
+}
