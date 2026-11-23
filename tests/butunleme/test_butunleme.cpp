@@ -9,17 +9,25 @@
 //   acil_durdurma   kabul 4 (EMNİYET): acil durdurma etkinken fiziğe giden darbe genişliği nötr
 //   hil_pty         kabul 7: HIL 1x, sözde uçbirim + kart rolünde karşı taraf, 60 s; gerçek
 //                   zaman kaçırma sayacı ve TF periyot dağılımı (ölçüm; eşik yok)
+//   sil_gecikmeli_tcp  W4-K14: ACTUATOR sonrası çıktılar gecikmeli teslim edilir; CSV aynı kalır
+//   sil_iki_surec   W4-K14: iki süreçli (ida_sil) iki koşu ve süreç içi koşu aynı CSV
 //   a4_girdi_esitligi  süreç içi karşı taraf ile ida_sil'in A4 çağrı girdileri bayt bayt aynı
 //   hil_cikarma_takma  HIL 1x, sözde uçbirim; 5 s'de aygıt kalkar, 7 s'de takılır (A1-K23, H29)
+#include "ida/kopru/tasima.hpp"
 #include "ida/port.h"
 #include "ida/sil/kosucu.hpp"
+#include "ida_link/tel.h"
 #include "ida/sunucu/sunucu.hpp"
 #include "zincir.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <deque>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -361,6 +369,206 @@ int test_a4_girdi_esitligi()
     return 0;
 }
 
+// W4-K14 (sol #5): kart → sim akışını çerçevelerine ayıran ve IDA_ACTUATOR'dan sonraki
+// çerçeveleri gecikme düzeniyle bekleten aktarıcı. ida_sim (TCP) ile ida_sil (aynı süreçte)
+// arasına girer; sim → kart yönü olduğu gibi geçer. Sıra korunur (bırakma anları monoton).
+class Aktarici {
+public:
+    // gecikme_us(k): k. ACTUATOR'dan sonraki çerçevelerin bekletilmesi (µs).
+    Aktarici(std::uint16_t sim_port, std::function<std::int64_t(std::uint64_t)> gecikme_us)
+        : gecikme_(std::move(gecikme_us))
+    {
+        std::string hata;
+        din_ = ida::kopru::tcp_dinle(0, hata);
+        sim_port_ = sim_port;
+        (void)ida_link_alici_kur(&alici_, IDA_LINK_ROL_SIM);
+        if (din_) {
+            is_ = std::thread([this] { dongu(); });
+        }
+    }
+    ~Aktarici()
+    {
+        dur_ = true;
+        if (is_.joinable()) {
+            is_.join();
+        }
+    }
+    std::uint16_t port() const { return din_ ? din_->port() : 0; }
+    std::uint64_t ayrilan() const { return ayrilan_.load(); }
+
+private:
+    using Saat = std::chrono::steady_clock;
+    struct Parca {
+        std::vector<std::uint8_t> bayt;
+        Saat::time_point birak;
+    };
+
+    void dongu()
+    {
+        std::string hata;
+        auto sim = ida::kopru::tcp_baglan(sim_port_, hata);
+        auto kart = din_->kabul(20'000'000, hata);
+        if (!sim || !kart) {
+            return;
+        }
+        std::vector<std::uint8_t> t(65536);
+        std::vector<std::uint8_t> ham;
+        std::deque<Parca> kuyruk;
+        Saat::time_point son_birak = Saat::now();
+        bool act_sonrasi = false;
+        while (!dur_) {
+            bool is_var = false;
+            std::size_t n = 0;
+            ida::kopru::OkumaSonucu r = sim->oku(t.data(), t.size(), 0, n);
+            if (r == ida::kopru::OkumaSonucu::kapandi) {
+                break;
+            }
+            if (r == ida::kopru::OkumaSonucu::tamam) {
+                is_var = true;
+                if (!kart->yaz(t.data(), n)) {
+                    break;
+                }
+            }
+            r = kart->oku(t.data(), t.size(), 0, n);
+            if (r == ida::kopru::OkumaSonucu::kapandi) {
+                break;
+            }
+            if (r == ida::kopru::OkumaSonucu::tamam) {
+                is_var = true;
+                std::size_t k = 0;
+                while (k < n) {
+                    std::size_t tuk = 0;
+                    ida_link_cerceve_t c{};
+                    const ida_link_rc_t rc = ida_link_al(&alici_, t.data() + k, n - k, &tuk, &c);
+                    ham.insert(ham.end(), t.data() + k, t.data() + k + tuk);
+                    k += tuk;
+                    if (rc != IDA_LINK_CERCEVE) {
+                        break;
+                    }
+                    Saat::time_point b = Saat::now();
+                    if (act_sonrasi) {
+                        b += std::chrono::microseconds(gecikme_(act_sayisi_));
+                        act_sonrasi = false;
+                        ++ayrilan_;
+                    }
+                    son_birak = std::max(son_birak, b);
+                    kuyruk.push_back({std::move(ham), son_birak});
+                    ham.clear();
+                    if (c.msgid == 46060u) {   // MAVLINK_MSG_ID_IDA_ACTUATOR
+                        act_sonrasi = true;
+                        ++act_sayisi_;
+                    }
+                }
+            }
+            const auto simdi = Saat::now();
+            while (!kuyruk.empty() && kuyruk.front().birak <= simdi) {
+                if (!sim->yaz(kuyruk.front().bayt.data(), kuyruk.front().bayt.size())) {
+                    return;
+                }
+                kuyruk.pop_front();
+                is_var = true;
+            }
+            if (!is_var) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+        }
+    }
+
+    std::function<std::int64_t(std::uint64_t)> gecikme_;
+    std::unique_ptr<ida::kopru::TcpDinleyici> din_;
+    std::uint16_t sim_port_ = 0;
+    ida_link_alici_t alici_{};
+    std::thread is_;
+    std::atomic<bool> dur_{false};
+    std::atomic<std::uint64_t> ayrilan_{0};
+    std::uint64_t act_sayisi_ = 0;
+};
+
+ida::sunucu::Sonuc aktarici_ile_kos(ida::sunucu::Ayar b, std::function<std::int64_t(std::uint64_t)> gecikme,
+                                    std::uint64_t& ayrilan)
+{
+    b.karsi = ida::sunucu::Karsi::tcp;
+    std::unique_ptr<Aktarici> ak;
+    std::unique_ptr<ida::sil::Kosucu> kosucu;
+    std::thread is;
+    b.tcp_hazir = [&](std::uint16_t port, std::uint64_t tohum) {
+        ak = std::make_unique<Aktarici>(port, gecikme);
+        ida::sil::Ayarlar ka;
+        ka.a1_port = ak->port();
+        ka.a1_tohum = tohum;
+        ka.gunluk = 0;
+        kosucu = std::make_unique<ida::sil::Kosucu>(ka);
+        is = std::thread([&] { (void)kosucu->calistir(); });
+    };
+    ida::sunucu::Sonuc s = ida::sunucu::kos(b);
+    if (kosucu) {
+        kosucu->durdur();
+    }
+    if (is.joinable()) {
+        is.join();
+    }
+    ayrilan = ak ? ak->ayrilan() : 0u;
+    ak.reset();
+    return s;
+}
+
+std::string ilk_fark(const std::string& x, const std::string& y)
+{
+    std::size_t i = 0;
+    while (i < x.size() && i < y.size() && x[i] == y[i]) {
+        ++i;
+    }
+    if (i == x.size() && i == y.size()) {
+        return "";
+    }
+    const std::size_t bas = x.rfind('\n', i) == std::string::npos ? 0 : x.rfind('\n', i) + 1;
+    return " (ilk fark: satır '" + x.substr(bas, std::min<std::size_t>(60, x.size() - bas)) + "…')";
+}
+
+// W4-K14: ACTUATOR'dan sonraki çıktılar farklı gecikmelerle geldiğinde CSV değişmez; süreç
+// içi karşı tarafla da aynıdır.
+int test_sil_gecikmeli_tcp()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 8.0;
+    const ida::sunucu::Sonuc ic = ida::sunucu::kos(a);
+    dogrula(ic.tamam, "süreç içi koşu " + ic.hata);
+    std::uint64_t ay0 = 0, ay1 = 0, ay2 = 0;
+    const ida::sunucu::Sonuc t0 = aktarici_ile_kos(a, [](std::uint64_t) { return std::int64_t{0}; }, ay0);
+    const ida::sunucu::Sonuc t1 = aktarici_ile_kos(
+        a, [](std::uint64_t k) { return static_cast<std::int64_t>((k * 7919u) % 4u) * 700; }, ay1);
+    const ida::sunucu::Sonuc t2 = aktarici_ile_kos(
+        a, [](std::uint64_t k) { return static_cast<std::int64_t>((k * 104729u) % 5u) * 450 + 100; }, ay2);
+    dogrula(t0.tamam && t1.tamam && t2.tamam, "üç aktarıcılı koşu tamamlandı " + t0.hata + t1.hata + t2.hata);
+    dogrula(ay1 > 1000u && ay2 > 1000u, "ACTUATOR sonrası çıktılar ayrı teslim edildi (" + std::to_string(ay1) + ", " +
+                                            std::to_string(ay2) + " kez)");
+    dogrula(t0.csv == ic.csv, "gecikmesiz TCP = süreç içi CSV" + ilk_fark(ic.csv, t0.csv));
+    dogrula(t1.csv == ic.csv, "gecikme düzeni 1 (0–2,1 ms) = süreç içi CSV" + ilk_fark(ic.csv, t1.csv));
+    dogrula(t2.csv == ic.csv, "gecikme düzeni 2 (0,1–1,9 ms) = süreç içi CSV" + ilk_fark(ic.csv, t2.csv));
+    dogrula(t1.sayac.calistirma_gecersiz == 0u && t2.sayac.calistirma_gecersiz == 0u, "çalıştırmalar geçerli");
+    return 0;
+}
+
+// W4-K14: iki süreçli (ida_sil programı) iki koşu bayt bayt aynı CSV; süreç içiyle de aynı.
+int test_sil_iki_surec(const char* sil_yolu)
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 20.0;
+    const ida::sunucu::Sonuc ic = ida::sunucu::kos(a);
+    ida::sunucu::Ayar b = a;
+    b.karsi = ida::sunucu::Karsi::tcp;
+    b.sil_yolu = sil_yolu;
+    const ida::sunucu::Sonuc s1 = ida::sunucu::kos(b);
+    const ida::sunucu::Sonuc s2 = ida::sunucu::kos(b);
+    dogrula(ic.tamam && s1.tamam && s2.tamam, "koşular tamamlandı " + s1.hata + s2.hata);
+    dogrula(!s1.csv.empty() && s1.csv == s2.csv,
+            "iki süreçli iki koşu aynı CSV (" + std::to_string(s1.csv.size()) + " bayt)" + ilk_fark(s1.csv, s2.csv));
+    dogrula(s1.csv == ic.csv, "iki süreçli = süreç içi CSV" + ilk_fark(ic.csv, s1.csv));
+    return 0;
+}
+
 int test_acil_durdurma()
 {
     ida::sunucu::Ayar a;
@@ -426,6 +634,15 @@ int test_hil_pty()
                 static_cast<unsigned long long>(s.sayac.son_tarih_kacirildi),
                 static_cast<unsigned long long>(s.sayac.esz_guvenli_uygulanan),
                 static_cast<unsigned long long>(s.sayac.cagri_cakismasi), s.sayac.calistirma_gecersiz);
+    std::printf("  karttan seq: sıra dışı %llu, kayıp %llu (çalıştırma oturumunda)\n",
+                static_cast<unsigned long long>(z.rx_sira_disi_kosu), static_cast<unsigned long long>(z.rx_kayip_kosu));
+    for (std::uint32_t j = 0; j < s.sayac.eszamansiz_kayit_n && j < s.sayac.eszamansiz_kayit.size(); ++j) {
+        const auto& e = s.sayac.eszamansiz_kayit[j];
+        std::printf("  TANI: A1-K79'a sayılan eşzamansız güvenli çıktı: sınır %llu, out_seq %u, act_flags 0x%x, "
+                    "önceki out_seq %u, olağan yanıt alınmıştı %d\n",
+                    static_cast<unsigned long long>(e.adim), e.out_seq, static_cast<unsigned>(e.act_flags),
+                    e.onceki_out_seq, e.ilk_yanit_alindi ? 1 : 0);
+    }
     dogrula(z.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + std::to_string(z.tf_sayisi) + ")");
     dogrula(s.sayac.alan_ret == 0u && s.sayac.bag_ret == 0u, "Tablo 4.6 retleri yok");
     return 0;
@@ -492,7 +709,7 @@ int test_hil_cikarma_takma()
 int main(int argc, char** argv)
 {
     if (argc < 2) {
-        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|a4_girdi_esitligi|acil_durdurma|hil_pty|hil_cikarma_takma>\n");
+        std::printf("kullanım: ida_butunleme_test <z1_sil_ic|z1_belirlenim|z1_sil_tcp <ida_sil>|a4_girdi_esitligi|sil_gecikmeli_tcp|sil_iki_surec <ida_sil>|acil_durdurma|hil_pty|hil_cikarma_takma>\n");
         return 2;
     }
     const std::string ad = argv[1];
@@ -502,6 +719,10 @@ int main(int argc, char** argv)
         (void)test_z1_belirlenim();
     } else if (ad == "z1_sil_tcp" && argc > 2) {
         (void)test_z1_sil_tcp(argv[2]);
+    } else if (ad == "sil_gecikmeli_tcp") {
+        (void)test_sil_gecikmeli_tcp();
+    } else if (ad == "sil_iki_surec" && argc > 2) {
+        (void)test_sil_iki_surec(argv[2]);
     } else if (ad == "a4_girdi_esitligi") {
         (void)test_a4_girdi_esitligi();
     } else if (ad == "acil_durdurma") {

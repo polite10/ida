@@ -78,6 +78,10 @@ set(_ida_kopru_testleri
   parti_butcesi  # sol B: #6 #9 #10 #12
   daraltici_kovasi  # sol B: #6 #9 #10 #12
   batch_seq_sarmasi  # sol B: #6 #9 #10 #12
+  sil_tampon_sonraki_act  # W4-K14 ve seq tanısı
+  sil_tampon_kapanis  # W4-K14 ve seq tanısı
+  sil_tampon_siniri  # W4-K14 ve seq tanısı
+  sira_tanisi  # W4-K14 ve seq tanısı
   yazma_sinirli  # sol B: #7 #8
   aygit_kalkti  # sol B: #7 #8
   bellek_tasima

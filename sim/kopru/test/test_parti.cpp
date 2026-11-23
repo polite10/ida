@@ -185,3 +185,144 @@ int test_batch_seq_sarmasi()
     DOGRULA(d, z.k.sayaclar().bag_ret == 0u && z.k.sayaclar().parti_kacirildi == 0u, "bağ reddi ve kaçırma yok");
     return d.hata;
 }
+
+// ---- W4-K14 (SIL): ACTUATOR(n)'den sonraki çerçeveler ACTUATOR(n + 1) ile ya da kapanışta ----
+
+namespace {
+
+mavlink_ida_cmd_result_t kabul_sonucu(std::uint32_t cmd_id, std::uint16_t sess)
+{
+    mavlink_ida_cmd_result_t r{};
+    r.cmd_id = cmd_id;
+    r.sess = sess;
+    r.kind = static_cast<std::uint8_t>(IDA_RES_ACK);
+    r.ack = static_cast<std::uint8_t>(IDAW_ACK_ACCEPTED);
+    return r;
+}
+
+}  // namespace
+
+// ACTUATOR'dan sonra gelen komut sonucu hemen işlenmez; sonraki ACTUATOR'la işlenir.
+int test_sil_tampon_sonraki_act()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    (void)z.periyot();
+    const std::uint32_t id = z.k.komut_basit(static_cast<std::uint8_t>(IDAW_CMD_TYPE_SET_MODE), 3, z.t);
+    (void)z.periyot();   // komut partide; kart ACTUATOR'ı yanıtlar
+    z.sk.yaz(MAVLINK_MSG_ID_IDA_CMD_RESULT, kabul_sonucu(id, z.sk.sess));
+    alisveris(z.k, z.sk, z.t);
+    DOGRULA(d, !z.k.komut_sonucu(id).has_value(), "ACTUATOR'dan sonra gelen sonuç tamponda");
+    for (int j = 0; j < 4; ++j) {
+        z.sinir_ilerle();
+    }
+    DOGRULA(d, !z.k.komut_sonucu(id).has_value(), "sınırlarda işlenmez (geliş zamanından bağımsız)");
+    (void)z.periyot();   // sonraki ACTUATOR
+    const auto r = z.k.komut_sonucu(id);
+    DOGRULA(d, r && r->ack == IDAW_ACK_ACCEPTED && !r->yerel, "sonraki ACTUATOR'la işlendi");
+    DOGRULA(d, z.k.sayaclar().sil_tampon_en_cok >= 1u, "tampon kullanıldı");
+    return d.hata;
+}
+
+// Oturum sonunda tampon kapanışta işlenir: son komut sonucu kaybolmaz (LINK_SESSION_END değil).
+int test_sil_tampon_kapanis()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    (void)z.periyot();
+    const std::uint32_t id = z.k.komut_basit(static_cast<std::uint8_t>(IDAW_CMD_TYPE_SET_MODE), 3, z.t);
+    (void)z.periyot();
+    z.sk.yaz(MAVLINK_MSG_ID_IDA_CMD_RESULT, kabul_sonucu(id, z.sk.sess));
+    alisveris(z.k, z.sk, z.t);
+    DOGRULA(d, !z.k.komut_sonucu(id).has_value(), "son sonuç tamponda");
+    z.k.oturum_kapat(static_cast<std::uint8_t>(IDAW_CLOSE_REASON_RUN_END), z.t);
+    const auto r = z.k.komut_sonucu(id);
+    DOGRULA(d, r && r->ack == IDAW_ACK_ACCEPTED && !r->yerel,
+            "kapanışta işlendi (ack " + s(r ? r->ack : 0u) + ", neden " + s(r ? r->reason : 0u) + ")");
+    DOGRULA(d, z.k.sayaclar().komut_sonucsuz == 0u, "LINK_SESSION_END ile kapanan komut yok");
+    return d.hata;
+}
+
+// Tampon sınırı: ACTUATOR gelmeden 128'den çok çerçeve → protokol hatasıyla oturum sonu;
+// tampondakiler atılmaz, kapanışta işlenir.
+int test_sil_tampon_siniri()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    (void)z.periyot();
+    mavlink_ida_keepalive_t k{};
+    k.sess = z.sk.sess;
+    k.state = 2;
+    for (int j = 0; j < 128; ++j) {
+        z.sk.yaz(MAVLINK_MSG_ID_IDA_KEEPALIVE, k);
+    }
+    alisveris(z.k, z.sk, z.t);
+    DOGRULA(d, z.k.durum() == OturumDurumu::kosuyor && z.k.sayaclar().sil_tampon_tasma == 0u, "128 çerçeve sığar");
+    mavlink_ida_status_t st{};
+    st.sess = z.sk.sess;
+    st.batch_seq = 0xABCDu;
+    z.sk.yaz(MAVLINK_MSG_ID_IDA_STATUS, st);
+    const std::uint16_t eski_sess = z.k.sess();
+    alisveris(z.k, z.sk, z.t);   // oturum biter; sahte kart yeni el sıkışmayı hemen yanıtlar
+    const Sayaclar& sy = z.k.sayaclar();
+    DOGRULA(d, sy.sil_tampon_tasma == 1u && z.k.sess() != eski_sess, "129. çerçevede oturum bitti (yeni oturum kuruldu)");
+    DOGRULA(d, !z.sk.kapanis_nedenleri.empty() && z.sk.kapanis_nedenleri.back() == IDAW_CLOSE_REASON_PROTOCOL,
+            "IDA_SESSION_CLOSE(PROTOCOL) gönderildi");
+    DOGRULA(d, (sy.calistirma_gecersiz & kGecPlanlanmamisBitis) != 0u && sy.oturum_kopma == 1u,
+            "planlanmamış bitiş (A1-K79)");
+    DOGRULA(d, z.k.kart().durum.var && z.k.kart().durum.batch_seq == 0xABCDu && sy.sil_tampon_atilan == 0u,
+            "tampondaki son çerçeve de işlendi (sessiz atma yok)");
+    return d.hata;
+}
+
+// Seq tanısı: sıra dışı gelen çerçeve kayıptan ayrılır (32'lik pencere).
+int test_sira_tanisi()
+{
+    Denetci d;
+    KopruAyari ka;
+    ka.kip = CalistirmaKipi::hil_1x;   // tampon yok; tanı kipten bağımsız
+    SahteDuzenek z(ka);
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    mavlink_ida_keepalive_t k{};
+    k.sess = z.sk.sess;
+    k.state = 2;
+    auto cerceve = [&] {
+        z.sk.yaz(MAVLINK_MSG_ID_IDA_KEEPALIVE, k);
+        std::vector<std::uint8_t> v;
+        v.swap(z.sk.giden);
+        return v;
+    };
+    auto ver = [&](const std::vector<std::uint8_t>& v) { z.k.al(v.data(), v.size(), z.t); };
+    // A, C, B: B sıra dışı.
+    const auto a = cerceve();
+    const auto b = cerceve();
+    const auto c = cerceve();
+    ver(a);
+    ver(c);
+    ver(b);
+    DOGRULA(d, z.k.sayaclar().rx_sira_disi == 1u && z.k.sayaclar().rx_kayip == 0u,
+            "sıra dışı 1, kayıp 0 (" + s(z.k.sayaclar().rx_sira_disi) + "/" + s(z.k.sayaclar().rx_kayip) + ")");
+    // Bir çerçeve hiç gelmez; en büyük seq onu 32'den çok geçince kayıp sayılır.
+    (void)cerceve();
+    for (int j = 0; j < 32; ++j) {
+        ver(cerceve());
+    }
+    DOGRULA(d, z.k.sayaclar().rx_kayip == 0u, "pencerede (32 geride): henüz kayıp değil");
+    ver(cerceve());
+    DOGRULA(d, z.k.sayaclar().rx_kayip == 1u && z.k.sayaclar().rx_sira_disi == 1u,
+            "pencereden çıkınca kayıp 1 (" + s(z.k.sayaclar().rx_kayip) + ")");
+    // Büyük atlama: 40 çerçeve gelmez → hepsi kayıp (pencere dışı 8 hemen, 32 sonra).
+    for (int j = 0; j < 40; ++j) {
+        (void)cerceve();
+    }
+    ver(cerceve());
+    for (int j = 0; j < 32; ++j) {
+        ver(cerceve());
+    }
+    DOGRULA(d, z.k.sayaclar().rx_kayip == 41u, "büyük atlama: kayıp 41 (" + s(z.k.sayaclar().rx_kayip) + ")");
+    DOGRULA(d, z.k.durum() == OturumDurumu::kosuyor, "davranış değişmedi (A1-K08)");
+    return d.hata;
+}

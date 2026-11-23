@@ -83,7 +83,10 @@ int test_on_bin_parti()
             "çekirdek örnek reddetmedi (A4-K33): " + s(ki.sample_rejected) + "/" + s(ki.sample_future) + "/" +
                 s(ki.imu_rejected));
     DOGRULA(d, z.k->kart().sayac.var && z.k->kart().sayac.sample_rejected == 0u, "IDA_CORE_COUNTERS alındı");
-    DOGRULA(d, sy.cagri_izi == 10'000u, "her çağrının izi alındı (" + s(sy.cagri_izi) + ")");
+    // W4-K14 (SIL): ACTUATOR dışı çıktı sonraki ACTUATOR'la işlenir; son çağrınınki kapanışta.
+    DOGRULA(d, sy.cagri_izi == 9'999u, "son çağrı dışında her çağrının izi işlendi (" + s(sy.cagri_izi) + ")");
+    z.k->oturum_kapat(static_cast<std::uint8_t>(IDAW_CLOSE_REASON_RUN_END), z.t);
+    DOGRULA(d, z.k->sayaclar().cagri_izi == 10'000u, "kapanışta son izi de işlendi (" + s(z.k->sayaclar().cagri_izi) + ")");
     return d.hata;
 }
 

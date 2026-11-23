@@ -110,6 +110,24 @@ struct Sayaclar {
     std::uint64_t kritik_erteleme = 0;           // A1-K113: kayan kritik üye
     std::uint64_t kritik_erteleme_en_buyuk = 0;  // en büyük kayma (parti)
     std::uint64_t eszamansiz_ilk_parti_oncesi = 0;  // W4-K6: uygulandı, A1-K79'a sayılmadı
+    // Tanı (yinelenemeyen 0x20 gözlemi): A1-K79'a sayılan ilk dört eşzamansız güvenli çıktı.
+    struct EszKaydi {
+        std::uint64_t adim = 0;            // uygulandığı fizik sınırı
+        std::uint32_t out_seq = 0;
+        std::uint16_t act_flags = 0;
+        std::uint32_t onceki_out_seq = 0;  // ondan önce uygulanan son çıktı
+        bool ilk_yanit_alindi = false;
+    };
+    std::array<EszKaydi, 4> eszamansiz_kayit{};
+    std::uint32_t eszamansiz_kayit_n = 0;
+    // W4-K14 (SIL): ACTUATOR'dan sonraki çerçevelerin tamponu.
+    std::uint64_t sil_tampon_en_cok = 0;         // en büyük doluluk (çerçeve)
+    std::uint64_t sil_tampon_tasma = 0;          // sınır aşıldı: protokol hatasıyla oturum sonu
+    std::uint64_t sil_tampon_atilan = 0;         // tampon işlenirken oturum bitti: kalan çerçeveler
+    // Tanı (A1-K08'e göre davranış değişmez): karttan gelen başlık seq'inde sıra dışılık ile
+    // kaybı ayırır. Son görülen en büyük seq'in gerisinde 32 numaralık pencere: atlanan numara
+    // sonradan gelirse sira_disi, gelmeden pencereden çıkarsa kayip. Yeni oturumda sıfırlanır.
+    std::uint64_t rx_sira_disi = 0, rx_kayip = 0;
     std::uint64_t estop_iptal = 0;              // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
     std::uint64_t emniyet_rev_eslesmedi = 0;     // W4-K12: uygun revizyon bulunamadı
     std::uint64_t emniyet_rev_geri = 0;          // W4-K4: revizyonu durumuna göre geri alınan emniyet örneği

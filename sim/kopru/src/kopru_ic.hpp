@@ -196,6 +196,19 @@ struct Kopru::Ic {
     std::vector<mavlink_ida_actuator_t> esz_bekleyen;
     std::set<std::uint32_t> esz_muaf;       // W4-K6: ilk parti öncesi eşzamansız çıktıların out_seq'i
     bool ilk_yanit_alindi = false;          // bu oturumda olağan yanıt alındı
+    // W4-K14 (SIL; A1-K121 (ii) okuması): KOSUYOR'da ACTUATOR, SESSION_CLOSE ve BOARD_HELLO
+    // dışındaki çerçeveler tamponlanır; sonraki ACTUATOR alındığında ondan önce, oturum sonunda
+    // kapanışta işlenir. Sınır: bir çağrının ACTUATOR dışı çıktısı en çok Q_ii = 64 zorunlu-
+    // güvenilir çerçeve + R_iii = 500 B kaybedilebilir sınıf (≥ 12 B'lık çerçevelerle < 42);
+    // 128 bunun üstündedir. Aşılırsa protokol hatasıyla oturum sonu (atılmaz).
+    static constexpr std::size_t kSilTamponAzami = 128;
+    std::vector<ida_link_cerceve_t> sil_tampon;
+    std::vector<ida_link_cerceve_t> sil_isle;
+    bool sil_tampon_isleniyor = false;
+    // Seq tanısı (Sayaclar::rx_sira_disi, rx_kayip).
+    bool sira_var = false;
+    std::uint8_t sira_en = 0;
+    std::uint32_t sira_maske = 0;   // bit k: seq (sira_en − 1 − k) bekleniyor
     bool sinir_var = false;
     std::uint64_t son_sinir = 0;
     bool out_seq_var = false;
@@ -290,6 +303,9 @@ struct Kopru::Ic {
     void el_sikis(std::int64_t duvar_ns);
     void hello_isle(const mavlink_ida_board_hello_t& h);
     void kart_cercevesi(const ida_link_cerceve_t& c);
+    void cerceve_al(const ida_link_cerceve_t& c);
+    void sil_tampon_bosalt();
+    void sira_izle(std::uint8_t seq);
     bool tf_gonderildi(std::uint32_t seq) const;
     std::int64_t tf_zamani(std::uint32_t seq) const;
     bool yanit_al(const mavlink_ida_actuator_t& m);   // false: reddedildi (A1-K109, K72)

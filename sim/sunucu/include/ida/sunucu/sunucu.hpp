@@ -126,6 +126,7 @@ struct ZamanOlcumu {
     // (el sıkışma, hazırlık ve REBOOT sırasındakiler hariç).
     // SESSION_CLOSE gönderiminde dondurulur.
     std::uint64_t rx_crc_kosu = 0, rx_resync_kosu = 0, rx_seq_gap_kosu = 0;
+    std::uint64_t rx_sira_disi_kosu = 0, rx_kayip_kosu = 0;   // seq tanısı (Sayaclar::rx_sira_disi, rx_kayip)
     std::vector<std::int64_t> sira_boslugu_t_ns;   // oturum içi ilk üç sıra boşluğunun sim zamanı
 };
 

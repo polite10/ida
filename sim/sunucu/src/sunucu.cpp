@@ -9,6 +9,7 @@
 #include "yardimci.hpp"
 
 #include <algorithm>
+#include <deque>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -301,7 +302,14 @@ private:
     bool onceki_estop_ = false;       // satırın adımının (t − h, t] acil durdurma durumu
     std::uint32_t id_arm_ = 0, id_kip_ = 0, id_sp_ = 0, id_sp2_ = 0, id_disarm_ = 0;
     std::int64_t t_disarm_istek_ = -1;
-    bool satir_bekliyor_ = false;
+    std::deque<std::size_t> bekleyen_satir_;   // kart tarafı doldurulmamış satırlar (sırayla)
+    void satirlari_tamamla(std::size_t birak)
+    {
+        while (bekleyen_satir_.size() > birak) {
+            satir_tamamla(s_.satirlar[bekleyen_satir_.front()]);
+            bekleyen_satir_.pop_front();
+        }
+    }
     std::int64_t son_tf_yazim_ = -1;
     std::int64_t w0_ = 0;
 };
@@ -661,8 +669,8 @@ void Calistirici::adim_sonrasi(std::uint64_t b)
 
 void Calistirici::satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq)
 {
-    if (satir_bekliyor_) {
-        satir_tamamla(s_.satirlar.back());
+    if (a_.kip == Kip::hil) {
+        satirlari_tamamla(0);
     }
     const fizik::DurumAnlik& d = dn_.durum();
     Satir r;
@@ -684,14 +692,16 @@ void Calistirici::satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq)
     r.tau_n = d.itici_kuvvet_momenti[5];
     r.estop = onceki_estop_ ? 1u : 0u;
     s_.satirlar.push_back(r);
-    satir_bekliyor_ = true;
+    bekleyen_satir_.push_back(s_.satirlar.size() - 1u);
 }
 
-// Kart tarafı alanları bir parti sonra doldurulur (yanıt ve telemetri o ana kadar gelmiştir;
-// SIL'de veri sırasına bağlı ve belirlenimci).
+// Kart tarafı alanları bir parti sonra doldurulur. HIL: sonraki partinin gönderiminde (yanıt ve
+// telemetri o ana kadar gelmiştir). SIL (W4-K14): sonraki partinin ACTUATOR'ı alındıktan sonra;
+// köprü n. çağrının ACTUATOR dışı çıktısını ACTUATOR(n + 1) ile işler, böylece satır n çağrı
+// n'in telemetrisini geliş zamanından bağımsız taşır. Son satır kapanıştan önce, o anda
+// işlenmiş durumla (ACTUATOR(N) ve çağrı N − 1'in çıktısı) tamamlanır.
 void Calistirici::satir_tamamla(Satir& r)
 {
-    satir_bekliyor_ = false;
     const auto y = r.parti_var ? k_->yanit(r.parti) : std::nullopt;
     if (y) {
         r.yanit_var = 1;
@@ -1006,8 +1016,11 @@ Sonuc Calistirici::kos()
             const std::int64_t e_s = gercek();
             satir_ekle(b, gon);
             evre_[kEvreSatir] += gercek() - e_s;
-            if (a_.kip == Kip::sil && gon && !yuva_bekle(seq)) {
-                break;
+            if (a_.kip == Kip::sil) {
+                if (gon && !yuva_bekle(seq)) {
+                    break;
+                }
+                satirlari_tamamla(gon ? 1u : 0u);   // W4-K14: önceki satır ACTUATOR(n)'den sonra
             }
         } else {
             yaz();
@@ -1029,9 +1042,7 @@ Sonuc Calistirici::kos()
     } else {
         bekle_ve_oku(gercek() + 20 * kMs);
     }
-    if (satir_bekliyor_) {
-        satir_tamamla(s_.satirlar.back());
-    }
+    satirlari_tamamla(0);
     // Oturum içi çerçeve sayaçları SESSION_CLOSE gönderiminden önce dondurulur (kart oturum
     // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
     const kopru::Sayaclar rx_son = k_->sayaclar();
@@ -1102,6 +1113,8 @@ Sonuc Calistirici::kos()
         z.rx_crc_kosu = rx_son.rx_crc_err - rx_bas.rx_crc_err;
         z.rx_resync_kosu = rx_son.rx_resync_bytes - rx_bas.rx_resync_bytes;
         z.rx_seq_gap_kosu = rx_son.rx_seq_gap - rx_bas.rx_seq_gap;
+        z.rx_sira_disi_kosu = rx_son.rx_sira_disi - rx_bas.rx_sira_disi;
+        z.rx_kayip_kosu = rx_son.rx_kayip - rx_bas.rx_kayip;
         const std::vector<std::int64_t>& bt = k_->sira_boslugu_zamanlari();
         for (std::size_t j = static_cast<std::size_t>(rx_bas.rx_seq_gap);
              j < static_cast<std::size_t>(rx_son.rx_seq_gap) && j < bt.size() && z.sira_boslugu_t_ns.size() < 3u; ++j) {

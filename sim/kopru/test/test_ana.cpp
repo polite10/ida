@@ -20,6 +20,10 @@ int test_sim_gecikmesi();
 int test_parti_butcesi();
 int test_daraltici_kovasi();
 int test_batch_seq_sarmasi();
+int test_sil_tampon_sonraki_act();
+int test_sil_tampon_kapanis();
+int test_sil_tampon_siniri();
+int test_sira_tanisi();
 int test_emniyet_capraz_alan();
 int test_emniyet_izin_acik();
 int test_yinelenen_yanit_olay();
@@ -58,6 +62,10 @@ const Test kTestler[] = {
     {"parti_butcesi", test_parti_butcesi},
     {"daraltici_kovasi", test_daraltici_kovasi},
     {"batch_seq_sarmasi", test_batch_seq_sarmasi},
+    {"sil_tampon_sonraki_act", test_sil_tampon_sonraki_act},
+    {"sil_tampon_kapanis", test_sil_tampon_kapanis},
+    {"sil_tampon_siniri", test_sil_tampon_siniri},
+    {"sira_tanisi", test_sira_tanisi},
     {"emniyet_capraz_alan", test_emniyet_capraz_alan},
     {"emniyet_izin_acik", test_emniyet_izin_acik},
     {"yinelenen_yanit_olay", test_yinelenen_yanit_olay},

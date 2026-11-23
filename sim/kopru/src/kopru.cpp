@@ -7,6 +7,7 @@
 #include "ida/sensor/rastgele.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <random>
 
@@ -136,6 +137,8 @@ void Kopru::Ic::el_sikis(std::int64_t duvar_ns)
 
 void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
 {
+    sil_tampon_bosalt();   // W4-K14: tampon kapanışta işlenir (son komut sonucu kaybolmaz)
+    sil_tampon.clear();
     const bool oturum_vardi = durum == OturumDurumu::kosuyor || durum == OturumDurumu::hazir;
     if (oturum_vardi) {
         oturum_sonu_bekliyor = true;   // izinler ve revizyon: sonraki sınırın (1). adımı
@@ -228,6 +231,7 @@ std::int64_t Kopru::Ic::tf_zamani(std::uint32_t seq) const
 
 void Kopru::Ic::hello_isle(const mavlink_ida_board_hello_t& h)
 {
+    sira_var = false;   // seq tanısı yeni oturumla başlar
     kart.boot_count = h.boot_count;
     kart.sessions_since_boot = h.sessions_since_boot;
     kart.param_blob_crc = h.param_blob_crc;
@@ -331,6 +335,92 @@ void Kopru::Ic::hello_isle(const mavlink_ida_board_hello_t& h)
 }
 
 // ---------------------------------------------------------------- Kart çerçeveleri
+
+// W4-K14: SIL'de sim ACTUATOR(n) ve saydığı olaylar alınınca ilerler; ACTUATOR(n)'den sonra
+// gelen çerçeveler ACTUATOR(n + 1) alınınca (oturum sonunda kapanışta) işlenir. A1-K90 sırası
+// gereği ACTUATOR(n + 1)'den önceki her çerçeve o anda gelmiştir: işlenme anı geliş zamanından
+// bağımsızdır. ACTUATOR(n + 1)'in saydığı yeni olaylar ondan önce gelir ve onunla işlenir.
+void Kopru::Ic::cerceve_al(const ida_link_cerceve_t& fr)
+{
+    sira_izle(fr.seq);
+    if (a.kip != CalistirmaKipi::sil || durum != OturumDurumu::kosuyor) {
+        kart_cercevesi(fr);
+        return;
+    }
+    if (fr.msgid == MAVLINK_MSG_ID_IDA_ACTUATOR || fr.msgid == MAVLINK_MSG_ID_IDA_SESSION_CLOSE ||
+        fr.msgid == MAVLINK_MSG_ID_IDA_BOARD_HELLO) {
+        sil_tampon_bosalt();
+        kart_cercevesi(fr);
+        return;
+    }
+    sil_tampon.push_back(fr);
+    say.sil_tampon_en_cok = std::max<std::uint64_t>(say.sil_tampon_en_cok, sil_tampon.size());
+    if (sil_tampon.size() > kSilTamponAzami) {
+        // Protokol hatası (A1-K23): oturum biter; tampon kapanışta işlenir (sessiz atma yok).
+        ++say.sil_tampon_tasma;
+        mavlink_ida_session_close_t kapanis{};
+        kapanis.sess = sess_;
+        kapanis.reason = static_cast<std::uint8_t>(IDAW_CLOSE_REASON_PROTOCOL);
+        giden.clear();
+        cerceve(MAVLINK_MSG_ID_IDA_SESSION_CLOSE, &kapanis, sizeof kapanis);
+        oturum_bitti(false, true);
+    }
+}
+
+void Kopru::Ic::sil_tampon_bosalt()
+{
+    if (sil_tampon_isleniyor || sil_tampon.empty()) {
+        return;
+    }
+    sil_tampon_isleniyor = true;
+    sil_isle.swap(sil_tampon);   // iki vektör: döngüde yeniden ayırma yok
+    sil_tampon.clear();
+    std::size_t j = 0;
+    for (; j < sil_isle.size(); ++j) {
+        if (durum != OturumDurumu::kosuyor) {
+            break;   // işlenen bir çerçeve oturumu bitirdi: kalanlar biten oturumundur
+        }
+        kart_cercevesi(sil_isle[j]);
+    }
+    say.sil_tampon_atilan += sil_isle.size() - j;
+    sil_isle.clear();
+    sil_tampon_isleniyor = false;
+}
+
+void Kopru::Ic::sira_izle(std::uint8_t seq)
+{
+    if (!sira_var) {
+        sira_var = true;
+        sira_en = seq;
+        sira_maske = 0;
+        return;
+    }
+    const auto ileri = static_cast<std::uint8_t>(seq - sira_en);
+    if (ileri == 0u) {
+        return;   // yineleme
+    }
+    if (ileri < 128u) {
+        const unsigned d = ileri;
+        const unsigned atlanan = d - 1u;
+        if (d >= 32u) {
+            say.rx_kayip += static_cast<std::uint64_t>(std::popcount(sira_maske));
+            const unsigned pencerede = std::min(atlanan, 32u);
+            say.rx_kayip += atlanan - pencerede;
+            sira_maske = pencerede >= 32u ? 0xFFFFFFFFu : ((1u << pencerede) - 1u);
+        } else {
+            const std::uint32_t cikan = sira_maske >> (32u - d);
+            say.rx_kayip += static_cast<std::uint64_t>(std::popcount(cikan));
+            sira_maske = static_cast<std::uint32_t>((sira_maske << d) | ((1u << atlanan) - 1u));
+        }
+        sira_en = seq;
+        return;
+    }
+    const unsigned k = static_cast<std::uint8_t>(sira_en - seq) - 1u;
+    if (k < 32u && ((sira_maske >> k) & 1u) != 0u) {
+        ++say.rx_sira_disi;
+        sira_maske &= ~(1u << k);
+    }
+}
 
 void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
 {
@@ -642,7 +732,7 @@ void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
             while (i.sira_boslugu_t.size() < i.alici.sayac.rx_seq_gap && i.sira_boslugu_t.size() < 1024u) {
                 i.sira_boslugu_t.push_back(i.sinir_var ? static_cast<std::int64_t>(i.son_sinir) * kH : 0);
             }
-            i.kart_cercevesi(fr);
+            i.cerceve_al(fr);
         } else {
             break;
         }

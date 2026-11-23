@@ -139,7 +139,8 @@ int main(int argc, char** argv)
     if (a.gunluk >= 1) {
         std::fprintf(stderr,
                      "ida_sim: %s; parti %llu, kaçırılan %llu, geç yanıt %llu, yinelenen %llu, alan/bağ reddi %llu/%llu, "
-                     "oturum %llu, kopma %llu, hazırlık %llu, çalıştırma geçersiz 0x%x\n",
+                     "oturum %llu, kopma %llu, hazırlık %llu, çalıştırma geçersiz 0x%x; karttan seq: sıra dışı %llu, "
+                     "kayıp %llu (çalıştırma oturumunda %llu/%llu)\n",
                      s.tamam ? "tamam" : ("HATA: " + s.hata).c_str(),
                      static_cast<unsigned long long>(c.parti_gonderilen),
                      static_cast<unsigned long long>(c.parti_kacirildi),
@@ -147,7 +148,18 @@ int main(int argc, char** argv)
                      static_cast<unsigned long long>(c.yanit_ret_yinelenen),
                      static_cast<unsigned long long>(c.alan_ret), static_cast<unsigned long long>(c.bag_ret),
                      static_cast<unsigned long long>(c.oturum_kurulan), static_cast<unsigned long long>(c.oturum_kopma),
-                     static_cast<unsigned long long>(s.hazirlik_oturumu), c.calistirma_gecersiz);
+                     static_cast<unsigned long long>(s.hazirlik_oturumu), c.calistirma_gecersiz,
+                     static_cast<unsigned long long>(c.rx_sira_disi), static_cast<unsigned long long>(c.rx_kayip),
+                     static_cast<unsigned long long>(s.zaman.rx_sira_disi_kosu),
+                     static_cast<unsigned long long>(s.zaman.rx_kayip_kosu));
+        for (std::uint32_t j = 0; j < c.eszamansiz_kayit_n && j < c.eszamansiz_kayit.size(); ++j) {
+            const auto& e = c.eszamansiz_kayit[j];
+            std::fprintf(stderr,
+                         "ida_sim: tanı: A1-K79'a sayılan eşzamansız güvenli çıktı: sınır %llu (%.4f s), out_seq %u, "
+                         "act_flags 0x%x, önceki uygulanan out_seq %u, oturumda olağan yanıt alınmıştı %d\n",
+                         static_cast<unsigned long long>(e.adim), 1.25e-3 * static_cast<double>(e.adim), e.out_seq,
+                         static_cast<unsigned>(e.act_flags), e.onceki_out_seq, e.ilk_yanit_alindi ? 1 : 0);
+        }
         if (a.senaryo == "z1") {
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",
                          s.arm_ack, s.arm_neden, s.kip_ack, s.sp_ack, s.sp2_ack, s.disarm_ack);

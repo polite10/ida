@@ -61,6 +61,7 @@ struct SahteKart {
     std::vector<std::vector<std::uint32_t>> parti_uyeleri;
     std::vector<mavlink_ida_cmd_simple_t> komutlar;
     bool kabul_reddi = false;
+    std::vector<std::uint8_t> kapanis_nedenleri;   // alınan IDA_SESSION_CLOSE.reason
     std::uint8_t son_kabul = 0xFF;
     // TF gelince otomatik yanıt (true): THR_VALID, verilen darbe genişlikleri.
     bool oto_yanit = true;
@@ -177,6 +178,12 @@ struct SahteKart {
             } else {
                 kabul_reddi = true;
             }
+            break;
+        }
+        case MAVLINK_MSG_ID_IDA_SESSION_CLOSE: {
+            mavlink_ida_session_close_t k{};
+            (void)ida_link_coz(&c, c.msgid, &k, sizeof k);
+            kapanis_nedenleri.push_back(k.reason);
             break;
         }
         case MAVLINK_MSG_ID_IDA_TIME_FRAME: {

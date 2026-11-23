@@ -592,6 +592,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
             ++i.say.yanit_ret_eski_uretim;
             continue;
         }
+        const std::uint32_t onceki_out_seq = i.uygulanan_var ? i.son_uygulanan_out_seq : 0u;
         i.uygulanan_var = true;
         i.uygulanan_boot = i.kart.boot_count;
         i.son_uygulanan_out_seq = ad.m.out_seq;
@@ -601,6 +602,14 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
                 ++i.say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
             } else {
                 i.say.calistirma_gecersiz |= kGecEszamansiz;
+                if (i.say.eszamansiz_kayit_n < i.say.eszamansiz_kayit.size()) {
+                    Sayaclar::EszKaydi& e = i.say.eszamansiz_kayit[i.say.eszamansiz_kayit_n++];
+                    e.adim = adim_no;
+                    e.out_seq = ad.m.out_seq;
+                    e.act_flags = ad.m.act_flags;
+                    e.onceki_out_seq = onceki_out_seq;
+                    e.ilk_yanit_alindi = i.ilk_yanit_alindi;
+                }
             }
             // Kendinden önce üretilmiş, henüz uygulanmamış olağan yanıtları iptal eder.
             for (auto& [sq, y] : i.yuvalar) {
