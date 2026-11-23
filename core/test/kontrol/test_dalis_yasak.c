@@ -144,16 +144,21 @@ static void durus(ida_kon_girdi_t *g, float yalpa, float bas_kic, float yon)
     g->nav.q_nb[3] = (cr * cp * sy) - (sr * sp * cy);
 }
 
-/* Tahsisin gerçekleştirdiği kuvvetin (itki isteğinden) NED aşağı bileşeni. */
+/* Tahsisin gerçekleştirdiği kuvvetin (K.f'den, τ = B f) NED aşağı bileşeni. Kontrolün kendi
+   hesabıyla bit düzeyinde aynıdır: aynı kuaterniyon birimlemesi (ida_q_birimle), aynı R
+   (ida_q_dcm), aynı toplama sırası (kontrol.c ned_asagi) ve -ffp-contract=off. Bu yüzden
+   değişmez testte toleranssız (≤ sınır) karşılaştırılır. */
 static float gerceklesen_asagi(const ida_kon_girdi_t *g)
 {
     float ta[6];
     ida_tah_uret(&K.tah, K.f, ta);
+    ida_q_t qh;
+    qh.w = g->nav.q_nb[0];
+    qh.x = g->nav.q_nb[1];
+    qh.y = g->nav.q_nb[2];
+    qh.z = g->nav.q_nb[3];
     ida_q_t q;
-    q.w = g->nav.q_nb[0];
-    q.x = g->nav.q_nb[1];
-    q.y = g->nav.q_nb[2];
-    q.z = g->nav.q_nb[3];
+    TEST_ASSERT_TRUE(ida_q_birimle(qh, &q));
     const ida_m3_t r = ida_q_dcm(q);
     return (r.m[2][0] * ta[IDA_EKS_X]) + (r.m[2][1] * ta[IDA_EKS_Y]) + (r.m[2][2] * ta[IDA_EKS_Z]);
 }
@@ -171,7 +176,7 @@ static float tekrarla(ida_kon_girdi_t *g)
         TEST_ASSERT_EQUAL_UINT8(0u, K.cokme);
         const float a = gerceklesen_asagi(g);
         en_buyuk = (a > en_buyuk) ? a : en_buyuk;
-        TEST_ASSERT_TRUE_MESSAGE(a <= (tutma + 1.0e-3f), "yasakta gerçekleşen NED aşağı kuvvet tutmayı aştı");
+        TEST_ASSERT_TRUE_MESSAGE(a <= tutma, "yasakta gerçekleşen NED aşağı kuvvet tutmayı aştı");
         t += 5 * DS_MS;
     }
     return en_buyuk;
@@ -257,12 +262,99 @@ static void test_rastgele_durus_ve_istek_taramasi(void)
             ida_kon_hesapla(&K, &P, &g);
             const float a = gerceklesen_asagi(&g);
             en_buyuk = (a > en_buyuk) ? a : en_buyuk;
-            TEST_ASSERT_TRUE_MESSAGE((K.cokme != 0u) || (a <= (tutma + 1.0e-3f)),
+            TEST_ASSERT_TRUE_MESSAGE((K.cokme != 0u) || (a <= tutma),
                                      "rastgele taramada gerçekleşen NED aşağı kuvvet tutmayı aştı");
             t += 5 * DS_MS;
         }
     }
     TEST_ASSERT_TRUE(en_buyuk > 0.0f); /* tarama aşağı kuvvet sınırına gerçekten dayandı */
+}
+
+/* sol 4. tur: değişim hızı sınırlayıcısı etkinken yasak başlar. Düz duruş; önceki adımda dört
+   dikey itici 1,7050125 N (öteki itkiler 0); 5 ms sonra yasak başlar ve Z isteği tutmaya iner.
+   250 N/s sınırı tahsisi ≈ 1,8200498 N aşağıda bırakır (BUOY_FF ≈ 1,8200001 N). Değişmez
+   binary32'de toleranssız: gerçekleşen ≤ max(BUOY_FF, 0). */
+static void test_sol4_degisim_sinirlayicisi_etkinken_yasak_baslar(void)
+{
+    ida_kon_girdi_t g;
+    int64_t t = 1000 * DS_MS;
+    girdi(&g, t, 2.0f, 0.0f, 0u);
+    g.istek.derinlik = 2.0f;
+    ida_kon_hesapla(&K, &P, &g); /* tahsis önbelleği ve kanal durumu kurulur */
+    t += 5 * DS_MS;
+    girdi(&g, t, 2.0f, 0.0f, 0u);
+    g.istek.derinlik = 2.0f;
+    ida_kon_hesapla(&K, &P, &g);
+    for (uint32_t i = 0u; i < 8u; i++) {
+        K.f[i] = (i >= 4u) ? 1.7050125f : 0.0f; /* beyaz kutu: önceki tahsis */
+    }
+    K.i_w = 0.0f;
+    K.d_ref = 2.0f;
+    t += 5 * DS_MS;
+    girdi(&g, t, 2.0f, 0.0f, 1u);
+    ida_kon_hesapla(&K, &P, &g);
+    TEST_ASSERT_EQUAL_UINT8(0u, K.cokme);
+    const float a = gerceklesen_asagi(&g);
+    TEST_ASSERT_TRUE_MESSAGE(a <= prm(IDA_PRM_kon_yuzerlik_ff), "sınırlayıcı belleğiyle tutma aşıldı");
+}
+
+/* Rastgele tarama, geçişli: her blokta önce yasak yokken büyük aşağı istek (doğrudan Z ya da
+   derin hedef; değişim sınırlayıcısının belleği aşağı itkiyle dolar), sonra yasak başlar.
+   Yalnız yasaklı adımlar denetlenir; ölçüt toleranssız. */
+static void test_rastgele_gecisli_tarama(void)
+{
+    ds_rastgele_t r;
+    r.s = 0x5A31D4u;
+    const float tutma = prm(IDA_PRM_kon_yuzerlik_ff);
+    int64_t t = 1000 * DS_MS;
+    ida_kon_girdi_t g;
+    for (uint32_t blok = 0u; blok < 300u; blok++) {
+        const float d = aralik(&r, 0.5f, 3.0f);
+        const float yalpa = aralik(&r, -60.0f, 60.0f) * DERECE;
+        const float bas_kic = aralik(&r, -60.0f, 60.0f) * DERECE;
+        const float yon = aralik(&r, -3.1f, 3.1f);
+        const uint32_t n_once = 1u + (ds_rastgele(&r) % 20u);
+        for (uint32_t n = 0u; n < n_once; n++) {
+            girdi(&g, t, d, 0.0f, 0u);
+            durus(&g, yalpa, bas_kic, yon);
+            g.istek.yalpa = yalpa;
+            g.istek.bas_kic = bas_kic;
+            if ((blok % 2u) == 0u) {
+                g.istek.dikey = (uint8_t)IDA_KON_DIKEY_KUVVET;
+                g.istek.kuvvet[IDA_EKS_Z] = aralik(&r, 20.0f, 100.0f);
+            } else {
+                g.istek.derinlik = d + aralik(&r, 0.5f, 3.0f);
+            }
+            g.istek.yatay = (uint8_t)IDA_KON_YATAY_KUVVET;
+            g.istek.kuvvet[IDA_EKS_X] = aralik(&r, -60.0f, 60.0f);
+            g.istek.kuvvet[IDA_EKS_Y] = aralik(&r, -60.0f, 60.0f);
+            g.t_ns = t;
+            g.nav.t.ns = t;
+            ida_kon_hesapla(&K, &P, &g);
+            t += 5 * DS_MS;
+        }
+        for (uint32_t n = 0u; n < 20u; n++) {
+            girdi(&g, t, d, aralik(&r, -0.3f, 0.3f), 1u);
+            durus(&g, yalpa, bas_kic, yon);
+            g.istek.yalpa = yalpa;
+            g.istek.bas_kic = bas_kic;
+            g.istek.dikey = (uint8_t)(ds_rastgele(&r) % 3u);
+            g.istek.yatay = (uint8_t)(ds_rastgele(&r) % 2u);
+            g.istek.hiz[0] = aralik(&r, -1.5f, 1.5f);
+            g.istek.hiz[1] = aralik(&r, -1.5f, 1.5f);
+            g.istek.dikey_hiz = aralik(&r, -1.0f, 1.0f);
+            for (uint32_t j = 0u; j < 3u; j++) {
+                g.istek.kuvvet[j] = aralik(&r, -100.0f, 100.0f);
+            }
+            g.t_ns = t;
+            g.nav.t.ns = t;
+            ida_kon_hesapla(&K, &P, &g);
+            const float a = gerceklesen_asagi(&g);
+            TEST_ASSERT_TRUE_MESSAGE((K.cokme != 0u) || (a <= tutma),
+                                     "geçişli taramada gerçekleşen NED aşağı kuvvet tutmayı aştı");
+            t += 5 * DS_MS;
+        }
+    }
 }
 
 int main(void)
@@ -274,5 +366,7 @@ int main(void)
     RUN_TEST(test_sol_hiz_kanali_yalpa_bas_kic_30);
     RUN_TEST(test_sol_dogrudan_kuvvet_bas_kic_30);
     RUN_TEST(test_rastgele_durus_ve_istek_taramasi);
+    RUN_TEST(test_sol4_degisim_sinirlayicisi_etkinken_yasak_baslar);
+    RUN_TEST(test_rastgele_gecisli_tarama);
     return UNITY_END();
 }

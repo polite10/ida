@@ -634,14 +634,27 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
                   tau_a);
     if (yasak) {
         /* Tahsis sonrası (doyma, öncelik ve değişim hızı penceresi istenenden sapabilir;
-           EMNİYET): gerçekleşen NED aşağı kuvvet tutmayı aşıyorsa bütün itici kuvvetleri aynı
-           oranda küçültülür (tahsis doğrusal: τ = B f; aşağı bileşen de aynı oranda küçülür).
-           Değişim hızı penceresi bu durumda aşılabilir: emniyet önceliklidir. */
-        const float fa = ned_asagi(&r, tau_a);
-        if (fa > (tutma_z + 1.0e-4f)) {
-            const float o = tutma_z / fa; /* 0 ≤ o < 1 (tutma_z ≥ 0, fa > tutma_z) */
+           EMNİYET; sol 3. ve 4. tur): gerçekleşen NED aşağı kuvvet (τ = B f üzerinden) tutmayı
+           aşıyorsa bütün itici kuvvetleri aynı oranda küçültülür (tahsis doğrusal: aşağı bileşen
+           de aynı oranda küçülür). Tolerans yoktur: oran yuvarlama payıyla güvenli tarafta
+           (sınırın biraz altına) seçilir ve küçültmeden sonra gerçekleşen kuvvet yeniden
+           doğrulanır; dört denemede sağlanmazsa itki sıfırlanır (aşağı bileşen 0 ≤ tutma). Böylece
+           değişmez binary32 hesabında tam sağlanır: gerçekleşen ≤ max(BUOY_FF, 0). Değişim hızı
+           sınırlayıcısının belleği (önceki f[]) yasak başlarken bilinçli olarak korunur: yasaksız
+           eksenlerde (X, Y, moment) yumuşak geçiş sürer; aşağı yönü bu küçültme sınırlar. Değişim
+           hızı penceresi bu durumda aşılabilir: emniyet önceliklidir. */
+        float fa = ned_asagi(&r, tau_a);
+        for (uint32_t deneme = 0u; (deneme < 4u) && (fa > tutma_z); deneme++) {
+            const float o = (tutma_z / fa) * 0.999f; /* 0 ≤ o < 1 (tutma_z ≥ 0, fa > tutma_z) */
             for (uint32_t i = 0u; i < IDA_TAH_ITICI; i++) {
                 f[i] = f[i] * o;
+            }
+            ida_tah_uret(&k->tah, f, tau_a);
+            fa = ned_asagi(&r, tau_a);
+        }
+        if (fa > tutma_z) {
+            for (uint32_t i = 0u; i < IDA_TAH_ITICI; i++) {
+                f[i] = 0.0f; /* kesin üst sınır */
             }
             ida_tah_uret(&k->tah, f, tau_a);
         }
