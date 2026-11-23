@@ -36,6 +36,16 @@ static bool g_leak;   /* 10 Hz kuru sızıntı örneği */
 
 
 #define P_NS (5 * DS_MS)
+/* Düzeltmeden önceki sürümde (sol 3. tur) kontrol belleği referans sayacının eşitliğine
+   bağlıydı ve bu makro sayacı kontrolün son gördüğü değere getiriyordu
+   (C.gor.ref_kusak = C.kon.son_ref_kusak − 2 − C.gud.iptal; test o sürümde kaldı). Kontrol artık
+   kalıcı iptal mandalına (IDA_EMN_IPTAL_KON) bağlı olduğundan sayaç yoktur; tanı kuşağı yine de
+   sarma noktasına kurulur (karar vermediği gösterilir). */
+#define KONTROL_SAYAC_TURU() \
+    do { \
+        C.emn.kusak = 0xFFFFFFFFu; \
+        C.emn.kusak_tumleyen = 0u; \
+    } while (0)
 #define DIKEY_ESIK 0.10f /* tutmada beklenen dikey itki isteğinin üstü (ölü bant 0,065) */
 
 static ida_sample_t *ornek(uint8_t tur, uint32_t pencere)
@@ -247,6 +257,26 @@ static void test_b1_kusak_turu_eski_hedefi_canlandirmaz(void)
     asagi_itki_yok();
 }
 
+/* sol 3. tur bulgu 1: kontrol belleğinde sayaç turu. Silahlı, eski referans ≈ 2 m, bulunulan
+   1 m. Zaman çerçeveli bir tick'te (kontrol çalışmaz) daraltıcı kip DEPTH_HOLD gelir; görev
+   hedefi 1 m'den yakalar. Beyaz kutu: tick'ten önce referans sayacı, 2^32 benzer tick sonrasıyla
+   aynı yere (kontrolün son gördüğü değere) getirilir. Sonraki step eski d_ref'i kullanmamalı. */
+static void test_b1_kontrol_bellegi_sayac_turunda_yenilenir(void)
+{
+    hedefe_gidiyor();
+    TEST_ASSERT_TRUE(C.kon.d_ref > 1.8f); /* eski referans derinde */
+    KONTROL_SAYAC_TURU();
+    girdi_kur();
+    IN.imu_present = false; /* zaman çerçeveli tick */
+    IN.narrow.mask = (uint8_t)IDA_NARROW_MODE;
+    IN.narrow.mode = (uint8_t)IDA_MODE_DEPTH_HOLD;
+    IN.narrow.cmd_id[1] = ++g_id;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_tick(&C, &IN, &OUT));
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DEPTH_HOLD, OUT.status.mode);
+    TEST_ASSERT_TRUE(OUT.armed);
+    asagi_itki_yok();
+}
+
 /* Aynı çağrıda daraltmadan (DISARM mandalı, (b)) sonra işlenen GUIDED_SP geçerli yeni
    hedeftir: mandal temizlenir, yeni hedef saklanır ve ARM'dan sonra uygulanır. */
 static void test_b1_daraltmadan_sonra_gelen_hedef_gecerli(void)
@@ -339,6 +369,7 @@ int main(void)
     RUN_TEST(test_b1_reddedilen_disarm_sonra_arm);
     RUN_TEST(test_b1_kusak_turu_eski_hedefi_canlandirmaz);
     RUN_TEST(test_b1_daraltmadan_sonra_gelen_hedef_gecerli);
+    RUN_TEST(test_b1_kontrol_bellegi_sayac_turunda_yenilenir);
     RUN_TEST(test_b1_reddedilen_oturum_sonu_sonra_arm);
     RUN_TEST(test_b1_reddedilen_kip_daralmasi_sonra_guided);
     RUN_TEST(test_b2_hold_girisinde_asagi_itki_yok);

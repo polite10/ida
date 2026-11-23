@@ -56,13 +56,13 @@ typedef struct {
 
 static const kosul_ozellik_t OZELLIK[IDA_GOR_K_SAYI] = {
     /* SIZINTI        */ {IDA_FSR_LEAK, true, true},
-    /* SIZINTI_BAYAT  */ {IDA_FSR_LEAK, false, false},
+    /* SIZINTI_BAYAT  */ {IDA_FSR_LEAK, false, true},     /* W4-K13: veri yokken arm reddi */
     /* GCS_1          */ {IDA_FSR_GCS_LOSS, false, false},
     /* GCS_2          */ {IDA_FSR_GCS_LOSS, false, false},
     /* BATT_DUSUK     */ {IDA_FSR_BATT_LOW, true, true}, /* W3-K3 */
     /* BATT_KRIT      */ {IDA_FSR_BATT_CRIT, true, true},
     /* BATT_KRIT_2    */ {IDA_FSR_BATT_CRIT, true, true},
-    /* BATT_BAYAT     */ {IDA_FSR_BATT_LOW, false, false},
+    /* BATT_BAYAT     */ {IDA_FSR_BATT_LOW, false, true}, /* W4-K13: veri yokken arm reddi */
     /* EST_BOZUK      */ {IDA_FSR_EST_DEGRADED, false, false},
     /* EST_BOZUK_UZUN */ {IDA_FSR_EST_DEGRADED, false, false},
     /* EST_KOTU       */ {IDA_FSR_EST_BAD, true, true},

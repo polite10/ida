@@ -145,9 +145,11 @@ static void nav_goruntusu(ida_gor_t *g, const ida_gor_girdi_t *gi)
 
 /* Tutma hedefleri bulunulan durumdan yakalanır: silahlanmada, kip değişiminde ve arıza eylemi
    düzeyi değişiminde (her iki yönde; eski hedefe geri dönülmez). */
-static void tut_yakala(ida_gor_t *g)
+static void tut_yakala(ida_gor_t *g, ida_emn_t *yetki)
 {
-    g->ref_kusak = g->ref_kusak + 1u; /* kontrol eski hedefin referansını bırakır */
+    /* Kontrol eski hedefin referansını ve integrallerini bırakır: kalıcı mandal (sol 3. tur
+       bulgu 1; EMNİYET), kontrol belleğini sıfırlayınca temizler. */
+    yetki->hedef_iptal = (uint8_t)(yetki->hedef_iptal | IDA_EMN_IPTAL_KON);
     g->tut_derinlik_var = g->nav_derinlik_var;
     g->tut_derinlik = g->nav_derinlik;
     g->tut_yon_var = g->nav_yon_var;
@@ -235,7 +237,8 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     ida_gor_ariza_degerlendir(g, yetki, gi, gun);
     g->dalis_yasak = (g->etkin & IDA_GOR_K_BIT(IDA_GOR_K_SIZINTI_BAYAT)) != 0u;
     if (g->dalis_yasak && !g->onceki_dalis_yasak) {
-        g->ref_kusak = g->ref_kusak + 1u; /* derinlik hedefi bulunulan derinliğe kırpılır */
+        /* derinlik hedefi bulunulan derinliğe kırpılır: kontrol referansı da yenilenir */
+        yetki->hedef_iptal = (uint8_t)(yetki->hedef_iptal | IDA_EMN_IPTAL_KON);
     }
     g->onceki_dalis_yasak = g->dalis_yasak;
 
@@ -256,7 +259,7 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
        durumdan yeniden yakalanır. */
     if ((yetki->mode != g->son_kip) || (g->fs_level != onceki_fs) ||
         ((yetki->hedef_iptal & IDA_EMN_IPTAL_GOR) != 0u)) {
-        tut_yakala(g);
+        tut_yakala(g, yetki);
         tut_iptal_temizle(yetki);
     }
     g->son_kip = yetki->mode;
@@ -314,7 +317,7 @@ static void arm_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
     if (!yetki->armed) {
         yetki->armed = true;
         gunluk_yaz(gun, b->now_w.ns, (uint16_t)IDA_LOG_ARM_CHANGE, 1, 0);
-        tut_yakala(g);
+        tut_yakala(g, yetki);
     }
     kabul(r); /* zaten silahlıysa etkisiz (3.17) */
 }
@@ -335,7 +338,7 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
     if (h == (uint8_t)IDA_GOR_KIP_SILAHSIZ) {
         (void)ida_gor_kip_uygula(yetki, olay, gun, b->now_w.ns); /* tanımsız kip: silahsız */
         g->son_kip = yetki->mode;
-        tut_yakala(g);
+        tut_yakala(g, yetki);
         tut_iptal_temizle(yetki);
         ret(r, (uint16_t)IDA_REASON_BAD_MODE);
         return;
@@ -362,14 +365,14 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
            anındaki koşullarla kalır: sonuç ardışık iki çağrıdakiyle aynıdır. */
         ida_gor_ariza_kip_degisti(g, yetki->mode, gun, b->now_w.ns);
         g->arm_engeli = arm_engeli_hesapla(g, yetki);
-        tut_yakala(g);
+        tut_yakala(g, yetki);
         tut_iptal_temizle(yetki); /* kendi kip değişiminin mandalı: hedefler yeniden yakalandı */
     }
     g->son_kip = yetki->mode;
     kabul(r);
 }
 
-static void ariza_sifirla_komutu(ida_gor_t *g, const ida_emn_t *yetki, const ida_komut_baglam_t *b,
+static void ariza_sifirla_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t *b,
                                  ida_cmd_result_t *r, const ida_param_t *prm, ida_gunluk_t *gun)
 {
     if (g->mandal == 0u) {
@@ -385,7 +388,7 @@ static void ariza_sifirla_komutu(ida_gor_t *g, const ida_emn_t *yetki, const ida
     g->mandal = 0u;
     ida_gor_ariza_yayinla(g, yetki->mode, gun, b->now_w.ns);
     if (g->fs_level != onceki) {
-        tut_yakala(g);
+        tut_yakala(g, yetki);
     }
     kabul(r);
 }

@@ -30,7 +30,9 @@
    bulgu 1; EMNİYET). */
 #define IDA_EMN_IPTAL_GUD  0x01u /* güdümün saklı GUIDED_SP hedefi             */
 #define IDA_EMN_IPTAL_GOR  0x02u /* görev modülünün tutma hedefleri             */
-#define IDA_EMN_IPTAL_TUMU 0x03u
+#define IDA_EMN_IPTAL_KON  0x04u /* kontrolün türetilmiş belleği (derinlik ve yön referansı,
+                                    öteleme integralleri; sol 3. tur bulgu 1)  */
+#define IDA_EMN_IPTAL_TUMU 0x07u
 
 /* SAFETY_CLOSE isteği (olay modülüne): A4-K125 birleştirmesinin girdisi. */
 #define IDA_KAPAT_T0  0x01u
@@ -67,7 +69,9 @@ typedef struct {
        silahsızlandırma girdisinde (DISARM, SESSION_END, görev modülünün kendi
        silahsızlandırması), her kip değişiminde ve daralmasında ve SESSION_START'ta bütün
        tüketici bitleri (IDA_EMN_IPTAL_*) kurulur; çağrı reddedilse ya da out NULL olsa da
-       (b)/(b3)'te kurulur. Bit kuruluyken o tüketicinin saklı hedefi uygulanmaz; tüketici bitini
+       (b)/(b3)'te kurulur. Kontrol biti ayrıca görevin tutma hedefini her yeniden yakalayışında,
+       derinleşme yasağı başladığında ve güdümün saklı hedefi silindiğinde kurulur; kontrol onu
+       belleğini sıfırladıktan sonra temizler. Bit kuruluyken o tüketicinin saklı hedefi uygulanmaz; tüketici bitini
        ancak saklı hedefini sildikten sonra temizler. Emniyet kararı yalnız bu mandala dayanır. */
     uint8_t hedef_iptal;
     /* Daraltma kuşağı: mandalla birlikte artar; yalnız tanı içindir (sarabilir), karar

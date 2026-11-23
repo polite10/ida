@@ -4,6 +4,7 @@
  */
 #include "gudum/gudum.h"
 
+#include <stddef.h>
 #include <string.h>
 
 #include "cekirdek.h"
@@ -24,7 +25,6 @@ void ida_gud_kur(ida_gud_t *g)
     g->yon_turu = (uint8_t)IDA_GUD_YON_YOK;
     g->yatay = (uint8_t)IDA_GUD_YATAY_YOK;
     g->kusak = 0u;
-    g->iptal = 0u;
 }
 
 static bool sakli_hedef_var(const ida_gud_t *g)
@@ -33,19 +33,22 @@ static bool sakli_hedef_var(const ida_gud_t *g)
            (g->yatay != (uint8_t)IDA_GUD_YATAY_YOK);
 }
 
-static void hedef_sil(ida_gud_t *g)
+/* Saklı hedefi siler; bir hedef varsa kontrolün belleği de eski hedefe aittir: kontrolün
+   iptal biti kurulur (emn NULL ise kurulmaz: SESSION_START'ta (b3) zaten kurmuştur). */
+static void hedef_sil(ida_gud_t *g, ida_emn_t *emn)
 {
     if (sakli_hedef_var(g)) {
-        const uint32_t iptal = g->iptal + 1u;
         ida_gud_kur(g);
-        g->iptal = iptal;
+        if (emn != NULL) {
+            emn->hedef_iptal = (uint8_t)(emn->hedef_iptal | IDA_EMN_IPTAL_KON);
+        }
     }
 }
 
 void ida_gud_oturum_basi(ida_gud_t *g)
 {
     /* A4-K72: hedef bir önceki oturumun ölçüm zamanına ve kestirimine bağlıdır (EMNİYET). */
-    hedef_sil(g);
+    hedef_sil(g, NULL);
 }
 
 /* ---- GUIDED_SP ---------------------------------------------------------------------------- */
@@ -146,7 +149,7 @@ void ida_gud_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *
     if ((c->emn.hedef_iptal & IDA_EMN_IPTAL_GUD) != 0u) {
         /* Daraltmadan önce saklanmış hedef silinir (yeni iletinin maskesiz kanallarında da
            kalmaz); bu komut daraltmadan sonra geldiği için geçerli yeni hedeftir. */
-        hedef_sil(&c->gud);
+        hedef_sil(&c->gud, &c->emn);
         c->emn.hedef_iptal = (uint8_t)(c->emn.hedef_iptal & (uint8_t)(0xFFu ^ IDA_EMN_IPTAL_GUD));
     }
     hedefi_sakla(&c->gud, &cmd->u.guided);
@@ -158,12 +161,12 @@ void ida_gud_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *
 void ida_gud_adim(ida_gud_t *g, ida_core_t *c)
 {
     if ((c->emn.hedef_iptal & IDA_EMN_IPTAL_GUD) != 0u) {
-        hedef_sil(g); /* önce sil, sonra kendi bitini temizle (EMNİYET) */
+        hedef_sil(g, &c->emn); /* önce sil, sonra kendi bitini temizle (EMNİYET) */
         c->emn.hedef_iptal = (uint8_t)(c->emn.hedef_iptal & (uint8_t)(0xFFu ^ IDA_EMN_IPTAL_GUD));
     }
     if ((c->emn.mode != (uint8_t)IDA_MODE_GUIDED) ||
         (ida_gor_fs_duzey(&c->gor) >= (uint8_t)IDA_FS_HOLD)) {
-        hedef_sil(g);
+        hedef_sil(g, &c->emn);
     }
 }
 
@@ -284,7 +287,6 @@ static void yatay_yaz(const ida_gud_t *g, const ida_core_t *c, uint8_t v, ida_ko
 void ida_gud_kon_istegi(const ida_gud_t *g, const ida_core_t *c, ida_kon_istek_t *i)
 {
     ida_gor_istek(&c->gor, &c->emn, i);
-    i->ref_kusak = i->ref_kusak + g->iptal; /* hedef iptali de referansı yeniden başlatır */
     /* GUIDED_SP yalnız GUIDED kipinde, silahlıyken, arıza eylemi HOLD'dan hafifken, istek
        etkinken ve hedef saklandığından beri daraltma kuşağı değişmemişken uygulanır (arıza >
        operatör, 02 §2.6; sol bulgu 1). */

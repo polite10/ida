@@ -57,7 +57,6 @@ void ida_gor_istek(const ida_gor_t *g, const ida_emn_t *yetki, ida_kon_istek_t *
 {
     (void)memset(ist, 0, sizeof(*ist));
     ist->kip = (uint8_t)IDA_KON_KIP_KAPALI;
-    ist->ref_kusak = g->ref_kusak;
     ist->dalis_yasak = g->dalis_yasak ? 1u : 0u; /* kontrol de uygular (EMNİYET) */
     const uint8_t kip = yetki->mode;
     if (!yetki->armed || (kip == (uint8_t)IDA_MODE_INIT) || (kip == (uint8_t)IDA_MODE_DISARMED) ||
