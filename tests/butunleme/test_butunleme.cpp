@@ -706,6 +706,8 @@ int test_hil_cikarma_takma()
 
 }  // namespace
 
+int senaryo_testi(const std::string& ad, int argc, char** argv);   // test_senaryo.cpp
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -713,6 +715,10 @@ int main(int argc, char** argv)
         return 2;
     }
     const std::string ad = argv[1];
+    if (const int r = senaryo_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
     if (ad == "z1_sil_ic") {
         (void)test_z1_sil_ic();
     } else if (ad == "z1_belirlenim") {

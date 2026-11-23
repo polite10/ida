@@ -7,8 +7,8 @@
 #
 # Fizik Eigen'e (vcpkg) bağlıdır; ida_fizik yoksa (VCPKG_ROOT yok) bu dizin atlanır.
 
-if(NOT TARGET ida_fizik)
-  message(STATUS "ida_fizik yok: sim/sunucu atlandı")
+if(NOT TARGET ida_fizik OR NOT TARGET ida_senaryo_sensor)
+  message(STATUS "ida_fizik ya da ida_senaryo_sensor yok: sim/sunucu atlandı")
   return()
 endif()
 
@@ -19,11 +19,12 @@ function(ida_sunucu_ayar hedef)
   endif()
 endfunction()
 
-add_library(ida_sunucu STATIC src/sunucu.cpp src/yardimci.cpp)
+add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp)
 target_include_directories(ida_sunucu
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(ida_sunucu PUBLIC ida_kopru ida_kopru_karsi ida_fizik ida_sensor)
+# A5 senaryo dosyası (W4-sim-senaryo): çözümleyici ida_senaryo, yükleyiciler ida_senaryo_sensor.
+target_link_libraries(ida_sunucu PUBLIC ida_kopru ida_kopru_karsi ida_fizik ida_sensor ida_senaryo ida_senaryo_sensor)
 ida_sunucu_ayar(ida_sunucu)
 
 add_executable(ida_sim src/main.cpp)

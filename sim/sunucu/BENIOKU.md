@@ -1,6 +1,6 @@
 # sim/sunucu — başsız sim sunucusu `ida_sim`
 
-Fizik (`sim/fizik`) + sensör kümesi (`sim/sensor`) + A1 köprüsü (`sim/kopru`) + zaman yöneticisi (görev: `docs/gorevler/W4-kopru.md`). Yapılandırma şimdilik koddan (İDA-0, örnek havuz) ve komut satırından gelir; senaryo dosyası (A5) okunmaz. Fizik Eigen'e bağlı olduğundan vcpkg gerekir (`VCPKG_ROOT`); yoksa dizin atlanır.
+Fizik (`sim/fizik`) + sensör kümesi (`sim/sensor`) + A1 köprüsü (`sim/kopru`) + zaman yöneticisi (görevler: `docs/gorevler/W4-kopru.md`, `docs/gorevler/W4-sim-senaryo.md`). Kurulum ve zaman çizelgesi A5 senaryo dosyasından (`--senaryo <dosya>.toml`; çözümleyici `sim/senaryo`) ya da yerleşik senaryodan (`z1`, `bos`; koddaki İDA-0 ve örnek havuz) gelir. Fizik Eigen'e, çözümleyici toml++ ve nlohmann-json'a bağlı olduğundan vcpkg gerekir (`VCPKG_ROOT`); yoksa dizin atlanır.
 
 Program: `build/<ön ayar>/sim/sunucu/ida_sim`.
 
@@ -9,6 +9,10 @@ Program: `build/<ön ayar>/sim/sunucu/ida_sim`.
 ```
 # SIL, süreç içi karşı taraf (ida_link + gerçek çekirdek), Z1, 90 s, CSV:
 ida_sim --kip sil --karsi ic --senaryo z1 --tohum 1 --csv z1.csv
+
+# A5 senaryo dosyası (kip, süre ve tohum dosyadan; yol depo köküne göre göreli):
+ida_sim --senaryo scenarios/z1.toml --csv z1_dosya.csv
+ida_sim --senaryo scenarios/z1.toml --karsi tcp --sil build/host-debug/sim/sil/ida_sil
 
 # SIL, iki süreç: ida_sim TCP dinler ve koşucuyu başlatır (A1-K97, K114):
 ida_sim --kip sil --karsi tcp --a1-port 0 --sil build/host-debug/sim/sil/ida_sil --csv z1.csv
@@ -24,7 +28,30 @@ ida_sim --kip hil --seri /dev/cu.usbmodemXXXX --csv z2.csv
 ida_sim --kip hil --karsi pty --sure 60
 ```
 
-Seçenekler: `--sure <s>` (90), `--tohum <n>` (1; sensör gürültüsü ve A1-K114 türetimleri), `--senaryo z1|bos`, `--ariza <k1,k2|yok>` (Z1 itici arızası; varsayılan 4,0), `--acil <s>` ve `--acil-kalk <s>` (sanal acil durdurma), `--gunluk 0..2`. Çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası.
+Seçenekler: `--sure <s>` (90), `--tohum <n>` (1; sensör gürültüsü ve A1-K114 türetimleri), `--senaryo z1|bos|<dosya.toml>`, `--kok <dizin>` (depo kökü; senaryo dosyası için, varsayılan `.`), `--ariza <k1,k2|yok>` (Z1 itici arızası; varsayılan 4,0), `--acil <s>` ve `--acil-kalk <s>` (sanal acil durdurma), `--gunluk 0..2`. Çıkış kodu: 0 tamam, 1 komut satırı (senaryo dosyasıyla `--tohum`, `--sure` ya da çelişen `--kip` dahil), 2 çalıştırma hatası, 3 geçersiz senaryo (A5 §3.14 doğrulama raporu standart hataya; oturum açılmaz), 4 senaryo bu dilimde yürütülemez (başlamadan; aşağıdaki liste).
+
+## Senaryo dosyası (A5; W4-sim-senaryo)
+
+Kurulum: çözümleyici (`senaryo_coz`) geçersiz dosyayı reddeder; geçerliyse yalnız `DogrulanmisSenaryo` kabul eden yükleyicilerle fizik (`fizik_kur`) ve sensörler (`sensor_kur`) kurulur (doğrulanmamış ağaç derleme zamanında verilemez). Platform parametre bloğu `otopilot.parametreler`'dir (A5-K53; kimlik çekirdeğin kataloğunda aranır, tip uyuşmalıdır). Başlangıç emniyet durumu `emniyet_girdileri` (A5-K87) ve `baslangic.yuklu_tupler`'den (tüp dolu; A5-K86) köprüye revizyon 1 olarak verilir. Davranış özeti ve kaynak özetleri özet satırına yazılır (CSV başlığı değişmez: iki kaynağın CSV'si karşılaştırılabilsin). Kip (`sil`, `hil_1x`), süre ve tohum dosyadandır.
+
+Zaman çizelgesi (A5 §3.10, K60–K73; `src/senaryo_plani.*`, yürütme `Calistirici::plan_sinir`): olay, `t ≥ zaman_ns` olan ilk fizik sınırında ya da koşulunun ilk sağlandığı adımı izleyen sınırda başlar; aynı sınırda önce bitişler, sonra başlangıçlar, her grupta dosya sırası (A5-K62, K63). Sonuçlar A5 §3.15'e göre `Sonuc`'a yazılır (`olay_sonuclari`, `atama_celiskileri`, `gevsetme_retleri`).
+
+| Sınıf / tür | Yürütme |
+|---|---|
+| `emniyet_girdisi` (acil durdurma, fiş, pim; EMNİYET) | Kalıcı atama köprüye (`emniyet_ata`); A1-K85 sırasını köprü uygular: kısıtlayan 2. adımda, gevşeten 4. adımda ve o sınırda revizyon arttıysa reddedilir (`gevsetme_reddedildi`, revizyonlarla). Aynı alana aynı sınırda farklı değer: kısıtlayan uygulanır, `atama_celiskisi` yazılır |
+| `gcs_komutu` (`ARM`, `DISARM`, `SET_MODE`) | Köprünün komut yolundan (`t_hazır` = uygulama sınırı) |
+| `sensor` (ofset, ölçek, sürüklenme, gürültü artışı, sıçrama, donma, zaman damgası donması, yanlış geçerlilik, kendini bildiren, kayıp, geç teslim) | Sensör kümesinin arıza arayüzü: zamanlı olanlar kurulumda kurulur (başlangıç ve bitişi küme yürütür), koşullu olanlar başladıkları sınırda; durumlu üçü küme tarafından reddedilir (başlamadan hata) |
+| `aktuator/itki_carpani` | Arızalı kanalın darbe genişliği durağan itki `carpan` kadar küçülecek biçimde ölçeklenir (fizikte kanal başına itki ölçeği yok; A5'in "süzgeç ve β sonrası itki" tanımına durağan durumda eşittir, geçişte yaklaşıktır: doğrulanmadı); çakışanların çarpanları çarpılır |
+| Koşul `derinlik` | Yer gerçeği O_b derinliği; her fizik adımı sonunda |
+| Görev (A5-K55–K57) | `yukleme_zamani_ns`'te `MISSION_BEGIN(count)`, öğeler (`IDA_CMD_MISSION_ITEM`), `MISSION_END`; her ileti öncekinin `ACCEPTED` sonucundan sonra, ilk başka sonuçta durur (`gorev_durumu`, `gorev_basarisiz_adim`). Bugünkü çekirdek görev komutlarını `UNSUPPORTED` ile yanıtlar (görev yürütücüsü dilim 2'de) |
+
+Başlamadan reddedilenler (çıkış 4): `aktuator/esc_sinyal_kaybi`, `guc`, `baglanti`, `protokol`, `sistem` sınıfları; `kosul.buyukluk = gorev_ogesi`; L0 dışı bağlantı profili; `kalite.kamera_gerekli`; `calistirma.kip = hil_bariyer`. Uyarıyla geçilenler: `hedefler` (hedef hareketi, sonar, kamera, torpido yok); SIL hız çarpanı (SIL olabildiğince hızlı koşar).
+
+Yer istasyonu canlılığı (1 Hz `HEARTBEAT`, A1-K70) A5 olayı değildir: dosyalı koşuda her zaman, yerleşikte yalnız `z1`'de gönderilir.
+
+### Z1 dosya karşılığı (`scenarios/z1.toml`)
+
+`--senaryo scenarios/z1.toml` koşusu, yerleşik Z1'in `GUIDED_SP`'siz biçimiyle bayt bayt aynı CSV'yi verir (süreç içi ve iki süreçli `ida_sil`; `tests/butunleme` `senaryo_z1_esitligi`). Yerleşik Z1'den tek fark `GUIDED_SP` adımlarıdır: A5 `gcs_komutu` yalnız `ARM`, `DISARM`, `SET_MODE` taşır; ilk fark 3,205 s satırında (`pwm_uret*`) başlar. Dosya, kodla eşit kurulum için GNSS'i açık bırakır (kodda açık; kapalı havuz senaryosunda açık olması mimara soruldu), ses hızını kodun değeriyle verir (W4-K1) ve kamerayı kapatır (A5-K80; kamera sensör kümesinin kapsamı dışında, çıktıyı değiştirmez).
 
 ## Zaman yöneticisi
 

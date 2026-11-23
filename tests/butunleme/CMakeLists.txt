@@ -10,7 +10,8 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
   return()
 endif()
 
-add_executable(ida_butunleme_test test_butunleme.cpp)
+add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp)
+target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
 if(NOT MSVC)
@@ -20,6 +21,22 @@ endif()
 add_test(NAME butunleme.z1_sil_ic COMMAND ida_butunleme_test z1_sil_ic)
 add_test(NAME butunleme.z1_belirlenim COMMAND ida_butunleme_test z1_belirlenim)
 add_test(NAME butunleme.acil_durdurma COMMAND ida_butunleme_test acil_durdurma)
+# W4-sim-senaryo: A5 senaryo dosyasıyla kurulum ve zaman çizelgesi.
+add_test(NAME butunleme.senaryo_z1_esitligi COMMAND ida_butunleme_test senaryo_z1_esitligi $<TARGET_FILE:ida_sil>)
+set_tests_properties(butunleme.senaryo_z1_esitligi PROPERTIES TIMEOUT 600)
+foreach(_ad senaryo_gecersiz senaryo_zaman_cizelgesi senaryo_emniyet senaryo_belirlenim senaryo_gorev)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+# ida_sim'in çıkış kodları: geçersiz senaryo 3 (rapor standart hataya), bilinmeyen seçenek 1.
+add_test(NAME butunleme.ida_sim_gecersiz_senaryo
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=3
+          "-DARGUMANLAR=--senaryo;tests/butunleme/veri/gecersiz.toml;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_tohum_ve_senaryo
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--tohum;2;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 add_test(NAME butunleme.a4_girdi_esitligi COMMAND ida_butunleme_test a4_girdi_esitligi)
 add_test(NAME butunleme.sil_gecikmeli_tcp COMMAND ida_butunleme_test sil_gecikmeli_tcp)
 set_tests_properties(butunleme.sil_gecikmeli_tcp PROPERTIES TIMEOUT 300)
@@ -34,5 +51,7 @@ if(NOT WIN32)
   add_test(NAME butunleme.hil_pty COMMAND ida_butunleme_test hil_pty)
   set_tests_properties(butunleme.hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   add_test(NAME butunleme.hil_cikarma_takma COMMAND ida_butunleme_test hil_cikarma_takma)
+  add_test(NAME butunleme.senaryo_hil_pty COMMAND ida_butunleme_test senaryo_hil_pty)
+  set_tests_properties(butunleme.senaryo_hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   set_tests_properties(butunleme.hil_cikarma_takma PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

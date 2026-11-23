@@ -5,7 +5,9 @@
 #include "ida/kopru/karsi.hpp"
 #include "ida/kopru/param_blogu.hpp"
 #include "ida/kopru/tasima.hpp"
+#include "ida/senaryo/senaryo.hpp"
 #include "ida/sensor/sensor_kumesi.hpp"
+#include "senaryo_plani.hpp"
 #include "yardimci.hpp"
 
 #include <algorithm>
@@ -17,6 +19,7 @@
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <thread>
@@ -32,10 +35,8 @@ using kopru::kP;
 constexpr std::int64_t kCSim = 400'000;   // A1 §3.9 kalem k (tahmin)
 
 // IDAW sabitleri (protocol/ida.xml; üretilmiş başlık bu çeviri birimine alınmaz).
-constexpr std::uint8_t kCmdHeartbeat = 1, kCmdArm = 2, kCmdDisarm = 3, kCmdSetMode = 4, kCmdParamCommit = 13,
-                       kCmdParamSave = 14;
-constexpr std::uint16_t kModGuided = 6;
-constexpr std::uint8_t kSpDepth = 2, kSpYaw = 32;
+constexpr std::uint8_t kCmdHeartbeat = 1, kCmdArm = 2, kCmdDisarm = 3, kCmdSetMode = 4, kCmdMissionBegin = 7,
+                       kCmdMissionEnd = 9, kCmdParamCommit = 13, kCmdParamSave = 14;
 constexpr std::uint16_t kActThr = 1, kActSafe = 2, kActArmed = 4;
 constexpr std::uint8_t kAckAccepted = 1;
 constexpr std::uint8_t kPstoreOk = 2;
@@ -84,14 +85,11 @@ void ekle(std::string& s, const char* bicim, ...)
     }
 }
 
-struct Olay {
-    std::int64_t t;
-    std::function<void()> f;
-};
-
 class Calistirici {
 public:
     explicit Calistirici(const Ayar& a) : a_(a), sekil_(fizik::ida0_arac().itici_modeli.sekil_polinomu) {}
+    Calistirici(const Calistirici&) = delete;
+    Calistirici& operator=(const Calistirici&) = delete;
     ~Calistirici()
     {
         dur_ = true;
@@ -256,7 +254,12 @@ private:
     bool oturum_kur();
     bool hazirlik();
     bool yuva_bekle(std::uint32_t seq);
-    void senaryo_kur();
+    bool dosya_plani();
+    bool plan_hazirla();
+    void plan_sinir(std::uint64_t b);
+    void plan_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
+    void gorev_hizmet(std::int64_t t);
+    void olay_sonucu(std::size_t i, const char* sonuc, std::int64_t t, const char* neden = "");
     bool sinir_on(std::uint64_t b);
     void adim_sonrasi(std::uint64_t b);
     void satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq);
@@ -264,8 +267,26 @@ private:
     void csv_yaz(const Satir& r);
     void evre_ozeti_kur();
 
-    const Ayar& a_;
+    Ayar a_;
     Sonuc s_;
+    Plan plan_;
+    struct PlanDurumu {
+        bool basladi = false;
+        std::int64_t tetik_b = -1;   // koşul sağlandı: bu sınırda başlar (A5-K63)
+    };
+    std::vector<PlanDurumu> pd_;
+    struct IticiAriza {
+        std::uint8_t maske = 0;
+        double carpan = 1.0;
+        std::int64_t bitis_ns = 0;   // t_b + sure_ns'e eşit ya da sonraki ilk sınırda biter (A5-K64)
+    };
+    std::vector<IticiAriza> itici_;
+    std::vector<std::int64_t> hb_;   // yer istasyonu canlılığı (A1-K70) anları
+    std::size_t hb_i_ = 0;
+    std::vector<std::size_t> sinir_emniyet_;   // bu sınırın emniyet atamaları (plan indisi)
+    int gorev_gonderilen_ = 0;
+    std::uint32_t gorev_son_id_ = 0;
+    bool gorev_bitti_ = false;
     SekilTersi sekil_;
     fizik::AracParametreleri arac_;
     fizik::Dunya dn_;
@@ -293,8 +314,6 @@ private:
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
     std::vector<sensor::Olcum> olcumler_;
-    std::vector<Olay> olaylar_;
-    std::size_t olay_i_ = 0;
     std::array<double, 8> pwm_yur_{};
     std::array<double, 8> son_pwm_yur_{};
     std::string pty_yol_;
@@ -534,56 +553,272 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
     }
 }
 
-void Calistirici::senaryo_kur()
+// ---- Senaryo planı ----
+
+// A5 dosyası: çözümleme ve doğrulama (A5-K90), plan; komut satırı çelişkileri. false: s_ hatalı.
+bool Calistirici::dosya_plani()
 {
-    auto ns = [](double t) { return static_cast<std::int64_t>(std::llround(t * 1e9)); };
-    if (a_.acil_durdurma_s >= 0.0) {
-        olaylar_.push_back({ns(a_.acil_durdurma_s), [this] {
-                                kopru::EmniyetAtama e;
-                                e.acil_durdurma = true;
-                                k_->emniyet_ata(e);
-                            }});
+    std::shared_ptr<const senaryo::DosyaKaynagi> kaynak = a_.senaryo_kaynagi;
+    if (!kaynak) {
+        kaynak = std::make_shared<senaryo::DiskKaynagi>(a_.depo_koku);
     }
-    if (a_.acil_kalkar_s >= 0.0) {
-        olaylar_.push_back({ns(a_.acil_kalkar_s), [this] {
-                                kopru::EmniyetAtama e;
-                                e.acil_durdurma = false;
-                                k_->emniyet_ata(e);
-                            }});
+    const senaryo::CozumSonucu cs = senaryo::senaryo_coz(*kaynak, a_.senaryo_dosyasi);
+    s_.davranis_ozeti = cs.rapor.davranis_ozeti.value_or("");
+    s_.kaynak_ozetleri = cs.rapor.kaynak_ozetleri;
+    if (!cs.rapor.gecerli || !cs.cozumlenmis) {
+        s_.dogrulama_raporu = cs.rapor.json();
+        s_.hata = "senaryo geçersiz: " + std::to_string(cs.rapor.hata_sayisi()) + " hata (doğrulama raporu)";
+        s_.hata_turu = HataTuru::senaryo_gecersiz;
+        return false;
     }
-    if (a_.senaryo == "z1") {
+    std::string hata;
+    if (!plan_kur(*cs.cozumlenmis, cs.rapor, plan_, hata)) {
+        s_.hata = "senaryo bu dilimde yürütülemez: " + hata;
+        s_.hata_turu = HataTuru::senaryo_yurutulemez;
+        return false;
+    }
+    auto kullanim = [&](const std::string& m) {
+        s_.hata = m;
+        s_.hata_turu = HataTuru::kullanim;
+        return false;
+    };
+    // Okuma kararı (W4-sim-senaryo): kip, süre ve tohum davranış özetine girer; dosyadandır.
+    if (a_.kip_verildi && a_.kip != plan_.kip) {
+        return kullanim("--kip dosyanın calistirma.kip değeriyle çelişiyor");
+    }
+    if (a_.tohum_verildi) {
+        return kullanim("--tohum senaryo dosyasıyla verilemez (rastgelelik.ana_tohum; A5-K82)");
+    }
+    if (a_.sure_verildi) {
+        return kullanim("--sure senaryo dosyasıyla verilemez (calistirma.sure_ns)");
+    }
+    a_.kip = plan_.kip;
+    a_.tohum = plan_.tohum;
+    a_.sure_s = static_cast<double>(plan_.sure_ns) * 1e-9;
+    if (!a_.karsi_verildi) {
+        a_.karsi = a_.kip == Kip::sil ? Karsi::ic : Karsi::seri;
+    }
+    if (a_.kip == Kip::hil && (a_.karsi == Karsi::ic || a_.karsi == Karsi::tcp)) {
+        return kullanim("hil kipinde karşı taraf pty ya da seri olmalı");
+    }
+    if (a_.kip == Kip::sil && (a_.karsi == Karsi::pty || a_.karsi == Karsi::seri)) {
+        return kullanim("sil kipinde karşı taraf ic ya da tcp olmalı");
+    }
+    if (a_.karsi == Karsi::seri && a_.seri.empty()) {
+        return kullanim("hil kipi --seri <aygıt> ya da --karsi pty ister");
+    }
+    s_.senaryo_uyarilari = plan_.uyarilar;
+    return true;
+}
+
+// Plan yürütmesinin hazırlığı (sensör kümesi kurulduktan sonra): yer istasyonu canlılığı,
+// zamanlı sensör arızaları (kümede kurulur; başlangıç ve bitişi küme yürütür), koşullu sensör
+// arızalarının ön denetimi. false: s_ hatalı (başlamadan).
+bool Calistirici::plan_hazirla()
+{
+    pd_.assign(plan_.olaylar.size(), PlanDurumu{});
+    hb_.clear();
+    hb_i_ = 0;
+    // A1-K70: yer istasyonu canlılığı 1 Hz. Yerleşikte yalnız z1; dosyada her zaman (sim'in yer
+    // istasyonu ağ geçidi; A5 olayı değildir).
+    if (plan_.dosyadan || a_.senaryo == "z1") {
         const Z1& z = a_.z1;
         for (double t = z.hb_ilk_s; t < a_.sure_s; t += 1.0) {
-            if (z.t_hb_kes_s >= 0.0 && t >= z.t_hb_kes_s) {
+            if (!plan_.dosyadan && z.t_hb_kes_s >= 0.0 && t >= z.t_hb_kes_s) {
                 break;
             }
-            const std::int64_t tn = ns(t);
-            olaylar_.push_back({tn, [this, tn] { (void)k_->komut_basit(kCmdHeartbeat, 0, tn); }});
+            hb_.push_back(static_cast<std::int64_t>(std::llround(t * 1e9)));
         }
-        const std::int64_t ta = ns(z.t_arm_s), tk = ns(z.t_kip_s), ts = ns(z.t_sp_s), tm = ns(z.t_manevra_s),
-                           td = ns(z.t_disarm_s);
-        olaylar_.push_back({ta, [this, ta] { id_arm_ = k_->komut_basit(kCmdArm, 0, ta); }});
-        olaylar_.push_back({tk, [this, tk] { id_kip_ = k_->komut_basit(kCmdSetMode, kModGuided, tk); }});
-        olaylar_.push_back({ts, [this, ts] {
-                                kopru::GuidedHedef h;
-                                h.mask = static_cast<std::uint8_t>(kSpDepth | kSpYaw);
-                                h.depth = static_cast<float>(a_.z1.hedef_derinlik_m);
-                                h.yaw = static_cast<float>(a_.z1.hedef_yon_rad);
-                                id_sp_ = k_->komut_guided(h, ts);
-                            }});
-        olaylar_.push_back({tm, [this, tm] {
-                                kopru::GuidedHedef h;
-                                h.mask = static_cast<std::uint8_t>(kSpDepth | kSpYaw);
-                                h.depth = static_cast<float>(a_.z1.hedef2_derinlik_m);
-                                h.yaw = static_cast<float>(a_.z1.hedef2_yon_rad);
-                                id_sp2_ = k_->komut_guided(h, tm);
-                            }});
-        olaylar_.push_back({td, [this, td] {
-                                id_disarm_ = k_->komut_basit(kCmdDisarm, 0, td);
-                                t_disarm_istek_ = td;
-                            }});
     }
-    std::stable_sort(olaylar_.begin(), olaylar_.end(), [](const Olay& x, const Olay& y) { return x.t < y.t; });
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        if (o.tur != PlanOlayTuru::sensor) {
+            continue;
+        }
+        sensor::SensorArizasi f = o.ariza;
+        if (!o.zaman_ns) {
+            f.zaman_ns = std::numeric_limits<std::int64_t>::max() / 2;   // ön denetim: başlamaz
+        }
+        const sensor::ArmSonucu r = kume_.arm(f);
+        if (!r.tamam) {
+            s_.hata = "senaryo bu dilimde yürütülemez: olaylar[" + o.kimlik + "]: " + r.hata;
+            s_.hata_turu = HataTuru::senaryo_yurutulemez;
+            return false;
+        }
+        if (!o.zaman_ns) {
+            (void)kume_.disarm(r.tutamac);
+        }
+    }
+    return true;
+}
+
+void Calistirici::olay_sonucu(std::size_t i, const char* sonuc, std::int64_t t, const char* neden)
+{
+    s_.olay_sonuclari.push_back({plan_.olaylar[i].kimlik, sonuc, t, neden});
+}
+
+// Görev yüklemesi (A5-K57; A1-K69): MISSION_BEGIN(count), öğeler, MISSION_END; her ileti
+// öncekinin ACCEPTED sonucundan sonra (A3 mission_upload ağ geçidi kuralı); ilk ACCEPTED olmayan
+// sonuçta durur.
+void Calistirici::gorev_hizmet(std::int64_t t)
+{
+    if (!plan_.gorev_var || gorev_bitti_ || t < plan_.gorev_yukleme_ns) {
+        return;
+    }
+    const auto n = static_cast<int>(plan_.gorev.size());
+    if (a_.gorev_beklemeden && gorev_gonderilen_ == n + 2) {
+        s_.gorev_durumu = "gonderildi";
+        gorev_bitti_ = true;
+        return;
+    }
+    if (gorev_gonderilen_ > 0 && !a_.gorev_beklemeden) {
+        const auto r = k_->komut_sonucu(gorev_son_id_);
+        if (!r) {
+            return;
+        }
+        if (r->ack != kAckAccepted) {
+            s_.gorev_durumu = "reddedildi";
+            s_.gorev_basarisiz_adim = gorev_gonderilen_ - 1;
+            s_.gorev_ack = r->ack;
+            s_.gorev_neden = r->reason;
+            gorev_bitti_ = true;
+            return;
+        }
+        if (gorev_gonderilen_ == n + 2) {
+            s_.gorev_durumu = "tamamlandi";
+            gorev_bitti_ = true;
+            return;
+        }
+    }
+    if (gorev_gonderilen_ == 0) {
+        s_.gorev_durumu = "bitmedi";
+        gorev_son_id_ = k_->komut_basit(kCmdMissionBegin, static_cast<std::uint16_t>(n), t);
+    } else if (gorev_gonderilen_ <= n) {
+        gorev_son_id_ = k_->komut_gorev_ogesi(plan_.gorev[static_cast<std::size_t>(gorev_gonderilen_ - 1)], t);
+    } else {
+        gorev_son_id_ = k_->komut_basit(kCmdMissionEnd, 0, t);
+    }
+    ++gorev_gonderilen_;
+}
+
+// Sınır b'nin başında (köprünün sınır işleminden önce): yer istasyonu canlılığı, görev,
+// olayların bitişleri ve başlangıçları (A5-K62: önce bitişler, sonra başlangıçlar; her grupta
+// dosya sırası). Emniyet atamaları köprüye verilir; A1-K85'in sırasını köprü uygular.
+void Calistirici::plan_sinir(std::uint64_t b)
+{
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    while (hb_i_ < hb_.size() && hb_[hb_i_] <= t) {
+        (void)k_->komut_basit(kCmdHeartbeat, 0, hb_[hb_i_]);
+        ++hb_i_;
+    }
+    gorev_hizmet(t);
+    // Bitişler (yalnız itici arızası burada; sensör arızalarının bitişini küme yürütür).
+    itici_.erase(std::remove_if(itici_.begin(), itici_.end(), [t](const IticiAriza& a) { return t >= a.bitis_ns; }),
+                 itici_.end());
+    // Başlangıçlar.
+    sinir_emniyet_.clear();
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        PlanDurumu& d = pd_[i];
+        const PlanOlayi& o = plan_.olaylar[i];
+        if (d.basladi) {
+            continue;
+        }
+        const bool basla = o.zaman_ns ? t >= *o.zaman_ns
+                                       : (d.tetik_b >= 0 && static_cast<std::uint64_t>(d.tetik_b) <= b);
+        if (!basla) {
+            continue;
+        }
+        d.basladi = true;
+        switch (o.tur) {
+        case PlanOlayTuru::emniyet:
+            sinir_emniyet_.push_back(i);   // sonuç köprünün sınır işleminden sonra yazılır
+            break;
+        case PlanOlayTuru::gcs: {
+            const std::uint32_t id = k_->komut_basit(o.komut, o.arg, t);
+            if (o.komut == kCmdArm && id_arm_ == 0u) {
+                id_arm_ = id;
+            } else if (o.komut == kCmdSetMode && id_kip_ == 0u) {
+                id_kip_ = id;
+            } else if (o.komut == kCmdDisarm && id_disarm_ == 0u) {
+                id_disarm_ = id;
+                t_disarm_istek_ = t;
+            }
+            olay_sonucu(i, "uygulandi", t);
+            break;
+        }
+        case PlanOlayTuru::guided: {
+            const std::uint32_t id = k_->komut_guided(o.guided, t);
+            (o.guided_no == 1 ? id_sp_ : id_sp2_) = id;
+            olay_sonucu(i, "uygulandi", t);
+            break;
+        }
+        case PlanOlayTuru::sensor:
+            if (!o.zaman_ns) {
+                sensor::SensorArizasi f = o.ariza;
+                f.zaman_ns = t;
+                if (!kume_.arm(f).tamam) {
+                    olay_sonucu(i, "reddedildi", t, "desteklenmiyor");
+                    break;
+                }
+            }
+            olay_sonucu(i, "uygulandi", t);
+            break;
+        case PlanOlayTuru::itici:
+            itici_.push_back({o.kanal_maskesi, o.carpan,
+                              o.sure_ns > 0 ? t + o.sure_ns : std::numeric_limits<std::int64_t>::max()});
+            olay_sonucu(i, "uygulandi", t);
+            break;
+        }
+    }
+    for (std::size_t i : sinir_emniyet_) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        kopru::EmniyetAtama e;
+        if (o.girdi == EmniyetGirdisi::acil_durdurma) {
+            e.acil_durdurma = o.deger;
+        } else if (o.girdi == EmniyetGirdisi::fis) {
+            e.fis[static_cast<std::size_t>(o.tup)] = o.deger;
+        } else {
+            e.pim[static_cast<std::size_t>(o.tup)] = o.deger;
+        }
+        k_->emniyet_ata(e);
+    }
+}
+
+// Köprünün sınır işleminden sonra: emniyet atamalarının sonuçları (A5-K63, §3.15).
+void Calistirici::plan_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss)
+{
+    if (sinir_emniyet_.empty()) {
+        return;
+    }
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    // Aynı alana aynı sınırda farklı değerler: kısıtlayan uygulanır, atama_celiskisi yazılır.
+    std::map<std::string, AtamaCeliskisi> alanlar;
+    for (std::size_t i : sinir_emniyet_) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        AtamaCeliskisi& c = alanlar[emniyet_alani(o)];
+        c.t_ns = t;
+        c.alan = emniyet_alani(o);
+        c.degerler.push_back(o.deger);
+        c.olay_kimlikleri.push_back(o.kimlik);
+    }
+    for (auto& [alan, c] : alanlar) {
+        (void)alan;
+        const bool farkli = std::find(c.degerler.begin(), c.degerler.end(), !c.degerler.front()) != c.degerler.end();
+        if (farkli) {
+            // Kısıtlayan değer: acil durdurma basılı (true), fiş çıkık (false), pim takılı (true).
+            c.uygulanan_deger = c.alan.find(".fis.") == std::string::npos;
+            s_.atama_celiskileri.push_back(c);
+        }
+    }
+    for (std::size_t i : sinir_emniyet_) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        if (!kisitlayan(o) && ss.gevsetme_reddedildi) {
+            s_.gevsetme_retleri.push_back({t, o.kimlik, emniyet_alani(o), o.deger, ss.rev_adim_basi, ss.rev_adim3_sonu});
+            olay_sonucu(i, "reddedildi", t, "gevsetme_reddedildi");
+        } else {
+            olay_sonucu(i, "uygulandi", t);
+        }
+    }
 }
 
 // Sınır b: senaryo, köprünün emniyet ve sürekli çıktı işlemleri, acil durdurma engeli, arıza,
@@ -591,13 +826,11 @@ void Calistirici::senaryo_kur()
 bool Calistirici::sinir_on(std::uint64_t b)
 {
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
-    while (olay_i_ < olaylar_.size() && olaylar_[olay_i_].t <= t) {
-        olaylar_[olay_i_].f();
-        ++olay_i_;
-    }
+    plan_sinir(b);
     const std::int64_t e0 = gercek();
     const kopru::SinirSonucu ss = k_->sinir_isle(b, duvar());
     const std::int64_t e1 = gercek();
+    plan_sinir_sonrasi(b, ss);
     evre_[kEvreKopru] += e1 - e0;
     son_pwm_yur_ = pwm_yur_;
     pwm_yur_ = ss.pwm_us;
@@ -610,14 +843,37 @@ bool Calistirici::sinir_on(std::uint64_t b)
     if (estop_bu_adim_) {
         pwm.fill(notr);
         ++s_.estop_adim;
-    } else if (a_.senaryo == "z1" && t >= static_cast<std::int64_t>(std::llround(a_.z1.t_manevra_s * 1e9))) {
-        for (int kanal : a_.z1.ariza_kanallari) {
-            const auto c = static_cast<std::size_t>(kanal);
-            pwm[c] = sekil_.olcekle(pwm[c], a_.z1.ariza_carpani, notr, 400.0,
-                                    static_cast<double>(arac_.esc.olu_bant_us));
+    }
+    std::array<double, 8> carpanlar{};
+    carpanlar.fill(1.0);
+    for (const IticiAriza& a : itici_) {
+        for (std::size_t c = 0; c < 8; ++c) {
+            if ((a.maske & (1u << c)) != 0u) {
+                carpanlar[c] *= a.carpan;
+            }
+        }
+    }
+    if (!estop_bu_adim_ && !itici_.empty()) {
+        // A5 aktuator/itki_carpani: arızalı kanalın darbe genişliği, durağan itki çarpan kadar
+        // küçülecek biçimde nötre doğru ölçeklenir (SekilTersi; fizikte kanal başına itki ölçeği
+        // yok). Çakışan arızaların çarpanları çarpılır (A5-K64).
+        const double kazanc = static_cast<double>(arac_.esc.pwm_max_us) - notr;
+        for (std::size_t c = 0; c < 8; ++c) {
+            if (carpanlar[c] != 1.0) {
+                pwm[c] = sekil_.olcekle(pwm[c], carpanlar[c], notr, kazanc, static_cast<double>(arac_.esc.olu_bant_us));
+            }
         }
     }
     (void)dn_.itici_komutu_ver(b, pwm);
+    if (a_.sinir_kancasi) {
+        Ayar::SinirGozlemi g;
+        g.b = b;
+        g.derinlik = dn_.durum().konum_n[2];
+        g.pwm = pwm;
+        g.itici_carpani = carpanlar;
+        g.acil_durdurma = estop_bu_adim_;
+        a_.sinir_kancasi(g);
+    }
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -629,6 +885,9 @@ bool Calistirici::sinir_on(std::uint64_t b)
     const std::int64_t e3 = gercek();
     evre_[kEvreSensor] += e3 - e2;
     for (const sensor::Olcum& o : olcumler_) {
+        if (a_.olcum_kancasi) {
+            a_.olcum_kancasi(o);
+        }
         k_->olcum_ekle(o);
     }
     evre_[kEvreKodlama] += gercek() - e3;
@@ -638,6 +897,14 @@ bool Calistirici::sinir_on(std::uint64_t b)
 void Calistirici::adim_sonrasi(std::uint64_t b)
 {
     const fizik::DurumAnlik& d = dn_.durum();
+    // A5-K63: koşul her fizik adımı sonunda değerlendirilir; ilk sağlandığı adımı izleyen
+    // sınırda (b + 1) olay bir kez başlar.
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        if (o.kosul && !pd_[i].basladi && pd_[i].tetik_b < 0 && o.kosul->sagliyor(d.konum_n[2])) {
+            pd_[i].tetik_b = static_cast<std::int64_t>(b + 1u);
+        }
+    }
     const double notr = static_cast<double>(arac_.esc.pwm_notr_us);
     bool hepsi_notr = true;
     double en_buyuk_itki = 0.0;
@@ -805,14 +1072,33 @@ void Calistirici::evre_ozeti_kur()
 
 Sonuc Calistirici::kos()
 {
-    // ---- Fizik: İDA-0, örnek havuz, düz suda yüzer denge ----
-    arac_ = fizik::ida0_arac();
-    const fizik::OrtamParametreleri ortam = fizik::havuz_ortami();
+    // ---- Senaryo: A5 dosyası ya da yerleşik ----
+    if (!a_.senaryo_dosyasi.empty()) {
+        if (!dosya_plani()) {
+            return s_;
+        }
+    } else {
+        plan_ = yerlesik_plan(a_);
+    }
+
+    // ---- Fizik: dosyadan (fizik_kur) ya da yerleşik İDA-0, örnek havuz, düz suda yüzer denge ----
+    fizik::OrtamParametreleri ortam;
     fizik::BaslangicDurumu bas;
-    fizik::KurulumSonucu kr = dn_.kur(arac_, ortam, bas);
-    if (kr.tamam) {
-        bas.konum[2] = dn_.turetilmis().denge_konumu_z;
+    fizik::KurulumSonucu kr;
+    if (plan_.fizik) {
+        arac_ = plan_.fizik->arac;
+        ortam = plan_.fizik->ortam;
+        bas = plan_.fizik->baslangic;
         kr = dn_.kur(arac_, ortam, bas);
+        sekil_ = SekilTersi(arac_.itici_modeli.sekil_polinomu);
+    } else {
+        arac_ = fizik::ida0_arac();
+        ortam = fizik::havuz_ortami();
+        kr = dn_.kur(arac_, ortam, bas);
+        if (kr.tamam) {
+            bas.konum[2] = dn_.turetilmis().denge_konumu_z;
+            kr = dn_.kur(arac_, ortam, bas);
+        }
     }
     if (!kr.tamam) {
         s_.hata = "fizik kurulumu: " + kr.hata;
@@ -822,18 +1108,28 @@ Sonuc Calistirici::kos()
     pwm_yur_.fill(static_cast<double>(arac_.esc.pwm_notr_us));
     son_pwm_yur_ = pwm_yur_;
 
-    // ---- Sensörler ----
-    sensor::SensorKumesiAyari sa = sensor::ida0_sensor_kumesi();
-    sa.ana_tohum = a_.tohum;
-    sa.guc = sensor::guc_parametreleri(arac_);
+    // ---- Sensörler: dosyadan (sensor_kur) ya da yerleşik İDA-0 ----
+    sensor::SensorKumesiAyari sa;
+    if (plan_.sensor) {
+        sa = *plan_.sensor;
+    } else {
+        sa = sensor::ida0_sensor_kumesi();
+        sa.ana_tohum = a_.tohum;
+        sa.guc = sensor::guc_parametreleri(arac_);
+    }
     const sensor::KurulumSonucu ks = kume_.kur(sa);
     if (!ks.tamam) {
         s_.hata = "sensör kümesi: " + ks.hata;
         return s_;
     }
+    if (!plan_hazirla()) {
+        return s_;
+    }
 
-    // ---- Parametre bloğu (A5'ten; A1-K18): havuzun yerçekimi, kalibrasyondaki O_b derinliği ----
-    pb_ = kopru::parametre_blogu({{"YER_G", ortam.yercekimi}, {"BARO_KAL_D", s_.denge_derinligi_m}});
+    // ---- Parametre bloğu (A1-K18): dosyada otopilot.parametreler (A5-K53); yerleşikte havuzun
+    // yerçekimi ve kalibrasyondaki O_b derinliği ----
+    pb_ = plan_.dosyadan ? kopru::parametre_blogu(plan_.parametreler)
+                         : kopru::parametre_blogu({{"YER_G", ortam.yercekimi}, {"BARO_KAL_D", s_.denge_derinligi_m}});
     if (!pb_.hata.empty()) {
         s_.hata = pb_.hata;
         return s_;
@@ -857,6 +1153,11 @@ Sonuc Calistirici::kos()
     const std::string yh = k_->yapilandirma_hatasi();
     if (!yh.empty()) {
         s_.hata = "yapılandırma (A1-K104): " + yh;
+        return s_;
+    }
+    // Başlangıç emniyet durumu (A5-K86, K87; yerleşikte varsayılan).
+    if (!k_->emniyet_baslangic(plan_.acil_durdurma, plan_.fis, plan_.pim, plan_.dolu)) {
+        s_.hata = "başlangıç emniyet durumu kurulamadı";
         return s_;
     }
 
@@ -939,7 +1240,6 @@ Sonuc Calistirici::kos()
     }
     }
 
-    senaryo_kur();
     if (a_.kip == Kip::hil) {
         zamanlayici_onceligi();   // HIL 1x: duvar saatine kilitli döngü
     }
@@ -952,7 +1252,7 @@ Sonuc Calistirici::kos()
     gunluk(2, "oturum kuruldu: sess " + std::to_string(k_->sess()));
     const kopru::Sayaclar rx_bas = k_->sayaclar();   // çalıştırma oturumunun başındaki çerçeve sayaçları
 
-    const auto n_sinir = static_cast<std::uint64_t>(std::llround(a_.sure_s * 1e9)) / static_cast<std::uint64_t>(kH);
+    const auto n_sinir = static_cast<std::uint64_t>(plan_.sure_ns) / static_cast<std::uint64_t>(kH);
     if (a_.csv_uret) {
         s_.csv = csv_basligi();
         s_.csv.reserve(static_cast<std::size_t>(n_sinir / 4U + 2U) * 320U);   // döngüde yeniden ayırma yok
@@ -1034,6 +1334,12 @@ Sonuc Calistirici::kos()
         if (a_.kip == Kip::hil) {
             evre_[kEvreFizik] += gercek() - e_f;
             profil_.push_back(evre_);
+        }
+    }
+    // Hiç başlamayan olaylar (A5 §3.15 olay sonucu: uygulanmadi; t = çalıştırma sonu).
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        if (!pd_[i].basladi) {
+            olay_sonucu(i, "uygulanmadi", plan_.sure_ns, plan_.olaylar[i].kosul ? "kosul_saglanmadi" : "");
         }
     }
     // Son satırın kart tarafı ve planlı kapanış (A1-K21).
