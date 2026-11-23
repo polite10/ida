@@ -182,6 +182,7 @@ def ozet(d):
         "sayi": d.get("ps_sayi"), "son_tur_us": us(d.get("ps_son_tur_cevrim", 0)),
         "son_step_us": us(d.get("ps_son_step_cevrim", 0)), "son_skart_us": d.get("ps_son_skart_us"),
         "son_dongu_turu_us": us(d.get("ps_son_dongu_cevrim", 0)),
+        "son_kaydet_us": us(d.get("ps_son_kaydet_cevrim", 0)),
         "son_tur_eksi_step_us": us(d.get("ps_son_tur_cevrim", 0) - d.get("ps_son_step_cevrim", 0))}
     _n = d.get("ol_fark_sayi") or 0
     _top = d.get("ol_fark_toplam_cevrim_lo", 0) + (d.get("ol_fark_toplam_cevrim_hi", 0) << 32)

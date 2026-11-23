@@ -100,7 +100,7 @@ static uint32_t tur_sayisi, tur_en_kotu, cagri_tur_en_kotu;
 static ida_cagri_turu_t cagri_turu; /* W4-K16: çağrı turu ≤ 1,9 ms izlemesi */
 /* PARAM_SAVE'i işleyen son çağrının ayrıntısı (W4-K16 (b) ölçümü) ve olağan step çağrılarında
    "çağrı turu − step" farkı (take, put_out ve platform işi; DWT çevrimi). */
-static uint32_t ps_sayi, ps_son_tur, ps_son_step, ps_son_skart_us, ps_son_dongu;
+static uint32_t ps_sayi, ps_son_tur, ps_son_step, ps_son_skart_us, ps_son_dongu, ps_son_kaydet;
 static bool ps_bu_turda;
 static uint32_t ol_fark_sayi, ol_fark_en_kotu;
 static uint64_t ol_fark_toplam;
@@ -336,6 +336,7 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_ps_son_step_cevrim] = ps_son_step;
     o[IDA_OL_ps_son_skart_us] = ps_son_skart_us;
     o[IDA_OL_ps_son_dongu_cevrim] = ps_son_dongu;
+    o[IDA_OL_ps_son_kaydet_cevrim] = ps_son_kaydet;
     o[IDA_OL_ol_fark_sayi] = ol_fark_sayi;
     o[IDA_OL_ol_fark_en_kotu_cevrim] = ol_fark_en_kotu;
     olcum_yaz64(IDA_OL_ol_fark_toplam_cevrim_lo, ol_fark_toplam);
@@ -744,7 +745,9 @@ static void cagri(void)
             const ida_cmd_result_t *r = &cikti.results[i];
             if (r->kind == IDA_RES_PARAM_SAVE && r->ack == IDA_ACK_ACCEPTED &&
                 r->save.blob != NULL && kapanis.neden == IDA_KAPANIS_YOK) {
+                const uint32_t k0 = ida_bsp_cevrim();
                 ida_kal_kaydet(&kal, r->save.blob, r->save.len, r->save.gen);
+                ps_son_kaydet = ida_bsp_cevrim() - k0; /* blob kopyası ve kalıcı bellek CRC'si */
                 kal_kayit_bas_us = ida_bsp_zaman_us();
             }
         }
