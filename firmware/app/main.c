@@ -97,6 +97,7 @@ static uint32_t blok_en_kotu_bayt;
 static uint32_t bb_sayi[16], bb_bayt[16], bb_cevrim[16]; /* blok boyuna (log2) göre */
 static uint32_t periyot_cevrim, periyot_bayt, periyot_en_kotu_bayt;
 static uint32_t tur_sayisi, tur_en_kotu, cagri_tur_en_kotu;
+static ida_cagri_turu_t cagri_turu; /* W4-K16: çağrı turu ≤ 1,9 ms izlemesi */
 static ida_izgara_t izgara;
 static uint32_t izgara_kacirma, izgara_gecikme_en_kotu, izgara_islenen;
 static uint32_t besleme_sayisi, besleme_ret, besleme_ret_bitleri;
@@ -318,6 +319,12 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_cagri_rc_hata] = c->rc_hata;
     o[IDA_OL_cagri_son_rc] = c->son_rc;
     o[IDA_OL_cagri_tur_en_kotu_cevrim] = cagri_tur_en_kotu;
+    o[IDA_OL_cagri_turu_sayi] = cagri_turu.sayi;
+    o[IDA_OL_cagri_turu_asim] = cagri_turu.asim;
+    o[IDA_OL_cagri_turu_asim_ps] = cagri_turu.asim_param_save;
+    o[IDA_OL_cagri_turu_en_kotu_us] = cagri_turu.en_kotu_us;
+    o[IDA_OL_cagri_turu_ps_en_kotu_us] = cagri_turu.en_kotu_param_save_us;
+    o[IDA_OL_cagri_turu_sinir_us] = IDA_CAGRI_TURU_SINIR_US;
     o[IDA_OL_bg_sayisi] = c->arka_plan.sayi;
     o[IDA_OL_bg_en_kotu_cevrim] = c->arka_plan.en_kotu_cevrim;
     o[IDA_OL_bg_more] = c->bg_more;
@@ -748,6 +755,13 @@ static void cagri(void)
     if (ct > cagri_tur_en_kotu) {
         cagri_tur_en_kotu = ct;
     }
+    bool param_save = false;
+    if (t.cekirdek_cagrildi) {
+        for (uint32_t i = 0u; i < cikti.n_results && i < IDA_PORT_MAX_RESULTS; i++) {
+            param_save = param_save || cikti.results[i].kind == IDA_RES_PARAM_SAVE;
+        }
+    }
+    ida_cagri_turu_ekle(&cagri_turu, ct / IDA_IST_CEVRIM_US, param_save);
 }
 
 int main(void)
@@ -764,6 +778,7 @@ int main(void)
     ida_kapanis_kur(&kapanis);
     ida_islem_gozetim_kur(&flash_goz);
     ida_kararli_kur(&kararli);
+    ida_cagri_turu_kur(&cagri_turu);
 
     /* Kalıcı bellek: geçerli parametre bloğu ve açılış sayacı (bloklayıcı; 2 s IWDG içinde). */
     const ida_kal_flash_t fl = {NULL, f_taban, f_sil, f_yaz16, f_durum, f_ecc};

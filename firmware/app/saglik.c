@@ -163,3 +163,33 @@ size_t ida_alim_turu(uint8_t *tampon, size_t b_ayr, ida_tur_oku_f oku, ida_tur_i
     }
     return bu_tur;
 }
+
+void ida_cagri_turu_kur(ida_cagri_turu_t *t)
+{
+    t->sayi = 0u;
+    t->asim = 0u;
+    t->asim_param_save = 0u;
+    t->en_kotu_us = 0u;
+    t->en_kotu_param_save_us = 0u;
+}
+
+void ida_cagri_turu_ekle(ida_cagri_turu_t *t, uint32_t sure_us, bool param_save)
+{
+    t->sayi++;
+    const bool asti = sure_us > IDA_CAGRI_TURU_SINIR_US;
+    if (param_save) {
+        if (asti) {
+            t->asim_param_save++;
+        }
+        if (sure_us > t->en_kotu_param_save_us) {
+            t->en_kotu_param_save_us = sure_us;
+        }
+        return;
+    }
+    if (asti) {
+        t->asim++;
+    }
+    if (sure_us > t->en_kotu_us) {
+        t->en_kotu_us = sure_us;
+    }
+}

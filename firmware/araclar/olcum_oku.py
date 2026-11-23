@@ -170,7 +170,13 @@ def ozet(d):
     o["tick"]["butce_asimi"] = d["tick_butce_asimi"]
     o["skart"] = _sure(d, "skart")
     o["cagri"] = {"rc_hata": d["cagri_rc_hata"], "son_rc": d["cagri_son_rc"],
-                  "tur_en_kotu_us": us(d["cagri_tur_en_kotu_cevrim"])}
+                  "tur_en_kotu_us": us(d["cagri_tur_en_kotu_cevrim"]),
+                  # W4-K16: çağrı turu ≤ 1,9 ms; PARAM_SAVE'i işleyen çağrı ayrı.
+                  "turu_sinir_us": d.get("cagri_turu_sinir_us"), "turu_sayi": d.get("cagri_turu_sayi"),
+                  "turu_asim": d.get("cagri_turu_asim"),
+                  "turu_en_kotu_us": d.get("cagri_turu_en_kotu_us"),
+                  "turu_asim_param_save": d.get("cagri_turu_asim_ps"),
+                  "turu_param_save_en_kotu_us": d.get("cagri_turu_ps_en_kotu_us")}
     o["blok"] = _sure(d, "blok")
     o["blok"]["en_kotu_blok_bayt"] = d["blok_en_kotu_bayt"]
     if d.get("blok_bayt"):

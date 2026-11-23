@@ -39,6 +39,8 @@
     X(tick_sayisi) X(tick_en_kotu_cevrim) X(tick_en_iyi_cevrim) \
     X(tick_toplam_cevrim_lo) X(tick_toplam_cevrim_hi) XK(tick_kutu) X(tick_butce_asimi) \
     X(cagri_rc_hata) X(cagri_son_rc) X(cagri_tur_en_kotu_cevrim) \
+    X(cagri_turu_sayi) X(cagri_turu_asim) X(cagri_turu_asim_ps) X(cagri_turu_en_kotu_us) \
+    X(cagri_turu_ps_en_kotu_us) X(cagri_turu_sinir_us) \
     X(bg_sayisi) X(bg_en_kotu_cevrim) X(bg_more) \
     X(skart_sayisi) X(skart_en_kotu_cevrim) X(skart_en_iyi_cevrim) \
     X(skart_toplam_cevrim_lo) X(skart_toplam_cevrim_hi) XK(skart_kutu) \

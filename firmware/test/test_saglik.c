@@ -231,6 +231,24 @@ static void test_islem_gozetimi(void)
     TEST_ASSERT_EQUAL_UINT32(20500u, g.en_uzun_us);
 }
 
+/* W4-K16: çağrı turu 1,9 ms'yi aşınca sayılır; PARAM_SAVE'i işleyen çağrı ayrı. */
+static void test_cagri_turu_asimi(void)
+{
+    ida_cagri_turu_t t;
+    ida_cagri_turu_kur(&t);
+    ida_cagri_turu_ekle(&t, 1200u, false);
+    ida_cagri_turu_ekle(&t, IDA_CAGRI_TURU_SINIR_US, false); /* sınır dahil: aşım değil */
+    TEST_ASSERT_EQUAL_UINT32(0u, t.asim);
+    ida_cagri_turu_ekle(&t, IDA_CAGRI_TURU_SINIR_US + 1u, false);
+    TEST_ASSERT_EQUAL_UINT32(1u, t.asim);
+    ida_cagri_turu_ekle(&t, 3600u, true);
+    TEST_ASSERT_EQUAL_UINT32(1u, t.asim);
+    TEST_ASSERT_EQUAL_UINT32(1u, t.asim_param_save);
+    TEST_ASSERT_EQUAL_UINT32(IDA_CAGRI_TURU_SINIR_US + 1u, t.en_kotu_us);
+    TEST_ASSERT_EQUAL_UINT32(3600u, t.en_kotu_param_save_us);
+    TEST_ASSERT_EQUAL_UINT32(4u, t.sayi);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -245,5 +263,6 @@ int main(void)
     RUN_TEST(test_alim_turu_b_ayr_toplami);
     RUN_TEST(test_kararli_calisma_30_s);
     RUN_TEST(test_islem_gozetimi);
+    RUN_TEST(test_cagri_turu_asimi);
     return UNITY_END();
 }

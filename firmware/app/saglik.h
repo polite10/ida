@@ -87,6 +87,26 @@ typedef void (*ida_tur_isle_f)(void *ctx, const uint8_t *b, size_t n);
 size_t ida_alim_turu(uint8_t *tampon, size_t b_ayr, ida_tur_oku_f oku, ida_tur_isle_f isle,
                      void *ctx);
 
+/* ---- çağrı turu süresi (W4-K16) ------------------------------------------------------------
+   Kartın gönderim pompası yalnız ana döngüde çalışır; çekirdek çağrısı sürerken hat, sürücüdeki
+   tek çerçeve bitince boş kalır. W4-K16 hesabı (tahmin, ölçüm değil): periyottaki hizmet
+   ≈ (5 ms − d)·300 B/ms + bir çerçeve (≤ 156 B); A1-K110'un zorunlu sınıf hizmeti
+   (S_ii = 1 000 B/periyot) ve kritik pay (≈ 75 B) için d ≲ 1,9 ms gerekir. Çağrı turu (take →
+   çekirdek → put_out) bu sınırı aşınca sayılır; PARAM_SAVE'i işleyen çağrı ayrı sayılır
+   (bilinen aşan tek çağrı; Z2 kabulünde olağan çağrılarda aşım 0 beklenir). */
+#define IDA_CAGRI_TURU_SINIR_US 1900u
+
+typedef struct {
+    uint32_t sayi;
+    uint32_t asim;              /* olağan çağrılarda sınır aşımı */
+    uint32_t asim_param_save;   /* PARAM_SAVE'i işleyen çağrılarda aşım */
+    uint32_t en_kotu_us;        /* olağan çağrılarda en kötü */
+    uint32_t en_kotu_param_save_us;
+} ida_cagri_turu_t;
+
+void ida_cagri_turu_kur(ida_cagri_turu_t *t);
+void ida_cagri_turu_ekle(ida_cagri_turu_t *t, uint32_t sure_us, bool param_save);
+
 /* ---- IWDG besleme kararı -------------------------------------------------------------------- */
 #define IDA_SAGLIK_CORE_OK     0x01u /* A4-K89: core_ok = 0                        */
 #define IDA_SAGLIK_CAGRI       0x02u /* koşul 2/3: çekirdek çağrısı ilerlemiyor     */
