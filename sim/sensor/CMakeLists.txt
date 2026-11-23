@@ -22,6 +22,7 @@ target_include_directories(ida_sensor
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/sim/fizik/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 ida_sensor_ayar(ida_sensor)
+target_link_libraries(ida_sensor PRIVATE ida_sonar_akustik)   # W4-K1: ses hızı formülü (sim/sonar)
 
 add_executable(ida_sensor_test
   test/test_ana.cpp

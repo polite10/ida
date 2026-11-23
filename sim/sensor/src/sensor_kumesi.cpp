@@ -1,6 +1,7 @@
 // SensorKumesi: kurulum doğrulaması, adım işleme, arıza zinciri, teslim kuyruğu.
 #include "ida/sensor/sensor_kumesi.hpp"
 
+#include "ida/sonar/akustik.hpp"
 #include "model.hpp"
 
 #include <algorithm>
@@ -215,7 +216,7 @@ std::string sensor_denetle(const SensorAyari& a, const SensorKumesiAyari& k)
             return on + "su_takibi bu dilimde desteklenmiyor";
         }
         if (!k.ortam.su.ses_hizi || !(*k.ortam.su.ses_hizi > 0.0)) {
-            return on + "DVL için çözümlenmiş ortam.su.ses_hizi gerekli (formül sonar işinde)";
+            return on + "ortam.su.ses_hizi geçersiz";   // kur() verilmemişse formülle doldurur (W4-K1)
         }
         if (!(p.isin_acisi > 0.0 && p.isin_acisi < 0.5 * kPi) || p.seri_baud <= 0 ||
             p.mod_histerezis_ping < 1 || p.kilit_arama_ping < 1 ||
@@ -590,10 +591,18 @@ SensorKumesi::~SensorKumesi() = default;
 SensorKumesi::SensorKumesi(SensorKumesi&&) noexcept = default;
 SensorKumesi& SensorKumesi::operator=(SensorKumesi&&) noexcept = default;
 
-KurulumSonucu SensorKumesi::kur(const SensorKumesiAyari& ayar)
+KurulumSonucu SensorKumesi::kur(const SensorKumesiAyari& ayar_girdi)
 {
     ic_ = std::make_unique<Ic>();
     KurulumSonucu s;
+    // W4-K1: A5 `ortam.su.ses_hizi` verilmemişse ortamın ses hızı formülden (tatlı suda
+    // Chen–Millero, deniz suyunda Mackenzie; yüzeyde değerlendirilir).
+    SensorKumesiAyari ayar = ayar_girdi;
+    if (!ayar.ortam.su.ses_hizi) {
+        ayar.ortam.su.ses_hizi = sonar::ortam_ses_hizi(ayar.ortam.su.sicaklik_c, ayar.ortam.su.tuzluluk,
+                                                        std::nullopt, 0.0, ayar.ortam.su.yogunluk,
+                                                        ayar.ortam.yercekimi).c;
+    }
     if (ayar.adim_ns <= 0 || ayar.kontrol_periyodu_ns <= 0 ||
         ayar.kontrol_periyodu_ns % ayar.adim_ns != 0) {
         s.hata = "kontrol periyodu fizik adımının tam katı olmalı (iskelet §4)";
