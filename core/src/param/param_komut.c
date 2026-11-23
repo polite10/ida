@@ -200,7 +200,7 @@ static void save_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd
         sonuc_reddet(r, (uint16_t)IDA_REASON_OUT_OF_RANGE, cnt); /* gen doyar, sarmaz */
         return;
     }
-    const uint32_t len = ida_prm_blok_kodla(&p->yururluk, p->blob);
+    const uint32_t len = ida_prm_blok_kodla(&p->yururluk, p->sema_ozeti, p->blob);
     p->kayit_gen = taban + 1u;
     p->kayit_bekliyor = true;
     r->ack = (uint8_t)IDA_ACK_ACCEPTED;

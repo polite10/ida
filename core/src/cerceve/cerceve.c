@@ -144,13 +144,15 @@ ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)
     c->koruma_son = IDA_KORUMA_SON;
 
     /* Parametreler (A4-K78, K80): blok yoksa ya da geçersizse derlenmiş varsayılanlar. */
+    ida_prm_kur(&c->prm);
     ida_prm_varsayilan(&c->prm.yururluk);
     uint8_t denetim = 0u;
     if ((in->param_blob != NULL) && (in->param_len > 0u)) {
         if (in->param_len > IDA_PARAM_BLOB_MAX) {
             denetim = 3u;
         } else {
-            denetim = ida_prm_blok_coz(in->param_blob, in->param_len, &c->prm.yururluk);
+            denetim = ida_prm_blok_coz(in->param_blob, in->param_len, c->prm.sema_ozeti,
+                                       &c->prm.yururluk);
         }
         c->prm.param_ok = (denetim == 0u);
     } else {
