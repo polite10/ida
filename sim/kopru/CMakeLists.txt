@@ -46,6 +46,7 @@ add_executable(ida_kopru_test
   test/test_oturum.cpp
   test/test_yuva.cpp
   test/test_emniyet.cpp
+  test/test_emniyet4.cpp
   test/test_emniyet3.cpp
   test/test_parti.cpp
   test/test_emniyet2.cpp
@@ -91,6 +92,15 @@ set(_ida_kopru_testleri
   eksik_kume_gelmez  # sol-2 EMNİYET: #1 #2 #3 #11
   eksik_kume_tutarli  # sol-2 EMNİYET: #1 #2 #3 #11
   tutarsiz_yanit_canlilik  # sol-2 EMNİYET: #1 #2 #3 #11
+  emniyet_gecmis_tahliyesi  # W4-K15 EMNİYET
+  sayim_ihlali_sonradan_fire  # W4-K15 EMNİYET
+  sayim_ihlali_kucuk_sayi  # W4-K15 EMNİYET
+  sayim_ihlali_yanittan_once  # W4-K15 EMNİYET
+  tam_yuvaya_yineleme  # W4-K15 EMNİYET
+  sayiyi_asan_kapanis  # W4-K15 EMNİYET
+  hata_donusu_canlilik  # W4-K15 EMNİYET
+  eksik_kume_suresi  # W4-K15 EMNİYET
+  bekleyen_kume_siniri  # W4-K15 EMNİYET
   bellek_tasima
   tcp_tasima
   pty_tasima)

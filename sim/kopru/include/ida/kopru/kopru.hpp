@@ -96,6 +96,11 @@ struct Sayaclar {
     std::uint64_t olay_alinan = 0;
     std::uint64_t olay_gec = 0;
     std::uint64_t olay_eksik = 0;
+    // W4-K15 (EMNİYET): olay kümesi.
+    std::uint64_t olay_sayim_ihlali = 0;        // sayılmamış genişletici olay: REJ_SAFE + PROTOCOL
+    std::uint64_t kume_reddedilen = 0;          // topluca doğrulamada reddedilen küme (yanıt + olaylar)
+    std::uint64_t kume_bekleyen_tahliye = 0;    // tablo sınırında atılan bekleyen küme
+    std::uint64_t kume_en_cok = 0;              // küme tablosunun en büyük boyu (sınır 256)
     std::array<std::uint64_t, 7> olay_sonuc{};   // dizin: IDA_EVR_* 1–6
     std::uint64_t olay_rev_ret = 0;
     std::uint64_t sonuc_kuyrugu_en_buyuk = 0;

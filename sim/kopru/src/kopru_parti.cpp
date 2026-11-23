@@ -425,12 +425,13 @@ std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t d
             m.tube[0] = y.tube[0];
             m.tube[1] = y.tube[1];
             if (!tam && !bulundu) {
-                // Hiçbir revizyon uymuyor: değişmez (2) korunur, durum kaydın revizyonunun
-                // yetkili durumuyla alan alan en kısıtlayıcı biçimde birleştirilir.
+                // W4-K15 (5): yetkili geçmişte uygun revizyon yok (kaydın revizyonu tablodan
+                // atılmış olabilir). Değişmez (2) korunur: durum güncel yetkili durumla alan alan
+                // en kısıtlayıcı biçimde birleştirilir ve güncel revizyonla gönderilir.
                 ++i.say.emniyet_rev_eslesmedi;
-                const auto rv = i.rev_girdi.find(m.safety_rev);
-                if (rv != i.rev_girdi.end()) {
-                    const std::uint8_t yet = static_cast<std::uint8_t>((rv->second.girdi & 0x1Fu) | rv->second.izin_acilan);
+                secilen = i.emn.emniyet_revizyonu;
+                {
+                    const std::uint8_t yet = static_cast<std::uint8_t>((i.girdi_kodu() & 0x1Fu) | i.izin_kodu());
                     if ((yet & 1u) != 0u) {
                         m.estop = 1u;
                     }

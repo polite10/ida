@@ -14,6 +14,15 @@ int test_olay_yinelenen();
 int test_olay_suresi_gecmis();
 int test_olay_fire_kabul();
 int test_emniyet_ornegi();
+int test_emniyet_gecmis_tahliyesi();
+int test_sayim_ihlali_sonradan_fire();
+int test_sayim_ihlali_kucuk_sayi();
+int test_sayim_ihlali_yanittan_once();
+int test_tam_yuvaya_yineleme();
+int test_sayiyi_asan_kapanis();
+int test_hata_donusu_canlilik();
+int test_eksik_kume_suresi();
+int test_bekleyen_kume_siniri();
 int test_emniyet_rev_ileri();
 int test_reddedilen_yanit_gecmis();
 int test_eksik_kume_tutarsiz();
@@ -62,6 +71,15 @@ const Test kTestler[] = {
     {"olay_suresi_gecmis", test_olay_suresi_gecmis},
     {"olay_fire_kabul", test_olay_fire_kabul},
     {"emniyet_ornegi", test_emniyet_ornegi},
+    {"emniyet_gecmis_tahliyesi", test_emniyet_gecmis_tahliyesi},
+    {"sayim_ihlali_sonradan_fire", test_sayim_ihlali_sonradan_fire},
+    {"sayim_ihlali_kucuk_sayi", test_sayim_ihlali_kucuk_sayi},
+    {"sayim_ihlali_yanittan_once", test_sayim_ihlali_yanittan_once},
+    {"tam_yuvaya_yineleme", test_tam_yuvaya_yineleme},
+    {"sayiyi_asan_kapanis", test_sayiyi_asan_kapanis},
+    {"hata_donusu_canlilik", test_hata_donusu_canlilik},
+    {"eksik_kume_suresi", test_eksik_kume_suresi},
+    {"bekleyen_kume_siniri", test_bekleyen_kume_siniri},
     {"emniyet_rev_ileri", test_emniyet_rev_ileri},
     {"reddedilen_yanit_gecmis", test_reddedilen_yanit_gecmis},
     {"eksik_kume_tutarsiz", test_eksik_kume_tutarsiz},

@@ -200,13 +200,16 @@ int test_olay_suresi_gecmis()
     plan_kur(z, p);
     tup0_hazirla(z);
     const std::uint32_t rev = z.k.dis_durum().emniyet.emniyet_revizyonu;
-    // Olay partisinin TF'sine yanıt verilir ama olay geç gönderilir: a_n + 25 ms sonra.
+    // Olay partisinin TF'sine yanıt verilir (olayı sayar: W4-K15, sayılmamış genişletici olay
+    // sayım ihlalidir) ama olayın ilk gönderimi kaybolur; yinelemesi a_n + 25 ms sonra gelir.
     SahteKart::Tf olay_tf{};
     z.sk.tf_kancasi = [&](const SahteKart::Tf& tf) {
+        std::uint8_t n_ev = 0;
         if (olay_tf.seq == 0) {
             olay_tf = tf;
+            n_ev = 1;
         }
-        z.sk.yanit(tf.seq, kStep, notr());
+        z.sk.yanit(tf.seq, kStep, notr(), n_ev);
     };
     (void)z.periyot();
     for (int n = 0; n < 7; ++n) {

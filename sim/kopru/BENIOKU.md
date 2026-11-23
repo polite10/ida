@@ -14,6 +14,25 @@ Sim sunucusunun kartla (ve kartsız koşucuyla) konuşan yarısı (görev: `docs
 
 Zaman yöneticisi her fizik sınırı `b` (t = b·h) için: `sinir_isle(b)` (A1-K85'in beş adımı: oturum sonu ve dolan izinler; kısıtlayan komutlar ve senaryo atamaları; kart olayları `SAFETY_CLOSE` → `SAFETY_OPEN` → `FIRE`; gevşetmeler; sürekli çıktılar) → dönen darbe genişlikleri b'de başlayan fizik adımına → sensör kümesi `dis_durum()` ile → yeni kayıtlar `olcum_ekle` → kontrol sınırında `parti_kapat(t_n)`.
 
+## Olay kümesi (W4-K15, EMNİYET)
+
+Parti `n`'in kümesi: `IDA_ACTUATOR(n)` ve `batch_seq = n` taşıyan, `TICK_GRID` olmayan `n_events` farklı `event_id` (A1-K73). Küme durumu partinin ilk alınan yanıtı ya da olayıyla açılır (`kopru_ic.hpp` `PartiKumesi`, `kopru_sinir.cpp` `kume_tamamla`).
+
+| Durum | Geçiş | Koşul | Etki |
+|---|---|---|---|
+| BEKLİYOR | → DOĞRULANDI | Yanıt var ve küme tam (hata dönüşü `BAD_INPUT`/`NOT_INIT`: olay beklemeden; `OK`/`IMU_REJECTED`: alınan olay sayısı ≥ `n_events`) ve topluca tutarlı (A1-K118, Tablo 4.6b: genişletici olay varsa `core_rc = OK`, `SRC_TICK = 0`; `FIRE` varsa `ARMED = 1`, `IS_SAFE = 0`) | Yanıt kabul edilir: üretim sırası, `yanit(n)`, yanıt süresi, birleşim, yuva; canlılık (`T_bağ`) yenilenir. Uygulama anı geçmişse yuvaya ve yanıt geçmişine girmez, yalnız olayların dayanağı olur |
+| BEKLİYOR | → REDDEDİLDİ | Küme tam, tutarsız | Yanıt hiçbir geçmişe girmez, canlılığı yenilemez; yuva kaçırılır; sayılan genişletici olaylar `REJ_SAFE` (`kume_reddedilen`, `alan_ret`) |
+| BEKLİYOR | → REDDEDİLDİ + oturum sonu | Yanıt varken genişletici olay sayısı `n_events`'i aşıyor (yanıttan önce alınmış fazla olay) | Sayım ihlali: genişletici olaylar `REJ_SAFE`, `IDA_SESSION_CLOSE(PROTOCOL)`, oturum sonu iki tüpün iznini kapatır (`olay_sayim_ihlali`) |
+| BEKLİYOR | (kalır) | Yanıt yok ya da küme eksik | Genişletici olay bekler, her sınırda yeniden denenir (geç olay, A1-K83); son geçerlilikte `REJ_EXPIRED`. Yanıt artık gelemiyorsa (yuvanın uygulama anı geldi) `REJ_SAFE` |
+| DOĞRULANDI | → UYGULANDI | Yanıt `a_n`'de uygulandı | — |
+| DOĞRULANDI / UYGULANDI / REDDEDİLDİ | → oturum sonu | Aynı `batch_seq`'li **yeni** `event_id`'li genişletici olay | Sayım ihlali (yukarıdaki gibi); "sonradan tutarsızlaşma" ve geri alma yolu yoktur |
+| her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan) | Beklemeden uygulanır (A1-K87); ihlal değildir |
+| her durum | — | Aynı `event_id`'li yineleme | A1-K81 (saklı sonuç); ihlal değildir |
+
+Tablo en çok 256 partiyi tutar (ekleme sırasıyla); tahliye edilen bekleyen kümenin genişletici olayları `REJ_SAFE` alır (`kume_bekleyen_tahliye`, `kume_en_cok`).
+
+Emniyet örneği (W4-K12, W4-K15 (5)): revizyon köprünün bütün yetkili geçmişinden seçilir (tam eşleşen en yeni; yoksa en az o kadar kısıtlayıcı olunan en yeni). Hiçbiri yoksa (kaydın revizyonu tablodan atılmış olabilir) durum güncel yetkili durumla alan alan en kısıtlayıcı birleşime çevrilir ve güncel revizyonla gönderilir.
+
 ## Bu dilimin sınırları
 
 - Bariyer kipi (HIL 1x + adım bariyeri) yoktur; SIL kilitli adım ve HIL 1x vardır.
