@@ -193,19 +193,8 @@ static ida_rc_t cekirdek_f(void *ctx, ida_link_cagri_t tur_, ida_in_t *in, ida_o
 
 /* Ana döngünün bir turu (main.c ile aynı sıra): poll_tx, çağrılar (take → kapı → çekirdek →
    put_out; yasak başlayınca çağırıcı güvenli beklemeye geçer), kapanış kararı, gönderim pompası. */
-static void tur(void)
+static void denetle(void)
 {
-    ida_link_ust_poll_tx(&l);
-    for (int i = 0; i < 16; i++) {
-        const ida_kapanis_tur_t t =
-            ida_kapanis_cagri(&kap, &l, cagirici_normal, &girdi, &cikti, cekirdek_f, NULL);
-        if (t.tur == IDA_LINK_CAGRI_YOK) {
-            break;
-        }
-        if (ida_kapanis_yasak(&kap)) {
-            cagirici_normal = false;
-        }
-    }
 #if !defined(IDA_TEST_KAPANIS_YOK)
     if (ida_kapanis_denetle(&kap, &g, rng_bozuk, &l) != IDA_KAPANIS_YOK) {
 #if defined(IDA_TEST_ESKI_SIRA)
@@ -217,6 +206,25 @@ static void tur(void)
 #endif
     }
 #endif
+}
+
+static void tur(void)
+{
+    ida_link_ust_poll_tx(&l);
+#if !defined(IDA_TEST_DENETIM_SONRA)
+    denetle(); /* take'ten önce (main.c ile aynı; sol 3. denetim) */
+#endif
+    for (int i = 0; i < 16; i++) {
+        const ida_kapanis_tur_t t =
+            ida_kapanis_cagri(&kap, &l, cagirici_normal, &girdi, &cikti, cekirdek_f, NULL);
+        if (t.tur == IDA_LINK_CAGRI_YOK) {
+            break;
+        }
+        if (ida_kapanis_yasak(&kap)) {
+            cagirici_normal = false;
+        }
+    }
+    denetle(); /* put_out kaynaklı hatalar için çağrı sonrası */
     for (int i = 0; i < 64 && ida_gon_pompa(&g, &T, (uint64_t)(saat / 1000)) != 0u; i++) {
     }
 }
@@ -488,6 +496,53 @@ static void test_rng_hatasi_el_sikismayi_durdurur(void)
     TEST_ASSERT_EQUAL_UINT8((uint8_t)IDA_RC_NOT_INIT, son_hello.init_rc);
 }
 
+/* Sol 3. denetim (EMNİYET): aynı alım bloğunda SIM_HELLO → RNG hatası (oturum modülü sabit nonce
+   1'e düşer) → SESSION_ACCEPT(nonce_board = 1) → komut → TF; araya tur girmez. RNG hatası
+   mandallandıktan sonra çekirdeğe ulaşan tek çağrı oturum sonu olabilir (ya da hiç çağrı);
+   sabit nonce'lu duyuru tele çıkmaz. */
+static void test_rng_ayni_blokta_hello_accept_tf(void)
+{
+    rng_bozuk = true;
+    mavlink_ida_sim_hello_t h;
+    memset(&h, 0, sizeof h);
+    h.dialect_hash = IDA_LINK_DIALECT_HASH;
+    h.nonce = 0x54000004u;
+    h.run_id = 1u;
+    h.ctrl_period_ns = 5000000u;
+    h.proto_major = 1u;
+    sim_yaz(MAVLINK_MSG_ID_IDA_SIM_HELLO, &h, sizeof h, false);
+    mavlink_ida_session_accept_t a;
+    memset(&a, 0, sizeof a);
+    a.run_id = 1u;
+    a.nonce_sim = 0x54000004u;
+    a.nonce_board = 1u;
+    a.sess = 9u;
+    a.result = (uint8_t)IDAW_SESSION_RESULT_OK;
+    a.run_mode = (uint8_t)IDAW_RUN_MODE_HIL_1X;
+    sim_yaz(MAVLINK_MSG_ID_IDA_SESSION_ACCEPT, &a, sizeof a, false);
+    mavlink_ida_cmd_simple_t c;
+    memset(&c, 0, sizeof c);
+    c.cmd_id = 1u;
+    c.sess = 9u;
+    c.type = 2u; /* ARM */
+    c.source = 255u;
+    sim_yaz(MAVLINK_MSG_ID_IDA_CMD_SIMPLE, &c, sizeof c, true);
+    saat += P_NS;
+    tf(1u);
+    for (int i = 0; i < 40; i++) {
+        tur();
+        saat += P_NS;
+    }
+    TEST_ASSERT_EQUAL_UINT8(IDA_KAPANIS_RNG, kap.neden);
+    TEST_ASSERT_TRUE_MESSAGE(cek_cagri == 0u || (cek_cagri == 1u && cek_oturum_sonu == 1u),
+                             "RNG hatasından sonra yalnız oturum sonu çekirdeğe ulaşabilir");
+    TEST_ASSERT_TRUE_MESSAGE(son_hello.peer_nonce != 0x54000004u,
+                             "sabit nonce'lu el sıkışma yanıtı tele çıkmamalı (A1-K13)");
+    TEST_ASSERT_TRUE(ida_link_ust_durum(&l) != IDA_LINK_UST_RUNNING);
+    TEST_ASSERT_TRUE(ida_kapanis_yasak(&kap));
+    TEST_ASSERT_FALSE(cagirici_normal);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -495,5 +550,6 @@ int main(void)
     RUN_TEST(test_durmus_tasimada_kritik_dolar_ve_safety_close);
     RUN_TEST(test_rng_hatasi_el_sikismayi_durdurur);
     RUN_TEST(test_silahli_kritik_ret_oturum_sonu_teslim);
+    RUN_TEST(test_rng_ayni_blokta_hello_accept_tf);
     return UNITY_END();
 }

@@ -50,6 +50,16 @@ ida_ayar_uygula(ida_fw_test_gonderim_oturum_eski_sira CEKIRDEK)
 add_test(NAME firmware.birim.gonderim_oturum_eski_sira_karsi_ornek
          COMMAND ida_fw_test_gonderim_oturum_eski_sira)
 set_tests_properties(firmware.birim.gonderim_oturum_eski_sira_karsi_ornek PROPERTIES WILL_FAIL TRUE)
+# Karşı örnek (sol 3. denetim): kapanış denetimi yalnız çağrıdan sonra yapılırsa aynı alım
+# bloğundaki RNG hatasından sonra olağan çağrı çekirdeğe ulaşır; test düşer.
+add_executable(ida_fw_test_gonderim_oturum_denetim_sonra test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_denetim_sonra PRIVATE IDA_TEST_DENETIM_SONRA=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_denetim_sonra PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_denetim_sonra CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_denetim_sonra_karsi_ornek
+         COMMAND ida_fw_test_gonderim_oturum_denetim_sonra)
+set_tests_properties(firmware.birim.gonderim_oturum_denetim_sonra_karsi_ornek PROPERTIES WILL_FAIL TRUE)
 _ida_fw_birim(kalici)
 _ida_fw_birim(ecc)
 _ida_fw_birim(rng)

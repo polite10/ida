@@ -680,6 +680,24 @@ static ida_rc_t cekirdek_cagir(void *ctx, ida_link_cagri_t tur, ida_in_t *in, id
     return ida_cagirici_cagir(tur == IDA_LINK_CAGRI_STEP, in, out, ida_bsp_zaman_us());
 }
 
+/* Güvenli kapanış kararı (app/kapanis.c; A1-K22, K110, K13): çağrı penceresi dışında. */
+static void kapanis_denetle_ana(void)
+{
+    const uint8_t kn =
+        ida_kapanis_denetle(&kapanis, &gon, rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
+    if (kn == IDA_KAPANIS_YOK) {
+        return;
+    }
+    /* 1. adım yapıldı (girdiler engelli). Oturum sonu çağrısı yoksa yasak hemen başlar; varsa
+       çağırıcı, çekirdeğe teslim edildikten sonra (cagri()) güvenli beklemeye geçer. */
+    if (ida_kapanis_yasak(&kapanis)) {
+        ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX : IDA_CAG_NEDEN_RNG);
+    }
+    ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
+    ida_bsp_led_yesil(false);
+    ida_bsp_led_kirmizi(true);
+}
+
 /* take → kapı → çekirdek → put_out (app/kapanis.c; kapanışta oturum sonu çağrısı çekirdeğe
    teslim edildikten sonra kalıcı yasak). */
 static void cagri(void)
@@ -843,22 +861,12 @@ int main(void)
         if (baglanti && ust_tamam) {
             alim();
             ida_link_ust_poll_tx(&ust);
+            /* Kapanış kapısı take'ten ÖNCE kurulur: alımda (ör. RNG hatası) ya da poll_tx'te
+               mandallanan hatadan sonra hiçbir olağan çağrı çekirdeğe ulaşmaz (sol 3. denetim). */
+            kapanis_denetle_ana();
             cagri();
-            /* Güvenli kapanış (kritik çıktı kaybı; A1-K110): çağrı penceresi dışında. */
-            const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon,
-                                                   rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
-            if (kn != IDA_KAPANIS_YOK) {
-                /* 1. adım yapıldı (girdiler engelli). Oturum sonu çağrısı yoksa yasak hemen
-                   başlar; varsa çağırıcı, çekirdeğe teslim edildikten sonra (cagri()) güvenli
-                   beklemeye geçer. */
-                if (ida_kapanis_yasak(&kapanis)) {
-                    ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX
-                                                                  : IDA_CAG_NEDEN_RNG);
-                }
-                ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
-                ida_bsp_led_yesil(false);
-                ida_bsp_led_kirmizi(true);
-            }
+            /* put_out kaynaklı hatalar (kritik ret) için çağrı sonrası denetim. */
+            kapanis_denetle_ana();
             /* Platformun Tablo 3.11b sayaçları (ust.h: platform diziye doğrudan yazar). */
             ust.say[IDA_LINK_SAY_STAMP_COARSE] = stamp_coarse;
             ust.say[IDA_LINK_SAY_TX_FRAMES] = gon.tx_frames;
