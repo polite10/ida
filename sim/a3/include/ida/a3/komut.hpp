@@ -85,6 +85,10 @@ struct Komut {
     // komutu (A3-K104). Sunucu bunu isteğin biçiminden çıkarır (hedef durum / katalog sınıfı);
     // kısıtlayan komut kuyruk doluluğu ya da revizyon yüzünden reddedilmez (A3-K59, K119).
     bool kisitlayan = false;
+    // EMNİYET — W4-K19: kısıtlayan istekte `beklenen_run_id` güncel çalıştırmayla uyuşmuyor (ya da
+    // istekte yok). Kısıtlayan istek yine de alıcıya iletilir ve uygulanır; A3-K54 yalnız
+    // gevşetenlere uygulanır. Bilgi içindir; sunucu uyuşmazlığı olayla kaydetmiştir.
+    bool run_id_uyusmazligi = false;
 
     // calistirma/baslat
     std::optional<std::string> kayit_kademesi;   // olaylar | telemetri | tam

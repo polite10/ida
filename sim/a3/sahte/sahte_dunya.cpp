@@ -195,13 +195,17 @@ AlimSonucu SahteDunya::al(const Komut& k)
             return ret("onay_gerekli", "HIL'de duraklatma geçersizliği onay ister (Tablo 4.7b)");
         }
     } else {
-        if (!k.beklenen_run_id || !d.run_id) {
-            return ret("canli_calistirma_yok", "canlı çalıştırma yok");
+        // W4-K19 (EMNİYET): kısıtlayan istekte beklenen_run_id denetlenmez; A3-K54 yalnız
+        // gevşeten ve nötr isteklere uygulanır. Canlı çalıştırma şartı (A3-K91) sürer.
+        if (!k.kisitlayan) {
+            if (!k.beklenen_run_id || !d.run_id) {
+                return ret("canli_calistirma_yok", "canlı çalıştırma yok");
+            }
+            if (!run_uyar) {
+                return run_ret();
+            }
         }
-        if (!run_uyar) {
-            return run_ret();
-        }
-        if (!canli(d.durum)) {
+        if (!d.run_id || !canli(d.durum)) {
             return ret("canli_calistirma_yok", "canlı çalıştırma yok");
         }
         const bool revli = !k.kisitlayan && (k.tur == KomutTuru::emniyet_degistir || k.yi_sinif == KomutSinifi::genisletici);
@@ -374,9 +378,9 @@ void SahteDunya::uygula_()
     while (!d.kisitlayan.empty()) {
         const Komut k = d.kisitlayan.front();
         d.kisitlayan.pop_front();
-        const bool run_uyar = d.run_id.has_value() && k.beklenen_run_id && *d.run_id == *k.beklenen_run_id;
-        if (!run_uyar || !canli(d.durum)) {
-            sonuc_(k, false, run_uyar ? "canli_calistirma_yok" : "beklenen_durum_uyusmuyor", {});
+        // W4-K19: kısıtlayan, beklenen_run_id uyuşmasa da uygulanır; yalnız canlı çalıştırma şartı.
+        if (!d.run_id || !canli(d.durum)) {
+            sonuc_(k, false, "canli_calistirma_yok", {});
             continue;
         }
         if (k.tur == KomutTuru::emniyet_degistir) {

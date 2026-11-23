@@ -462,6 +462,112 @@ int test_kuyruk_dolu_kisitlayan()
     return d.hata;
 }
 
+// EMNİYET — W4-K19: kısıtlayan istek bayat ya da eksik `beklenen_run_id` ile de alıcıya ulaşır ve
+// uygulanır; yanıt güncel run_id'yi taşır; uyuşmazlık olayla kaydedilir. Gevşetende A3-K54 aynen.
+int test_kisitlayan_bayat_run_id()
+{
+    Denetci d;
+    const std::string bayat = "20000101-000000-000000";
+    Ortam o;
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    auto guncel = [](const HttpYanit& y) {
+        const json::Deger j = y.json_();
+        const json::Deger* g = j.bul("guncel_run_id");
+        return g == nullptr ? std::string("<yok>") : g->tur == json::Tur::bos ? std::string("null") : g->metin;
+    };
+    auto uyusmazlik_olaylari = [&]() {
+        std::vector<json::Deger> r;
+        o.dongu();
+        const json::Deger j = o.http(istek("GET", "/api/v1/olaylar?sonra=0")).json_();
+        for (const auto& e : j.bul("olaylar")->dizi) {
+            if (e.bul("tur")->metin == "uyari" && e.bul("ayrinti")->bul("kod")->metin == "kisitlayan_run_id_uyusmazligi") {
+                r.push_back(e);
+            }
+        }
+        return r;
+    };
+    // 1) Bayat run_id ile acil durdurma
+    const std::string kimlik = k.kimlik();
+    HttpYanit a = k.post("/api/v1/emniyet/degistir", "{\"istek_kimligi\":\"" + kimlik + "\",\"beklenen_run_id\":\"" + bayat +
+                                                        "\",\"girdi\":\"acil_durdurma\",\"hedef_durum\":\"basili\"}");
+    DOGRULA(d, a.durum == 202 && guncel(a) == run, "bayat run_id'li acil durdurma 202 + guncel_run_id: " + std::to_string(a.durum));
+    o.dunya.adim();
+    DOGRULA(d, sonuc_metni(o, komut_no(a)) == "uygulandi", "bayat run_id'li acil durdurma uygulandı");
+    DOGRULA(d, o.http(istek("GET", "/api/v1/emniyet")).json_().bul("yetkili")->bul("acil_durdurma")->metin == "basili", "basılı");
+    auto ol = uyusmazlik_olaylari();
+    DOGRULA(d, ol.size() == 1 && ol[0].bul("komut_no")->sayi == komut_no(a) && ol[0].bul("kaynak")->metin == "a3",
+            "uyuşmazlık olayı (komut numarasıyla)");
+    if (ol.size() == 1) {
+        const std::string ileti = ol[0].bul("ayrinti")->bul("ileti")->metin;
+        DOGRULA(d, ileti.find(bayat) != std::string::npos && ileti.find(run) != std::string::npos, "olayda iki run_id");
+        DOGRULA(d, ileti.find(kimlik) == std::string::npos && ileti.find(kJeton) == std::string::npos, "olayda gövde ve jeton yok");
+    }
+    // 2) Alan hiç yok; 3) null
+    HttpYanit b = k.post("/api/v1/emniyet/degistir", "{\"istek_kimligi\":\"" + k.kimlik() +
+                                                        "\",\"girdi\":\"emniyet_pimi\",\"tup\":\"f1\",\"hedef_durum\":\"takili\"}");
+    HttpYanit c = k.post("/api/v1/emniyet/degistir", "{\"istek_kimligi\":\"" + k.kimlik() +
+                                                        "\",\"beklenen_run_id\":null,\"girdi\":\"silahlandirma_fisi\",\"tup\":\"f2\",\"hedef_durum\":\"cikarilmis\"}");
+    DOGRULA(d, b.durum == 202 && guncel(b) == run, "run_id alanı olmayan kısıtlayan 202");
+    DOGRULA(d, c.durum == 202 && guncel(c) == run, "null run_id'li kısıtlayan 202");
+    // 4) Daraltıcı yer istasyonu komutu
+    HttpYanit e = k.post("/api/v1/yer_istasyonu/komut", "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"beklenen_run_id\":\"" + bayat +
+                                                           "\",\"komut\":\"fc_disarm\",\"parametreler\":{}}");
+    DOGRULA(d, e.durum == 202 && guncel(e) == run, "bayat run_id'li daraltıcı 202");
+    // 5) Uyuşan run_id: olay yok, alan yok
+    HttpYanit f = k.post("/api/v1/emniyet/degistir", emniyet(k, "acil_durdurma", "", "basili", run));
+    DOGRULA(d, f.durum == 202 && guncel(f) == "<yok>", "uyuşan run_id'de guncel_run_id yok");
+    o.dunya.adim();
+    for (const auto* y : {&b, &c, &e, &f}) {
+        DOGRULA(d, sonuc_metni(o, komut_no(*y)) == "uygulandi", "kısıtlayan uygulandı: " + std::to_string(komut_no(*y)));
+    }
+    DOGRULA(d, uyusmazlik_olaylari().size() == 4, "dört uyuşmazlık olayı");
+    bool isaret = false;
+    for (const auto& x : o.dunya.alinanlar()) {
+        if (x.komut_no == komut_no(a)) {
+            isaret = x.run_id_uyusmazligi && x.kisitlayan && x.beklenen_run_id == bayat;
+        }
+    }
+    DOGRULA(d, isaret, "alıcıya uyuşmazlık işaretiyle, özgün beklenen_run_id ile iletildi");
+    // 6) Gevşeten: A3-K54 aynen
+    const std::uint32_t rev = emniyet_rev(o);
+    const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+    HttpYanit g = k.post("/api/v1/emniyet/degistir",
+                         emniyet(k, "emniyet_pimi", "f1", "cikarilmis", bayat,
+                                 ",\"onay\":true,\"onay_jetonu\":\"" + t + "\",\"beklenen_emniyet_rev\":" + std::to_string(rev)));
+    DOGRULA(d, g.durum == 409 && g.kod() == "beklenen_durum_uyusmuyor", "bayat run_id'li gevşetme 409: " + g.kod());
+    HttpYanit h = k.post("/api/v1/emniyet/degistir", "{\"istek_kimligi\":\"" + k.kimlik() +
+                                                        "\",\"girdi\":\"emniyet_pimi\",\"tup\":\"f1\",\"hedef_durum\":\"cikarilmis\"}");
+    DOGRULA(d, h.durum == 400 && h.kod() == "gecersiz_istek", "run_id alanı olmayan gevşetme 400");
+    HttpYanit i = k.post("/api/v1/yer_istasyonu/komut", "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"komut\":\"fc_fire\",\"parametreler\":{\"tube\":0}}");
+    DOGRULA(d, i.durum == 400, "run_id alanı olmayan genişletici 400");
+    // 7) Kuyruk doluyken bayat run_id'li kısıtlayan (bekletilir, sonra uygulanır)
+    sahte::SahteAyar sa;
+    sa.genel_kuyruk = 1;
+    sa.kisitlayan_kuyruk = 1;
+    Ortam o2(sa);
+    Istemci k2{o2, o2.istemci_al()};
+    const std::string run2 = baslat(k2);
+    o2.dunya.dondur(true);
+    std::vector<std::uint32_t> nolar;
+    for (int n = 0; n < 3; ++n) {
+        const HttpYanit z = k2.post("/api/v1/emniyet/degistir", "{\"istek_kimligi\":\"" + k2.kimlik() + "\",\"beklenen_run_id\":\"" + bayat +
+                                                                  "\",\"girdi\":\"acil_durdurma\",\"hedef_durum\":\"basili\"}");
+        DOGRULA(d, z.durum == 202 && guncel(z) == run2, "dolu kuyrukta bayat run_id'li kısıtlayan 202");
+        nolar.push_back(komut_no(z));
+    }
+    DOGRULA(d, o2.cekirdek.sayaclar().bekleyen_kisitlayan == 2, "ikisi sunucuda bekliyor");
+    o2.dunya.dondur(false);
+    for (int n = 0; n < 4; ++n) {
+        o2.dunya.adim();
+        o2.dongu();
+    }
+    for (const auto no : nolar) {
+        DOGRULA(d, sonuc_metni(o2, no) == "uygulandi", "dolu kuyruktan sonra uygulandı: " + std::to_string(no));
+    }
+    return d.hata;
+}
+
 int test_yer_istasyonu()
 {
     Denetci d;

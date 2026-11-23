@@ -55,6 +55,8 @@ test/            CTest (sim.a3.*) ve Node uyum testleri (uyum.mjs, uctan_uca.mjs
 
 Uygulanan uçlar: `surum`, `katalog`, `istemciler` (POST, DELETE), `durum`, `komutlar/{n}`, `olaylar`, `emniyet`, `emniyet/onay_jetonu`, `emniyet/degistir`, `yer_istasyonu/komutlar`, `yer_istasyonu/onay_jetonu`, `yer_istasyonu/komut`, `calistirma/{baslat,duraklat,surdur,adimla,hiz,durdur,sifirla}`, `yayin` ve `/ws`. Kataloğun öteki uçları (senaryo, ön denetim, hata enjeksiyonu, kayıt ve izleme, yardımcı süreçler, `calistirma/yeniden_kostur`) 404 `bulunamadi` döner; durum değiştirenler yine komut numarası alır (A3-K52).
 
+EMNİYET (W4-K19): kısıtlayan emniyet isteği (acil durdurma bas, fiş çıkar, pim tak) ve `daraltici` sınıfındaki yer istasyonu komutu `beklenen_run_id` uyuşmasa da ya da hiç verilmese de alıcıya iletilir (`Komut::run_id_uyusmazligi`); kabul yanıtı `guncel_run_id` taşır, uyuşmazlık `uyari` olayıyla (`kod` = `kisitlayan_run_id_uyusmazligi`) kaydedilir. Gevşeten isteklerde A3-K54 aynen geçerlidir.
+
 ## Kitaplık seçimi
 
 HTTP/WebSocket için dış kitaplık kullanılmadı (W4-a3 dilim 1 raporunda ayrıntılı). Gerekçe: sözleşmenin istediği ayrıntılar (A3-K51'in "en çok ilk 4096 bayt" okuması, A3-K07'de jetonu yansıtmadan alt protokol seçimi, A3-K39'un bağlantı başına sınırlı uygulama kuyrukları, A3-K46/K47 kapanış kodları) düşük düzey denetim gerektirir; gereken protokol alt kümesi (yalnız sunucu, TLS ve uzantı yok) küçüktür; bağımlılık eklenmediği için Windows CI süresi ve vcpkg kurulumu değişmez.

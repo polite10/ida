@@ -1390,9 +1390,22 @@ struct Cekirdek::Ic {
             erken_ret("gecersiz_istek", "JSON çözülemedi: " + h);
             return;
         }
+        // EMNİYET — W4-K19: kısıtlayan emniyet isteği ve daraltıcı yer istasyonu komutu
+        // `beklenen_run_id` hiç verilmese de kabul edilir. Alan yoksa doğrulama için null konur;
+        // istek kısıtlayan değilse şemanın zorunlu alan kuralı aynen uygulanır.
+        const bool emniyet_ya_da_yi = uc.yol == "/api/v1/emniyet/degistir" || uc.yol == "/api/v1/yer_istasyonu/komut";
+        bool run_id_eklendi = false;
+        if (emniyet_ya_da_yi && g.nesne_mi() && g.bul("beklenen_run_id") == nullptr) {
+            g.nesne.emplace_back("beklenen_run_id", json::Deger{});
+            run_id_eklendi = true;
+        }
         const json::Deger* tanim = sema->tanim(uc.istek_semasi);
         if (tanim == nullptr || !sema->dogrula(*tanim, g, &h)) {
             erken_ret("gecersiz_istek", "şemaya uymuyor: " + h);
+            return;
+        }
+        if (run_id_eklendi && !kisitlayan_mi(uc.yol, g)) {
+            erken_ret("gecersiz_istek", "şemaya uymuyor: /: zorunlu alan yok: beklenen_run_id");
             return;
         }
         // A3-K53: yineleme anahtarı (istemci, yöntem, yol, istek_kimligi) ve gövde özeti.
@@ -1511,6 +1524,37 @@ struct Cekirdek::Ic {
         return y;
     }
 
+    // EMNİYET — W4-K19: kısıtlayan emniyet isteği ve daraltıcı yer istasyonu komutu
+    // `beklenen_run_id` güncel çalıştırmayla uyuşmasa da (ya da hiç verilmese de) alıcıya iletilir.
+    // Uyuşmazlık `uyari` olayıyla kaydedilir (yalnız komut numarası ve iki run_id; jeton ve gövde
+    // yazılmaz) ve kabul yanıtı güncel run_id'yi `guncel_run_id` alanında taşır.
+    Yanit kisitlayan_gonder(Komut& k, std::uint32_t no, std::uint32_t istemci)
+    {
+        const AnlikDurum a = alici.anlik();
+        const bool uyusmaz = a.run_id != k.beklenen_run_id;
+        k.run_id_uyusmazligi = uyusmaz;
+        if (uyusmaz) {
+            const std::string ileti = "kısıtlayan komut " + std::to_string(no) + ": beklenen_run_id " +
+                                      (k.beklenen_run_id ? *k.beklenen_run_id : std::string("null")) + ", güncel run_id " +
+                                      (a.run_id ? *a.run_id : std::string("null")) + "; W4-K19 gereği iletildi";
+            json::Nesne ay;
+            ay.metin("kod", "kisitlayan_run_id_uyusmazligi").metin("ileti", ileti);
+            olay_yayinla(son_sim_t_ns, 22, 1, 1, std::numeric_limits<std::uint64_t>::max(), no, istemci, ay.bitir());
+        }
+        Yanit y = alici_gonder(k, no);
+        if (uyusmaz && y.http == 202) {
+            json::Nesne n;
+            n.metin("sonuc", "kuyrukta").sayi_u("komut_no", no);
+            if (a.run_id) {
+                n.metin("guncel_run_id", *a.run_id);
+            } else {
+                n.bos("guncel_run_id");
+            }
+            y.govde = n.bitir();
+        }
+        return y;
+    }
+
     Yanit alim_yaniti(const AlimSonucu& a, const Komut& k, std::uint32_t no)
     {
         if (a.tur == AlimSonucu::Tur::kuyrukta) {
@@ -1583,7 +1627,7 @@ struct Cekirdek::Ic {
         if (k.kisitlayan) {
             // EMNİYET — A3-K92, K119: onay, jeton ve revizyon istenmez; varsa yok sayılır (jeton
             // tüketilmez); kuyruk doluluğu ve revizyon yüzünden reddedilmez.
-            return alici_gonder(k, no);
+            return kisitlayan_gonder(k, no, istemci);  // W4-K19: run_id bağı yok
         }
         // EMNİYET — A3-K93, K94, K118: gevşeten iki adımlıdır ve revizyon taşır.
         std::optional<Jeton> sunulan;
@@ -1642,7 +1686,7 @@ struct Cekirdek::Ic {
         k.kisitlayan = it->second.sinif == KomutSinifi::daraltici;
         if (k.kisitlayan) {
             // EMNİYET — A3-K104, K119: daraltıcı tek adımlıdır; onay ve revizyon istemez.
-            return alici_gonder(k, no);
+            return kisitlayan_gonder(k, no, istemci);  // W4-K19: run_id bağı yok
         }
         const bool genisletici = it->second.sinif == KomutSinifi::genisletici;
         if (it->second.onay || genisletici) {

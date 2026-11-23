@@ -28,7 +28,7 @@ set(_ida_a3_testleri
   olay_kuyrugu_tasmasi kapanis_1001
   # komut yolu ve emniyet girdileri (EMNİYET; kabul 5)
   calistirma_akisi yineleme govde_sinirlari emniyet_kisitlayan emniyet_gevseten sonuc_aynen
-  kuyruk_dolu_kisitlayan yer_istasyonu
+  kuyruk_dolu_kisitlayan yer_istasyonu kisitlayan_bayat_run_id  # W4-K19
   # ölçüm ve dayanıklılık (kabul 4, 6)
   yavas_istemci rastgele_cekirdek rastgele_ayristirici cok_baglanti)
 foreach(_ad IN LISTS _ida_a3_testleri)

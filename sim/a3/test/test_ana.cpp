@@ -37,6 +37,7 @@ int test_emniyet_gevseten();
 int test_sonuc_aynen();
 int test_kuyruk_dolu_kisitlayan();
 int test_yer_istasyonu();
+int test_kisitlayan_bayat_run_id();
 int test_yavas_istemci();
 int test_rastgele_cekirdek();
 int test_rastgele_ayristirici();
@@ -80,6 +81,7 @@ int main(int argc, char** argv)
         {"sonuc_aynen", test_sonuc_aynen},
         {"kuyruk_dolu_kisitlayan", test_kuyruk_dolu_kisitlayan},
         {"yer_istasyonu", test_yer_istasyonu},
+        {"kisitlayan_bayat_run_id", test_kisitlayan_bayat_run_id},
         {"yavas_istemci", test_yavas_istemci},
         {"rastgele_cekirdek", test_rastgele_cekirdek},
         {"rastgele_ayristirici", test_rastgele_ayristirici},
