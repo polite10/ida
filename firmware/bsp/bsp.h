@@ -41,6 +41,8 @@ void ida_bsp_calisma_kipi(void);
 const ida_acilis_sonuc_t *ida_bsp_acilis(void);
 /* .noinit'teki kayıt (salt okunur; hata alanları önceki açılışın arızası olabilir). */
 const ida_acilis_kaydi_t *ida_bsp_kayit(void);
+/* Kararlı çalışmadan sonra ardışık arıza sayacını sıfırlar (01 §2.8; kayıt CRC'siyle). */
+void ida_bsp_ardisik_temizle(void);
 
 /* ---- zaman (01 §2.5) ---------------------------------------------------------------------- */
 /* Duvar saati: açılıştan beri µs (TIM2 1 MHz + taşma sayacı); azalmaz. */

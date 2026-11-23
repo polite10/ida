@@ -39,6 +39,16 @@ void ida_kayit_kur(ida_acilis_kaydi_t *k)
     ida_kayit_muhurle(k);
 }
 
+void ida_kayit_ardisik_temizle(ida_acilis_kaydi_t *k)
+{
+    if (!ida_kayit_gecerli(k)) {
+        ida_kayit_kur(k);
+        return;
+    }
+    k->ardisik_ariza = 0u;
+    ida_kayit_muhurle(k);
+}
+
 uint8_t ida_sifirlama_nedeni(uint32_t csr, int ariza_bekliyor)
 {
     if ((csr & (IDA_CSR_IWDGRSTF | IDA_CSR_WWDGRSTF)) != 0u) {

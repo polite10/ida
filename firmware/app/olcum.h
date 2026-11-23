@@ -39,6 +39,8 @@
     X(tick_sayisi) X(tick_en_kotu_cevrim) X(tick_en_iyi_cevrim) \
     X(tick_toplam_cevrim_lo) X(tick_toplam_cevrim_hi) XK(tick_kutu) X(tick_butce_asimi) \
     X(cagri_rc_hata) X(cagri_son_rc) X(cagri_tur_en_kotu_cevrim) \
+    X(cagri_turu_sayi) X(cagri_turu_asim) X(cagri_turu_asim_ps) X(cagri_turu_en_kotu_us) \
+    X(cagri_turu_ps_en_kotu_us) X(cagri_turu_sinir_us) \
     X(bg_sayisi) X(bg_en_kotu_cevrim) X(bg_more) \
     X(skart_sayisi) X(skart_en_kotu_cevrim) X(skart_en_iyi_cevrim) \
     X(skart_toplam_cevrim_lo) X(skart_toplam_cevrim_hi) XK(skart_kutu) \
@@ -71,6 +73,7 @@
     X(kal_sayac_deneme) X(kal_acilis_cevrim) X(kal_kayit_sure_us) X(kal_kayit_en_kotu_tur_cevrim) \
     X(fl_silme_sayisi) X(fl_yazma_sayisi) X(fl_silme_en_kotu_cevrim) X(fl_yazma_en_kotu_cevrim) \
     X(fl_hata) X(fl_ecc_nmi) X(fl_eccc_nvm) X(fl_eccc_diger) X(fl_eccd_diger) X(fl_ecc_son) \
+    X(fl_islem_en_uzun_us) X(ardisik_kayit) X(ardisik_temizleme) \
     X(yigin_boyu) X(yigin_en_yuksek) \
     X(reset_cause) X(reset_flags) X(ardisik_ariza) X(kayit_gecerliydi) X(fpscr) \
     X(onceki_ariza) X(ariza_sayisi) X(ariza_cfsr) X(ariza_hfsr) X(ariza_pc) X(ariza_lr) \

@@ -53,6 +53,7 @@
 #define B_AYR 1024u                  /* A geçişinde bir turda ayrıştırılan en çok bayt (01 §2.4) */
 #define OLCUM_ARALIK_US 1000000u     /* 1 Hz işleri                                          */
 #define SAGLIK_S_US 20000u           /* ilerleme koşulu S = 20 ms (01 §2.8)                  */
+#define KARARLI_SURE_US 30000000u    /* ardışık arıza sayacının temizlenmesi: 30 s (01 §2.8)  */
 #define T_BAG_NS 500000000u          /* T_bağ 500 ms (A1 §3.9; E2, E4)                       */
 #define ESC_ALT_US 1100u             /* 04 §2.7.1 ESC değerleri (01 §3.1)                     */
 #define ESC_NOTR_US 1500u
@@ -74,6 +75,9 @@ static ida_link_ust_ayar_t ust_ayar;
 static ida_link_platform_t ust_plat;
 static ida_gonderim_t gon;
 static ida_kapanis_t kapanis;
+static ida_islem_gozetim_t flash_goz; /* süren flash işlemi (01 §2.8 koşul 7) */
+static ida_kararli_t kararli;         /* ardışık arıza sayacının temizlenmesi (01 §2.8) */
+static uint32_t ardisik_temizleme;
 static bool rng_hata;
 /* Son çekirdek çıktısının durumu (ölçüm bloğu; kapanışın sınanması için). */
 static uint32_t son_armed, son_mode, son_fc_state, son_fc_inhibit, son_link_event;
@@ -93,6 +97,7 @@ static uint32_t blok_en_kotu_bayt;
 static uint32_t bb_sayi[16], bb_bayt[16], bb_cevrim[16]; /* blok boyuna (log2) göre */
 static uint32_t periyot_cevrim, periyot_bayt, periyot_en_kotu_bayt;
 static uint32_t tur_sayisi, tur_en_kotu, cagri_tur_en_kotu;
+static ida_cagri_turu_t cagri_turu; /* W4-K16: çağrı turu ≤ 1,9 ms izlemesi */
 static ida_izgara_t izgara;
 static uint32_t izgara_kacirma, izgara_gecikme_en_kotu, izgara_islenen;
 static uint32_t besleme_sayisi, besleme_ret, besleme_ret_bitleri;
@@ -171,22 +176,35 @@ static const uint8_t *f_taban(void *ctx)
     return ida_flash_taban();
 }
 
+/* Her donanım işlemi gözetimden geçer (01 §2.8 koşul 7; sol genel bulgu 5). */
 static int f_sil(void *ctx, uint32_t sayfa)
 {
     (void)ctx;
-    return ida_flash_sil(sayfa);
+    const int r = ida_flash_sil(sayfa);
+    if (r == 0) {
+        ida_islem_basladi(&flash_goz, ida_bsp_zaman_us());
+    }
+    return r;
 }
 
 static int f_yaz16(void *ctx, uint32_t ofs, const uint8_t q[IDA_KAL_QW])
 {
     (void)ctx;
-    return ida_flash_yaz16(ofs, q);
+    const int r = ida_flash_yaz16(ofs, q);
+    if (r == 0) {
+        ida_islem_basladi(&flash_goz, ida_bsp_zaman_us());
+    }
+    return r;
 }
 
 static int f_durum(void *ctx)
 {
     (void)ctx;
-    return ida_flash_durum();
+    const int d = ida_flash_durum();
+    if (d != 1) {
+        ida_islem_bitti(&flash_goz, ida_bsp_zaman_us());
+    }
+    return d;
 }
 
 static bool f_ecc(void *ctx, uint32_t ofs, uint32_t n)
@@ -301,6 +319,12 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_cagri_rc_hata] = c->rc_hata;
     o[IDA_OL_cagri_son_rc] = c->son_rc;
     o[IDA_OL_cagri_tur_en_kotu_cevrim] = cagri_tur_en_kotu;
+    o[IDA_OL_cagri_turu_sayi] = cagri_turu.sayi;
+    o[IDA_OL_cagri_turu_asim] = cagri_turu.asim;
+    o[IDA_OL_cagri_turu_asim_ps] = cagri_turu.asim_param_save;
+    o[IDA_OL_cagri_turu_en_kotu_us] = cagri_turu.en_kotu_us;
+    o[IDA_OL_cagri_turu_ps_en_kotu_us] = cagri_turu.en_kotu_param_save_us;
+    o[IDA_OL_cagri_turu_sinir_us] = IDA_CAGRI_TURU_SINIR_US;
     o[IDA_OL_bg_sayisi] = c->arka_plan.sayi;
     o[IDA_OL_bg_en_kotu_cevrim] = c->arka_plan.en_kotu_cevrim;
     o[IDA_OL_bg_more] = c->bg_more;
@@ -428,6 +452,9 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_fl_yazma_en_kotu_cevrim] = ida_flash_olcum.yazma_en_kotu_cevrim;
     o[IDA_OL_fl_hata] = ida_flash_olcum.hata;
     o[IDA_OL_fl_ecc_nmi] = ida_flash_olcum.ecc_nmi;
+    o[IDA_OL_fl_islem_en_uzun_us] = flash_goz.en_uzun_us;
+    o[IDA_OL_ardisik_kayit] = ida_bsp_kayit()->ardisik_ariza;
+    o[IDA_OL_ardisik_temizleme] = ardisik_temizleme;
     o[IDA_OL_fl_eccc_nvm] = ida_flash_olcum.eccc_nvm;
     o[IDA_OL_fl_eccc_diger] = ida_flash_olcum.eccc_diger;
     o[IDA_OL_fl_eccd_diger] = ida_flash_olcum.eccd_diger;
@@ -499,6 +526,7 @@ static void saglik(uint64_t simdi)
         rx_bekleme_en_uzun = b > UINT32_MAX ? UINT32_MAX : (uint32_t)b;
     }
     g.alim_durdu = ida_seri_alim_durdu();
+    g.flash_asim = !ida_islem_tamam(&flash_goz, simdi, IDA_FLASH_ISLEM_SINIR_US);
     g.simdi_us = simdi;
     g.s_us = SAGLIK_S_US;
     const uint32_t ret = ida_saglik_degerlendir(&g);
@@ -579,58 +607,72 @@ static void sinama(void)
 #endif
 
 /* Alım: olay sınırlı bloklar oturum modülüne (blok besleme). */
+/* Alım turunun bağlamı: sürücüden okunan bloğun damgası ve kaba damga bilgisi. */
+typedef struct {
+    uint64_t t_rx;
+    bool kaba;
+    bool ilerledi;
+} alim_baglam_t;
+
+static size_t alim_oku(void *ctx, uint8_t *hedef, size_t azami)
+{
+    alim_baglam_t *a = (alim_baglam_t *)ctx;
+    bool tasma = false;
+    a->t_rx = 0u;
+    a->kaba = false;
+    const size_t n = ida_seri_oku(hedef, azami, &a->t_rx, &a->kaba, &tasma);
+    if (tasma) {
+        ida_link_ust_rx_tasma(&ust); /* A1-K09 */
+        a->ilerledi = true;
+    }
+    return n;
+}
+
+static void alim_isle(void *ctx, const uint8_t *b, size_t n)
+{
+    alim_baglam_t *a = (alim_baglam_t *)ctx;
+    a->ilerledi = true;
+    uint32_t say_once[IDA_LINK_SAY_N];
+    if (a->kaba) {
+        ida_link_ust_sayaclar(&ust, say_once);
+    }
+    ida_wtime_t t;
+    t.ns = (int64_t)(a->t_rx * 1000u);
+    const uint32_t c0 = ida_bsp_cevrim();
+    ida_link_ust_rx(&ust, b, n, t);
+    const uint32_t c = ida_bsp_cevrim() - c0;
+    if (a->kaba) {
+        /* Kaba damgalı blokta biten çerçeveler: A1-K48'in stamp_coarse'u (platformun). */
+        uint32_t say_sonra[IDA_LINK_SAY_N];
+        ida_link_ust_sayaclar(&ust, say_sonra);
+        stamp_coarse += say_sonra[IDA_LINK_SAY_RX_FRAMES] - say_once[IDA_LINK_SAY_RX_FRAMES];
+    }
+    ida_ist_ekle(&blok_ist, c);
+    if (c >= blok_ist.en_kotu_cevrim) {
+        blok_en_kotu_bayt = (uint32_t)n;
+    }
+    uint32_t kutu = 0u;
+    while (kutu < 15u && (n >> (kutu + 1u)) != 0u) {
+        kutu++;
+    }
+    bb_sayi[kutu]++;
+    bb_bayt[kutu] += (uint32_t)n;
+    bb_cevrim[kutu] += c;
+    blok_bayt += n;
+    periyot_cevrim += c;
+    periyot_bayt += (uint32_t)n;
+}
+
+/* Alım: olay sınırlı bloklar oturum modülüne; turda toplam en çok B_AYR bayt (her okumaya
+   kalan kapasite; sol genel bulgu 7). */
 static void alim(void)
 {
     if (ida_link_ust_cagri_acik(&ust)) {
         return; /* W3-K10: çağrı penceresinde rx çağrılmaz; baytlar sürücüde bekler */
     }
-    size_t bu_tur = 0u;
-    bool ilerledi = false;
-    while (bu_tur < B_AYR) {
-        uint64_t t_rx = 0u;
-        bool kaba = false;
-        bool tasma = false;
-        const size_t n = ida_seri_oku(blok, sizeof blok, &t_rx, &kaba, &tasma);
-        if (tasma) {
-            ida_link_ust_rx_tasma(&ust); /* A1-K09 */
-            ilerledi = true;
-        }
-        if (n == 0u) {
-            break;
-        }
-        ilerledi = true;
-        uint32_t say_once[IDA_LINK_SAY_N];
-        if (kaba) {
-            ida_link_ust_sayaclar(&ust, say_once);
-        }
-        ida_wtime_t t;
-        t.ns = (int64_t)(t_rx * 1000u);
-        const uint32_t c0 = ida_bsp_cevrim();
-        ida_link_ust_rx(&ust, blok, n, t);
-        const uint32_t c = ida_bsp_cevrim() - c0;
-        if (kaba) {
-            /* Kaba damgalı blokta biten çerçeveler: A1-K48'in stamp_coarse'u (platformun). */
-            uint32_t say_sonra[IDA_LINK_SAY_N];
-            ida_link_ust_sayaclar(&ust, say_sonra);
-            stamp_coarse += say_sonra[IDA_LINK_SAY_RX_FRAMES] - say_once[IDA_LINK_SAY_RX_FRAMES];
-        }
-        ida_ist_ekle(&blok_ist, c);
-        if (c >= blok_ist.en_kotu_cevrim) {
-            blok_en_kotu_bayt = (uint32_t)n;
-        }
-        uint32_t kutu = 0u;
-        while (kutu < 15u && (n >> (kutu + 1u)) != 0u) {
-            kutu++;
-        }
-        bb_sayi[kutu]++;
-        bb_bayt[kutu] += (uint32_t)n;
-        bb_cevrim[kutu] += c;
-        blok_bayt += n;
-        periyot_cevrim += c;
-        periyot_bayt += (uint32_t)n;
-        bu_tur += n;
-    }
-    ida_rx_gozetim_guncelle(&rx_gozetim, ida_seri_bekleyen(), ilerledi, ida_bsp_zaman_us());
+    alim_baglam_t a = {0u, false, false};
+    (void)ida_alim_turu(blok, B_AYR, alim_oku, alim_isle, &a);
+    ida_rx_gozetim_guncelle(&rx_gozetim, ida_seri_bekleyen(), a.ilerledi, ida_bsp_zaman_us());
 }
 
 /* Çekirdek çağrısı (kapanis.c kapısından): platformun alanları (ust.h akış adımı 3; A4 §3.6),
@@ -643,6 +685,24 @@ static ida_rc_t cekirdek_cagir(void *ctx, ida_link_cagri_t tur, ida_in_t *in, id
     in->plat.param_gen = kal.store_gen;
     in->plat.tx_stalled = gon.tx_stalled;
     return ida_cagirici_cagir(tur == IDA_LINK_CAGRI_STEP, in, out, ida_bsp_zaman_us());
+}
+
+/* Güvenli kapanış kararı (app/kapanis.c; A1-K22, K110, K13): çağrı penceresi dışında. */
+static void kapanis_denetle_ana(void)
+{
+    const uint8_t kn =
+        ida_kapanis_denetle(&kapanis, &gon, rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
+    if (kn == IDA_KAPANIS_YOK) {
+        return;
+    }
+    /* 1. adım yapıldı (girdiler engelli). Oturum sonu çağrısı yoksa yasak hemen başlar; varsa
+       çağırıcı, çekirdeğe teslim edildikten sonra (cagri()) güvenli beklemeye geçer. */
+    if (ida_kapanis_yasak(&kapanis)) {
+        ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX : IDA_CAG_NEDEN_RNG);
+    }
+    ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
+    ida_bsp_led_yesil(false);
+    ida_bsp_led_kirmizi(true);
 }
 
 /* take → kapı → çekirdek → put_out (app/kapanis.c; kapanışta oturum sonu çağrısı çekirdeğe
@@ -695,6 +755,13 @@ static void cagri(void)
     if (ct > cagri_tur_en_kotu) {
         cagri_tur_en_kotu = ct;
     }
+    bool param_save = false;
+    if (t.cekirdek_cagrildi) {
+        for (uint32_t i = 0u; i < cikti.n_results && i < IDA_PORT_MAX_RESULTS; i++) {
+            param_save = param_save || cikti.results[i].kind == IDA_RES_PARAM_SAVE;
+        }
+    }
+    ida_cagri_turu_ekle(&cagri_turu, ct / IDA_IST_CEVRIM_US, param_save);
 }
 
 int main(void)
@@ -709,6 +776,9 @@ int main(void)
     ida_ist_sifirla(&skart_ist);
     ida_gon_kur(&gon);
     ida_kapanis_kur(&kapanis);
+    ida_islem_gozetim_kur(&flash_goz);
+    ida_kararli_kur(&kararli);
+    ida_cagri_turu_kur(&cagri_turu);
 
     /* Kalıcı bellek: geçerli parametre bloğu ve açılış sayacı (bloklayıcı; 2 s IWDG içinde). */
     const ida_kal_flash_t fl = {NULL, f_taban, f_sil, f_yaz16, f_durum, f_ecc};
@@ -806,22 +876,12 @@ int main(void)
         if (baglanti && ust_tamam) {
             alim();
             ida_link_ust_poll_tx(&ust);
+            /* Kapanış kapısı take'ten ÖNCE kurulur: alımda (ör. RNG hatası) ya da poll_tx'te
+               mandallanan hatadan sonra hiçbir olağan çağrı çekirdeğe ulaşmaz (sol 3. denetim). */
+            kapanis_denetle_ana();
             cagri();
-            /* Güvenli kapanış (kritik çıktı kaybı; A1-K110): çağrı penceresi dışında. */
-            const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon,
-                                                   rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
-            if (kn != IDA_KAPANIS_YOK) {
-                /* 1. adım yapıldı (girdiler engelli). Oturum sonu çağrısı yoksa yasak hemen
-                   başlar; varsa çağırıcı, çekirdeğe teslim edildikten sonra (cagri()) güvenli
-                   beklemeye geçer. */
-                if (ida_kapanis_yasak(&kapanis)) {
-                    ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX
-                                                                  : IDA_CAG_NEDEN_RNG);
-                }
-                ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
-                ida_bsp_led_yesil(false);
-                ida_bsp_led_kirmizi(true);
-            }
+            /* put_out kaynaklı hatalar (kritik ret) için çağrı sonrası denetim. */
+            kapanis_denetle_ana();
             /* Platformun Tablo 3.11b sayaçları (ust.h: platform diziye doğrudan yazar). */
             ust.say[IDA_LINK_SAY_STAMP_COARSE] = stamp_coarse;
             ust.say[IDA_LINK_SAY_TX_FRAMES] = gon.tx_frames;
@@ -831,6 +891,14 @@ int main(void)
 
         /* ---- A: kalıcı bellek kaydı (oturum sonunda iptal; A4-K83) ---- */
         const ida_link_ust_durum_t durum = ida_link_ust_durum(&ust);
+        /* 01 §2.8: NORMAL ve RUNNING oturumla kesintisiz 30 s -> ardışık arıza sayacı sıfır. */
+        if (ida_kararli_guncelle(&kararli,
+                                 ida_cagirici_durum()->durum == IDA_CAG_NORMAL &&
+                                     durum == IDA_LINK_UST_RUNNING,
+                                 ida_bsp_zaman_us(), KARARLI_SURE_US)) {
+            ida_bsp_ardisik_temizle();
+            ardisik_temizleme++;
+        }
         if (onceki_durum == IDA_LINK_UST_RUNNING && durum != IDA_LINK_UST_RUNNING) {
             ida_kal_iptal(&kal);
         }

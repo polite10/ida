@@ -12,7 +12,8 @@
  * kaydın sayfasında ondan sonraki ilk silinmiş yuvaya (yoksa öteki sayfa silinip başına)
  * yazılır ve geri okunarak doğrulanır; ancak o zaman boot_count = N + 1 ve boot_count_ok = 1
  * (A4-K86). Yarım kalan kayıt geçersiz okunur ve atlanır; yuvası yeniden kullanılmaz. Sayaç
- * geri gitmez; 0xFFFFFFFF'e ulaşırsa ya da ayrılamazsa boot_count_ok = 0. Açılış yazımı
+ * geri gitmez; geçerli üst sınıra (A4 IDA_BOOT_COUNT_MAX = 0xFFFFFFFE) ulaşmışsa ya da ayrılamazsa
+ * boot_count_ok = 0. Açılış yazımı
  * bloklayıcıdır (başlatmada izinli; 01 §2.9).
  *
  * Parametre bloğu sayfası:
