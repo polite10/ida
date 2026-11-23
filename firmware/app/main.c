@@ -75,6 +75,8 @@ static ida_link_platform_t ust_plat;
 static ida_gonderim_t gon;
 static ida_kapanis_t kapanis;
 static bool rng_hata;
+/* Son çekirdek çıktısının durumu (ölçüm bloğu; kapanışın sınanması için). */
+static uint32_t son_armed, son_mode, son_fc_state, son_fc_inhibit, son_link_event;
 static ida_kalici_t kal;
 static ida_in_t girdi;
 static ida_out_t cikti;
@@ -357,6 +359,13 @@ static void olcum_guncelle(uint64_t simdi)
     o[IDA_OL_gon_temizlenen] = gon.temizlenen;
     o[IDA_OL_gon_kritik_hata] = gon.kritik_hata ? 1u : 0u;
     o[IDA_OL_kapanis_neden] = kapanis.neden;
+    o[IDA_OL_kapanis_evre] = kapanis.evre;
+    o[IDA_OL_kapanis_oturum_sonu_teslim] = kapanis.oturum_sonu_teslim;
+    o[IDA_OL_son_armed] = son_armed;
+    o[IDA_OL_son_mode] = son_mode;
+    o[IDA_OL_son_fc_state] = son_fc_state;
+    o[IDA_OL_son_fc_inhibit] = son_fc_inhibit;
+    o[IDA_OL_son_link_event] = son_link_event;
     {
         const ida_rng_sayac_t *r = ida_bsp_rng_sayac();
         o[IDA_OL_rng_tohum_hata] = r->tohum_hata;
@@ -624,41 +633,53 @@ static void alim(void)
     ida_rx_gozetim_guncelle(&rx_gozetim, ida_seri_bekleyen(), ilerledi, ida_bsp_zaman_us());
 }
 
-/* take → çekirdek → put_out. */
+/* Çekirdek çağrısı (kapanis.c kapısından): platformun alanları (ust.h akış adımı 3; A4 §3.6),
+   sonra ida_core_step / ida_core_tick. */
+static ida_rc_t cekirdek_cagir(void *ctx, ida_link_cagri_t tur, ida_in_t *in, ida_out_t *out)
+{
+    (void)ctx;
+    in->plat.param_store = kal.store;
+    in->plat.param_fail = kal.fail;
+    in->plat.param_gen = kal.store_gen;
+    in->plat.tx_stalled = gon.tx_stalled;
+    return ida_cagirici_cagir(tur == IDA_LINK_CAGRI_STEP, in, out, ida_bsp_zaman_us());
+}
+
+/* take → kapı → çekirdek → put_out (app/kapanis.c; kapanışta oturum sonu çağrısı çekirdeğe
+   teslim edildikten sonra kalıcı yasak). */
 static void cagri(void)
 {
-    const ida_link_cagri_t tur = ida_link_ust_take(&ust, &girdi);
-    if (tur == IDA_LINK_CAGRI_YOK) {
+    const uint32_t c0 = ida_bsp_cevrim();
+    const ida_cagirici_t *c = ida_cagirici_durum();
+    const ida_kapanis_tur_t t = ida_kapanis_cagri(&kapanis, &ust, c->durum == IDA_CAG_NORMAL,
+                                                  &girdi, &cikti, cekirdek_cagir, NULL);
+    if (t.tur == IDA_LINK_CAGRI_YOK) {
         return;
     }
-    const uint32_t c0 = ida_bsp_cevrim();
-    /* Platformun alanları (ust.h akış adımı 3; A4 §3.6). */
-    girdi.plat.param_store = kal.store;
-    girdi.plat.param_fail = kal.fail;
-    girdi.plat.param_gen = kal.store_gen;
-    girdi.plat.tx_stalled = gon.tx_stalled;
-    const ida_cagirici_t *c = ida_cagirici_durum();
-    uint64_t t_out;
-    if (c->durum == IDA_CAG_NORMAL) {
-        const ida_rc_t rc = ida_cagirici_cagir(tur == IDA_LINK_CAGRI_STEP, &girdi, &cikti,
-                                               ida_bsp_zaman_us());
-        ida_link_ust_put_out(&ust, &girdi, rc, &cikti);
-        t_out = ida_bsp_zaman_us();
+    const uint64_t t_out = ida_bsp_zaman_us();
+    if (t.cekirdek_cagrildi) {
+        son_armed = cikti.status.armed ? 1u : 0u;
+        son_mode = cikti.status.mode;
+        son_fc_state = cikti.fc.state;
+        son_fc_inhibit = cikti.fc.inhibit_mask;
+        son_link_event = girdi.plat.link_event;
         /* Kabul edilen PARAM_SAVE (A4-K82): blob bir sonraki çekirdek çağrısına kadar geçerli;
            kalıcı bellek modülü kopyalar ve kaydı adım adım yürütür. */
         for (uint32_t i = 0u; i < cikti.n_results && i < IDA_PORT_MAX_RESULTS; i++) {
             const ida_cmd_result_t *r = &cikti.results[i];
             if (r->kind == IDA_RES_PARAM_SAVE && r->ack == IDA_ACK_ACCEPTED &&
-                r->save.blob != NULL) {
+                r->save.blob != NULL && kapanis.neden == IDA_KAPANIS_YOK) {
                 ida_kal_kaydet(&kal, r->save.blob, r->save.len, r->save.gen);
                 kal_kayit_bas_us = ida_bsp_zaman_us();
             }
         }
-    } else {
-        /* Güvenli bekleme: çekirdek çağrılmaz; çıktı yok (ust.h: out NULL). */
-        ida_link_ust_put_out(&ust, &girdi, IDA_RC_NOT_INIT, NULL);
-        t_out = ida_bsp_zaman_us();
     }
+    /* Kapanışın 3. adımı: oturum sonu çekirdeğe teslim edildi; kalıcı çağrı yasağı. */
+    if (ida_kapanis_yasak(&kapanis) && c->durum == IDA_CAG_NORMAL) {
+        ida_cagirici_guvenli(kapanis.neden == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX
+                                                                 : IDA_CAG_NEDEN_RNG);
+    }
+    const ida_link_cagri_t tur = t.tur;
     if (tur == IDA_LINK_CAGRI_STEP || tur == IDA_LINK_CAGRI_TICK_TF) {
         /* S_kart: partiyi kapatan TF'nin alım damgasından aktüatör çerçevesinin gönderim
            kuyruğuna verilmesine (put_out dönüşü) kadar; put_out'tan sonraki kayıt başlatma
@@ -790,7 +811,13 @@ int main(void)
             const uint8_t kn = ida_kapanis_denetle(&kapanis, &gon,
                                                    rng_hata || ida_bsp_rng_baslatma_hatasi(), &ust);
             if (kn != IDA_KAPANIS_YOK) {
-                ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX : IDA_CAG_NEDEN_RNG);
+                /* 1. adım yapıldı (girdiler engelli). Oturum sonu çağrısı yoksa yasak hemen
+                   başlar; varsa çağırıcı, çekirdeğe teslim edildikten sonra (cagri()) güvenli
+                   beklemeye geçer. */
+                if (ida_kapanis_yasak(&kapanis)) {
+                    ida_cagirici_guvenli(kn == IDA_KAPANIS_KRITIK ? IDA_CAG_NEDEN_TX
+                                                                  : IDA_CAG_NEDEN_RNG);
+                }
                 ida_kal_iptal(&kal); /* A4-K83: güvenli duruma girişte süren kayıt iptal edilir */
                 ida_bsp_led_yesil(false);
                 ida_bsp_led_kirmizi(true);

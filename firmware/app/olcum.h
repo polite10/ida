@@ -54,6 +54,8 @@
     X(gon_tx_frames) X(gon_tx_dropped) X(gon_crit_stall) X(gon_kritik_ret) X(gon_zorunlu_ret) \
     X(gon_yazma_ret) X(gon_kritik_bekleme_en_kotu_us) X(gon_q1_azami) X(gon_q2_azami) X(gon_q3_azami) \
     X(gon_gecersiz_ret) X(gon_temizlenen) X(gon_kritik_hata) X(kapanis_neden) \
+    X(kapanis_evre) X(kapanis_oturum_sonu_teslim) X(son_armed) X(son_mode) X(son_fc_state) \
+    X(son_fc_inhibit) X(son_link_event) \
     X(rng_tohum_hata) X(rng_saat_hata) X(rng_kurtarma) X(rng_atilan) X(rng_kurtarilamaz) \
     X(gon_sira_giris_kesinti) X(gon_sira_giris_eksik) X(gon_sira_kuyruk_kesinti) \
     X(gon_sira_kuyruk_eksik) X(gon_sira_cikis_kesinti) X(gon_sira_cikis_eksik) \

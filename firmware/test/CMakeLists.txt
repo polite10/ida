@@ -40,6 +40,16 @@ target_link_libraries(ida_fw_test_gonderim_oturum_karsi PRIVATE ida_fw_saf_host 
 ida_ayar_uygula(ida_fw_test_gonderim_oturum_karsi CEKIRDEK)
 add_test(NAME firmware.birim.gonderim_oturum_karsi_ornek COMMAND ida_fw_test_gonderim_oturum_karsi)
 set_tests_properties(firmware.birim.gonderim_oturum_karsi_ornek PROPERTIES WILL_FAIL TRUE)
+# Karşı örnek (sol bulgu 1, ikinci denetim): çağrı yasağı kapanış kararıyla hemen başlarsa
+# oturum sonu çağrısı çekirdeğe teslim edilmez; silahlı çekirdek testi düşer.
+add_executable(ida_fw_test_gonderim_oturum_eski_sira test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_eski_sira PRIVATE IDA_TEST_ESKI_SIRA=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_eski_sira PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_eski_sira CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_eski_sira_karsi_ornek
+         COMMAND ida_fw_test_gonderim_oturum_eski_sira)
+set_tests_properties(firmware.birim.gonderim_oturum_eski_sira_karsi_ornek PROPERTIES WILL_FAIL TRUE)
 _ida_fw_birim(kalici)
 _ida_fw_birim(ecc)
 _ida_fw_birim(rng)
