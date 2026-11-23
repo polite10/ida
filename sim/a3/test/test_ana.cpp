@@ -1,0 +1,100 @@
+// test_ana.cpp — sim/a3 testlerinin giriş noktası: `ida_a3_test <test_adı>` (CTest: sim.a3.<ad>).
+//   ida_a3_test uyum_ornekleri <dosya>   web çözücü uyum testi için örnek çerçeveleri yazar
+#include "soket.hpp"
+
+#include <cstdio>
+#include <cstring>
+#include <map>
+#include <string>
+
+namespace ida::a3::test {
+int test_json();
+int test_desen();
+int test_sema();
+int test_ozet();
+int test_http_ayristirma();
+int test_ws_cerceve();
+int test_halka();
+int test_katalog_tablosu();
+int test_kodlayici();
+int test_dongu_disi_adres();
+int test_erisim_http();
+int test_erisim_ws();
+int test_erisim_olayi_hiz_siniri();
+int test_merhaba_ve_zorunlu();
+int test_abonelik_ve_ozet();
+int test_seyreltme_hizi();
+int test_olay_gecmisi();
+int test_ws_kapanis_kodlari();
+int test_canlilik();
+int test_olay_kuyrugu_tasmasi();
+int test_kapanis_1001();
+int test_calistirma_akisi();
+int test_yineleme();
+int test_govde_sinirlari();
+int test_emniyet_kisitlayan();
+int test_emniyet_gevseten();
+int test_sonuc_aynen();
+int test_kuyruk_dolu_kisitlayan();
+int test_yer_istasyonu();
+int test_yavas_istemci();
+int test_rastgele_cekirdek();
+int test_rastgele_ayristirici();
+int test_cok_baglanti();
+int uyum_ornekleri_yaz(const char* yol);
+}  // namespace ida::a3::test
+
+int main(int argc, char** argv)
+{
+    using namespace ida::a3::test;
+    if (argc == 3 && std::strcmp(argv[1], "uyum_ornekleri") == 0) {
+        return uyum_ornekleri_yaz(argv[2]);
+    }
+    const std::map<std::string, int (*)()> testler = {
+        {"json", test_json},
+        {"desen", test_desen},
+        {"sema", test_sema},
+        {"ozet", test_ozet},
+        {"http_ayristirma", test_http_ayristirma},
+        {"ws_cerceve", test_ws_cerceve},
+        {"halka", test_halka},
+        {"katalog_tablosu", test_katalog_tablosu},
+        {"kodlayici", test_kodlayici},
+        {"dongu_disi_adres", test_dongu_disi_adres},
+        {"erisim_http", test_erisim_http},
+        {"erisim_ws", test_erisim_ws},
+        {"erisim_olayi_hiz_siniri", test_erisim_olayi_hiz_siniri},
+        {"merhaba_ve_zorunlu", test_merhaba_ve_zorunlu},
+        {"abonelik_ve_ozet", test_abonelik_ve_ozet},
+        {"seyreltme_hizi", test_seyreltme_hizi},
+        {"olay_gecmisi", test_olay_gecmisi},
+        {"ws_kapanis_kodlari", test_ws_kapanis_kodlari},
+        {"canlilik", test_canlilik},
+        {"olay_kuyrugu_tasmasi", test_olay_kuyrugu_tasmasi},
+        {"kapanis_1001", test_kapanis_1001},
+        {"calistirma_akisi", test_calistirma_akisi},
+        {"yineleme", test_yineleme},
+        {"govde_sinirlari", test_govde_sinirlari},
+        {"emniyet_kisitlayan", test_emniyet_kisitlayan},
+        {"emniyet_gevseten", test_emniyet_gevseten},
+        {"sonuc_aynen", test_sonuc_aynen},
+        {"kuyruk_dolu_kisitlayan", test_kuyruk_dolu_kisitlayan},
+        {"yer_istasyonu", test_yer_istasyonu},
+        {"yavas_istemci", test_yavas_istemci},
+        {"rastgele_cekirdek", test_rastgele_cekirdek},
+        {"rastgele_ayristirici", test_rastgele_ayristirici},
+        {"cok_baglanti", test_cok_baglanti},
+    };
+    if (argc != 2 || testler.count(argv[1]) == 0) {
+        std::fprintf(stderr, "kullanım: ida_a3_test <test>\n");
+        for (const auto& [ad, f] : testler) {
+            (void)f;
+            std::fprintf(stderr, "  %s\n", ad.c_str());
+        }
+        return 2;
+    }
+    ida::a3::ag::baslat();
+    const int hata = testler.at(argv[1])();
+    std::printf("%s: %s (%d hata)\n", argv[1], hata == 0 ? "GEÇTİ" : "KALDI", hata);
+    return hata == 0 ? 0 : 1;
+}
