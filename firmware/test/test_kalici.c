@@ -239,6 +239,13 @@ static void sayac_kaydi_koy(uint32_t ofs, uint32_t n)
     }
 }
 
+/* CRC-32/ISO-HDLC denetim değeri (tablolu hesap). */
+static void test_crc32_denetim_degeri(void)
+{
+    TEST_ASSERT_EQUAL_HEX32(0xCBF43926u, ida_kal_crc32("123456789", 9u));
+    TEST_ASSERT_EQUAL_HEX32(0x00000000u, ida_kal_crc32("", 0u));
+}
+
 static void test_bos_flash_sayac_artar(void)
 {
     ac();
@@ -705,6 +712,7 @@ static void test_cok_buyuk_ve_flash_hatasi(void)
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_crc32_denetim_degeri);
     RUN_TEST(test_bos_flash_sayac_artar);
     RUN_TEST(test_sayac_sayfa_degisimi);
     RUN_TEST(test_yarim_sayac_kaydi_atlanir);
