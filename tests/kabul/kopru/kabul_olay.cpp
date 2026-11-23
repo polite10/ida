@@ -481,10 +481,11 @@ VAKA("A1-K84.suresi_gecmis_olay") {
     Duzenek d;
     KONTROL(hazirla(d), "kurulum");
     const std::uint64_t gec0 = d.k.sayaclar().olay_gec;
-    // Olay TF(n)'ye bağlı; yanıt zamanında (olayı saymaz), olay 25 ms sonra gelir
-    // (apply_by 20 ms; A1-K84).
+    // Olay TF(n)'ye bağlı; yanıt zamanında gelir ve olayı sayar (n_events = 1); olayın ilk
+    // çerçevesi kayboldu, yinelemesi (A1-K80; H12) 25 ms sonra gelir (apply_by 20 ms; A1-K84).
+    // W4-K15: yanıtın saymadığı genişletici olay sözleşme dışıdır; olay sayılmış olmalı.
     YanitPlani y;
-    y.olaylari_say = false;
+    y.olaylari_say = true;
     y.olay_gecikme = 25 * kMs;
     GidenOlaylar g = olaylarla_yanitla(d, {acma(0)}, y);
     KONTROL_ESIT(sonuc_kodu(d, g.olaylar.at(0).event_id), kRejExpired,
@@ -502,10 +503,12 @@ VAKA("A1-K84.suresi_gecmis_olay") {
 VAKA("A1-K84.son_gecerlilik_siniri") {
     Duzenek d;
     KONTROL(hazirla(d), "kurulum");
-    // Sınır: olay sinir_isle(B−1)'den sonra, sinir_isle(B)'den önce gelir; B = t_n + apply_by.
-    // t_apply = t_decide + apply_by → uygulanır (A1-K84 yalnız t_apply > ... ise reddeder).
+    // H12 (W4-K15): yanıt olayı sayar (n_events = 1), olayın ilk çerçevesi kayboldu; yinelemesi
+    // sinir_isle(B−1)'den sonra, sinir_isle(B)'den önce gelir; B = t_n + apply_by. Küme o anda
+    // tamamlanır; t_apply = t_decide + apply_by → uygulanır (A1-K84 yalnız t_apply > ... ise
+    // reddeder). Bir adım geç gelen yineleme REJ_EXPIRED alır.
     YanitPlani y;
-    y.olaylari_say = false;
+    y.olaylari_say = true;
     y.olay_gecikme = 20 * kMs;
     GidenOlaylar g = olaylarla_yanitla(d, {acma(0)}, y);
     auto r = sonuc_bekle(d, g.olaylar.at(0).event_id);
