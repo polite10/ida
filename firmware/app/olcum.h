@@ -41,7 +41,7 @@
     X(cagri_rc_hata) X(cagri_son_rc) X(cagri_tur_en_kotu_cevrim) \
     X(cagri_turu_sayi) X(cagri_turu_asim) X(cagri_turu_asim_ps) X(cagri_turu_en_kotu_us) \
     X(cagri_turu_ps_en_kotu_us) X(cagri_turu_sinir_us) \
-    X(ps_sayi) X(ps_son_tur_cevrim) X(ps_son_step_cevrim) X(ps_son_skart_us) X(ps_son_dongu_cevrim) \
+    X(ps_sayi) X(ps_son_tur_cevrim) X(ps_son_step_cevrim) X(ps_son_skart_us) X(ps_son_dongu_cevrim) X(ps_son_kaydet_cevrim) \
     X(ol_fark_sayi) X(ol_fark_en_kotu_cevrim) X(ol_fark_toplam_cevrim_lo) X(ol_fark_toplam_cevrim_hi) \
     X(bg_sayisi) X(bg_en_kotu_cevrim) X(bg_more) \
     X(skart_sayisi) X(skart_en_kotu_cevrim) X(skart_en_iyi_cevrim) \
