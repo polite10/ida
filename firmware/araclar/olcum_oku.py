@@ -177,6 +177,17 @@ def ozet(d):
                   "turu_en_kotu_us": d.get("cagri_turu_en_kotu_us"),
                   "turu_asim_param_save": d.get("cagri_turu_asim_ps"),
                   "turu_param_save_en_kotu_us": d.get("cagri_turu_ps_en_kotu_us")}
+    # W4-K16 (b): PARAM_SAVE'i işleyen son çağrı ve olağan step çağrılarında "çağrı turu − step".
+    o["param_save_cagrisi"] = {
+        "sayi": d.get("ps_sayi"), "son_tur_us": us(d.get("ps_son_tur_cevrim", 0)),
+        "son_step_us": us(d.get("ps_son_step_cevrim", 0)), "son_skart_us": d.get("ps_son_skart_us"),
+        "son_dongu_turu_us": us(d.get("ps_son_dongu_cevrim", 0)),
+        "son_tur_eksi_step_us": us(d.get("ps_son_tur_cevrim", 0) - d.get("ps_son_step_cevrim", 0))}
+    _n = d.get("ol_fark_sayi") or 0
+    _top = d.get("ol_fark_toplam_cevrim_lo", 0) + (d.get("ol_fark_toplam_cevrim_hi", 0) << 32)
+    o["olagan_tur_eksi_step"] = {
+        "sayi": _n, "en_kotu_us": us(d.get("ol_fark_en_kotu_cevrim", 0)),
+        "ortalama_us": (us(_top) / _n) if _n else None}
     o["blok"] = _sure(d, "blok")
     o["blok"]["en_kotu_blok_bayt"] = d["blok_en_kotu_bayt"]
     if d.get("blok_bayt"):
