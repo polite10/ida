@@ -222,6 +222,7 @@ void SahteKart::cerceve_isle(const ida_link_cerceve_t& c, std::int64_t t) {
         ida_link_coz(&c, c.msgid, &k, sizeof k);
         if (kosuyor_ && k.sess == sess_) {
             ++oturum_kapanis_alindi;
+            son_kapanis_nedeni = k.reason;
             kosuyor_ = false;
         }
         break;

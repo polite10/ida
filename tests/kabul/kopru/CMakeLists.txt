@@ -37,7 +37,7 @@ kabul_kopru_ayar(kabul_kopru_ortak)
 
 # Köprü düzeyi (Kopru + sahte kart, bellek içi taşıma).
 add_executable(kabul_kopru kabul_kopru.cpp kabul_olay.cpp kabul_zaman.cpp kabul_saglamlik.cpp
-  kabul_geri_okuma.cpp)
+  kabul_geri_okuma.cpp kabul_w4k15.cpp)
 target_link_libraries(kabul_kopru PRIVATE kabul_kopru_ortak)
 kabul_kopru_ayar(kabul_kopru)
 
@@ -84,7 +84,18 @@ set(_kabul_kopru_vakalari
   A1-K56.geri_okuma_pim_cikarilmasi
   # Vaka 9: dayanıklılık
   A1-K109.rastgele_cerceveler_acil
-  A1-K109.rastgele_cerceveler_fis)
+  A1-K109.rastgele_cerceveler_fis
+  # W4-K15: olay kümesi sayıyla kapanır (EMNİYET)
+  W4-K15.3.tam_yuvaya_yeni_open
+  W4-K15.3.tam_yuvaya_yeni_fire
+  W4-K15.3.sayiyi_asan_genisletici
+  W4-K15.1.eksik_kume_open_uygulanmaz
+  W4-K15.1.eksik_kume_close_beklemez
+  W4-K15.3.is_safe_yanit_sonra_fire
+  W4-K15.3.ayni_kimlik_yineleme_ihlal_degil
+  W4-K15.3.sayiyi_asan_safety_close
+  W4-K15.2.bekleyen_yanit_t_bag_yenilemez
+  W4-K15.4.bad_input_olay_beklemez)
 foreach(_ad IN LISTS _kabul_kopru_vakalari)
   add_test(NAME kabul.kopru.${_ad} COMMAND kabul_kopru ${_ad})
 endforeach()

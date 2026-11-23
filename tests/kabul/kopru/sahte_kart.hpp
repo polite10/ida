@@ -139,6 +139,7 @@ public:
     std::vector<GelenKomut> komutlar;
     std::uint64_t sim_hello_sayisi = 0;
     std::uint64_t oturum_kapanis_alindi = 0;
+    std::uint8_t son_kapanis_nedeni = 0;   // sim'in son IDA_SESSION_CLOSE.reason'ı
     std::uint64_t yeniden_baslatma = 0;
 
     // TF(n) alındığında (parti kapandıktan sonra) çağrılır; yanıtı test verir.
