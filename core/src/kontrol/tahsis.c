@@ -477,7 +477,9 @@ uint8_t ida_tah_kur(ida_tah_t *t, const ida_prm_kume_t *k, uint8_t disi)
     t->sekil[IDA_TAH_TABLO - 1u] = 1.0f; /* max_{v ≤ 1} F(v) / N = 1 tanım gereği */
     t->s_min = tablo_ileri(t->sekil, t->u_min);
 
-    const uint8_t etkin = (uint8_t)(~disi & 0xFFu);
+    /* W3-K14: ~disi int'e yükselir ve 0xFFu ile birleşince işaret değişir (Clang 21
+       -Wsign-conversion); aynı değer işaretsiz XOR ile. */
+    const uint8_t etkin = (uint8_t)(0xFFu ^ disi);
     if (!grup_tersleri(t->b, etkin, GRUP_DALIS, 4u, t->p_dalis, t->n_dalis)) {
         return IDA_TAH_SAYISAL;
     }
