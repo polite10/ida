@@ -372,10 +372,14 @@ static void test_sema_ozeti_tablodan_turer(void)
    Birleşim (W5-kestirim-yatay + W5-atis-emniyet, 2026-11-24): iki işin parametreleri birlikte
    196 parametre (159 + 32 kestirim + 5 atış); değerler aynı bağımsız hesapla (.def dosyalarından
    kanonik metin). Dalların ayrı ayrı değerleri: kestirim 0xA4B1E4F1ECAADCBB / 2 933 B / 1 552 B
-   (191 parametre), atış 0xE0ED504FB6AEA22D / 2 510 B / 1 336 B (164 parametre). */
-#define ALTIN_OZET UINT64_C(0x8F918D01B26C0791)
-#define ALTIN_METIN 3017u
-#define ALTIN_BLOK 1592u
+   (191 parametre), atış 0xE0ED504FB6AEA22D / 2 510 B / 1 336 B (164 parametre).
+   W5-gorev-yurutucu (2026-11-24): görevin sekiz (0x0411–0x0418) ve güdümün dört (0x0302–0x0305)
+   parametresi; 208 parametre. Önceki değerler 0x8F918D01B26C0791, 3 017 B, 1 592 B idi; yeniler
+   aynı bağımsız hesapla (.def dosyalarından kanonik metin; hesap önceki şemada eski değerleri
+   veriyor). */
+#define ALTIN_OZET UINT64_C(0xCCBD046F048653C3)
+#define ALTIN_METIN 3238u
+#define ALTIN_BLOK 1688u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \

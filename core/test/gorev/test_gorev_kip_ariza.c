@@ -171,13 +171,31 @@ static void ortam_kur(ortam_t *o)
     gunluk_bosalt(o);
 }
 
+/* AUTO için yürüyen görev (test kancası): bulunulan yerde, bulunulan derinlikte (2 m) bir
+   saatlik HOLD (W5-gorev-yurutucu; boş görev hemen biter ve AUTO'yu düşürürdü). */
+static void gorev_kur(ortam_t *o)
+{
+    ida_gor_gorev_t *v = &o->g.gv;
+    (void)memset(&v->oge[0], 0, sizeof(v->oge[0]));
+    v->oge[0].tur = (uint8_t)IDA_MI_HOLD;
+    v->oge[0].cerceve = (uint8_t)IDA_MI_FRAME_NONE;
+    v->oge[0].p[0] = 3600.0f;
+    v->oge[0].p[1] = 50.0f;
+    v->oge[0].derinlik = 2.0f;
+    v->n = 1u;
+    o->g.mission_item = 0u;
+    o->g.mission_state = (uint8_t)IDA_MS_RUNNING;
+}
+
 /* Kipi test kancasıyla kurar (iz de güncellenir; tutma hedefi yakalama gürültüsü olmasın). */
 static void kip_kur(ortam_t *o, uint8_t kip)
 {
     o->e.mode = kip;
     o->g.son_kip = kip;
-    o->g.mission_state = (kip == (uint8_t)IDA_MODE_AUTO) ? (uint8_t)IDA_MS_RUNNING
-                                                          : (uint8_t)IDA_MS_IDLE;
+    o->g.mission_state = (uint8_t)IDA_MS_IDLE;
+    if (kip == (uint8_t)IDA_MODE_AUTO) {
+        gorev_kur(o);
+    }
 }
 
 /* ---- md.1: kip tablosu ------------------------------------------------------------------- */
@@ -381,10 +399,10 @@ static void test_md1_kip_komutlari(void)
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_BAD_MODE, r.reason);
     TEST_ASSERT_FALSE(o->e.armed);
     TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DISARMED, o->e.mode);
-    /* Görev komutları dilim 2: UNSUPPORTED / NONE. */
+    /* Görev komutları (W5-gorev-yurutucu): count 0 → OUT_OF_RANGE (3.17). */
     r = komut(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 0u);
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_UNSUPPORTED, r.ack);
-    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, r.reason);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, r.ack);
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_OUT_OF_RANGE, r.reason);
 }
 
 /* ---- md.3: kip × arıza matrisi ---------------------------------------------------------- */
@@ -410,6 +428,9 @@ static const satir_t MATRIS[IDA_GOR_K_SAYI] = {
     /* SAYISAL        */ {W_, P_, P_, P_, P_, P_, P_},
     /* IMU_BAYAT      */ {N_, P_, P_, P_, P_, P_, P_},
     /* PARAM          */ {W_, N_, N_, N_, N_, N_, N_},
+    /* COGRAFI        */ {N_, W_, W_, W_, W_, S_, S_}, /* 02 §4.3 coğrafi sınır */
+    /* IRTIFA         */ {N_, W_, W_, W_, W_, W_, W_}, /* eylem güdümde (yükselme) */
+    /* GOREV_IPTAL    */ {W_, S_, S_, S_, S_, S_, S_}, /* görevin iptali: yüzeye çıkış */
 };
 
 static uint8_t matris(uint32_t k, uint8_t kip)
@@ -447,7 +468,7 @@ static void test_md3_tablo_kaynakla_ayni(void)
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(b, h, "hücre");
         }
     }
-    TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, ida_gor_ariza_hucre(14u, 1u));
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, ida_gor_ariza_hucre((uint8_t)IDA_GOR_K_SAYI, 1u));
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_DISARM, ida_gor_ariza_hucre(0u, 8u));
 }
 
@@ -521,13 +542,50 @@ static uint32_t kosul_olustur(ortam_t *o, uint32_t k)
         o->now += 10 * MS;
         adim(o);
         break;
-    default: /* PARAM */
+    case IDA_GOR_K_PARAM:
         o->gi.param_ok = false;
+        o->now += 10 * MS;
+        adim(o);
+        break;
+    case IDA_GOR_K_COGRAFI:
+        o->gi.nav_ne[0] = 1500.0f; /* GEO_YARICAP (1000 m) dışı */
+        o->now += 10 * MS;
+        adim(o);
+        break;
+    case IDA_GOR_K_IRTIFA:
+        o->gi.irtifa_var = true;
+        o->gi.irtifa = 0.1f; /* ALT_MIN (0,3 m) altı */
+        o->now += 10 * MS;
+        adim(o);
+        break;
+    default: /* GOREV_IPTAL (test kancası: yürütücünün iptal isteği) */
+        o->g.gv.iptal_bekliyor = true;
         o->now += 10 * MS;
         adim(o);
         break;
     }
     return kume;
+}
+
+/* Koşul kümesinin kip sütunundaki beklenen düzeyi ve nedenleri (testin kuralları). */
+static void beklenen_hesapla(uint32_t kume, uint8_t bkip, uint8_t *beklenen, uint32_t *nedenler)
+{
+    for (uint32_t j = 0u; j < (uint32_t)IDA_GOR_K_SAYI; j++) {
+        if ((kume & IDA_GOR_K_BIT(j)) == 0u) {
+            continue;
+        }
+        /* KRIT_2 yalnız KRIT mandallandıysa (KRIT hücresi ≥ WARN) oluşur. */
+        if ((j == (uint32_t)IDA_GOR_K_BATT_KRIT_2) && (matris(IDA_GOR_K_BATT_KRIT, bkip) < W_)) {
+            continue;
+        }
+        const uint8_t h = matris(j, bkip);
+        if (h >= W_) {
+            *nedenler |= ida_gor_ariza_nedeni((uint8_t)j);
+        }
+        if (h > *beklenen) {
+            *beklenen = h;
+        }
+    }
 }
 
 /* "koşul K, kip M, silahlı S" (snprintf kartta bellek ayırır; elle yazılır). */
@@ -560,6 +618,8 @@ static void test_md3_her_hucre_bir_vaka(void)
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_FS_NONE, o->g.fs_level, "sağlıklı ortam");
                 const bool armed0 = o->e.armed;
                 const uint32_t kume = kosul_olustur(o, k);
+                o->now += 1 * MS;
+                adim(o); /* AUTO: iptalin kip düşmesi bir adım sonra (W5-gorev-yurutucu) */
                 /* Beklenen kip: kestirim koşulları INIT'ten çıkarır ve SK'yi DH'ye indirir. */
                 uint8_t bkip = kip;
                 const bool est_kosulu = (k == (uint32_t)IDA_GOR_K_EST_BOZUK) ||
@@ -574,22 +634,17 @@ static void test_md3_her_hucre_bir_vaka(void)
                 }
                 uint8_t beklenen = N_;
                 uint32_t nedenler = 0u;
-                for (uint32_t j = 0u; j < (uint32_t)IDA_GOR_K_SAYI; j++) {
-                    if ((kume & IDA_GOR_K_BIT(j)) == 0u) {
-                        continue;
-                    }
-                    /* KRIT_2 yalnız KRIT mandallandıysa (KRIT hücresi ≥ WARN) oluşur. */
-                    if ((j == (uint32_t)IDA_GOR_K_BATT_KRIT_2) &&
-                        (matris(IDA_GOR_K_BATT_KRIT, bkip) < W_)) {
-                        continue;
-                    }
-                    const uint8_t h = matris(j, bkip);
-                    if (h >= W_) {
-                        nedenler |= ida_gor_ariza_nedeni((uint8_t)j);
-                    }
-                    if (h > beklenen) {
-                        beklenen = h;
-                    }
+                beklenen_hesapla(kume, bkip, &beklenen, &nedenler);
+                /* AUTO'da SURFACE ve üstü görevi iptal eder (W5-gorev-yurutucu): iptal mandalı
+                   SURFACE ister (nedeni AUTO sütununun nedenleri), görev bitince kip
+                   DEPTH_HOLD'a iner (02 §2.6) ve o sütunun hücreleri de etkindir. */
+                if ((bkip == IDA_MODE_AUTO) && (beklenen >= S_)) {
+                    uint8_t b_dh = N_;
+                    uint32_t n_dh = 0u;
+                    beklenen_hesapla(kume, (uint8_t)IDA_MODE_DEPTH_HOLD, &b_dh, &n_dh);
+                    bkip = (uint8_t)IDA_MODE_DEPTH_HOLD;
+                    nedenler |= n_dh;
+                    beklenen = (b_dh > S_) ? b_dh : (uint8_t)S_;
                 }
                 vaka_mesaji(msj, k, kip, silahli);
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(bkip, o->e.mode, msj);
@@ -616,9 +671,20 @@ static void test_md3_auto_gcs2_yuzeyde(void)
     ilerle(o, 61000);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
     TEST_ASSERT_TRUE((o->g.fs_nedenleri & IDA_FSR_GCS_LOSS) != 0u);
-    /* HEARTBEAT geri gelince kendiliğinden temizlenir (mandalsız). */
+    /* W5-gorev-yurutucu: AUTO'da SURFACE görevi iptal eder; iptal mandalı yüzeye çıkışı sürdürür
+       (kip DEPTH_HOLD'a iner). HEARTBEAT geri gelince bağlantı koşulu kendiliğinden temizlenir;
+       iptal mandalını FAILSAFE_RESET kaldırır. */
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_ABORTED, o->g.mission_state);
     o->besle_hb = true;
     ilerle(o, 300);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DEPTH_HOLD, o->e.mode);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FSR_GCS_LOSS, o->g.fs_nedenleri);
+    o->e.d.herhangi = false;
+    o->g.adim_daralt = false;
+    const ida_cmd_result_t r = komut(o, (uint8_t)IDA_CMD_FAILSAFE_RESET, 0u);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r.ack);
+    ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
 }
 

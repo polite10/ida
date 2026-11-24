@@ -650,7 +650,8 @@ static void test_cekirdek_komut_satirlari(void)
     /* yer tutucu kestirim INIT: arm ön koşulu tutmuyor */
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NOT_ARMABLE, ds_sonuc(&OUT, 2u)->reason);
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, ds_sonuc(&OUT, 3u)->ack); /* mandal yok (3.17) */
-    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_UNSUPPORTED, ds_sonuc(&OUT, 4u)->ack);
+    /* MISSION_BEGIN count 0 (W5-gorev-yurutucu): OUT_OF_RANGE (3.17). */
+    TEST_ASSERT_EQUAL_UINT16(IDA_REASON_OUT_OF_RANGE, ds_sonuc(&OUT, 4u)->reason);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_BAD_MODE, ds_sonuc(&OUT, 5u)->reason);
     TEST_ASSERT_FALSE(OUT.armed);
     TEST_ASSERT_EQUAL_UINT8(IDA_MODE_INIT, OUT.status.mode);

@@ -5,4 +5,6 @@ target_sources(ida_core PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/kip.c"
   "${CMAKE_CURRENT_LIST_DIR}/ariza.c"
   "${CMAKE_CURRENT_LIST_DIR}/istek.c"
+  "${CMAKE_CURRENT_LIST_DIR}/gorev_yukle.c"
+  "${CMAKE_CURRENT_LIST_DIR}/gorev_yurut.c"
 )
