@@ -672,10 +672,216 @@ int test_sil_sifir_seli()
     return 0;
 }
 
+// Hazırlık oturumunu (A1-K19) yavaşlatan aktarıcı: sim'in SESSION_CLOSE(RUN_END)'i görülene dek
+// kartın her çerçevesi `gecikme` sonra teslim edilir (sıra korunur); `sonuc_yut` ise o süre boyunca
+// kartın IDA_CMD_RESULT'ları atılır (hazırlık hiç bitmez).
+class GeciktirenAktarici {
+public:
+    GeciktirenAktarici(std::uint16_t sim_port, std::chrono::microseconds gecikme, bool sonuc_yut)
+        : sim_port_(sim_port), gecikme_(gecikme), sonuc_yut_(sonuc_yut)
+    {
+        std::string hata;
+        din_ = ida::kopru::tcp_dinle(0, hata);
+        (void)ida_link_alici_kur(&alici_, IDA_LINK_ROL_SIM);
+        (void)ida_link_alici_kur(&sim_alici_, IDA_LINK_ROL_KART);
+        if (din_) {
+            is_ = std::thread([this] { dongu(); });
+        }
+    }
+    ~GeciktirenAktarici() { bekle(); }
+    void bekle()
+    {
+        dur_ = true;
+        if (is_.joinable()) {
+            is_.join();
+        }
+    }
+    std::uint16_t port() const { return din_ ? din_->port() : 0; }
+    std::uint64_t geciktirilen() const { return geciktirilen_; }
+    std::uint64_t yutulan() const { return yutulan_; }
+
+private:
+    using Saat = std::chrono::steady_clock;
+
+    void dongu()
+    {
+        std::string hata;
+        auto sim = ida::kopru::tcp_baglan(sim_port_, hata);
+        auto kart = din_->kabul(60'000'000, hata);
+        if (!sim || !kart) {
+            return;
+        }
+        std::vector<std::uint8_t> t(65536);
+        std::vector<std::uint8_t> ham;
+        std::deque<std::pair<std::vector<std::uint8_t>, Saat::time_point>> kuyruk;
+        Saat::time_point son = Saat::now();
+        bool hazirlikta = true;
+        int bos = 0;
+        while (!dur_) {
+            bool is_var = false;
+            std::size_t n = 0;
+            ida::kopru::OkumaSonucu r = sim->oku(t.data(), t.size(), 0, n);
+            if (r == ida::kopru::OkumaSonucu::kapandi) {
+                break;
+            }
+            if (r == ida::kopru::OkumaSonucu::tamam) {
+                is_var = true;
+                std::size_t k = 0;
+                while (k < n && hazirlikta) {
+                    std::size_t tuk = 0;
+                    ida_link_cerceve_t c{};
+                    const ida_link_rc_t rc = ida_link_al(&sim_alici_, t.data() + k, n - k, &tuk, &c);
+                    k += tuk;
+                    if (rc != IDA_LINK_CERCEVE) {
+                        break;
+                    }
+                    if (c.msgid == MAVLINK_MSG_ID_IDA_SESSION_CLOSE) {
+                        mavlink_ida_session_close_t s{};
+                        (void)ida_link_coz(&c, c.msgid, &s, sizeof s);
+                        hazirlikta = s.reason != static_cast<std::uint8_t>(IDAW_CLOSE_REASON_RUN_END);
+                    }
+                }
+                if (!kart->yaz(t.data(), n)) {
+                    break;
+                }
+            }
+            r = kart->oku(t.data(), t.size(), 0, n);
+            if (r == ida::kopru::OkumaSonucu::kapandi) {
+                break;
+            }
+            if (r == ida::kopru::OkumaSonucu::tamam) {
+                is_var = true;
+                std::size_t k = 0;
+                while (k < n) {
+                    std::size_t tuk = 0;
+                    ida_link_cerceve_t c{};
+                    const ida_link_rc_t rc = ida_link_al(&alici_, t.data() + k, n - k, &tuk, &c);
+                    ham.insert(ham.end(), t.data() + k, t.data() + k + tuk);
+                    k += tuk;
+                    if (rc != IDA_LINK_CERCEVE) {
+                        break;
+                    }
+                    if (hazirlikta && sonuc_yut_ && c.msgid == MAVLINK_MSG_ID_IDA_CMD_RESULT) {
+                        ++yutulan_;
+                    } else {
+                        Saat::time_point b = Saat::now();
+                        if (hazirlikta) {
+                            b += gecikme_;
+                            ++geciktirilen_;
+                        }
+                        son = std::max(son, b);
+                        kuyruk.emplace_back(std::move(ham), son);
+                    }
+                    ham.clear();
+                }
+            }
+            const auto simdi = Saat::now();
+            while (!kuyruk.empty() && kuyruk.front().second <= simdi) {
+                if (!sim->yaz(kuyruk.front().first.data(), kuyruk.front().first.size())) {
+                    return;
+                }
+                kuyruk.pop_front();
+                is_var = true;
+            }
+            if (is_var) {
+                bos = 0;
+            } else if (++bos < 2000) {
+                std::this_thread::yield();
+            } else {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+        }
+    }
+
+    std::uint16_t sim_port_;
+    std::chrono::microseconds gecikme_;
+    bool sonuc_yut_;
+    std::unique_ptr<ida::kopru::TcpDinleyici> din_;
+    ida_link_alici_t alici_{};
+    ida_link_alici_t sim_alici_{};
+    std::thread is_;
+    std::atomic<bool> dur_{false};
+    std::uint64_t geciktirilen_ = 0;
+    std::uint64_t yutulan_ = 0;
+};
+
+struct HazirlikKosusu {
+    ida::sunucu::Sonuc s;
+    double sure_s = 0.0;
+    std::uint64_t geciktirilen = 0;
+    std::uint64_t yutulan = 0;
+};
+
+HazirlikKosusu hazirlik_kos(std::int64_t baglanti_bekleme_ns, std::int64_t hazirlik_azami_ns, bool sonuc_yut)
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 1.0;
+    a.karsi = ida::sunucu::Karsi::tcp;
+    a.baglanti_bekleme_ns = baglanti_bekleme_ns;
+    a.hazirlik_azami_ns = hazirlik_azami_ns;
+    std::unique_ptr<GeciktirenAktarici> ak;
+    std::unique_ptr<ida::sil::Kosucu> kosucu;
+    std::thread is;
+    a.tcp_hazir = [&](std::uint16_t port, std::uint64_t tohum) {
+        ak = std::make_unique<GeciktirenAktarici>(port, std::chrono::microseconds(25'000), sonuc_yut);
+        ida::sil::Ayarlar ka;
+        ka.a1_port = ak->port();
+        ka.a1_tohum = tohum;
+        ka.gunluk = 0;
+        kosucu = std::make_unique<ida::sil::Kosucu>(ka);
+        is = std::thread([&] { (void)kosucu->calistir(); });
+    };
+    HazirlikKosusu h;
+    const auto bas = std::chrono::steady_clock::now();
+    h.s = ida::sunucu::kos(a);
+    h.sure_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    if (kosucu) {
+        kosucu->durdur();
+    }
+    if (is.joinable()) {
+        is.join();
+    }
+    if (ak) {
+        ak->bekle();
+        h.geciktirilen = ak->geciktirilen();
+        h.yutulan = ak->yutulan();
+    }
+    return h;
+}
+
+// W4-K26 mimar kararı: bağlantı/el sıkışma süre sınırı hazırlık oturumunun süresini kapsamaz;
+// hazırlığın kendi sınırı ayrıdır ve asılma yoktur.
+int test_sil_hazirlik_suresi()
+{
+    // (1) Hazırlık baglanti_bekleme_ns'den (500 ms) uzun sürer (kartın her çerçevesi 25 ms gecikir).
+    const HazirlikKosusu h1 = hazirlik_kos(500'000'000, 600'000'000'000, false);
+    std::printf("  yavaş hazırlık: tamam %d, hazırlık %llu, kurulan oturum %llu, geciktirilen %llu, %.2f s, hata '%s'\n",
+                h1.s.tamam ? 1 : 0, static_cast<unsigned long long>(h1.s.hazirlik_oturumu),
+                static_cast<unsigned long long>(h1.s.sayac.oturum_kurulan),
+                static_cast<unsigned long long>(h1.geciktirilen), h1.sure_s, h1.s.hata.c_str());
+    dogrula_sa(h1.s.hazirlik_oturumu == 1u && h1.geciktirilen > 0u, "hazırlık oturumu geciktirildi");
+    dogrula_sa(h1.sure_s > 0.5, "hazırlık baglanti_bekleme_ns'den uzun sürdü (" + std::to_string(h1.sure_s) + " s)");
+    dogrula_sa(h1.s.tamam && h1.s.sayac.oturum_kurulan >= 2u,
+               "çalıştırma oturumu yine kuruldu ve koşu tamamlandı " + h1.s.hata);
+    // (2) Hazırlık hiç bitmez (komut sonuçları yutulur): sınırlı sürede hata.
+    const HazirlikKosusu h2 = hazirlik_kos(500'000'000, 1'000'000'000, true);
+    std::printf("  bitmeyen hazırlık: tamam %d, yutulan %llu, %.2f s, hata '%s'\n", h2.s.tamam ? 1 : 0,
+                static_cast<unsigned long long>(h2.yutulan), h2.sure_s, h2.s.hata.c_str());
+    dogrula_sa(!h2.s.tamam && h2.s.hata == "hazırlık oturumu süre sınırını aştı",
+               "bitmeyen hazırlık süre sınırıyla hata döndü: '" + h2.s.hata + "'");
+    dogrula_sa(h2.sure_s < 60.0, "asılma yok (" + std::to_string(h2.sure_s) + " s)");
+    return 0;
+}
+
 }  // namespace
 
 int sil_alim_testi(const std::string& ad, int, char**)
 {
+    if (ad == "sil_hazirlik_suresi") {
+        (void)test_sil_hazirlik_suresi();
+        return g_hata_sa;
+    }
     if (ad == "sil_kisitlayan_alim_ani") {
         (void)test_sil_kisitlayan_alim_ani();
         return g_hata_sa;

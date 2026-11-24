@@ -508,10 +508,14 @@ bool Calistirici::baglanti_kabul()
 
 bool Calistirici::oturum_kur()
 {
-    const std::int64_t son = gercek() + a_.baglanti_bekleme_ns;
+    // Süre sınırı her aşamanın başında yeniden kurulur (W4-K26 mimar kararı): bağlantının kabulü
+    // kendi payını alır (baglanti_kabul), el sıkışma kabulden sonra; hazırlık oturumunun süresi
+    // sınıra girmez (kendi sınırı hazirlik_azami_ns), çalıştırma oturumunun el sıkışması
+    // hazırlıktan sonra yeniden pay alır. SIL'de bu beklemelerde sim zamanı ilerlemez (W4-K25 (1)).
     if (!tas_ && !baglanti_kabul()) {
         return false;
     }
+    std::int64_t son = gercek() + a_.baglanti_bekleme_ns;
     // SIL (A1-K121 (iv), K23): oturum köprüde bittiyse el sıkışma orada başlamıştır (giden
     // kuyrukta varsa SESSION_CLOSE, ardından SIM_HELLO): yeniden başlatılmaz. Böylece kapanış
     // çerçevesi silinmez ve el sıkışma tek SIM_HELLO'yla tamamlanır.
@@ -541,6 +545,7 @@ bool Calistirici::oturum_kur()
                     return false;
                 }
                 k_->el_sikisma_baslat(duvar());
+                son = gercek() + a_.baglanti_bekleme_ns;   // çalıştırma oturumunun el sıkışması
                 continue;
             }
             return true;
@@ -551,6 +556,7 @@ bool Calistirici::oturum_kur()
                 return false;
             }
             k_->el_sikisma_baslat(duvar());
+            son = gercek() + a_.baglanti_bekleme_ns;   // yeni bağlantının el sıkışması
         }
         if (gercek() > son) {
             s_.hata = "el sıkışma zaman aşımı";
@@ -576,7 +582,14 @@ bool Calistirici::hazirlik()
     idler.push_back(k_->komut_basit(kCmdParamCommit, 0, t_h, 250));
     idler.push_back(k_->komut_basit(kCmdParamSave, 0, t_h, 250));
     bool tamam = false;
+    // Gözetim: en çok 8000 periyot (sim zamanı 40 s), SIL'de her yuva T_SIL (duvar), toplamda
+    // hazirlik_azami_ns (duvar; yavaş yanıt veren kartla asılma olmasın).
+    const std::int64_t bas = gercek();
     for (int n = 0; n < 8000 && !tamam; ++n) {
+        if (gercek() - bas > a_.hazirlik_azami_ns) {
+            s_.hata = "hazırlık oturumu süre sınırını aştı";
+            return false;
+        }
         t_h += kP;
         if (a_.kip == Kip::sil) {
             sil_duvar_ = t_h;
