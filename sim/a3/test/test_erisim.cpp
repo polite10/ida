@@ -301,6 +301,59 @@ int test_statik_harf_duyarli()
     return d.hata;
 }
 
+// W4-K23 (1), sol-3 #1: kök başlangıçta açılır ve tutulur (sonradan yeniden adlandırılıp yerine başka
+// dizin konsa da tutulan kökten sunulur ya da hiç sunulmaz); sabit bağlı dosya sunulmaz (404).
+int test_statik_kok_tutulur()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    const fs::path taban = fs::current_path() / "a3_statik_kok_deneme";
+    std::error_code ec;
+    fs::remove_all(taban, ec);
+    const fs::path kok = taban / "web";
+    fs::create_directories(kok / "panel");
+    fs::create_directories(taban / "dis");
+    std::ofstream(kok / "index.html", std::ios::binary) << "kok";
+    std::ofstream(kok / "panel" / "tek.txt", std::ios::binary) << "tek";
+    std::ofstream(taban / "dis" / "gizli.txt", std::ios::binary) << "GIZLI-SIM-VERISI";
+    bool sabit = true;
+    try {
+        fs::create_hard_link(taban / "dis" / "gizli.txt", kok / "panel" / "sabit.txt");
+    } catch (const fs::filesystem_error& h) {
+        sabit = false;
+        std::printf("  ATLANDI: sabit bağ oluşturulamadı (%s)\n", h.what());
+    }
+    SunucuAyari sa;
+    sa.statik_kok = kok.string();
+    {
+        Ortam o({}, sa);
+        auto al = [&](const std::string& yol) { return o.http(istek("GET", yol, {}, {}, true)); };
+        DOGRULA(d, al("/panel/tek.txt").durum == 200, "tek bağlantılı dosya 200");
+        if (sabit) {
+            const HttpYanit y = al("/panel/sabit.txt");
+            DOGRULA(d, y.durum == 404 && y.govde.find("GIZLI") == std::string::npos, "sabit bağlı dosya 404");
+        }
+        // Kök yeniden adlandırılıp yerine başka dizin konur.
+        bool tasindi = true;
+        fs::rename(kok, taban / "web_eski", ec);
+        if (ec) {
+            tasindi = false;  // Windows: tutulan kök (silme paylaşımı yok) yeniden adlandırılamaz
+            std::printf("  kök yeniden adlandırılamadı (%s): beklenen (Windows)\n", ec.message().c_str());
+        } else {
+            fs::create_directories(kok);
+            std::ofstream(kok / "index.html", std::ios::binary) << "yeni";
+        }
+        const HttpYanit y = al("/");
+        DOGRULA(d, y.govde != "yeni", "yerine konan dizin sunulmaz");
+#if !defined(_WIN32)
+        DOGRULA(d, tasindi && y.durum == 200 && y.govde == "kok", "tutulan kökten sunulur (POSIX)");
+#endif
+        (void)tasindi;
+    }
+    fs::remove_all(taban, ec);
+    return d.hata;
+}
+
 // A3-K12: aynı neden için saniyede en çok bir olay; aradaki retler `adet`'te toplanır.
 int test_erisim_olayi_hiz_siniri()
 {

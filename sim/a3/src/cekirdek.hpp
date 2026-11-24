@@ -47,9 +47,10 @@ inline constexpr std::size_t birlesen_kayit = 64;                    // W4-K22: 
 inline constexpr std::size_t birlesik_sonuc = 1024;                  // W4-K22: bekleyen birleşik sonuç kaydı
 inline constexpr std::size_t baski_esigi = 256 * 1024;               // A3-K39: bu kadar bekleyen çıkış varsa veri eklenmez
 inline constexpr std::size_t okuma_esigi = std::size_t{4} << 20u;    // çıkış bu kadar birikirse girdi okunmaz
-// Çıkış baskısı altında da okunacak en çok girdi (bu uygulama): kısıtlayan emniyet istekleri baskıda
-// da ayrıştırılır (sol W4-a3-2 #2 b); kısıtlayan istek gövdesi bunun çok altındadır.
-inline constexpr std::size_t baski_girdi = std::size_t{64} << 10u;
+// Bağlantı başına çerçevelenmiş ama sırası gelmemiş HTTP istekleri (bu uygulama; W4-K23 3):
+// aşılırsa bağlantı kapanır.
+inline constexpr std::size_t http_sira = 32;
+inline constexpr std::size_t http_sira_bayt = std::size_t{8} << 20u;
 }  // namespace sinir
 
 namespace sure {
@@ -101,6 +102,8 @@ public:
     std::size_t okunan_govde_bayti(BagId id) const;
     // Soketten bir seferde okunacak en çok bayt (A3-K51; ayrıştırma aşamasına bağlı); 0: okuma.
     std::size_t okuma_butcesi(BagId id) const;
+    // Bağlantı sınırı dolu ve kapatılabilecek bağlantı yokken yeni bağlantıya yazılacak 503 yanıtı.
+    std::string dolu_yaniti() const;
 
 private:
     struct Ic;

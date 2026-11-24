@@ -53,7 +53,10 @@ struct SunucuSayaclari {
     std::uint64_t tik = 0;                  // yayın tiki sayısı
     std::uint64_t azami_asim_govde_bayti = 0;  // sınırı aşan gövdede başlıktan sonra okunan en çok bayt (A3-K51)
     std::uint64_t yer_acmak_icin_kapatilan = 0;  // HTTP bağlantı sınırında yer açmak için kapatılan
-    std::uint64_t baskida_one_alinan = 0;        // çıkış baskısında öne alınıp işlenen kısıtlayan istek
+    std::uint64_t baskida_one_alinan = 0;        // sırası gelmeden işlenen kısıtlayan istek (W4-K23 3)
+    std::uint64_t baglanti_reddi = 0;            // sınır dolu ve kapatılabilecek bağlantı yok: reddedilen
+    std::uint64_t http_sira_tasmasi = 0;         // sıra sınırı aşıldığı için kapanan bağlantı
+    std::uint64_t jeton_toplu_gecersiz = 0;      // jeton okunamadığı için istemci jetonları geçersizleşti
 };
 
 class Sunucu {

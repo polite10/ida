@@ -885,7 +885,10 @@ int test_baski_altinda_emniyet_soket()
     ag::alim_tamponu(yavas.tutamac(), 4096);
     yavas.yaz("GET /panel/buyuk.js HTTP/1.1\r\n" + s.host() + "\r\n\r\n");
     std::this_thread::sleep_for(std::chrono::milliseconds(300));  // çıkış baskısı kurulur
-    yavas.yaz(post("/api/v1/emniyet/degistir", R"({"istek_kimligi":"baski-0002","girdi":"acil_durdurma","hedef_durum":"basili"})"));
+    // sol-3 #2b: gövde boşlukla 65 536 B'a tamamlanır (başlıklarla birlikte 64 KiB'ı aşar).
+    std::string acil_govde = R"({"istek_kimligi":"baski-0002","girdi":"acil_durdurma","hedef_durum":"basili"})";
+    acil_govde.insert(acil_govde.size() - 1, std::string(65536 - acil_govde.size(), ' '));
+    yavas.yaz(post("/api/v1/emniyet/degistir", acil_govde));
     bool basili = false;
     for (int i = 0; i < 40 && !basili; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -997,6 +1000,326 @@ int test_jeton_erken_ret_tablo()
                                        emniyet(k, "emniyet_pimi", "f1", "takili", run, ",\"onay_jetonu\":\"" + t + "\"")));
     const HttpYanit y = k.post("/api/v1/emniyet/degistir", gevset(t));
     DOGRULA(d, kis.durum == 415 && y.durum == 202, "kısıtlayan biçimde jeton korunur: " + std::to_string(y.durum) + " " + y.kod());
+    return d.hata;
+}
+
+// ---- W4-K23: bağlantı sınırı, çıkış baskısı/kapanış ve jeton kuralı (sol-3 karşı örnekleri) ----
+
+namespace {
+
+std::string buyuk_kok(const char* ad)
+{
+    namespace fs = std::filesystem;
+    const fs::path kok = fs::current_path() / ad;
+    std::error_code ec;
+    fs::remove_all(kok, ec);
+    fs::create_directories(kok / "panel");
+    std::ofstream f(kok / "panel" / "buyuk.js", std::ios::binary);
+    f << std::string(std::size_t{5} << 20u, 'b');
+    return kok.string();
+}
+
+std::string bastan_istek(const std::string& tam, std::size_t eksik)
+{
+    return tam.substr(0, tam.size() - eksik);
+}
+
+}  // namespace
+
+// W4-K23 (2), sol-3 #2a: en eski bağlantıda kimliği doğrulanmış acil durdurma isteğinin yalnız son
+// baytı eksik; öteki 63 bağlantının başlığı eksik. 65. bağlantı yer açmak için kimliği doğrulanmamış
+// bir bağlantıyı kapatır; son bayt gelince acil durdurma uygulanır. Bütün bağlantılar kimliği
+// doğrulanmış ve isteği sürerken yeni bağlantı reddedilir.
+int test_baglanti_siniri_dogrulanmis()
+{
+    Denetci d;
+    {
+        Ortam o;
+        Istemci k{o, o.istemci_al()};
+        const std::string run = baslat(k);
+        const std::string acil =
+            istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), emniyet(k, "acil_durdurma", "", "basili", run));
+        const BagId ilk = o.ac();
+        o.gonder(ilk, bastan_istek(acil, 1));
+        o.ilerle(std::chrono::milliseconds(5));
+        std::vector<BagId> obur;
+        for (int i = 0; i < 63; ++i) {
+            const BagId id = o.ac();
+            o.gonder(id, "POST /api/v1/emniyet/degistir HTTP/1.1\r\nHo");
+            obur.push_back(id);
+        }
+        const BagId yeni = o.ac();
+        DOGRULA(d, yeni != 0, "65. bağlantı kabul edildi (kimliği doğrulanmamış biri kapatıldı)");
+        DOGRULA(d, !o.cekirdek.kapatilmali(ilk), "kimliği doğrulanmış ve isteği süren bağlantı kapatılmadı");
+        DOGRULA(d, o.cekirdek.kapatilmali(obur.front()), "kimliği doğrulanmamış en eski bağlantı kapatıldı");
+        const HttpYanit y = o.http(ilk, acil.substr(acil.size() - 1));
+        DOGRULA(d, y.durum == 202, "son bayt geldi: 202 (" + std::to_string(y.durum) + ")");
+        o.dunya.adim();
+        o.dongu();
+        DOGRULA(d, acil_basili(o), "yetkili acil durdurma basılı");
+    }
+    {
+        SunucuAyari sa;
+        sa.azami_http = 4;
+        Ortam o({}, sa);
+        Istemci k{o, o.istemci_al()};
+        const std::string run = baslat(k);
+        std::vector<BagId> l;
+        for (int i = 0; i < 4; ++i) {
+            const BagId id = o.ac();
+            o.gonder(id, bastan_istek(istek("POST", "/api/v1/emniyet/degistir", k.basliklar(),
+                                            emniyet(k, "emniyet_pimi", "f1", "takili", run)),
+                                      2));
+            l.push_back(id);
+        }
+        DOGRULA(d, o.ac() == 0, "hepsi kimliği doğrulanmış ve isteği sürerken yeni bağlantı reddedilir");
+        DOGRULA(d, o.cekirdek.sayaclar().baglanti_reddi == 1, "red sayacı");
+        for (const BagId id : l) {
+            DOGRULA(d, !o.cekirdek.kapatilmali(id), "doğrulanmış bağlantı açık");
+        }
+    }
+    return d.hata;
+}
+
+// W4-K23 (2): sınır dolu ve kapatılabilecek bağlantı yokken yeni bağlantıya 503 yazılır ve kapatılır
+// (gerçek soketler).
+int test_baglanti_siniri_503()
+{
+    Denetci d;
+    SunucuAyari sa;
+    sa.azami_http = 2;
+    CanliSunucu s({}, sa);
+    if (!s.sunucu) {
+        return 1;
+    }
+    const std::string kismi = "POST /api/v1/emniyet/degistir HTTP/1.1\r\n" + s.host() + "\r\n" + s.yetki() +
+                              "\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{";
+    SoketIstemci a(s.sunucu->port());
+    SoketIstemci b(s.sunucu->port());
+    a.yaz(kismi);
+    b.yaz(kismi);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    SoketIstemci c(s.sunucu->port());
+    HttpYanit y;
+    DOGRULA(d, c.yanit_bekle(y, 2000) && y.durum == 503, "üçüncü bağlantıya 503: " + std::to_string(y.durum));
+    DOGRULA(d, s.sunucu->sayaclar().baglanti_reddi >= 1, "red sayacı");
+    return d.hata;
+}
+
+// W4-K23 (3), sol-3 #2b-1: 5 MiB GET yanıtı beklerken boşlukla 65 536 B'a tamamlanmış acil durdurma
+// JSON'u; çıkış okunmadan uygulanır.
+int test_baski_uzun_kisitlayan()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    SunucuAyari sa;
+    sa.statik_kok = buyuk_kok("a3_baski_uzun_deneme");
+    Ortam o({}, sa);
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    std::string g = emniyet(k, "acil_durdurma", "", "basili", run);
+    g.insert(g.size() - 1, std::string(65536 - g.size(), ' '));
+    const BagId id = o.ac();
+    o.gonder(id, istek("GET", "/panel/buyuk.js", {}, {}, true));
+    const std::string post = istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), g);
+    for (std::size_t i = 0; i < post.size(); i += 4096) {
+        DOGRULA(d, o.cekirdek.okumali(id), "baskıda okuma sürer");
+        o.gonder(id, post.substr(i, 4096));
+        o.dongu();
+    }
+    o.dunya.adim();
+    o.dongu();
+    DOGRULA(d, acil_basili(o), "çıkış okunmadan acil durdurma basılı");
+    std::error_code ec;
+    fs::remove_all(sa.statik_kok, ec);
+    return d.hata;
+}
+
+// W4-K23 (3), sol-3 #2b-2: tam bir chunked isteğin arkasındaki emniyet POST'u, istemci gönderim
+// yönünü kapatsa da işlenir; yanıtlar sırayla gelir ve sıra boşalınca bağlantı kapanır.
+int test_baski_chunked_eof()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    SunucuAyari sa;
+    sa.statik_kok = buyuk_kok("a3_baski_chunked_deneme");
+    Ortam o({}, sa);
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    const BagId id = o.ac();
+    const std::string parcali = "POST /api/v1/istemciler HTTP/1.1\r\n" + host() + "\r\n" + yetki() +
+                                "\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
+    o.gonder(id, istek("GET", "/panel/buyuk.js", {}, {}, true) + parcali +
+                     istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), emniyet(k, "acil_durdurma", "", "basili", run)));
+    o.cekirdek.karsi_kapatti(id, o.simdi);
+    o.dongu();
+    o.dunya.adim();
+    o.dongu();
+    DOGRULA(d, acil_basili(o), "EOF sonrası acil durdurma basılı");
+    DOGRULA(d, !o.cekirdek.kapatilmali(id), "sıra boşalmadan bağlantı kapanmaz (yarı kapalı)");
+    std::string t;
+    for (int i = 0; i < 8; ++i) {
+        t += o.al(id);
+        o.dongu();
+    }
+    HttpYanit a;
+    HttpYanit b;
+    HttpYanit c;
+    DOGRULA(d, http_yanit_ayir(t, a) && a.durum == 200 && a.govde.size() == (std::size_t{5} << 20u), "1. yanıt büyük dosya");
+    DOGRULA(d, http_yanit_ayir(t, b) && b.durum == 200 && b.govde.find("istemci_id") != std::string::npos, "2. yanıt chunked istek");
+    DOGRULA(d, http_yanit_ayir(t, c) && c.durum == 202 && t.empty(), "3. yanıt acil 202");
+    DOGRULA(d, o.cekirdek.kapatilmali(id), "sıra boşalınca kapanır");
+    std::error_code ec;
+    fs::remove_all(sa.statik_kok, ec);
+    return d.hata;
+}
+
+// W4-K23 (3): sıra sınırı aşılınca bağlantı kapanır; o ana dek çerçevelenmiş kısıtlayan işlenmiş olur.
+int test_baski_sira_tasmasi()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    SunucuAyari sa;
+    sa.statik_kok = buyuk_kok("a3_baski_sira_deneme");
+    Ortam o({}, sa);
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    const BagId id = o.ac();
+    std::string ham = istek("GET", "/panel/buyuk.js", {}, {}, true);
+    for (int i = 0; i < 10; ++i) {
+        ham += istek("GET", "/api/v1/surum");
+    }
+    ham += istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), emniyet(k, "acil_durdurma", "", "basili", run));
+    for (int i = 0; i < 40; ++i) {
+        ham += istek("GET", "/api/v1/surum");
+    }
+    o.gonder(id, ham);
+    o.dongu();
+    o.dunya.adim();
+    o.dongu();
+    DOGRULA(d, acil_basili(o), "kısıtlayan işlendi");
+    DOGRULA(d, o.cekirdek.sayaclar().http_sira_tasmasi == 1, "sıra taşması sayıldı");
+    std::string t;
+    for (int i = 0; i < 8; ++i) {
+        t += o.al(id);
+        o.dongu();
+    }
+    DOGRULA(d, o.cekirdek.kapatilmali(id), "bağlantı kapandı");
+    std::error_code ec;
+    fs::remove_all(sa.statik_kok, ec);
+    return d.hata;
+}
+
+// W4-K23 (4), sol-3 #3: jetonu okunamayan gevşetme isteği istemcinin bekleyen bütün jetonlarını
+// geçersizleştirir; başka istemcinin jetonu etkilenmez; okunabilen (kaçışlı dahil) jeton olağan
+// biçimde tüketilir; kısıtlayan istekte jetonlar korunur.
+int test_jeton_okunamayan()
+{
+    Denetci d;
+    Ortam o;
+    Istemci k{o, o.istemci_al()};
+    Istemci k2{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    auto rv = [&] { return ",\"beklenen_emniyet_rev\":" + std::to_string(emniyet_rev(o)); };
+    auto gevset = [&](Istemci& c, const std::string& tup, const std::string& t) {
+        return emniyet(c, "emniyet_pimi", tup, "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t + "\"" + rv());
+    };
+    auto takili = [&](const std::string& tup) {
+        k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", tup, "takili", run));
+        o.dunya.adim();
+        o.dongu();
+    };
+    auto gecersiz = [&](Istemci& c, const std::string& tup, const std::string& t) {
+        const HttpYanit y = c.post("/api/v1/emniyet/degistir", gevset(c, tup, t));
+        return y.durum == 409 && y.kod() == "onay_jetonu_gecersiz";
+    };
+    auto kacisli = [](const std::string& t) {
+        std::string r;
+        for (const char ch : t) {
+            char b[8];
+            std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(static_cast<unsigned char>(ch)));
+            r += b;
+        }
+        return r;
+    };
+    takili("f1");
+    takili("f2");
+    // 1) Jetonun önünde 1 MiB boşluk: 413; istemcinin iki jetonu da geçersiz, öteki istemcininki geçerli.
+    {
+        const std::string t1 = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const std::string t2 = jeton_al(k, "emniyet_pimi", "f2", "cikarilmis", run);
+        const std::string t3 = jeton_al(k2, "emniyet_pimi", "f2", "cikarilmis", run);
+        std::string g = gevset(k, "f1", t1);
+        g.insert(1, std::string(std::size_t{1} << 20u, ' '));
+        const HttpYanit r = o.http(istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), g));
+        DOGRULA(d, r.durum == 413, "413");
+        DOGRULA(d, gecersiz(k, "f1", t1), "aynı jeton artık geçersiz");
+        DOGRULA(d, gecersiz(k, "f2", t2), "istemcinin öteki jetonu da geçersiz");
+        const HttpYanit y3 = k2.post("/api/v1/emniyet/degistir", gevset(k2, "f2", t3));
+        DOGRULA(d, y3.durum == 202, "başka istemcinin jetonu etkilenmedi: " + std::to_string(y3.durum) + " " + y3.kod());
+        o.dunya.adim();
+        o.dongu();
+        takili("f2");
+    }
+    // 2) Bozuk JSON içinde `\u` kaçışlı jeton: geçersizleşir.
+    {
+        const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        std::string g = gevset(k, "f1", kacisli(t)) + "}";
+        const HttpYanit r = o.http(istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), g));
+        DOGRULA(d, r.durum == 400, "bozuk JSON 400");
+        DOGRULA(d, gecersiz(k, "f1", t), "kaçışlı jeton geçersizleşti");
+    }
+    // 3) Geçerli JSON içinde `\u` kaçışlı jeton: olağan biçimde okunur ve tüketilir.
+    {
+        const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const HttpYanit r = k.post("/api/v1/emniyet/degistir", gevset(k, "f1", kacisli(t)));
+        DOGRULA(d, r.durum == 202, "kaçışlı jetonlu geçerli istek 202: " + r.kod());
+        o.dunya.adim();
+        o.dongu();
+        DOGRULA(d, gecersiz(k, "f1", t), "kullanılan jeton tüketildi");
+        takili("f1");
+    }
+    // 4) Parçalanmış aktarım: tam istek parça parça gelir → olağan; gövde eksikken kapanış → geçersiz.
+    {
+        const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const std::string tam = istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), gevset(k, "f1", t));
+        const BagId id = o.ac();
+        for (std::size_t i = 0; i < tam.size(); i += 7) {
+            o.gonder(id, tam.substr(i, 7));
+        }
+        o.dongu();
+        std::string ham = o.al(id);
+        HttpYanit r;
+        DOGRULA(d, http_yanit_ayir(ham, r) && r.durum == 202, "parça parça gelen istek 202");
+        o.cekirdek.kapandi(id);
+        o.dunya.adim();
+        o.dongu();
+        takili("f1");
+    }
+    for (const bool eof : {true, false}) {
+        const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const std::string tam = istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), gevset(k, "f1", t));
+        const BagId id = o.ac();
+        o.gonder(id, tam.substr(0, tam.size() - 10));
+        o.dongu();
+        if (eof) {
+            o.cekirdek.karsi_kapatti(id, o.simdi);
+            o.dongu();
+        } else {
+            o.cekirdek.kapandi(id);
+        }
+        DOGRULA(d, gecersiz(k, "f1", t), std::string("eksik gövdeyle ") + (eof ? "EOF" : "kapanış") + ": jeton geçersiz");
+    }
+    // 5) Kısıtlayan biçimdeki istekte jetonlar korunur (değişmedi). Erken retle (415) sınanır:
+    // uygulanan kısıtlayan `emniyet_rev`'i artırdığından jeton zaten geçersizleşirdi (A3-K117).
+    {
+        const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const HttpYanit r = o.http(istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: text/plain", "Ida-Istemci: " + std::to_string(k.id)},
+                                         emniyet(k, "emniyet_pimi", "f2", "takili", run, ",\"onay_jetonu\":\"" + t + "\"")));
+        DOGRULA(d, r.durum == 415, "kısıtlayan biçim 415");
+        const HttpYanit y = k.post("/api/v1/emniyet/degistir", gevset(k, "f1", t));
+        DOGRULA(d, y.durum == 202, "kısıtlayan istekten sonra jeton geçerli: " + y.kod());
+    }
     return d.hata;
 }
 

@@ -36,7 +36,9 @@ set(_ida_a3_testleri
   # sol #4-#11, #13
   hz_aralik_disi govde_okuma_butcesi pipeline_baski head_sonra_get chunked_bozuk ws_en_kisa_uzunluk baslatma_hatasi uyandirma_eslesmesi olay_gecmisi_cok_bayt
   # sol W4-a3-2 #1-#3
-  baglanti_siniri_emniyet baski_altinda_emniyet baski_altinda_emniyet_soket jeton_erken_ret_tablo statik_harf_duyarli)
+  baglanti_siniri_emniyet baski_altinda_emniyet baski_altinda_emniyet_soket jeton_erken_ret_tablo statik_harf_duyarli
+  # W4-K23 (sol-3)
+  baglanti_siniri_dogrulanmis baglanti_siniri_503 baski_uzun_kisitlayan baski_chunked_eof baski_sira_tasmasi jeton_okunamayan statik_kok_tutulur)
 foreach(_ad IN LISTS _ida_a3_testleri)
   add_test(NAME sim.a3.${_ad} COMMAND ida_a3_test ${_ad})
 endforeach()

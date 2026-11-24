@@ -1,4 +1,16 @@
 // statik.cpp — bkz. statik.hpp.
+//
+// Windows dayanakları (Microsoft belgeleri):
+//   CreateFileW (FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, dwShareMode):
+//     https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+//   GetFinalPathNameByHandleW (`\\?\` sözdizimi):
+//     https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+//   BY_HANDLE_FILE_INFORMATION (dwVolumeSerialNumber, nFileIndexHigh/Low, nNumberOfLinks):
+//     https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
+//   Sabit bağlar ve junction'lar:
+//     https://learn.microsoft.com/en-us/windows/win32/fileio/hard-links-and-junctions
+//   Dosya adlandırma (`\\?\` öneki ad normalleştirmesini kapatır):
+//     https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
 #include "statik.hpp"
 
 #include <memory>
@@ -67,16 +79,6 @@ struct Tanitici {
     }
 };
 
-// Bileşen açılışı: reparse noktası izlenmez (FILE_FLAG_OPEN_REPARSE_POINT); dizin açmak için
-// FILE_FLAG_BACKUP_SEMANTICS (yalnız ara bileşenlerde; son bileşen dizinse açılış başarısız olur);
-// silme paylaşımı verilmez (tutulduğu sürece yeniden adlandırma/silme yok).
-HANDLE bilesen_ac(const std::wstring& yol, bool dizin)
-{
-    const DWORD bayrak = FILE_FLAG_OPEN_REPARSE_POINT | (dizin ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL);
-    return CreateFileW(yol.c_str(), dizin ? FILE_READ_ATTRIBUTES : GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                       OPEN_EXISTING, bayrak, nullptr);
-}
-
 bool gercek_yol(HANDLE h, std::wstring& yol)
 {
     const DWORD n = GetFinalPathNameByHandleW(h, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
@@ -92,14 +94,66 @@ bool gercek_yol(HANDLE h, std::wstring& yol)
     return true;
 }
 
+// Bileşen açılışı: reparse noktası izlenmez (FILE_FLAG_OPEN_REPARSE_POINT); dizin açmak için
+// FILE_FLAG_BACKUP_SEMANTICS (yalnız dizinlerde; son bileşen dizinse açılış başarısız olur);
+// silme paylaşımı verilmez (tutulduğu sürece yeniden adlandırma/silme yok).
+HANDLE bilesen_ac(const std::wstring& yol, bool dizin)
+{
+    const DWORD bayrak = FILE_FLAG_OPEN_REPARSE_POINT | (dizin ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL);
+    return CreateFileW(yol.c_str(), dizin ? FILE_READ_ATTRIBUTES : GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                       OPEN_EXISTING, bayrak, nullptr);
+}
+
 #endif
 
 }  // namespace
 
-bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t azami, std::string& icerik)
+#if defined(_WIN32)
+
+StatikKok::~StatikKok()
+{
+    if (h_ != nullptr) {
+        CloseHandle(static_cast<HANDLE>(h_));
+    }
+}
+
+bool StatikKok::acik() const noexcept { return h_ != nullptr; }
+
+bool StatikKok::ac(const std::string& kok, std::string& hata)
+{
+    const std::wstring w = genis(kok);
+    if (w.empty()) {
+        hata = "kök yolu geçersiz";
+        return false;
+    }
+    // Kökün kendisi yapılandırmadır: bağsa açılışta izlenir. Silme paylaşımı verilmez: tutulan kök
+    // dizini yeniden adlandırılamaz ya da silinemez.
+    HANDLE h = CreateFileW(w.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        hata = "kök dizini açılamadı (" + std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    BY_HANDLE_FILE_INFORMATION bilgi{};
+    std::wstring yol;
+    if (GetFileInformationByHandle(h, &bilgi) == 0 || (bilgi.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        !gercek_yol(h, yol) || yol.rfind(L"\\\\?\\", 0) != 0) {
+        CloseHandle(h);
+        hata = "kök bir dizin değil ya da gerçek yolu alınamadı";
+        return false;
+    }
+    h_ = h;
+    yol_ = std::move(yol);
+    seri_ = bilgi.dwVolumeSerialNumber;
+    kimlik_yuksek_ = bilgi.nFileIndexHigh;
+    kimlik_dusuk_ = bilgi.nFileIndexLow;
+    return true;
+}
+
+bool StatikKok::oku(const std::string& goreli, std::size_t azami, std::string& icerik) const
 {
     icerik.clear();
-    if (kok.empty() || goreli.empty()) {
+    if (h_ == nullptr || goreli.empty()) {
         return false;
     }
     const std::vector<std::string> parca = bilesenler(goreli);
@@ -108,34 +162,27 @@ bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t a
             return false;
         }
     }
-#if defined(_WIN32)
-    // Kökün gerçek yolu (kökün kendisi yapılandırmadır; bağ olabilir).
-    Tanitici k(CreateFileW(genis(kok).c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                           nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
-    if (k.h == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-    std::wstring kok_gercek;
-    if (!gercek_yol(k.h, kok_gercek)) {
-        return false;
-    }
-    // Kökün gerçek yolu `\\?\` önekiyle gelir: sonraki açılışlarda Win32 ad normalleştirmesi
-    // (sondaki nokta/boşluk kırpma, aygıt adları) yapılmaz, bileşen adı birebir açılır.
-    if (kok_gercek.rfind(L"\\\\?\\", 0) != 0) {
-        return false;
-    }
-    // Kök tutamağı da silme paylaşımı olmadan yeniden açılıp tutulur (kök dizini yer değiştiremez).
-    std::wstring tam = kok_gercek;
+    // Kökün gerçek yolu yeniden açılır ve tutulan kökle aynı nesne olduğu (birim seri numarası +
+    // dosya kimliği) doğrulanır; reparse noktası izlenmez.
+    std::wstring tam = yol_;
     std::vector<std::unique_ptr<Tanitici>> tutulan;
     tutulan.push_back(std::make_unique<Tanitici>(bilesen_ac(tam, true)));
-    for (std::size_t i = 0; i < parca.size(); ++i) {
-        if (tutulan.back()->h == INVALID_HANDLE_VALUE) {
-            return false;
+    {
+        BY_HANDLE_FILE_INFORMATION k{};
+        if (tutulan.back()->h == INVALID_HANDLE_VALUE || GetFileInformationByHandle(tutulan.back()->h, &k) == 0 ||
+            k.dwVolumeSerialNumber != seri_ || k.nFileIndexHigh != kimlik_yuksek_ || k.nFileIndexLow != kimlik_dusuk_ ||
+            (k.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+            return false;  // kök yolu artık tutulan kökü göstermiyor
         }
-        BY_HANDLE_FILE_INFORMATION ust{};
-        if (GetFileInformationByHandle(tutulan.back()->h, &ust) == 0 || (ust.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
-            (i > 0 && (ust.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)) {
-            return false;  // ara bileşen dizin değil ya da reparse noktası (bağ, junction)
+    }
+    for (std::size_t i = 0; i < parca.size(); ++i) {
+        if (i > 0) {
+            BY_HANDLE_FILE_INFORMATION ust{};
+            if (tutulan.back()->h == INVALID_HANDLE_VALUE || GetFileInformationByHandle(tutulan.back()->h, &ust) == 0 ||
+                (ust.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+                (ust.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+                return false;  // ara bileşen dizin değil ya da reparse noktası (bağ, junction)
+            }
         }
         const std::wstring ad = genis(parca[i]);
         if (ad.empty()) {
@@ -152,8 +199,8 @@ bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t a
     }
     BY_HANDLE_FILE_INFORMATION bilgi{};
     if (GetFileInformationByHandle(f.h, &bilgi) == 0 || (bilgi.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
-        (bilgi.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-        return false;  // son dosya dizin ya da reparse noktası (simgesel bağ dahil): 404
+        (bilgi.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 || bilgi.nNumberOfLinks != 1) {
+        return false;  // dizin, reparse noktası (simgesel bağ dahil) ya da sabit bağlı dosya: 404
     }
     const unsigned long long boy =
         (static_cast<unsigned long long>(bilgi.nFileSizeHigh) << 32u) | static_cast<unsigned long long>(bilgi.nFileSizeLow);
@@ -172,28 +219,66 @@ bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t a
         okunan += n;
     }
     return true;
+}
+
 #else
-    int dizin = open(kok.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (dizin < 0) {
+
+StatikKok::~StatikKok()
+{
+    if (fd_ >= 0) {
+        close(fd_);
+    }
+}
+
+bool StatikKok::acik() const noexcept { return fd_ >= 0; }
+
+bool StatikKok::ac(const std::string& kok, std::string& hata)
+{
+    // Kökün kendisi yapılandırmadır: bağsa açılışta izlenir.
+    const int fd = open(kok.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) {
+        hata = "kök dizini açılamadı (errno " + std::to_string(errno) + ")";
         return false;
     }
+    fd_ = fd;
+    return true;
+}
+
+bool StatikKok::oku(const std::string& goreli, std::size_t azami, std::string& icerik) const
+{
+    icerik.clear();
+    if (fd_ < 0 || goreli.empty()) {
+        return false;
+    }
+    const std::vector<std::string> parca = bilesenler(goreli);
+    for (const auto& b : parca) {
+        if (b.empty() || b.front() == '.') {
+            return false;
+        }
+    }
+    int dizin = fd_;  // tutulan kök; kapatılmaz
     for (std::size_t i = 0; i + 1 < parca.size(); ++i) {
         // O_NOFOLLOW: bileşen simgesel bağsa açılmaz (ELOOP) — kök içini gösterse de.
         const int alt = openat(dizin, parca[i].c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        close(dizin);
+        if (dizin != fd_) {
+            close(dizin);
+        }
         if (alt < 0) {
             return false;
         }
         dizin = alt;
     }
     const int fd = openat(dizin, parca.back().c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
-    close(dizin);
+    if (dizin != fd_) {
+        close(dizin);
+    }
     if (fd < 0) {
         return false;
     }
     struct stat st{};
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0 || static_cast<unsigned long long>(st.st_size) > azami) {
-        close(fd);
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_nlink != 1 || st.st_size < 0 ||
+        static_cast<unsigned long long>(st.st_size) > azami) {
+        close(fd);  // düzenli dosya değil, sabit bağlı ya da büyük: 404
         return false;
     }
     icerik.resize(static_cast<std::size_t>(st.st_size));
@@ -212,7 +297,8 @@ bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t a
     }
     close(fd);
     return true;
-#endif
 }
+
+#endif
 
 }  // namespace ida::a3

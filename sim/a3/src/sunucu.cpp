@@ -142,28 +142,6 @@ struct Sunucu::Ic {
             const int tik_sayisi = liste[0].okunabilir ? tikleri_al() : 0;
             if (!kapanis_basladi) {
                 ilk = 2;
-                if (liste[1].okunabilir) {
-                    for (int n = 0; n < 64; ++n) {
-                        const ag::Tutamac t = ag::kabul(dinleyici);
-                        if (t == ag::gecersiz()) {
-                            break;
-                        }
-                        std::vector<BagId> kapatilacak;
-                        const BagId id = cekirdek->ac(simdi, kapatilacak);
-                        for (const BagId k : kapatilacak) {
-                            const auto it = soketler.find(k);
-                            if (it != soketler.end()) {
-                                ag::kapat(it->second);
-                                soketler.erase(it);
-                            }
-                        }
-                        if (id == 0) {
-                            ag::kapat(t);
-                            continue;
-                        }
-                        soketler[id] = t;
-                    }
-                }
             }
             for (std::size_t i = 0; i < sira.size(); ++i) {
                 const BagId id = sira[i];
@@ -193,6 +171,36 @@ struct Sunucu::Ic {
                         cekirdek->karsi_kapatti(id, simdi);
                     }
                     break;
+                }
+            }
+            // W4-K23 (2): yeni bağlantılar, mevcut okunabilir soketler işlendikten SONRA kabul edilir
+            // (gövdesinin son baytı gelmiş bir emniyet isteği önce tamamlanır).
+            if (!kapanis_basladi) {
+                if (liste[1].okunabilir) {
+                    for (int n = 0; n < 64; ++n) {
+                        const ag::Tutamac t = ag::kabul(dinleyici);
+                        if (t == ag::gecersiz()) {
+                            break;
+                        }
+                        std::vector<BagId> kapatilacak;
+                        const BagId id = cekirdek->ac(simdi, kapatilacak);
+                        for (const BagId k : kapatilacak) {
+                            const auto it = soketler.find(k);
+                            if (it != soketler.end()) {
+                                ag::kapat(it->second);
+                                soketler.erase(it);
+                            }
+                        }
+                        if (id == 0) {
+                            // Sınır dolu ve kapatılabilecek (kimliği doğrulanmamış) bağlantı yok: 503
+                            // yazılmaya çalışılır (en iyi çaba, engellemesiz) ve bağlantı kapatılır.
+                            const std::string y = cekirdek->dolu_yaniti();
+                            (void)ag::yaz(t, reinterpret_cast<const std::uint8_t*>(y.data()), y.size());
+                            ag::kapat(t);
+                            continue;
+                        }
+                        soketler[id] = t;
+                    }
                 }
             }
             cekirdek->dongu(simdi);
