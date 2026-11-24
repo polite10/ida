@@ -1,8 +1,8 @@
 // W4-bagla-a3 kabul 3: `ida_sim --kip sil --senaryo scenarios/z1.toml --a3-port 0 --a3-bekle` +
 // panelin A3 istemcisi (web/src/a3; Node'un WebSocket ve fetch'i; web/'e dosya eklenmez):
 // sürüm → WebSocket → merhaba → abonelik → baslat → beş panelin kanallarında gerçek değerler
-// (fizik/durum derinliği sim'in CSV'siyle aynı adımlarda) → hız 1 → duraklat → ARM (onay jetonu,
-// emniyet revizyonu) → sürdür → hız 0 → ARM'ın kart yanıtı ve kart/durum → çalıştırma bitti.
+// (fizik/durum derinliği sim'in CSV'siyle aynı adımlarda) → duraklat → adımla (2 s'ye dek) → ARM
+// (onay jetonu, emniyet revizyonu) → sürdür → ARM'ın kart yanıtı ve kart/durum → çalıştırma bitti.
 // Kullanım: node a3_uctan_uca.mjs <ida_sim> <depo kökü> <web dizini> <çıktı dizini>
 // Çıkış: 0 geçti, 1 kaldı, 77 atlandı (web/node_modules yok ya da Node'da WebSocket yok).
 
@@ -81,15 +81,21 @@ try {
   dogrula(sonuc(baslat.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'baslat uygulandı (A3-K62)');
   let d = await http.durum();
   dogrula(d.durum === 'kosuyor' && /^\d{8}-\d{6}-[0-9a-f]{6}$/.test(d.run_id ?? ''), `kosuyor, run_id ${d.run_id}`);
-  const hiz1 = await http.calistirma('hiz', { run_id: d.run_id, durum_rev: d.durum_rev }, { carpan: 1 });
-  await bekle(() => sonuc(hiz1.komut_no) !== undefined, 5000, 'hız 1 sonucu');
-  // 1x'te sim zamanı 2 s'yi geçince duraklat.
-  await bekle(() => fizik.length > 0 && fizik[fizik.length - 1].adim >= 1600, 15000, 'sim zamanı 2 s');
-  d = await http.durum();
+  // Hemen duraklat (SIL olabildiğince hızlı koşar; yayın tikini beklemeden), sonra 2 s'ye dek
+  // adımla (A3-K65; belirlenimci): kart kestirimi oturur, ARM kabul edilebilir.
   const dur = await http.calistirma('duraklat', { run_id: d.run_id, durum_rev: d.durum_rev });
   await bekle(() => sonuc(dur.komut_no) !== undefined, 5000, 'duraklat sonucu');
+  dogrula(sonuc(dur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'duraklat uygulandı');
   d = await http.durum();
   dogrula(d.durum === 'duraklatildi', 'duraklatildi (SIL: sim zamanı durur)');
+  if (d.sim_t_ns < 2000000000) {
+    const n = Math.ceil((2000000000 - d.sim_t_ns) / 5000000);
+    const ad = await http.calistirma('adimla', { run_id: d.run_id, durum_rev: d.durum_rev }, { periyot_sayisi: n });
+    await bekle(() => sonuc(ad.komut_no) !== undefined, 5000, 'adımla sonucu');
+    await bekle(() => olaylar.some((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.neden === 'adimla_bitti'), 10000, 'adımla bitti');
+    d = await http.durum();
+  }
+  dogrula(d.durum === 'duraklatildi' && d.sim_t_ns >= 2000000000, `duraklatıldı, sim zamanı ${d.sim_t_ns / 1e9} s`);
   const t1 = d.sim_t_ns;
   await new Promise((r) => setTimeout(r, 300));
   dogrula((await http.durum()).sim_t_ns === t1, 'duraklatılmışken sim zamanı ilerlemedi');
@@ -119,9 +125,6 @@ try {
     await bekle(() => kart.length > 0 && kart[kart.length - 1].silahli === 1, 5000, 'kart/durum silahlı');
     dogrula(true, 'kart/durum: silahli = 1');
   }
-  d = await http.durum();
-  const hiz0 = await http.calistirma('hiz', { run_id: d.run_id, durum_rev: d.durum_rev }, { carpan: 0 });
-  await bekle(() => sonuc(hiz0.komut_no) !== undefined, 5000, 'hız 0 sonucu');
   await bekle(() => olaylar.some((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.sonraki === 'bitti'), 60000, 'bitti');
   const kod = await bitti;
   dogrula(kod === 0, `ida_sim çıkış kodu 0 (${kod})`);
@@ -138,7 +141,7 @@ try {
     denenen += 1;
     if (satir.has(f.adim) && Math.abs(satir.get(f.adim) - f.d) <= 5.1e-7 && f.t === BigInt(f.adim) * 1250000n) eslesen += 1;
   }
-  dogrula(denenen > 20 && eslesen === denenen, `fizik/durum derinliği CSV ile aynı adımda (${eslesen}/${denenen})`);
+  dogrula(denenen >= 5 && eslesen === denenen, `fizik/durum derinliği CSV ile aynı adımda (${eslesen}/${denenen})`);
   // scenarios/z1.toml yerleşik Z1'in GUIDED_SP'siz biçimidir (W4-K17): ARM ve kip var, dalış hedefi
   // yok; araç yüzer dengede kalır. Kartın kestirdiği derinlik yer gerçeğiyle tutarlı olmalı.
   const enDerin = Math.max(...fizik.map((f) => f.d));

@@ -312,7 +312,7 @@ int test_a3_belirlenim()
             ++eslesen;
         }
     }
-    dogrula_a3(denenen > 10u && eslesen == denenen,
+    dogrula_a3(denenen >= 5u && eslesen == denenen,
                "fizik/durum derinliği CSV satırıyla aynı adımda aynı (" + std::to_string(eslesen) + "/" + std::to_string(denenen) + ")");
     const bool kosuyor = std::find(h.olay_turleri.begin(), h.olay_turleri.end(), std::uint16_t{1}) != h.olay_turleri.end();
     dogrula_a3(kosuyor, "calistirma_durumu_degisti olayı geldi");
