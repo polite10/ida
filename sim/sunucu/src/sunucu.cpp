@@ -2614,8 +2614,10 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b, bool duran)
             // A3-K65 / Tablo 4.7a: adımlama bitti (4n fizik adımı); sınır b'nin bu turu ilerleyen
             // kipte işlenir (yayın bir sınır geriden kalmaz), sonra duraklatma yeniden yürürlüğe
             // girer. EMNİYET (W4-K28 (3) deseni): iç geçiş kabul edilmiş bir isteği bayatlatmaz:
-            // üretici kilidi altında son çekiş, kararlar, sonra iç geçiş ve yeni görüntü. Adımlama
-            // yalnız SIL'dedir (Tablo 4.7b): HIL döngüsünde kilit alınmaz (W4-K27 (5)).
+            // üretici kilidi altında son çekiş, kararlar, sonra iç geçiş ve yeni görüntü. Bu kilit
+            // W4-K27 (5)'in ("sınır döngüsünde kilit alınmaz") istisnasıdır (mimar kararı, W4-duraklat
+            // düzeltme turu): adımlama yalnız SIL'dedir (Tablo 4.7b), kilit kısa süre ve sim zamanı
+            // durmuşken tutulur; HIL döngüsünde kilit alınmaz.
             std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
             adimla_hedef_.reset();
             a3_cek(0);

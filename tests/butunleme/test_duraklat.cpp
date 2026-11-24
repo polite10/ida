@@ -167,6 +167,18 @@ bool notr_araligi(const Kosu& k, std::uint64_t ilk, std::uint64_t son)
     return true;
 }
 
+// Müdahalesiz kontrol koşusunda [ilk, son) aralığında en az bir nötr dışı adım var mı (inceleme #3:
+// emniyet testinin "nötr" iddiası boş geçmesin diye aynı kurulumun müdahalesiz koşusu sınanır).
+bool notr_disi_var(const Kosu& k, std::uint64_t ilk, std::uint64_t son)
+{
+    for (std::uint64_t b = ilk; b < son; ++b) {
+        if (notr_disi(k, b)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool acil_araligi(const Kosu& k, std::uint64_t ilk, std::uint64_t son)
 {
     for (std::uint64_t b = ilk; b < son; ++b) {
@@ -432,23 +444,33 @@ int test_senaryo_operator()
     a.acil_durdurma_s = 5.0;
     a.acil_kalkar_s = 6.0;
     a.acil_verildi = a.acil_kalk_verildi = true;
-    Tur tr;
-    std::uint32_t no_bas = 0, no_dur = 0;
-    bool birakti = false;
-    const Kosu k = kos(a, true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-        tr.gor(b);
-        const ida::a3::AnlikDurum d = al.anlik();
-        if (tr.bu(4800, 0)) {
-            no_dur = ver(al, duraklat(d), "4800: duraklat");
-        } else if (tr.bu(4800, 2)) {
-            birakti = d.durum == CalistirmaDurumu::duraklatildi && d.acil_durdurma == 0u;
-            no_bas = ver(al, acil_bas(d), "duraklatmada operatör acil bas");
-        } else if (tr.bu(4800, 4)) {
-            (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), "sürdür");
-        }
-    });
-    dogrula_d(k.s.tamam, "koşu tamam " + k.s.hata);
+    // `operator_basar` false: aynı kurulumun müdahalesiz kontrol koşusu (duraklat ve sürdür var,
+    // operatörün basması yok).
+    auto kos_bu = [&a](bool operator_basar, std::uint32_t& no_dur, std::uint32_t& no_bas, bool& birakti) {
+        Tur tr;
+        return kos(a, true, [&, operator_basar](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            tr.gor(b);
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (tr.bu(4800, 0)) {
+                no_dur = ver(al, duraklat(d), "4800: duraklat");
+            } else if (tr.bu(4800, 2)) {
+                birakti = d.durum == CalistirmaDurumu::duraklatildi && d.acil_durdurma == 0u;
+                if (operator_basar) {
+                    no_bas = ver(al, acil_bas(d), "duraklatmada operatör acil bas");
+                }
+            } else if (tr.bu(4800, 4)) {
+                (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), "sürdür");
+            }
+        });
+    };
+    std::uint32_t no_bas = 0, no_dur = 0, kno_dur = 0, kno_bas = 0;
+    bool birakti = false, kbirakti = false;
+    const Kosu kontrol = kos_bu(false, kno_dur, kno_bas, kbirakti);
+    const Kosu k = kos_bu(true, no_dur, no_bas, birakti);
+    dogrula_d(kontrol.s.tamam && k.s.tamam, "koşular tamam " + kontrol.s.hata + k.s.hata);
     dogrula_d(notr_disi(k, 3999), "ön koşul: senaryonun basmasından önce nötr dışı komut yürürlükte");
+    dogrula_d(notr_disi_var(kontrol, 4800, 6400) && !acil_araligi(kontrol, 4800, 6400),
+              "ön koşul: müdahalesiz kontrol koşusunda (operatör basmıyor) 4800–6400 aralığında itki nötr dışına döner");
     dogrula_d(birakti, "duraklatmada: senaryonun bırakması sınır 4800'ün ilerleyen turunda uygulanmış");
     dogrula_d(uygulandi(k.s, no_dur, 6'000'000'000) && uygulandi(k.s, no_bas, 6'000'000'000),
               "duraklat ve operatörün basması sınır 4800'de (6 s) uygulandı");
@@ -470,22 +492,30 @@ int test_ayni_tur_cikis()
 {
     for (const bool adimlama : {false, true}) {
         const std::string ad = adimlama ? "SIL acil + adımla" : "SIL acil + sürdür";
-        Tur tr;
-        std::uint32_t no_bas = 0;
-        const Kosu k = kos(yerlesik(7.0), true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-            tr.gor(b);
-            const ida::a3::AnlikDurum d = al.anlik();
-            if (tr.bu(4001, 0)) {
-                (void)ver(al, duraklat(d), ad + ": duraklat");
-            } else if (tr.bu(4001, 3)) {
-                no_bas = ver(al, acil_bas(d), ad + ": acil bas");
-                (void)ver(al, adimlama ? adimla(d, 2) : calistirma(d, KomutTuru::calistirma_surdur), ad + ": çıkış");
-            } else if (adimlama && tr.bu(4009, 2)) {
-                (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), ad + ": sürdür");
-            }
-        });
-        dogrula_d(k.s.tamam, ad + ": koşu tamam " + k.s.hata);
+        // `basar` false: aynı kurulumun müdahalesiz kontrol koşusu (acil bas yok).
+        auto kos_bu = [&](bool basar, std::uint32_t& no_bas) {
+            Tur tr;
+            return kos(yerlesik(7.0), true, [&, basar](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+                tr.gor(b);
+                const ida::a3::AnlikDurum d = al.anlik();
+                if (tr.bu(4001, 0)) {
+                    (void)ver(al, duraklat(d), ad + ": duraklat");
+                } else if (tr.bu(4001, 3)) {
+                    if (basar) {
+                        no_bas = ver(al, acil_bas(d), ad + ": acil bas");
+                    }
+                    (void)ver(al, adimlama ? adimla(d, 2) : calistirma(d, KomutTuru::calistirma_surdur), ad + ": çıkış");
+                } else if (adimlama && tr.bu(4009, 2)) {
+                    (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), ad + ": sürdür");
+                }
+            });
+        };
+        std::uint32_t no_bas = 0, kno_bas = 0;
+        const Kosu kontrol = kos_bu(false, kno_bas);
+        const Kosu k = kos_bu(true, no_bas);
+        dogrula_d(kontrol.s.tamam && k.s.tamam, ad + ": koşular tamam " + kontrol.s.hata + k.s.hata);
         dogrula_d(notr_disi(k, 4000), ad + ": ön koşul: duraklatmadan önceki adımda nötr dışı komut yürürlükte");
+        dogrula_d(notr_disi(kontrol, 4001), ad + ": ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4001) nötr dışı");
         dogrula_d(k.acil.size() > 4001u && k.acil[4001] == 1u && notr_araligi(k, 4001, 4041),
                   ad + ": çıkıştan sonraki ilk fizik adımı (4001) ve sonrası nötr, acil etkin");
         dogrula_d(uygulandi(k.s, no_bas, 4001 * kH), ad + ": acil bas sınır 4001'de uygulandı");
@@ -493,23 +523,33 @@ int test_ayni_tur_cikis()
     // HIL: aynı tur, sürdür (adımla HIL'de kipte geçersiz; duraklat onay ister).
     {
         const std::string ad = "HIL acil + sürdür";
-        Tur tr;
-        std::uint32_t no_bas = 0;
-        std::string ret_onay, ret_adimla;
-        const Kosu k = kos(hil_pty(6.0), true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-            tr.gor(b);
-            const ida::a3::AnlikDurum d = al.anlik();
-            if (tr.bu(4000, 0)) {
-                const AlimSonucu r = al.al(duraklat(d, false));
-                ret_onay = r.tur == AlimSonucu::Tur::ret ? r.hata_kodu : "kabul";
-                (void)ver(al, duraklat(d, true), ad + ": onaylı duraklat");
-            } else if (tr.bu(4000, 3)) {
-                const AlimSonucu r = al.al(adimla(d, 1));
-                ret_adimla = r.tur == AlimSonucu::Tur::ret ? r.hata_kodu : "kabul";
-                no_bas = ver(al, acil_bas(d), ad + ": acil bas");
-                (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), ad + ": sürdür");
-            }
-        });
+        // `basar` false: aynı kurulumun müdahalesiz kontrol koşusu (onaylı duraklat ve sürdür var,
+        // acil bas yok).
+        auto kos_bu = [&](bool basar, std::uint32_t& no_bas, std::string& ret_onay, std::string& ret_adimla) {
+            Tur tr;
+            return kos(hil_pty(6.0), true, [&, basar](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+                tr.gor(b);
+                const ida::a3::AnlikDurum d = al.anlik();
+                if (tr.bu(4000, 0)) {
+                    const AlimSonucu r = al.al(duraklat(d, false));
+                    ret_onay = r.tur == AlimSonucu::Tur::ret ? r.hata_kodu : "kabul";
+                    (void)ver(al, duraklat(d, true), ad + ": onaylı duraklat");
+                } else if (tr.bu(4000, 3)) {
+                    const AlimSonucu r = al.al(adimla(d, 1));
+                    ret_adimla = r.tur == AlimSonucu::Tur::ret ? r.hata_kodu : "kabul";
+                    if (basar) {
+                        no_bas = ver(al, acil_bas(d), ad + ": acil bas");
+                    }
+                    (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), ad + ": sürdür");
+                }
+            });
+        };
+        std::uint32_t no_bas = 0, kno_bas = 0;
+        std::string ret_onay, ret_adimla, kret_onay, kret_adimla;
+        const Kosu kontrol = kos_bu(false, kno_bas, kret_onay, kret_adimla);
+        const Kosu k = kos_bu(true, no_bas, ret_onay, ret_adimla);
+        dogrula_d(kontrol.s.tamam && kontrol.s.calistirma_sonu == "bitti", ad + ": kontrol koşusu tamam ve bitti " + kontrol.s.hata);
+        dogrula_d(notr_disi(kontrol, 4000), ad + ": ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4000) nötr dışı");
         dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", ad + ": koşu tamam ve bitti " + k.s.hata);
         dogrula_d(ret_onay == "onay_gerekli", ad + ": onaysız duraklat onay_gerekli (Tablo 4.7b): " + ret_onay);
         dogrula_d(ret_adimla == "kipte_gecersiz", ad + ": HIL'de adımla kipte_gecersiz (Tablo 4.7b): " + ret_adimla);
@@ -786,7 +826,9 @@ int test_hil_esz()
 
 // Sol-2 #4 (HIL): ilk TF'den önce (sınır 0) 3 s duraklatma. Kart 10 ms ızgarasında batch_seq = 0
 // eşzamansız güvenli çıktılar üretir; dünya iş parçacığının canlı belleği ısınmadan (0,5 s) sonra
-// büyümez. Sürdürmeden sonra koşu biter.
+// büyümez. Sürdürmeden sonra koşu biter. Eşzamansız çıktı muafiyeti (W4-K6) yalnız duraklatma
+// penceresinde denetlenir (inceleme #1): sürdürmeden sonra kartın batch_seq ≠ 0 taşıyan eşzamansız
+// çıktısı Tablo 4.8 bit 6'yı meşru olarak kurabilir.
 int test_hil_ilk_tf()
 {
     Tur tr;
@@ -794,7 +836,40 @@ int test_hil_ilk_tf()
     bool duraklatildi = false, isindi = false, surdu = false;
     long long b0 = 0, b1 = 0;
     std::uint64_t tf_once = 0;
-    const Kosu k = kos(hil_pty(2.0), true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+    std::uint32_t gec_surdur = 0;   // sürdürme anındaki görüntünün Tablo 4.8 bitleri
+    // Karşı taraf → sim eşzamansız çıktıları (ayırmasız çözücü; dünya iş parçacığında).
+    std::atomic<bool> surdu_a{false};
+    std::uint64_t esz_once = 0, esz_once_bagli = 0, esz_sifir = 0, esz_bagli = 0;
+    ida_link_alici_t gelen_alici{};
+    (void)ida_link_alici_kur(&gelen_alici, IDA_LINK_ROL_SIM);
+    ida::sunucu::Ayar a = hil_pty(2.0);
+    a.a1_bayt_kancasi = [&](bool giden, const std::uint8_t* p, std::size_t n) {
+        if (giden) {
+            return;
+        }
+        std::size_t i = 0;
+        while (i < n) {
+            std::size_t tuk = 0;
+            ida_link_cerceve_t c{};
+            const ida_link_rc_t rc = ida_link_al(&gelen_alici, p + i, n - i, &tuk, &c);
+            i += tuk;
+            if (rc == IDA_LINK_CERCEVE && c.msgid == MAVLINK_MSG_ID_IDA_ACTUATOR) {
+                mavlink_ida_actuator_t m{};
+                if (ida_link_coz(&c, c.msgid, &m, sizeof m) == IDA_LINK_TAMAM && (m.act_flags & IDAW_ACT_FLAGS_ASYNC) != 0u) {
+                    const bool sifir = m.batch_seq == 0u;
+                    (sifir ? esz_sifir : esz_bagli) += 1u;
+                    if (!surdu_a.load()) {
+                        ++esz_once;
+                        esz_once_bagli += sifir ? 0u : 1u;
+                    }
+                }
+            }
+            if (tuk == 0u) {
+                break;
+            }
+        }
+    };
+    const Kosu k = kos(a, true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
         dunya_isaretle();
         tr.gor(b);
         const ida::a3::AnlikDurum d = al.anlik();
@@ -815,19 +890,33 @@ int test_hil_ilk_tf()
         } else if (gecen > std::chrono::milliseconds(3500)) {
             b1 = dunya_canli_bayt();
             surdu = true;
+            gec_surdur = d.gecerlilik_nedenleri;
+            surdu_a = true;
             (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), "sürdür");
         }
     }, false);
     const ida::kopru::Sayaclar& c = k.s.sayac;
     std::printf("  ilk TF öncesi duraklatma: kart çıktıları birleşen %llu, uygulanan %llu (ilk parti öncesi %llu); dünya "
-                "canlı belleği %lld → %lld B\n",
+                "canlı belleği %lld → %lld B; alınan eşzamansız: sürdürmeden önce %llu (bağlı %llu), toplam batch_seq 0 "
+                "%llu, bağlı %llu\n",
                 static_cast<unsigned long long>(c.esz_birlesen), static_cast<unsigned long long>(c.esz_guvenli_uygulanan),
-                static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi), b0, b1);
+                static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi), b0, b1, static_cast<unsigned long long>(esz_once),
+                static_cast<unsigned long long>(esz_once_bagli), static_cast<unsigned long long>(esz_sifir),
+                static_cast<unsigned long long>(esz_bagli));
     dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + k.s.hata);
     dogrula_d(surdu && tf_once == 0u, "ön koşul: sınır 0'da, hiç parti gönderilmeden duraklatıldı ve 3 s sonra sürdürüldü");
-    dogrula_d(c.esz_birlesen + c.esz_guvenli_uygulanan >= 100u, "ön koşul: duraklatmada kart çıktıları geldi (≥ 100)");
-    dogrula_d(c.eszamansiz_ilk_parti_oncesi >= 1u && (c.calistirma_gecersiz & ida::kopru::kGecEszamansiz) == 0u,
-              "ilk parti öncesi çıktılar uygulandı ve muaf sayıldı (W4-K6)");
+    dogrula_d(c.esz_birlesen + c.esz_guvenli_uygulanan >= 100u && esz_once >= 100u,
+              "ön koşul: duraklatmada (sürdürmeden önce) kart çıktıları geldi (≥ 100)");
+    // Duraklatma penceresi: sürdürmeden önce alınan bütün eşzamansız çıktılar ilk parti öncesidir
+    // (batch_seq = 0) ve sürdürme anında bit 6 (eşzamansız güvenli çıktı) kurulmamıştır.
+    dogrula_d(esz_once_bagli == 0u && (gec_surdur & (1u << 6)) == 0u,
+              "duraklatma penceresinde alınan çıktılar ilk parti öncesi, muaf sayıldı (W4-K6; Tablo 4.8 bit 6 sürdürme "
+              "anında kurulu değil; bitler 0x" + [&] { char b[16]; std::snprintf(b, sizeof b, "%x", gec_surdur); return std::string(b); }() + ")");
+    // Muaf sayılan ≤ alınan batch_seq = 0 çıktılar; muaf olmayan uygulananlar yalnız bağlı (sürdürmeden
+    // sonra gelen) çıktılardan.
+    dogrula_d(c.eszamansiz_ilk_parti_oncesi >= 1u && c.eszamansiz_ilk_parti_oncesi <= esz_sifir &&
+                  c.esz_guvenli_uygulanan - c.eszamansiz_ilk_parti_oncesi <= esz_bagli,
+              "ilk parti öncesi çıktılar uygulandı ve muaf sayıldı; muaf olmayanlar yalnız sürdürmeden sonraki bağlı çıktılar");
 #if !defined(_MSC_VER)
     dogrula_d(b1 - b0 < 64 * 1024, "dünya iş parçacığının canlı belleği sabit (0,5 s → 3,5 s artış " + std::to_string(b1 - b0) + " B)");
 #endif
@@ -840,23 +929,30 @@ int test_hil_ilk_tf()
 // (4004) yanıtı uygulanana dek (4012) itki nötr.
 int test_bas_birak()
 {
-    Tur tr;
-    std::uint32_t no_bas = 0, no_bir = 0;
-    const Kosu k = kos(yerlesik(7.0), true, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-        tr.gor(b);
-        const ida::a3::AnlikDurum d = al.anlik();
-        if (tr.bu(4001, 0)) {
-            (void)ver(al, duraklat(d), "duraklat");
-        } else if (tr.bu(4001, 2)) {
-            no_bas = ver(al, acil_bas(d), "bas");
-        } else if (tr.bu(4001, 4)) {
-            no_bir = ver(al, acil_birak(d), "bırak (güncel revizyon)");
-        } else if (tr.bu(4001, 6)) {
-            (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), "sürdür");
-        }
-    });
-    dogrula_d(k.s.tamam, "koşu tamam " + k.s.hata);
+    // `mudahale` false: aynı kurulumun müdahalesiz kontrol koşusu (duraklat ve sürdür var; bas ve
+    // bırak yok).
+    auto kos_bu = [](bool mudahale, std::uint32_t& no_bas, std::uint32_t& no_bir) {
+        Tur tr;
+        return kos(yerlesik(7.0), true, [&, mudahale](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            tr.gor(b);
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (tr.bu(4001, 0)) {
+                (void)ver(al, duraklat(d), "duraklat");
+            } else if (mudahale && tr.bu(4001, 2)) {
+                no_bas = ver(al, acil_bas(d), "bas");
+            } else if (mudahale && tr.bu(4001, 4)) {
+                no_bir = ver(al, acil_birak(d), "bırak (güncel revizyon)");
+            } else if (tr.bu(4001, 6)) {
+                (void)ver(al, calistirma(d, KomutTuru::calistirma_surdur), "sürdür");
+            }
+        });
+    };
+    std::uint32_t no_bas = 0, no_bir = 0, kno_bas = 0, kno_bir = 0;
+    const Kosu kontrol = kos_bu(false, kno_bas, kno_bir);
+    const Kosu k = kos_bu(true, no_bas, no_bir);
+    dogrula_d(kontrol.s.tamam && k.s.tamam, "koşular tamam " + kontrol.s.hata + k.s.hata);
     dogrula_d(notr_disi(k, 4000), "ön koşul: duraklatmadan önce nötr dışı komut yürürlükte");
+    dogrula_d(notr_disi(kontrol, 4001), "ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4001) nötr dışı");
     dogrula_d(uygulandi(k.s, no_bas, 4001 * kH) && uygulandi(k.s, no_bir, 4001 * kH), "bas ve bırak duraklatmada uygulandı");
     dogrula_d(k.acil.size() > 4001u && k.acil[4001] == 0u, "sürdürmede acil serbest");
     dogrula_d(notr_araligi(k, 4001, 4012), "eski komut geri gelmedi: 4001–4011 nötr (W4-K3)");

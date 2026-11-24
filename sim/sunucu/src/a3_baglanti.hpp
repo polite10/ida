@@ -181,7 +181,9 @@ public:
     // tutar. Dünya, koşu dışındaki bir iç geçişte (hazırlık tamamlandı → kosuyor) bu kilidi alıp son
     // bir çekiş yapar ve yeni görüntüyü yazar: eski görüntüyle denetlenmiş her istek ya bu çekişte
     // alınır ya da yeni görüntüyle denetlenir (iç geçiş kabul edilmiş isteği bayatlatamaz). Sınır
-    // döngüsünde alınmaz (W4-K27 (5)).
+    // döngüsünde alınmaz (W4-K27 (5)); tek istisna SIL'de `adimla`'nın iç geçişidir (adımlama bitti →
+    // duraklatildi; mimar kararı, W4-duraklat düzeltme turu): yalnız SIL'de, kısa süre ve sim zamanı
+    // durmuşken alınır (HIL döngüsünde hiçbir zaman).
     std::unique_lock<std::mutex> gecis_kilidi() { return std::unique_lock<std::mutex>(uretici_m_); }
 
 private:
