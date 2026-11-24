@@ -3006,6 +3006,7 @@ Sonuc Calistirici::kos()
         adim_sonrasi(b);
         if (adimla_kalan_ > 0u && --adimla_kalan_ == 0u) {
             duraklatildi_ = true;   // A3-K65: n periyot ilerledi
+            a3_b_ = b + 1u;         // fizik b + 1 sınırında; duraklatma o sınırda (anlık görüntü tutarlı)
             a3_gecis(a3::CalistirmaDurumu::duraklatildi, "adimla_bitti", true);
         }
         if (a_.kip == Kip::hil) {
