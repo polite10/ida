@@ -1186,7 +1186,7 @@ tam_olculmus = [20000, 40000, 80000, 160000]
 
 ## Sürüm geçmişi
 
-`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Dosya sürümü (`meta.sema_surumu`; A5-K03, K04) ayrıdır: 1.0.x onu değiştirmez; anahtar, enum değeri ya da şema sınırı değiştiren her düzeltme minor sürümdür (1.1).
+`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Dosya sürümü (`meta.sema_surumu`; A5-K03, K04) ayrıdır: 1.0.x onu değiştirmez. Aşağıda "bu sürümde yapılmayanlar" diye listelenen değişiklikler dosya sürümünün artmasını gerektirir; major/minor ayrımı için A5-K04 geçerlidir.
 
 | Sürüm | Tarih | Değişiklik |
 |---|---|---|
@@ -1207,4 +1207,4 @@ tam_olculmus = [20000, 40000, 80000, 160000]
 | W4-ortak not tablosu (W4-senaryo) | A5-K32 | Şemanın `yonelim` sınırı metinden dar; metin geçerli |
 | W4-ortak not tablosu (W4-senaryo) | 7 ("K113–K118, K80" satırı) | Kalibrasyon sürümü vakası A5-K10 olarak raporlanır |
 
-**Bu sürümde yapılmayanlar** (şema, sabit ya da makinece okunur dosya değişikliği gerektirir; mimar kararıyla (2026-11-24) 1.1 listesindedir): `yonelim` şema sınırının düzeltilmesi (A5-K32); `GUIDED_SP`'nin `gcs_komutu`'na eklenmesi (W4-K17; 1.1); jeoit yüksekliği anahtarı (W4-K7); sade kademede Ping360 örnek sayısının 600'e çekilmesi (W4-K18; A5-K78, Ek C "A1'den beklenen" md. 2); Ping360 çalışma yapılandırması alanı (W4-K18 (c)).
+**Bu sürümde yapılmayanlar** (şema, sabit ya da makinece okunur dosya değişikliği gerektirir; mimar kararıyla (2026-11-24) 1.1 listesindedir; major/minor ayrımı için A5-K04 geçerlidir): `yonelim` şema sınırının düzeltilmesi (A5-K32); `GUIDED_SP`'nin `gcs_komutu`'na eklenmesi (W4-K17; 1.1); jeoit yüksekliği anahtarı (W4-K7); sade kademede Ping360 örnek sayısının 600'e çekilmesi (W4-K18; A5-K78, Ek C "A1'den beklenen" md. 2); Ping360 çalışma yapılandırması alanı (W4-K18 (c)).
