@@ -18,11 +18,11 @@ std::atomic<bool> g_bayt_say{false};
 namespace {
 constexpr std::size_t kBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
 }  // namespace
-void* operator new(std::size_t n)
+static void* baslikli_ayir(std::size_t n) noexcept
 {
     auto* p = static_cast<unsigned char*>(std::malloc(n + kBaslik));
     if (p == nullptr) {
-        throw std::bad_alloc();
+        return nullptr;
     }
     const bool say = g_bayt_say.load(std::memory_order_relaxed);
     reinterpret_cast<std::size_t*>(p)[0] = n;
@@ -32,7 +32,18 @@ void* operator new(std::size_t n)
     }
     return p + kBaslik;
 }
+void* operator new(std::size_t n)
+{
+    void* p = baslikli_ayir(n);
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
+    return p;
+}
 void* operator new[](std::size_t n) { return ::operator new(n); }
+// nothrow biçimleri başlıklı düzenle eşlenir (libc++ std::stable_sort tamponu nothrow new kullanır).
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept { return baslikli_ayir(n); }
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept { return baslikli_ayir(n); }
 void operator delete(void* q) noexcept
 {
     if (q == nullptr) {
@@ -47,6 +58,8 @@ void operator delete(void* q) noexcept
 void operator delete[](void* q) noexcept { ::operator delete(q); }
 void operator delete(void* q, std::size_t) noexcept { ::operator delete(q); }
 void operator delete[](void* q, std::size_t) noexcept { ::operator delete(q); }
+void operator delete(void* q, const std::nothrow_t&) noexcept { ::operator delete(q); }
+void operator delete[](void* q, const std::nothrow_t&) noexcept { ::operator delete(q); }
 #endif
 
 using namespace ida::kopru;

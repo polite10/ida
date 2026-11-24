@@ -61,7 +61,7 @@ long long dunya_canli_bayt() { return g_dunya_canli.load(); }
 namespace {
 constexpr std::size_t kBlokBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
 }  // namespace
-void* operator new(std::size_t n)
+static void* baslikli_ayir(std::size_t n) noexcept
 {
     if (ida::sunucu::a3_ayirma_sayilir() > 0) {
         g_a3_ayirma.fetch_add(1, std::memory_order_relaxed);
@@ -71,7 +71,7 @@ void* operator new(std::size_t n)
     }
     auto* p = static_cast<unsigned char*>(std::malloc(n + kBlokBaslik));
     if (p == nullptr) {
-        throw std::bad_alloc();
+        return nullptr;
     }
     reinterpret_cast<std::size_t*>(p)[0] = n;
     reinterpret_cast<std::size_t*>(p)[1] = g_dunya_is ? 1u : 0u;
@@ -80,7 +80,19 @@ void* operator new(std::size_t n)
     }
     return p + kBlokBaslik;
 }
+void* operator new(std::size_t n)
+{
+    void* p = baslikli_ayir(n);
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
+    return p;
+}
 void* operator new[](std::size_t n) { return ::operator new(n); }
+// nothrow biçimleri de başlıklı düzende olmalı: libc++ std::stable_sort geçici tamponu nothrow new
+// kullanır; eşlenmezse ASan altında başlıksız blok bizim delete'imize düşer.
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept { return baslikli_ayir(n); }
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept { return baslikli_ayir(n); }
 void operator delete(void* q) noexcept
 {
     if (q == nullptr) {
@@ -95,6 +107,8 @@ void operator delete(void* q) noexcept
 void operator delete[](void* q) noexcept { ::operator delete(q); }
 void operator delete(void* q, std::size_t) noexcept { ::operator delete(q); }
 void operator delete[](void* q, std::size_t) noexcept { ::operator delete(q); }
+void operator delete(void* q, const std::nothrow_t&) noexcept { ::operator delete(q); }
+void operator delete[](void* q, const std::nothrow_t&) noexcept { ::operator delete(q); }
 #endif
 
 namespace {
