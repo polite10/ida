@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Sürüm | 1.0.1 (2026-11-24; küçük sürüm notları, belgenin sonundaki "Sürüm geçmişi"); 1.0 2026-11-21'de donduruldu; `meta.sema_surumu`, şema, örnek dosyalar ve Ek E değişmedi |
 | Durum | **Donduruldu (2026-11-21; kullanıcı kararı K20).** Fark incelemesi turunun (D-17…D-27) düzeltmeleri sol'a yeniden incelettirilmedi; kalan hatalar uygulama sırasında bulunur ve küçük sürüm artışıyla (1.0.x) düzeltilir. |
 | İş | `W1-A5` (`docs/gorevler/W1-A5.md`; ortak kurallar `docs/gorevler/W1-ortak.md`); çapraz uyum `docs/gorevler/W1-uyum.md` |
 | İnceleme | `docs/sozlesmeler/inceleme/A5-sol.md`, `A5-sol-2.md`; yanıtlar `A5-yanit.md`, `A5-yanit-2.md`; çapraz inceleme `W1-capraz-sol-{1..4}.md`, doğrulama `W1-dogrulama-sol-3.md` (bütünleştirme dalında) |
@@ -204,6 +204,8 @@ Anahtar sensör adıdır (`^(?!x_)[a-z][a-z0-9_]{0,31}$`), en çok 64 sensör.
 | `sizinti` (`sos_leak`; `10.0` Hz) | `prob_sayisi` (`2`; [MV]), `algilama_gecikmesi_ns` (`1000000000`), `sahte_pozitif_orani` (`0.0`) |
 | `firlatici_geri_okuma` (`firlatici_io`; `10.0` Hz) | `anahtar_gecikmesi_ns` (`10000000`), `teslim_gecikmesi_ns` (`1000000`). Okunan alanlar: tüp başına dolu, emniyet açık, fiş takılı, pim çıkık; araç başına acil durdurma. "Bakım" alanı yoktur |
 
+**1.0.1 notu (W4-K5; EMNİYET) — `firlatici_geri_okuma`, `anahtar_gecikmesi_ns`.** Bu gecikme yalnız **gevşeten** değişime uygulanır: acil durdurmanın bırakılması, fişin takılması ya da pimin çıkarılması karta `anahtar_gecikmesi_ns` sonra bildirilir; **kısıtlayan** değişim gecikmesiz bildirilir (A1-K56). Gecikme sıfırlanmaz. Geri okuma örneğinin emniyet revizyonu, gösterdiği durumun revizyonudur (A1-K56'nın 1.0.1 notları).
+
 Profil değerlerinin kaynakları 05 §2.3–2.5'tir (etiketleri orada); bu tablo onları değiştirmez, yalnız sabitler.
 
 **Kamera alanları ve A2 §3.6 eşlemesi** (A5-K114; geçerli aralıkların tek kaynağı A2 §3.6'dır, burada yinelenmez):
@@ -278,6 +280,10 @@ Yapılandırma sürümü, port, halka yuva sayısı ve `D_op` senaryo alanı de�
 | `dalga.bilesen_sayisi` | tamsayı | — | 1–256 (A2 §3.4; A5-K116) | 64 | H | Bileşen sayısı (04 §2.5) |
 | `akinti.hiz_ned`, `ruzgar.hiz_ned` | dizi[3] | m/s | rüzgârda d = 0 (A5-K39) | (0, 0, 0) | H | Düzgün akıntı / rüzgâr |
 | `akinti.gauss_markov.*`, `ruzgar.gauss_markov.*` | `etkin` (false); `tau_ns` > 0; `sigma` ≥ 0 (m/s); `sinir` > 0 (m/s) | | | | K (A5-K38) | Sınırlı Gauss–Markov bileşeni |
+
+**1.0.1 notu (W4-K1) — `su.ses_hizi`.** Varsayılan "formülden" şu demektir: anahtar verilmemişse çözümleyici bu değeri çözümlenmiş senaryoya **yazmaz** (altın dosya ve davranış özeti değişmez); ses hızı sim tarafında, sensör ve sonar modellerinin ortak kullandığı tek bir işlevle hesaplanır (taslak 05 §2.4.2: tatlı suda UNESCO/Chen–Millero, deniz suyunda Mackenzie). Formül bir sim modelidir, A5 verisi değildir.
+
+**1.0.1 notu (W4-K7) — GNSS yüksekliği ve jeoit.** A4 §3.3 `alt_mm`'yi ortalama deniz seviyesine göre tanımlar; `orijin.yukseklik` ise elipsoit yüksekliğidir. Aradaki jeoit yüksekliği `N` (`alt = h_elipsoit − N`) 1.0'da A5 anahtarı değildir: sim'in sensör kümesinin ortam ayarında adlandırılmış bir ayardır, varsayılanı 0 m'dir ve "kabul" olarak belgelidir. `N`'nin A5'e anahtar olarak eklenmesi şema değişikliğidir ve bu sürümde yapılmadı.
 
 ### 3.10 `hedefler`, `gorev`, `olaylar`
 
@@ -537,6 +543,7 @@ A5'in tanımladığı olay ve kayıt içerikleri (taşıyıcı ve kanal adları 
 - **A5-K105** `transfer_payda`'nın ilk ve son katsayısı sıfırdan farklıdır; `len(transfer_pay) < len(transfer_payda)` (kesin uygun); DC kazanç `pay[son]/payda[son]` 1'den en çok 1e-12 sapar (04: birim DC kazanç); payda Routh–Hurwitz ölçütüne göre kararlıdır (bütün kökler sol yarı düzlemde). Aksi halde reddedilir.
 - **A5-K31** `pwm_min_us < pwm_notr_us − olu_bant_us` ve `pwm_notr_us + olu_bant_us < pwm_max_us` sağlanmazsa reddedilir.
 - **A5-K32** Birim vektör ve kuaterniyon olarak tanımlı her değerin normu (bileşen sırasıyla binary64'te kareler toplamının karekökü) 1'den en çok 1e-6 sapar; daha büyük sapma reddedilir; yükleyici kabul ettiği değeri normalleştirerek kullanır, çözümlenmiş senaryoya dosyadaki değeri yazar. **İstisna — kamera montajları** (`tur = "kamera"` sensörün `montaj.yonelim` ve `ayar.nominal_montaj.yonelim` alanları; W1-doğrulama D6): kabul ölçütü A2 §3.6 `montaj_q_bs` koşuludur (`|w² + x² + y² + z² − 1| ≤ 1·10⁻⁵`, toplam binary64'te w, x, y, z sırasıyla; A8-K36 nominal montaja aynısını uygular) ve A5 bu ölçütü 1e-6 norm ölçütünün yerine uygular. A5 kamera montajlarını normalleştirmez: değer çözümlenmiş senaryoya dosyadaki haliyle yazılır ve A2'ye (fizik montajı) ve A8'e (nominal montaj) bit eşit gider; normalleştirme gerekiyorsa tüketicinin işidir. Örnek: `(0,7071096096080154; 0; 0; 0,7071096096080154)` (norm² − 1 ≈ 8,0·10⁻⁶, norm − 1 ≈ 4,0·10⁻⁶) kamera montajında kabul, öteki her kuaterniyon alanında ret. Öteki montajlar ve birim büyüklükler için bu kural değişmez.
+  - **1.0.1 notu (W4-senaryo; W4-ortak not tablosu):** `scenarios/sema/a5.schema.json` `yonelim` elemanlarını ±1,0000001 ile sınırlar; bu sınır bu maddenin ölçütünden (normda 1e-6; kamera montajında norm²'de 1e-5) dardır: örneğin tek bileşeni 1,0000005 olan kuaterniyonu (norm − 1 = 5·10⁻⁷) bu madde kabul eder, şema reddeder. Metin geçerlidir (belge ile şema çelişirse belge geçerlidir); şema düzeltilecektir. Şema dosyası bu sürümde değiştirilmedi.
 - **A5-K89** Sensör çerçevesi kabulleri (montaj yorumunda): IMU, manyetometre, basınç, GNSS, batarya ölçer, sızıntı ve fırlatıcı geri okuması için sensör eksenleri gövde eksenlerine paraleldir (birim yönelimde); DVL ve Ping1D ışın ekseni sensör +z'dir; Ping360 dönme ekseni sensör +z, tarama düzlemi sensör x–y'dir ve 0 gradyan sensör +x'tir; kamera optik ekseni sensör +x, görüntü sağı sensör +y'dir (S çerçevesi; A2 §3.6 ve A8 ile aynı). Kameranın optik çerçeveye (z ileri) dönüşümü A2-K94'tedir; A5 yinelemez. Bu kabullerle İDA-0'ın bütün montaj yönelimleri birim dönüştür.
 - **A5-K33** `kimlik` tekildir ve `(tur, inst)` çifti tekildir.
 - **A5-K34** Yükleyici temas doğruluk ölçütünü (`ω_c h ≤ 0,2`; 04 §2.9) her kütle durumunda hesaplar; aşılırsa `uyari` üretir.
@@ -553,6 +560,7 @@ A5'in tanımladığı olay ve kayıt içerikleri (taşıyıcı ve kanal adları 
 
 - **A5-K40** `ayar` altında verilmeyen anahtar 3.6'daki profil değeriyle çözümlenir; `yakinsama_baslangic_hatasi > 0` iken `yakinsama_tau_ns` zorunludur.
 - **A5-K41** `imu`, `dvl`, `kamera`, `ping1d` ve `ping360` için `hiz_hz` verilirse reddedilir: IMU kontrol periyodunda örneklenir (iskelet §4, 200 Hz); DVL hızı mod tablosundan, kamera hızı A2 §6 kademesinden, Ping1D ve Ping360 zamanlaması cihaz modelinden ve kartın yapılandırmasından gelir. `imu` için `saat_kaymasi_ppm` verilirse reddedilir.
+  - **1.0.1 notu (W4-K18 (c)):** Ping360'ın çalışma yapılandırmasını (tarama ve örnekleme ayarları) taşıyan bir alan 1.0'da ne A5'te ne A1'de tanımlıdır (A1 8.2 "A5'ten beklenen" md. 3 bunu A5'ten bekler; bu madde değeri kartın yapılandırmasına bırakır). Alan sözleşmelere eklenene kadar uygulama yapılandırmayı sim'in kurulum alanından ve yapılandırma çağrısından alır; bu, sözleşme arayüzü değildir. Alanın eklenmesi şema değişikliğidir ve bu sürümde yapılmadı.
 - **A5-K42** `basinc` sensöründe `hiz_hz > 1 / (2 · donusum_penceresi + okuma_suresi)` ise reddedilir (profil değerleriyle 25,974026 Hz).
 - **A5-K43** `hiz_hz` (0, 800] Hz aralığındadır; zamanlayıcı onu en yakın adım sınırı kuralıyla bağlar (04 §2.11).
 - **A5-K44** Etkin bir `manyetometre` varken `ortam.manyetik_alan` yoksa reddedilir.
@@ -577,6 +585,7 @@ A5'in tanımladığı olay ve kayıt içerikleri (taşıyıcı ve kanal adları 
 - **A5-K56** Görev en çok 128 öğe taşır (02 §3.8).
 - **A5-K57** Görev `yukleme_zamani_ns` anında GCS ağ geçidi → bağlantı emülatörü → A1 yolundan kartın görev komutlarıyla gönderilir; SIL ve HIL'de yol aynıdır.
 - **A5-K109** Olay çeşitleri: **kalıcı atama** (`emniyet_girdisi`, `baglanti/profil_degisimi`, `sistem/su_girisi`), **anlık komut** (`gcs_komutu`, `sistem/kart_sifirlama`), **geçici arıza** (diğer bütün desteklenen türler). Kalıcı atama ve anlık komut `sure_ns` taşıyamaz; kalıcı atama değeri bir sonraki atamaya kadar kalır ("süreli" emniyet değişimi iki atamayla yazılır). Kalıcı atama `zaman_ns` ya da `kosul` ile verilebilir. Emniyet atamaları iskelet §3.2 "Fizik sınırındaki sıra"ya bağlıdır (A5-K63). Doğrulamada saptanabilen çelişki (zamanlı atamalar) doğrulama hatasıdır (A5-K62); çalışma anında ortaya çıkan çelişki (en az biri koşullu, ya da panel ve oturum işlemleriyle aynı sınır) A5-K63'teki sırayla çözülür.
+  - **1.0.1 notu (W4-K17):** `gcs_komutu` olayı 1.0'da yalnız `ARM`, `DISARM` ve `SET_MODE` taşır (3.10); `GUIDED_SP` senaryo dosyasında **yazılamaz**. `GUIDED_SP`'nin `gcs_komutu`'na eklenmesi (alanları A1'deki `GUIDED_SP` komutuyla bire bir) A5'in 1.1 sürümünün konusudur (A5-K04: yeni enum değeri minor artıştır); o sürüm çıkana kadar `x_` anahtarıyla ya da başka dolaylı yolla taşınmaz.
 - **A5-K60** `olaylar[].kimlik` tekildir; `^E[0-9]+$` elle enjeksiyona ayrılmıştır ve reddedilir.
 - **A5-K61** Her olay tam olarak birini taşır: `zaman_ns` ya da `kosul`.
 - **A5-K62** `zaman_ns` taşıyan olay sim zamanı `t ≥ zaman_ns` olan ilk fizik adım sınırında başlar. Aynı adım sınırında önce bitişler, sonra başlangıçlar uygulanır; her grubun içinde dosyadaki sıra geçerlidir. Yükleme doğrulaması: aynı fizik sınırına düşen iki **zamanlı** emniyet atamasından biri kısıtlayan (acil durdurma basılı, fiş çıkık, pim takılı) öteki gevşetense, alanları farklı olsa da senaryo reddedilir (W1-uyum U3); aynı bağlantı profili alanına aynı sınırda farklı değer atayan iki zamanlı atama da reddedilir.
@@ -584,6 +593,7 @@ A5'in tanımladığı olay ve kayıt içerikleri (taşıyıcı ve kanal adları 
 - **A5-K64** Geçici arıza, başladığı sınır `t_b` ise `t_b + sure_ns`'e eşit ya da ondan sonraki ilk adım sınırında biter ve etkisi kalkar (durumlu arızaların bitiş davranışı Tablo 3.10-A); `sure_ns = 0` süresizdir ve yalnız elle kaldırılır. Aynı hedefe çakışan geçici arızaların hepsi uygulanır (3.10 bileşim kuralı).
 - **A5-K65** `hedef` sınıfa uyar: `sensor` → `arac.sensorler` anahtarı; `aktuator` → `t1`…`t8` ya da `tumu`; `emniyet_girdisi` ile `fis`/`pim` → `f1` ya da `f2`, `acil_durdurma` → `hedef` yok; `guc`, `baglanti`, `protokol`, `sistem`, `gcs_komutu` → `hedef` yok. `baglanti` ve `protokol`'de `yon`, `protokol`'de `duzlem` zorunludur; `profil_degisimi`'nde `profil` mevcut bir profildir; `su_girisi`'nde `problar` prob sayısından küçüktür; `motor_takilmasi` yalnız `ping360`, `dvl_isin_kaybi` yalnız `dvl` hedefinde, `gurultu_artisi` yalnız Tablo 3.10-A'daki türlerde geçerlidir.
 - **A5-K66** `gec_teslim`'de `titresim_ns ≤ gecikme_ns` sağlanmazsa olay reddedilir. Böylece arızalı teslim modellenmiş teslim anından önce olmaz ve `t_meas ≤ t_hazır ≤ t_teslim` korunur (05 §2.2).
+  - **1.0.1 notu (W4-K9):** `t_hazır ≤ t_teslim` her ölçümde değişmezdir: teslim zamanı, ölçümün üretildiği fizik sınırından önce olamaz; model teslimi daha erkene hesaplıyorsa teslim üretim sınırına çekilir. Taslak 05 §2.2'deki basınç zamanlama sayıları bu değişmezle çelişir; değişmez geçerlidir.
 - **A5-K67** `zaman_deseni`, `sira_boz` ve `kanal_maskesi` yalnız `sensor` sınıfında bulunur; `bernoulli` iken `p`, `gilbert_elliott` iken `t_iyi_ns` ve `t_kotu_ns` zorunludur.
 - **A5-K68** Her desteklenen tür Tablo 3.10-A'daki zorunlu `siddet` alanlarını taşır ve başka `siddet` alanı taşıyamaz (`gec_teslim` için `titresim_ns` isteğe bağlıdır). `itki_carpani`'nda `carpan` [0, 1], `ic_direnc_artisi`'nda `carpan` ≥ 1'dir.
 - **A5-K69** `kanal_maskesi` bu sürümde `dvl_isin_kaybi` dışında yalnız 4294967295 (bütün kanallar) olabilir; `dvl_isin_kaybi`'nda 1 … 15 (bit `i` = ışın `i`) olur.
@@ -602,6 +612,7 @@ A5'in tanımladığı olay ve kayıt içerikleri (taşıyıcı ve kanal adları 
 ### 4.9 Kalite kademeleri
 
 - **A5-K78** `kalite.gorunum`, `kalite.kamera` ve `kalite.sonar`'ın varsayılanı `sade`'dir; kayıt ayarları A3/A6'nın değer kümelerini kullanır: `kalite.kayit` ∈ {`olaylar`, `telemetri`, `tam`} (varsayılan `telemetri`; "kapalı" yoktur, emniyet kaydı kaldırılamaz), `kalite.kamera_kareleri` ∈ {`kapali`, `pencereli`, `surekli`} (varsayılan `kapali`; anlamları A6-K19). Sonar `sade` kademesi ping başına 5 000 ışın kullanır (iskelet §6; MP7 S2) ve ışın sayısı A5'ten değiştirilmez. Ping360 örnek sayısının üst sınırı iki kademede de 1 200'dür (MP7'de ölçülen yapılandırma; mimar kararı); sade kademeyi sınırlayan ışın sayısıdır. Örnek üst sınırı A5 anahtarı değildir.
+  - **1.0.1 notu (W4-K18):** Bu maddenin "iki kademede de 1 200 … (MP7'de ölçülen yapılandırma)" gerekçesi hatalıdır: MP7 prototipi sade kademede satırı 600 örneğe indiriyordu ve iskelet §8'in "sade kademe 5 000 ışınla yakınsama ölçütünü sağlıyor" hükmü o yapılandırmanın ölçümüdür. **Ölçüm** (W4-sonar; geliştirme Mac'i; MP7 orta sahnesinin çözümsel karşılığı; `docs/gorevler/W4-ortak.md` W4-K18): 600 örnekte ölçüt 5 000 ışınla sağlanıyor (MP7 değerlerine çok yakın); 1 200 örnekte 5 000 ve 10 000 ışınla sağlanmıyor. Mimar kararı: sade kademede doğru yapılandırma **600 örnektir** (taslak 05 §5 ile aynı). Değer bu sürümde **değiştirilmedi**: 1 200 sabiti bu maddede, Ek C "A1'den beklenen" md. 2'de (`max_ping360_samples`) ve makinece okunur dosyalarda durur. Sözleşme ve şema dosyaları değişene kadar model sözleşmeye uyar (sade kademede de 1 200 örnek üretir) ve yakınsama kabulü ölçülen yapılandırmada (600 örnek) sınanır; bu ara durumda sade kademenin benek değişkenliği ölçütün üstündedir (bilinen sınır).
 - **A5-K79** `kalite.sonar = "tam"` iken `kalite.sonar_tam.isin_sayisi` zorunludur. Kartlı kiplerde (`hil_1x`, `hil_bariyer`) ışın sayısı yalnız ölçülmüş kümeden seçilir: 20 000, 40 000, 80 000, 160 000 (MP7 §4.6; ölçümde gerçekleşen ışın sayıları 20 000, 40 014, 80 000, 160 008); başka değer reddedilir ve geçerli seçim `uyari` üretir. SIL'de 1 … 10⁷ serbesttir; kümede olmayan değer "ölçülmemiş ışın sayısı" `uyari`'sı üretir. Çözümleyici `meta.olcum_kanitlari`'na sonar kademesinin kanıtını yazar: sade → `docs/olcumler/MP7-sonar-suresi.md §4.3–4.4 (sade, N = 5 000)`; tam ve kümedeki değer → `docs/olcumler/MP7-sonar-suresi.md §4.6`; tam ve kümede olmayan değer → kanıt yazılmaz. Bu sınırlar ölçüm sınırıdır, donanım sınırı değildir; yeni ölçüm kümeyi minor sürümle genişletir.
 - **A5-K80** `kalite.gorunum = "kapali"` iken `kalite.kamera` `kapali` değilse reddedilir: kamera karelerini görselleştirici süreci üretir (iskelet §8, A2), görünüm kapalıyken o süreç çalışmaz. `kalite.kamera = "kapali"` iken etkin bir `kamera` sensörü varsa reddedilir. `kalite.kamera` `kapali` değilken tam olarak bir etkin kamera sensörü bulunmalıdır; yoksa senaryo reddedilir (A2 açık kademede `kamera_sayisi = 1` ister, A2 §3.3; A8-K35; W1-doğrulama D5). `kalite.kamera_gerekli = true` iken kamera kademesi `kapali` ya da etkin kamera yoksa reddedilir (anlamı A2-K50). Kamera kademesinin sayısal değerleri (çözünürlük, hız) A2 §6'dadır.
 - **A5-K81** Kalite kademesi emniyet girdilerini, emniyet olaylarını ve bu belgedeki emniyet kurallarını değiştirmez (iskelet §6).
@@ -700,6 +711,8 @@ Kademe seçimi 3.12'deki anahtarlarla yapılır; etkisi iskelet §6 ve 05 §5'te
 | K82–K85, K110–K112 | birim | Ek D'deki bilinen yanıt vektörleri (Philox sözcükleri bit eşit; normal değerler aynı platformda bit eşit); bir sensörün çekiliş sayısını değiştirmek diğer akışları değiştirmez; kamera kapalıyken aynı özetle iki canlı SIL koşusu bit eşit (kamera açıkken bu sınama yapılmaz; güvence A6 girdi tekrarıdır) |
 | K86–K88 | birim | Kütle durumu seçimi; varsayılan emniyet durumu |
 | K90–K95 | birim | Aşama sırası; bulguların toplanması; rapor biçimi ve sıralama; `yol` sözdizimi |
+
+**1.0.1 notu (W4-senaryo; W4-ortak not tablosu) — "K113–K118, K80" satırı.** Satırdaki "kalibrasyon sürümü 0 ve 65 536" vakası şemanın aralık denetimine takılır; bulgu A5-K114 olarak değil A5-K10 (şema aralığı) olarak raporlanır. Satır bu okumayla geçerlidir; tablo metni bu sürümde yeniden yazılmadı.
 
 ---
 
@@ -1168,3 +1181,30 @@ sade = {yol = "kalite.sonar", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.3�
 tam = {yol = "kalite.sonar_tam.isin_sayisi", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.6"}
 tam_olculmus = [20000, 40000, 80000, 160000]
 ```
+
+---
+
+## Sürüm geçmişi
+
+`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Dosya sürümü (`meta.sema_surumu`; A5-K03, K04) ayrıdır: 1.0.x onu değiştirmez. Aşağıda "bu sürümde yapılmayanlar" diye listelenen değişiklikler dosya sürümünün artmasını gerektirir; major/minor ayrımı için A5-K04 geçerlidir.
+
+| Sürüm | Tarih | Değişiklik |
+|---|---|---|
+| 1.0 | 2026-11-21 | Donduruldu (kullanıcı kararı K20). |
+| 1.0.1 | 2026-11-24 | Uygulama sırasında (W4) verilen mimar kararlarının notları. `scenarios/sema/a5.schema.json`, `scenarios/ida0.toml`, `scenarios/ornek-havuz.toml`, altın çözümlenmiş senaryo, Ek E ve sabitler değişmedi; yeni kural numarası yok. |
+
+**1.0.1 notları:**
+
+| Kaynak | Not düşülen yer | Konu |
+|---|---|---|
+| W4-K1 | 3.9 (`su.ses_hizi`) | Ses hızı varsayılanı: çözümleyici yazmaz, sim hesaplar |
+| W4-K5 (EMNİYET) | 3.6 (`firlatici_geri_okuma`) | `anahtar_gecikmesi_ns` yalnız gevşeten değişime uygulanır |
+| W4-K7 | 3.9 (`orijin.yukseklik`) | Jeoit yüksekliği `N` 1.0'da A5 anahtarı değildir |
+| W4-K9 | A5-K66 | `t_hazır ≤ t_teslim` değişmezi |
+| W4-K17 | A5-K109 | `gcs_komutu` 1.0'da `GUIDED_SP` taşımaz |
+| W4-K18 | A5-K78 | Sade kademede Ping360 örnek sayısı: gerekçe düzeltmesi, değer değişmedi |
+| W4-K18 (c) | A5-K41 | Ping360 çalışma yapılandırması alanı 1.0'da tanımlı değil |
+| W4-ortak not tablosu (W4-senaryo) | A5-K32 | Şemanın `yonelim` sınırı metinden dar; metin geçerli |
+| W4-ortak not tablosu (W4-senaryo) | 7 ("K113–K118, K80" satırı) | Kalibrasyon sürümü vakası A5-K10 olarak raporlanır |
+
+**Bu sürümde yapılmayanlar** (şema, sabit ya da makinece okunur dosya değişikliği gerektirir; mimar kararıyla (2026-11-24) 1.1 listesindedir; major/minor ayrımı için A5-K04 geçerlidir): `yonelim` şema sınırının düzeltilmesi (A5-K32); `GUIDED_SP`'nin `gcs_komutu`'na eklenmesi (W4-K17; 1.1); jeoit yüksekliği anahtarı (W4-K7); sade kademede Ping360 örnek sayısının 600'e çekilmesi (W4-K18; A5-K78, Ek C "A1'den beklenen" md. 2); Ping360 çalışma yapılandırması alanı (W4-K18 (c)).
