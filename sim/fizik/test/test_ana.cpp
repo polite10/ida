@@ -29,6 +29,8 @@ int test_esc_notr_disi_hazir_olmaz(const TestBaglami&);
 int test_esc_notr_bekleme_sonrasi_hazir(const TestBaglami&);
 int test_kurulum_sonluluk(const TestBaglami&);
 int test_transfer_olcek(const TestBaglami&);
+int test_itki_carpani_birim(const TestBaglami&);
+int test_itki_carpani_gecis(const TestBaglami&);
 
 bool itkiden_pwm(const AracParametreleri& a, double F, double& pwm)
 {
@@ -135,6 +137,8 @@ int main(int argc, char** argv)
         {"esc_notr_bekleme_sonrasi_hazir", test_esc_notr_bekleme_sonrasi_hazir},
         {"kurulum_sonluluk", test_kurulum_sonluluk},
         {"transfer_olcek", test_transfer_olcek},
+        {"itki_carpani_birim", test_itki_carpani_birim},
+        {"itki_carpani_gecis", test_itki_carpani_gecis},
     };
     if (argc < 2) {
         std::printf("kullanım: %s <test> [ida0.toml]\n", argv[0]);

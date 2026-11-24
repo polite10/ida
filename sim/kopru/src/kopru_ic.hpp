@@ -49,6 +49,7 @@ struct Komut {
     mavlink_ida_cmd_guided_t guided{};
     mavlink_ida_cmd_param_set_t param{};
     mavlink_ida_cmd_fc_t fc{};
+    mavlink_ida_cmd_mission_item_t gorev{};
 };
 
 struct Yuva {

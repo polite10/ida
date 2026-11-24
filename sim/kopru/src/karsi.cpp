@@ -227,6 +227,9 @@ struct KarsiTaraf::Ic {
             }
             const ida_rc_t rc = tur == IDA_LINK_CAGRI_STEP ? ida_core_step(cekirdek(), &in, cikti.get())
                                                            : ida_core_tick(cekirdek(), &in, cikti.get());
+            if (a.cikti_kancasi) {
+                a.cikti_kancasi(static_cast<int>(tur), in, *cikti);
+            }
             ida_link_ust_put_out(l.get(), &in, rc, cikti.get());
             switch (tur) {
             case IDA_LINK_CAGRI_STEP: ++ist.cagri_step; break;

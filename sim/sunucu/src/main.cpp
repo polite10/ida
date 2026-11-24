@@ -1,6 +1,8 @@
 // ida_sim — başsız sim sunucusu (W4-kopru). Kullanım: sim/sunucu/BENIOKU.md.
 #include "ida/sunucu/sunucu.hpp"
 
+#include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,11 +22,35 @@ void kullanim()
         "  --seri <aygıt>           hil: seri aygıt (ör. /dev/cu.usbmodem…, COM5)\n"
         "  --tohum <sayı>           ana tohum (varsayılan 1)\n"
         "  --sure <s>               sim süresi, saniye (varsayılan 90)\n"
-        "  --senaryo z1|bos         yerleşik senaryo (varsayılan z1)\n"
+        "  --senaryo z1|bos|<dosya.toml>  yerleşik senaryo (varsayılan z1) ya da A5 senaryo dosyası\n"
+        "                           (depo köküne göre göreli; kip, süre ve tohum dosyadan)\n"
+        "  --kok <dizin>            depo kökü (senaryo dosyası için; varsayılan .)\n"
         "  --ariza <k1,k2,…|yok>    z1 itici arızası kanalları (varsayılan 4,0)\n"
         "  --acil <s> [--acil-kalk <s>]  sanal acil durdurma\n"
         "  --csv <yol>              kontrol adımı başına CSV\n"
-        "  --gunluk <0..2>          stderr günlüğü (varsayılan 1)\n");
+        "  --gunluk <0..2>          stderr günlüğü (varsayılan 1)\n"
+        "çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo (doğrulama raporu\n"
+        "standart hataya), 4 senaryo bu dilimde yürütülemez\n");
+}
+
+// Sayısal seçeneklerin tek ayrıştırıcısı (sol #1 üçüncü dar denetimi): değerin tamamı sayı
+// olmalı, `errno` dönüşümden önce sıfırlanır ve ERANGE (taşma ya da alt taşma; ör. −1e−999'un
+// sessizce 0 olması) hatadır; sonuç sonlu ve [en_az, en_cok] içinde olmalıdır.
+bool sayi_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    if (v.empty()) {
+        return false;
+    }
+    char* son = nullptr;
+    errno = 0;
+    x = std::strtod(v.c_str(), &son);
+    return errno != ERANGE && son != nullptr && *son == '\0' && std::isfinite(x) && x >= en_az && x <= en_cok;
+}
+
+// Tamsayı seçenekleri: aynı ayrıştırıcıyla, ayrıca tam değerli olmalı.
+bool tam_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    return sayi_ayristir(v, en_az, en_cok, x) && x == std::floor(x);
 }
 
 }  // namespace
@@ -44,6 +70,7 @@ int main(int argc, char** argv)
         };
         if (s == "--kip") {
             const std::string v = deger();
+            a.kip_verildi = true;
             if (v == "sil") {
                 a.kip = ida::sunucu::Kip::sil;
             } else if (v == "hil") {
@@ -55,6 +82,7 @@ int main(int argc, char** argv)
         } else if (s == "--karsi") {
             const std::string v = deger();
             karsi_verildi = true;
+            a.karsi_verildi = true;
             if (v == "ic") {
                 a.karsi = ida::sunucu::Karsi::ic;
             } else if (v == "tcp") {
@@ -68,7 +96,13 @@ int main(int argc, char** argv)
                 return 1;
             }
         } else if (s == "--a1-port") {
-            a.a1_port = static_cast<std::uint16_t>(std::strtoul(deger().c_str(), nullptr, 10));
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 65535.0, x)) {
+                std::fprintf(stderr, "ida_sim: --a1-port 0–65535 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.a1_port = static_cast<std::uint16_t>(x);
         } else if (s == "--sil") {
             a.sil_yolu = deger();
         } else if (s == "--sil-depo") {
@@ -79,39 +113,77 @@ int main(int argc, char** argv)
                 a.karsi = ida::sunucu::Karsi::seri;
             }
         } else if (s == "--tohum") {
-            a.tohum = std::strtoull(deger().c_str(), nullptr, 0);
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 9007199254740991.0, x)) {   // A5-K82: 0 … 2⁵³−1
+                std::fprintf(stderr, "ida_sim: --tohum 0 … 2^53−1 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.tohum = static_cast<std::uint64_t>(x);
+            a.tohum_verildi = true;
         } else if (s == "--sure") {
-            a.sure_s = std::strtod(deger().c_str(), nullptr);
+            const std::string v = deger();
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 1e7, x) || !(x > 0.0)) {
+                std::fprintf(stderr, "ida_sim: --sure pozitif bir süre (s) ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.sure_s = x;
+            a.sure_verildi = true;
+        } else if (s == "--kok") {
+            a.depo_koku = deger();
         } else if (s == "--senaryo") {
-            a.senaryo = deger();
-            if (a.senaryo != "z1" && a.senaryo != "bos") {
-                std::fprintf(stderr, "ida_sim: bilinmeyen senaryo %s\n", a.senaryo.c_str());
+            const std::string v = deger();
+            if (v == "z1" || v == "bos") {
+                a.senaryo = v;
+            } else if (v.size() > 5 && v.compare(v.size() - 5, 5, ".toml") == 0) {
+                a.senaryo_dosyasi = v;
+            } else {
+                std::fprintf(stderr, "ida_sim: bilinmeyen senaryo %s (z1, bos ya da .toml dosyası)\n", v.c_str());
                 return 1;
             }
         } else if (s == "--ariza") {
             const std::string v = deger();
+            a.ariza_verildi = true;
             a.z1.ariza_kanallari.clear();
             if (v != "yok") {
                 std::size_t p = 0;
                 while (p < v.size()) {
                     const std::size_t q = v.find(',', p);
-                    const int k = std::atoi(v.substr(p, q == std::string::npos ? std::string::npos : q - p).c_str());
-                    if (k < 0 || k > 7) {
+                    double k = 0.0;
+                    if (!tam_ayristir(v.substr(p, q == std::string::npos ? std::string::npos : q - p), 0.0, 7.0, k)) {
                         std::fprintf(stderr, "ida_sim: kanal 0–7 olmalı\n");
                         return 1;
                     }
-                    a.z1.ariza_kanallari.push_back(k);
+                    a.z1.ariza_kanallari.push_back(static_cast<int>(k));
                     p = q == std::string::npos ? v.size() : q + 1;
                 }
             }
-        } else if (s == "--acil") {
-            a.acil_durdurma_s = std::strtod(deger().c_str(), nullptr);
-        } else if (s == "--acil-kalk") {
-            a.acil_kalkar_s = std::strtod(deger().c_str(), nullptr);
+        } else if (s == "--acil" || s == "--acil-kalk") {
+            // EMNİYET (sol #1 dar denetimi): bir kez verilir; değer sonlu ve ≥ 0 bir sayı olmalı.
+            bool& verildi = s == "--acil" ? a.acil_verildi : a.acil_kalk_verildi;
+            if (verildi) {
+                std::fprintf(stderr, "ida_sim: %s bir kez verilebilir\n", s.c_str());
+                return 1;
+            }
+            verildi = true;
+            const std::string v = deger();
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 1e7, x)) {
+                std::fprintf(stderr, "ida_sim: %s sonlu ve ≥ 0 bir süre (s) ister: %s\n", s.c_str(), v.c_str());
+                return 1;
+            }
+            (s == "--acil" ? a.acil_durdurma_s : a.acil_kalkar_s) = x;
         } else if (s == "--csv") {
             a.csv_yolu = deger();
         } else if (s == "--gunluk") {
-            a.gunluk = std::atoi(deger().c_str());
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 2.0, x)) {
+                std::fprintf(stderr, "ida_sim: --gunluk 0..2 ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.gunluk = static_cast<int>(x);
         } else if (s == "--yardim" || s == "-h") {
             kullanim();
             return 0;
@@ -121,21 +193,64 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (a.kip == ida::sunucu::Kip::hil && !karsi_verildi && a.seri.empty()) {
+    if (!a.senaryo_dosyasi.empty() && !a.seri.empty()) {
+        a.karsi_verildi = true;   // --seri karşı tarafı seri yapar
+    }
+    // Senaryo dosyasında kip dosyadandır: kip ve karşı taraf denetimi çalıştırıcıda yapılır.
+    if (a.senaryo_dosyasi.empty() && a.kip == ida::sunucu::Kip::hil && !karsi_verildi && a.seri.empty()) {
         std::fprintf(stderr, "ida_sim: hil kipi --seri <aygıt> ya da --karsi pty ister\n");
         return 1;
     }
-    if (a.kip == ida::sunucu::Kip::hil && (a.karsi == ida::sunucu::Karsi::ic || a.karsi == ida::sunucu::Karsi::tcp)) {
+    if (a.senaryo_dosyasi.empty() && a.kip == ida::sunucu::Kip::hil &&
+        (a.karsi == ida::sunucu::Karsi::ic || a.karsi == ida::sunucu::Karsi::tcp)) {
         std::fprintf(stderr, "ida_sim: hil kipinde karşı taraf pty ya da seri olmalı\n");
         return 1;
     }
-    if (a.kip == ida::sunucu::Kip::sil && (a.karsi == ida::sunucu::Karsi::pty || a.karsi == ida::sunucu::Karsi::seri)) {
+    if (a.senaryo_dosyasi.empty() && a.kip == ida::sunucu::Kip::sil &&
+        (a.karsi == ida::sunucu::Karsi::pty || a.karsi == ida::sunucu::Karsi::seri)) {
         std::fprintf(stderr, "ida_sim: sil kipinde karşı taraf ic ya da tcp olmalı\n");
         return 1;
     }
     a.csv_uret = !a.csv_yolu.empty();
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
     const ida::kopru::Sayaclar& c = s.sayac;
+    using ida::sunucu::HataTuru;
+    if (s.hata_turu == HataTuru::senaryo_gecersiz) {
+        std::fprintf(stderr, "ida_sim: %s\n%s\n", s.hata.c_str(), s.dogrulama_raporu.c_str());
+        return 3;
+    }
+    if (s.hata_turu == HataTuru::senaryo_yurutulemez || s.hata_turu == HataTuru::kullanim) {
+        std::fprintf(stderr, "ida_sim: %s\n", s.hata.c_str());
+        return s.hata_turu == HataTuru::kullanim ? 1 : 4;
+    }
+    if (a.gunluk >= 2) {
+        std::fprintf(stderr, "ida_sim: başlangıç O_b derinliği %.17g m\n", s.denge_derinligi_m);
+    }
+    if (a.gunluk >= 1 && !a.senaryo_dosyasi.empty()) {
+        std::fprintf(stderr, "ida_sim: senaryo %s, davranış özeti %s\n", a.senaryo_dosyasi.c_str(),
+                     s.davranis_ozeti.c_str());
+        for (const auto& [dosya, ozet] : s.kaynak_ozetleri) {
+            std::fprintf(stderr, "ida_sim:   kaynak %s %s\n", dosya.c_str(), ozet.c_str());
+        }
+        for (const ida::sunucu::DogrulamaBulgusu& b : s.dogrulama_bulgulari) {
+            std::fprintf(stderr, "ida_sim:   doğrulama %s %s %s%s%s %s: %s\n", b.onem.c_str(), b.kural.c_str(),
+                         b.dosya.c_str(), b.satir >= 0 ? ":" : "", b.satir >= 0 ? std::to_string(b.satir).c_str() : "",
+                         b.yol.c_str(), b.ileti.c_str());
+        }
+        for (const std::string& u : s.senaryo_uyarilari) {
+            std::fprintf(stderr, "ida_sim:   uyarı: %s\n", u.c_str());
+        }
+        std::size_t uyg = 0, red = 0, yok = 0;
+        for (const auto& o : s.olay_sonuclari) {
+            uyg += o.sonuc == "uygulandi" ? 1u : 0u;
+            red += o.sonuc == "reddedildi" ? 1u : 0u;
+            yok += o.sonuc == "uygulanmadi" ? 1u : 0u;
+        }
+        std::fprintf(stderr,
+                     "ida_sim:   olaylar: uygulandı %zu, reddedildi %zu, uygulanmadı %zu; atama çelişkisi %zu, "
+                     "gevşetme reddi %zu; görev %s\n",
+                     uyg, red, yok, s.atama_celiskileri.size(), s.gevsetme_retleri.size(), s.gorev_durumu.c_str());
+    }
     if (a.gunluk >= 1) {
         std::fprintf(stderr,
                      "ida_sim: %s; parti %llu, kaçırılan %llu, geç yanıt %llu, yinelenen %llu, alan/bağ reddi %llu/%llu, "
@@ -160,11 +275,11 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(e.adim), 1.25e-3 * static_cast<double>(e.adim), e.out_seq,
                          static_cast<unsigned>(e.act_flags), e.onceki_out_seq, e.ilk_yanit_alindi ? 1 : 0);
         }
-        if (a.senaryo == "z1") {
+        if (a.senaryo == "z1" && a.senaryo_dosyasi.empty()) {
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",
                          s.arm_ack, s.arm_neden, s.kip_ack, s.sp_ack, s.sp2_ack, s.disarm_ack);
         }
-        if (a.kip == ida::sunucu::Kip::hil) {
+        if (s.kip == ida::sunucu::Kip::hil) {   // etkin kip (dosyadan seçilebilir; sol #5)
             std::fprintf(stderr,
                          "ida_sim: hil: TF %llu, periyot en az/ort/en çok %.3f/%.3f/%.3f ms, TF geç yazım en çok %.3f ms, "
                          "sim gecikmesi %llu, son tarih %llu, gerçek zaman kaçırma %llu\n",

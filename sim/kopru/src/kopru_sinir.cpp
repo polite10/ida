@@ -544,6 +544,22 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t 
 
 void Kopru::emniyet_ata(const EmniyetAtama& a) { ic_->atama_bekleyen.push_back(a); }
 
+bool Kopru::emniyet_baslangic(bool acil_durdurma, const std::array<bool, 2>& fis, const std::array<bool, 2>& pim,
+                              const std::array<bool, 2>& dolu)
+{
+    Ic& i = *ic_;
+    if (i.sinir_var || i.emn.emniyet_revizyonu != 1u || !i.atama_bekleyen.empty()) {
+        return false;
+    }
+    i.emn.acil_durdurma = acil_durdurma;
+    i.emn.fis = fis;
+    i.emn.pim = pim;
+    i.emn.dolu = dolu;
+    i.rev_girdi.clear();
+    i.rev_girdi[i.emn.emniyet_revizyonu] = RevDurum{i.girdi_kodu(), i.izin_kodu()};   // W4-K12
+    return true;
+}
+
 sensor::DisDurum Kopru::dis_durum() const
 {
     sensor::DisDurum d;
@@ -649,7 +665,13 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     }
 
     // (4) Gevşetmeler: revizyon bu sınırda arttıysa hepsi reddedilir ve yeniden denenmez.
+    s.rev_adim_basi = rev_bas;
+    s.rev_adim3_sonu = i.emn.emniyet_revizyonu;
     if (gevset) {
+        if (!(i.emn.emniyet_revizyonu == rev_bas && !doymus_bas && !i.say.emniyet_rev_doydu)) {
+            s.gevsetme_reddedildi = true;   // A5-K63: kaydı senaryo yürütücüsü yazar
+            ++i.say.gevsetme_reddedildi;
+        }
         if (i.emn.emniyet_revizyonu == rev_bas && !doymus_bas && !i.say.emniyet_rev_doydu) {
             for (const EmniyetAtama& at : i.atama_bekleyen) {
                 if (at.acil_durdurma && !*at.acil_durdurma) {

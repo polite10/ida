@@ -1,0 +1,104 @@
+# Z1 senaryosunun A5 dosya karşılığı (W4-sim-senaryo): yerleşik `ida_sim --senaryo z1` ile aynı
+# kurulum ve aynı zaman çizelgesi; A5'te karşılığı olmayan adımlar aşağıda not edilmiştir.
+# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0). Birimler SI; açılar radyan; süreler tamsayı ns.
+#
+# Yerleşik Z1'den farklar (sim/sunucu/BENIOKU.md "Z1 dosya karşılığı"):
+#   - GUIDED_SP adımları (3,2 s: derinlik 1,5 m, yön π/2; 43,2 s: derinlik 2,5 m, yön −π/2) A5
+#     `gcs_komutu`'nda yok (yalnız ARM, DISARM, SET_MODE; A5 §3.10): bu dosyada yazılamadı.
+#   - Yer istasyonu canlılığı (1 Hz HEARTBEAT, A1-K70) A5 olayı değildir; sim'in yer istasyonu
+#     ağ geçidi her iki koşuda da gönderir.
+# Kodun İDA-0 kurulumuyla eşitlik için: GNSS araç dosyasındaki gibi etkin (kodda etkin; kapalı
+# havuzda GNSS'in açık olması ayrıca mimara sorulmuştur), ses hızı kodun değeri (W4-K1). Kamera
+# kodda etkin ama sensör kümesinin kapsamı dışında (kayıt üretmez); A5-K80 kamera kademesi
+# kapalıyken etkin kamera sensörünü reddettiği için burada kapalıdır (çıktıyı değiştirmez).
+
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad = "z1"
+aciklama = "Z1: kapali havuzda yuzeyde dengede baslar; ARM, GUIDED kipi, ariza ve DISARM."
+
+[arac]
+dosya = "ida0.toml"
+
+[arac.sensorler.kamera0]
+etkin = false
+
+[varliklar]
+kume = "ornek"
+kume_surumu = 1
+manifest_ozeti = "29063c2d7f89a80e452dfbb66504e9470d5c928d0fcf7dd295497e2b22a22ca4"
+
+[calistirma]
+kip = "sil"
+sure_ns = 90_000_000_000      # 90 s
+sil_azami_hiz = true          # sim SIL'de olabildiğince hızlı koşar
+
+[otopilot]
+# Platform parametre bloğu (A5-K53): yerleşik Z1'in değişiklikleri.
+parametreler = [
+  { kimlik = 534, tip = "f32", deger = 9.82 },                  # YER_G = ortam.yercekimi
+  { kimlik = 532, tip = "f32", deger = 0.04471300408133902 },   # BARO_KAL_D = başlangıç O_b derinliği
+]
+
+[ortam]
+tur = "havuz"
+sahne = "havuz_ornek"
+derinlik = 3.0
+manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]
+
+[ortam.orijin]
+enlem = 0.7155849933176751
+boylam = 0.5061454830783556
+yukseklik = 0.0
+
+[ortam.su]
+sicaklik_c = 20.0
+ses_hizi = 1482.3             # W4-K1: kodun değeri (saf su 20 °C; tahmin)
+
+[rastgelelik]
+ana_tohum = 1
+
+[kalite]
+kamera = "kapali"
+
+[baslangic]
+# Düz suda yüzer denge (fizik çekirdeğinin İDA-0 türetimi; yerleşik Z1 bunu hesaplar).
+konum = [0.0, 0.0, 0.04471300408133902]
+yonelim = [1.0, 0.0, 0.0, 0.0]
+yuklu_tupler = ["f1", "f2"]
+
+[[olaylar]]
+kimlik = "arm"
+sinif = "gcs_komutu"
+zaman_ns = 3_000_000_000
+komut = "ARM"
+
+[[olaylar]]
+kimlik = "kip"
+sinif = "gcs_komutu"
+zaman_ns = 3_100_000_000
+komut = "SET_MODE"
+kip = "GUIDED"
+
+[[olaylar]]
+kimlik = "ariza_t5"
+sinif = "aktuator"
+zaman_ns = 43_200_000_000
+tur = "itki_carpani"
+hedef = "t5"
+siddet = { carpan = 0.4 }
+
+[[olaylar]]
+kimlik = "ariza_t1"
+sinif = "aktuator"
+zaman_ns = 43_200_000_000
+tur = "itki_carpani"
+hedef = "t1"
+siddet = { carpan = 0.4 }
+
+[[olaylar]]
+kimlik = "disarm"
+sinif = "gcs_komutu"
+zaman_ns = 83_200_000_000
+komut = "DISARM"

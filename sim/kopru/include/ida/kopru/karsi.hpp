@@ -38,6 +38,10 @@ struct KarsiAyari {
     // Yalnız sınama: çekirdek çağrısından hemen önce, girdi tamamlanmışken (ida_sil'in
     // Kancalar::cagri_icinde ile aynı nokta; sol #13).
     std::function<void(int tur, const ida_in_t& girdi)> cagri_kancasi;
+    // Yalnız sınama: çekirdek döndükten sonra, put_out'tan önce çıktıya erişim (ida_sil'in
+    // Kancalar::cagri_sonrasi ile aynı nokta; ör. çekirdeğin henüz desteklemediği komutlara
+    // sahte sonuç).
+    std::function<void(int tur, const ida_in_t& girdi, ida_out_t& cikti)> cikti_kancasi;
     // Yalnız sınama: BOARD_HELLO'daki dialect_hash'i değiştirmek mümkün değildir (derlenmiş);
     // yanlış dialect sınaması köprünün beklenen değeriyle yapılır.
 };
