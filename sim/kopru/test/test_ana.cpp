@@ -14,6 +14,7 @@ int test_olay_yinelenen();
 int test_olay_suresi_gecmis();
 int test_olay_fire_kabul();
 int test_emniyet_ornegi();
+int test_kapanis_daralt();
 int test_sil_kisit_erken();
 int test_tcp_kapat_duzgun_sinirli();
 int test_canlilik_olay_yanit_ret();
@@ -87,6 +88,7 @@ const Test kTestler[] = {
     {"olay_suresi_gecmis", test_olay_suresi_gecmis},
     {"olay_fire_kabul", test_olay_fire_kabul},
     {"emniyet_ornegi", test_emniyet_ornegi},
+    {"kapanis_daralt", test_kapanis_daralt},
     {"sil_kisit_erken", test_sil_kisit_erken},
     {"tcp_kapat_duzgun_sinirli", test_tcp_kapat_duzgun_sinirli},
     {"canlilik_olay_yanit_ret", test_canlilik_olay_yanit_ret},

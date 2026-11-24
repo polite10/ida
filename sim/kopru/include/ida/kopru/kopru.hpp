@@ -409,6 +409,10 @@ public:
     // işlenen kısıtlayan çerçevelerin (oturum sonu, eşzamansız güvenli çıktı) etkisini fizik o
     // sınırdan ilerlemeden uygular; dönen komut aynı adımın itici girdisidir.
     KisitSonucu sil_kisitlayan_uygula(std::uint64_t adim_no);
+    // Sol 4. denetim #3 (EMNİYET; SIL ve HIL): kapanışta yerel daraltma. Oturum sonunun bekleyen
+    // daraltması (sil_kisitlayan_uygula'nın oturum sonu dalıyla aynı yardımcı) hemen uygulanır;
+    // açık izinler kapatılır, yürürlükteki itki silinir. Yeni kart çıktısı tüketmez, fizik ilerletmez.
+    KisitSonucu kapanis_daralt();
 
     // A1-K108 (sol #6): sim, a_n'de başlayan fizik adımını W(a_n)'den sonra hesapladı. Ortak
     // sayaç ve A1-K79 geçersizlik yolu.
@@ -443,6 +447,9 @@ public:
     std::size_t emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc);
     // W4-K27 (3): bekleyen eşzamansız güvenli çıktı sayısı (en çok 1).
     std::size_t esz_bekleyen_sayisi() const;
+    // Yürürlükte (nötr dışı olabilecek) itki komutu var mı (A1-K74–K77); oturum sonunda silinmesi
+    // sonraki sınıra bekliyorsa da true (fiziğe hâlâ o komut gider).
+    bool itki_yururlukte() const;
 
     // ---- Komutlar (A1 §3.6, §4.5) ----
     // Dönüş: cmd_id. t_ns komutun verildiği sim anı (t_hazır).

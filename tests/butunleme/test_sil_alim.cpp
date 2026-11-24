@@ -29,7 +29,9 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <map>
+#include <stdexcept>
 #include <memory>
 #include <string>
 #include <thread>
@@ -1012,11 +1014,13 @@ struct HazirlikKosusu {
 };
 
 HazirlikKosusu hazirlik_kos(std::int64_t baglanti_bekleme_ns, std::int64_t hazirlik_azami_ns, bool sonuc_yut,
-                            std::int64_t gecikme_us = 25'000, bool kapat_tekrar = false)
+                            std::int64_t gecikme_us = 25'000, bool kapat_tekrar = false, double sure_s = 1.0,
+                            std::function<void(const ida::sunucu::Ayar::SinirGozlemi&)> kanca = {})
 {
     ida::sunucu::Ayar a;
     a.gunluk = 0;
-    a.sure_s = 1.0;
+    a.sure_s = sure_s;
+    a.sinir_kancasi = std::move(kanca);
     a.karsi = ida::sunucu::Karsi::tcp;
     a.baglanti_bekleme_ns = baglanti_bekleme_ns;
     a.hazirlik_azami_ns = hazirlik_azami_ns;
@@ -1102,7 +1106,87 @@ int test_sil_hata_kapanisi()
                        h.s.kapanis_yazim_eksik == 0u,
                    on + "kart SESSION_CLOSE(SHUTDOWN)'u gördü (tamamen yazıldı)");
         dogrula_sa(h.kapanis_sonrasi_iz >= 1u, on + "kartın oturum sonu çağrısı yapıldı (IDA_CALL_TRACE)");
+        dogrula_sa(h.s.kapanis_daraltildi && !h.s.kapanis_izin_acik && !h.s.kapanis_itki_yururlukte,
+                   on + "sol 4. denetim #3: kapanışta izinler kapalı, itki nötr");
     }
+    return 0;
+}
+
+// Sol 4. denetim #1, #3 (EMNİYET): oturum açıkken istisna (sınır kancasından enjekte) kos()'tan
+// çıkmaz; koruyucu ortak kapanışı yapar (kart SESSION_CLOSE'u ve oturum sonu izini görür), yerel
+// daraltma uygulanır, kos() hata döner. Olağan bitişte de daraltma: izin kapalı, itki nötr.
+int test_sil_istisna_kapanisi()
+{
+    const auto kanca = [](const ida::sunucu::Ayar::SinirGozlemi& g) {
+        if (g.b == 3600u) {   // 4,5 s: Z1'de itki yürürlükte
+            throw std::runtime_error("enjekte hata");
+        }
+    };
+    const HazirlikKosusu h = hazirlik_kos(20'000'000'000, 600'000'000'000, false, 0, false, 5.0, kanca);
+    std::printf("  istisna: tamam %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın izi %llu, "
+                "daraltma %d (önce itki %d, sonra izin %d, itki %d), yutulan istisna %llu\n",
+                h.s.tamam ? 1 : 0, h.s.hata.c_str(), nedenler(h.sim_kapanislari).c_str(),
+                static_cast<unsigned long long>(h.kapanis_sonrasi_iz), h.s.kapanis_daraltildi ? 1 : 0,
+                h.s.kapanis_oncesi_itki ? 1 : 0, h.s.kapanis_izin_acik ? 1 : 0, h.s.kapanis_itki_yururlukte ? 1 : 0,
+                static_cast<unsigned long long>(h.s.kapanis_istisna));
+    dogrula_sa(!h.s.tamam && h.s.hata == "istisna: enjekte hata", "kos() istisnayı hataya çevirdi: '" + h.s.hata + "'");
+    dogrula_sa(!h.sim_kapanislari.empty() &&
+                   h.sim_kapanislari.back() == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN) &&
+                   h.kapanis_sonrasi_iz >= 1u && h.s.kapanis_istisna == 0u,
+               "kart SESSION_CLOSE(SHUTDOWN)'u gördü ve oturum sonu çağrısı yapıldı");
+    dogrula_sa(h.s.kapanis_daraltildi && h.s.kapanis_oncesi_itki && !h.s.kapanis_izin_acik &&
+                   !h.s.kapanis_itki_yururlukte,
+               "istisna çıkışında daraltma: itki yürürlükteydi, sonra nötr; izinler kapalı");
+    const HazirlikKosusu o = hazirlik_kos(20'000'000'000, 600'000'000'000, false, 0, false, 5.0);
+    dogrula_sa(o.s.tamam && o.s.kapanis_daraltildi && o.s.kapanis_oncesi_itki && !o.s.kapanis_izin_acik &&
+                   !o.s.kapanis_itki_yururlukte,
+               "olağan bitişte daraltma: itki yürürlükteydi, sonra nötr; izinler kapalı " + o.s.hata);
+    return 0;
+}
+
+// Sol 4. denetim #2 (EMNİYET): karşı uç her bağlantıda KOSUYOR olmadan kapatıp yeniden bağlanır.
+// Kurma işleminin deneme sınırı (6) aşılınca koşu sınırlı sürede hatayla biter (deneme sayısıyla
+// belirlenimci; ilk kurulum ve koşu ortası aynı işlev).
+int test_sil_kurma_siniri()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.sure_s = 1.0;
+    a.karsi = ida::sunucu::Karsi::tcp;
+    a.kurma_deneme_azami = 6;
+    std::atomic<bool> dur{false};
+    std::atomic<int> baglanti{0};
+    std::thread is;
+    a.tcp_hazir = [&](std::uint16_t port, std::uint64_t) {
+        is = std::thread([&dur, &baglanti, port] {
+            std::vector<std::uint8_t> t(4096);
+            while (!dur) {
+                std::string hata;
+                auto u = ida::kopru::tcp_baglan(port, hata);
+                if (!u) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    continue;
+                }
+                ++baglanti;
+                std::size_t n = 0;
+                (void)u->oku(t.data(), t.size(), 20'000, n);   // SIM_HELLO'yu oku, yanıtlama
+                u->kapat_duzgun(50'000);                      // FIN
+            }
+        });
+    };
+    const auto bas = std::chrono::steady_clock::now();
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    dur = true;
+    if (is.joinable()) {
+        is.join();
+    }
+    std::printf("  FIN/yeniden bağlanma: tamam %d, hata '%s', yeniden bağlantı %llu, karşı uç bağlantısı %d, %.2f s\n",
+                s.tamam ? 1 : 0, s.hata.c_str(), static_cast<unsigned long long>(s.yeniden_baglanti),
+                baglanti.load(), sure);
+    dogrula_sa(!s.tamam && s.hata == "oturum kurulamadı (6 deneme)", "deneme sınırında hata: '" + s.hata + "'");
+    dogrula_sa(s.yeniden_baglanti <= 6u, "sınırlı yeniden bağlantı");
+    dogrula_sa(sure < 60.0, "asılma yok (" + std::to_string(sure) + " s)");
     return 0;
 }
 
@@ -1136,6 +1220,14 @@ int sil_alim_testi(const std::string& ad, int, char**)
 {
     if (ad == "sil_butce_konumu") {
         (void)test_sil_butce_konumu();
+        return g_hata_sa;
+    }
+    if (ad == "sil_istisna_kapanisi") {
+        (void)test_sil_istisna_kapanisi();
+        return g_hata_sa;
+    }
+    if (ad == "sil_kurma_siniri") {
+        (void)test_sil_kurma_siniri();
         return g_hata_sa;
     }
     if (ad == "sil_hazirlik_tekrar") {

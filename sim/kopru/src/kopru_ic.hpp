@@ -368,6 +368,7 @@ struct Kopru::Ic {
     void olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no);
     void cikti_uygula(const mavlink_ida_actuator_t& m, bool esz, bool muaf, std::uint64_t adim_no, std::int64_t t,
                       SinirSonucu& s);
+    bool oturum_sonu_daralt();
     void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply, std::uint8_t kind = 255,
                        std::uint8_t tube = 255);
     bool yuva_tamam(const Yuva& y) const;

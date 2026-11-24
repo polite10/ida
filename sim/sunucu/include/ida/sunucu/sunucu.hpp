@@ -100,6 +100,13 @@ struct Ayar {
     // Hazırlık oturumunun (A1-K19) duvar saati üst sınırı; aşılırsa koşu hatayla biter. 600 s bir
     // tahmindir (ölçülmedi): olağan hazırlık SIL'de saniyeler, HIL'de en çok 8000 periyot (40 s) sürer.
     std::int64_t hazirlik_azami_ns = 600'000'000'000;
+    // Sol 4. denetim #2 (EMNİYET): bir oturum kurma işleminin (ilk kurulum ya da koşu ortasında
+    // yeniden kurma; hazırlık gerekip gerekmediğinden bağımsız) mutlak duvar süresi ve en çok
+    // denemesi (bağlantı kabulleri ve el sıkışma başlangıçları). Aşılırsa koşu hatayla ve ortak
+    // güvenli kapanışla biter. Varsayılanlar tahmindir (ölçülmedi): 900 s hazırlığın 600 s'sini ve
+    // el sıkışmaları kapsar; 32 deneme beş hazırlık denemesine ve yeniden bağlantılara pay bırakır.
+    std::int64_t kurma_azami_ns = 900'000'000'000;
+    int kurma_deneme_azami = 32;
     // pty (kartsız sınama; sol #8): aygıtın kalkması ve geri takılması. cikarma anında sözde
     // uçbirimin ana ucu kapatılır (işletim sistemi aygıtın kalktığını bildirir); takma anından
     // sonraki ilk yeniden açma denemesi yeni bir sözde uçbirim açar. < 0: yok.
@@ -290,6 +297,13 @@ struct Sonuc {
     std::uint64_t kapanis_yazim_eksik = 0;     // W4-K28 (3): kapanış çıkışı süre sınırında yazılamadı
     std::uint64_t sil_kuyruk_en_cok = 0;       // W4-K26 (3): SIL alım kuyruğunun en büyük boyu (B)
     std::uint64_t oturum_kur_derinlik_en_cok = 0;   // sol 3. denetim #2: oturum_kur iç içe çağrı derinliği (1 beklenir)
+    // Sol 4. denetim #1, #3 (EMNİYET): kapanışta yerel daraltma (CSV'nin son satır tanımından ayrı).
+    bool kapanis_daraltildi = false;        // ortak kapanışta daraltma yapıldı
+    bool kapanis_oncesi_itki = false;       // daraltmadan önce yürürlükte itki komutu vardı
+    bool kapanis_oncesi_izin = false;       // daraltmadan önce bir tüpün izni açıktı
+    bool kapanis_izin_acik = false;         // daraltmadan sonra bir tüpün izni açık (false beklenir)
+    bool kapanis_itki_yururlukte = false;   // daraltmadan sonra yürürlükte itki (false beklenir)
+    std::uint64_t kapanis_istisna = 0;      // kapanış koruyucusunda yutulan istisna
     std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL bekleme tüketim sınırı (akış konumunda) aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;

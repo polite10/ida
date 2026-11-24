@@ -104,9 +104,34 @@ public:
         }
     }
 
-    Sonuc kos();
+    // Sol 4. denetim #1: dış sınırda istisna yakalanır ve Sonuc::hata'ya çevrilir (süreç
+    // std::terminate ile düşmez); oturum açıksa kapanışı kos_ic'teki koruyucu yapmıştır.
+    Sonuc kos() noexcept
+    {
+        try {
+            return kos_ic();
+        } catch (const std::exception& e) {
+            try {
+                s_.hata = std::string("istisna: ") + e.what();
+                s_.tamam = false;
+                return s_;
+            } catch (...) {
+                return Sonuc{};
+            }
+        } catch (...) {
+            try {
+                s_.hata = "istisna (bilinmeyen tür)";
+                s_.tamam = false;
+                return s_;
+            } catch (...) {
+                return Sonuc{};
+            }
+        }
+    }
 
 private:
+    Sonuc kos_ic();
+
     // ---- Zaman ----
     std::int64_t duvar() const
     {
@@ -243,21 +268,73 @@ private:
     }
 
     // Oturum kurulamadan ya da koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta
-    // durdurma, ön denetim ya da hazırlık kalması, bağlantı beklemesinin iptali; A1-K21): oturum
-    // açıksa (hazir, kosuyor) SESSION_CLOSE(SHUTDOWN) sıraya girer (köprüde oturum biter: izinler
-    // kapanır, iticiler nötr); bekleyen çıkış mutlak süre sınırıyla tamamlanır; sonra taşıma
-    // düzgün kapanır.
+    // durdurma, ön denetim ya da hazırlık kalması, bağlantı beklemesinin iptali; sol 3. denetim
+    // #3, A1-K21): oturum açıksa (hazir, kosuyor) SESSION_CLOSE(SHUTDOWN) sıraya girer (köprüde
+    // oturum biter: izinler kapanır, iticiler nötr); bekleyen çıkış mutlak süre sınırıyla
+    // tamamlanır; sonra taşıma düzgün kapanır.
+    // Sol 4. denetim #3: SESSION_CLOSE'dan sonra yerel daraltma gerçekten uygulanır (izinler
+    // kapanır, fizik girdisi nötr; kapanis_daraltmasi).
     void erken_kapanis()
     {
+        if (!k_) {
+            return;
+        }
         if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
             k_->oturum_kapat(kCloseShutdown, duvar());
         }
+        kapanis_daraltmasi();
         (void)cikisi_bitir(gercek() + kKapanisYazimNs);
         if (tas_) {
             tas_->kapat_duzgun(kKapanisBosaltmaUs);
             tas_.reset();
         }
     }
+
+    // Sol 4. denetim #3 (EMNİYET; SIL ve HIL): kapanışta köprünün yetkili durumunda izinler
+    // kapatılır ve yürürlükteki itki silinir (Kopru::kapanis_daralt; sil_kisitlayan_uygula'nın
+    // oturum sonu dalıyla aynı yardımcı), fiziğin itici girdisi nötrlenir. Yeni kart çıktısı
+    // tüketilmez, fizik ilerlemez; CSV'nin son satırı değişmez, sonuç Sonuc::kapanis_* alanlarında.
+    void kapanis_daraltmasi()
+    {
+        if (!k_) {
+            return;
+        }
+        s_.kapanis_oncesi_itki = k_->itki_yururlukte();
+        s_.kapanis_oncesi_izin = k_->izin_acik(0) || k_->izin_acik(1);
+        const kopru::KisitSonucu d = k_->kapanis_daralt();
+        pwm_yur_ = d.pwm_us;
+        (void)dn_.itici_komutu_ver(dn_.adim_no(), d.pwm_us);
+        s_.kapanis_daraltildi = true;
+        s_.kapanis_izin_acik = k_->izin_acik(0) || k_->izin_acik(1);
+        s_.kapanis_itki_yururlukte = k_->itki_yururlukte();
+    }
+
+    // Sol 4. denetim #1 (EMNİYET): oturumun bütün yaşamını kapsayan kapanış koruyucusu. Kapsamdan
+    // her çıkışta (istisna dahil) kapanış yapılmadıysa ortak güvenli kapanışı (erken_kapanis)
+    // çağırır; kendisi bellek ayırmaz ve istisna fırlatmaz, kapanış içindeki istisnalar yutulur ve
+    // sayılır. Olağan bitiş ve açık erken kapanış `yapildi()` ile işaretler (çift kapanış yok).
+    class KapanisKoruyucu {
+    public:
+        explicit KapanisKoruyucu(Calistirici& c) noexcept : c_(c) {}
+        KapanisKoruyucu(const KapanisKoruyucu&) = delete;
+        KapanisKoruyucu& operator=(const KapanisKoruyucu&) = delete;
+        ~KapanisKoruyucu() noexcept
+        {
+            if (yapildi_) {
+                return;
+            }
+            try {
+                c_.erken_kapanis();
+            } catch (...) {
+                ++c_.s_.kapanis_istisna;
+            }
+        }
+        void yapildi() noexcept { yapildi_ = true; }
+
+    private:
+        Calistirici& c_;
+        bool yapildi_ = false;
+    };
 
     // Bağlantı kaybı (A1-K23): oturum biter (iticiler sonraki sınırdan nötr, izinler kapanır;
     // fizik sürer), taşıma kapatılır; HIL'de port 1 s aralıkla yeniden açılmaya çalışılır.
@@ -772,21 +849,49 @@ bool Calistirici::oturum_kur()
         std::uint64_t& d;
         ~Derinlik() { --d; }
     } derinlik{oturum_kur_derinlik_};
+    //
+    // Sol 4. denetim #2 (EMNİYET): kurma işleminin tamamı (ilk kurulum ya da koşu ortasında yeniden
+    // kurma; hazırlık gerekip gerekmediğinden bağımsız) mutlak son tarihe (kurma_azami_ns) ve en
+    // çok kurma_deneme_azami denemeye (bağlantı kabulleri ve el sıkışma başlangıçları) bağlıdır;
+    // her iç bekleme bu son tarihi aşamaz. Aşılırsa false (çağıran ortak güvenli kapanışla biter).
     constexpr std::int64_t kSonsuz = std::numeric_limits<std::int64_t>::max();
+    const std::int64_t kurma_son = gercek() + a_.kurma_azami_ns;
+    int kurma_deneme = 0;
     std::int64_t hazirlik_son = kSonsuz;   // süren hazırlık işleminin mutlak son tarihi
     bool hazirlik_suruyor = false;
     int hazirlik_deneme = 0;
-    const auto pay = [&](std::int64_t p) {
-        const std::int64_t s = gercek() + p;
-        return hazirlik_suruyor ? std::min(s, hazirlik_son) : s;
+    const auto ust = [&] { return hazirlik_suruyor ? std::min(kurma_son, hazirlik_son) : kurma_son; };
+    const auto pay = [&](std::int64_t p) { return std::min(gercek() + p, ust()); };
+    const auto dene = [&] {
+        if (++kurma_deneme > a_.kurma_deneme_azami) {
+            s_.hata = "oturum kurulamadı (" + std::to_string(a_.kurma_deneme_azami) + " deneme)";
+            return false;
+        }
+        return true;
     };
-    if (!tas_ && !baglanti_kabul()) {
+    const auto kabul = [&] {
+        if (!dene()) {
+            return false;
+        }
+        if (!baglanti_kabul(ust())) {
+            if (gercek() >= ust()) {
+                s_.hata = hazirlik_suruyor && hazirlik_son <= kurma_son ? "hazırlık oturumu süre sınırını aştı"
+                                                                       : "oturum kurma süre sınırını aştı";
+            }
+            return false;
+        }
+        return true;
+    };
+    if (!tas_ && !kabul()) {
         return false;
     }
     std::int64_t son = pay(a_.baglanti_bekleme_ns);
     // SIL (A1-K121 (iv), K23): oturum köprüde bittiyse el sıkışma orada başlamıştır (giden
     // kuyrukta varsa SESSION_CLOSE, ardından SIM_HELLO): yeniden başlatılmaz. Böylece kapanış
     // çerçevesi silinmez ve el sıkışma tek SIM_HELLO'yla tamamlanır.
+    if (!dene()) {
+        return false;
+    }
     if (a_.kip != Kip::sil || k_->durum() != kopru::OturumDurumu::el_sikisma) {
         k_->el_sikisma_baslat(duvar());
     }
@@ -830,12 +935,18 @@ bool Calistirici::oturum_kur()
                 if (r == Bekleme::oturum_bitti) {
                     // Hazırlık oturumu koptu: aynı hazırlık işlemi, aynı mutlak son tarihle sürer.
                     if (tas_ && k_->durum() != kopru::OturumDurumu::el_sikisma) {
+                        if (!dene()) {
+                            return false;
+                        }
                         k_->el_sikisma_baslat(duvar());
                     }
                     son = pay(a_.baglanti_bekleme_ns);
                     continue;   // taşıma yoksa yeni bağlantı döngünün sonunda kabul edilir
                 }
                 hazirlik_suruyor = false;
+                if (!dene()) {
+                    return false;
+                }
                 k_->el_sikisma_baslat(duvar());
                 son = pay(a_.baglanti_bekleme_ns);   // çalıştırma oturumunun el sıkışması
                 continue;
@@ -844,18 +955,20 @@ bool Calistirici::oturum_kur()
         }
         if (!tas_) {
             ++s_.yeniden_baglanti;
-            if (!baglanti_kabul(hazirlik_suruyor ? hazirlik_son : kSonsuz)) {
-                if (hazirlik_suruyor && gercek() >= hazirlik_son) {
-                    s_.hata = "hazırlık oturumu süre sınırını aştı";
-                }
+            if (!kabul() || !dene()) {
                 return false;
             }
             k_->el_sikisma_baslat(duvar());
             son = pay(a_.baglanti_bekleme_ns);   // yeni bağlantının el sıkışması
         }
         if (gercek() > son) {
-            s_.hata = hazirlik_suruyor && son >= hazirlik_son ? "hazırlık oturumu süre sınırını aştı"
-                                                              : "el sıkışma zaman aşımı";
+            if (son >= kurma_son) {
+                s_.hata = "oturum kurma süre sınırını aştı";
+            } else if (hazirlik_suruyor && son >= hazirlik_son) {
+                s_.hata = "hazırlık oturumu süre sınırını aştı";
+            } else {
+                s_.hata = "el sıkışma zaman aşımı";
+            }
             return false;
         }
     }
@@ -3057,7 +3170,7 @@ void Calistirici::a3_bitir()
     a3_kayitlari_aktar();
 }
 
-Sonuc Calistirici::kos()
+Sonuc Calistirici::kos_ic()
 {
     // ---- Senaryo: A5 dosyası ya da yerleşik ----
     s_.kip = a_.kip;
@@ -3277,6 +3390,9 @@ Sonuc Calistirici::kos()
         zamanlayici_onceligi();   // HIL 1x: duvar saatine kilitli döngü
     }
     bas_ = Saat::now();
+    // Sol 4. denetim #1 (EMNİYET): buradan sonraki her çıkışta (istisna dahil) ortak güvenli
+    // kapanış; olağan bitiş ve açık erken kapanış koruyucuyu işaretler.
+    KapanisKoruyucu koruyucu(*this);
     bool kuruldu = oturum_kur();
     if (kuruldu && yay_ != nullptr) {
         // EMNİYET (W4-K28 (3); sol-2 #5): hazırlığın tamamlanması ile kabul edilmiş durdurmanın
@@ -3298,6 +3414,7 @@ Sonuc Calistirici::kos()
         // beklemesinin iptali) oturum açıksa SESSION_CLOSE tamamen yazılır (mutlak süre sınırıyla)
         // ve taşıma düzgün kapanır.
         erken_kapanis();
+        koruyucu.yapildi();
         s_.sayac = k_->sayaclar();
         s_.kart = k_->kart();
         if (yay_ != nullptr && a3_durdur_) {
@@ -3500,12 +3617,14 @@ Sonuc Calistirici::kos()
     // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
     const kopru::Sayaclar rx_son = k_->sayaclar();
     k_->oturum_kapat(kCloseShutdown, duvar());
+    kapanis_daraltmasi();   // sol 4. denetim #3: izinler kapalı, fizik girdisi nötr (son satır değişmez)
     (void)cikisi_bitir(gercek() + kKapanisYazimNs);   // W4-K28 (3): SESSION_CLOSE tamamen yazılır
     pompa(0);
     if (tas_) {
         // W4-K25 (5): düzgün kapanış; SIL'de alım kuyruğu artık işlenmez, atılan baytlar da.
         tas_->kapat_duzgun(kKapanisBosaltmaUs);
     }
+    koruyucu.yapildi();
     dur_ = true;
     if (karsi_is_.joinable()) {
         karsi_is_.join();

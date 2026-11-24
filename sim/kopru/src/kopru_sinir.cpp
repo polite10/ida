@@ -723,6 +723,7 @@ sensor::DisDurum Kopru::dis_durum() const
 bool Kopru::acil_durdurma() const { return ic_->emn.acil_durdurma; }
 bool Kopru::tup_dolu(int tup) const { return ic_->emn.dolu[static_cast<std::size_t>(tup & 1)]; }
 bool Kopru::izin_acik(int tup) const { return ic_->emn.izin_acik[static_cast<std::size_t>(tup & 1)]; }
+bool Kopru::itki_yururlukte() const { return ic_->yururluk; }   // silinmesi bekleniyor olsa da
 
 std::int64_t Kopru::izin_bitis_ns(int tup) const
 {
@@ -804,6 +805,53 @@ void Kopru::Ic::cikti_uygula(const mavlink_ida_actuator_t& m, bool esz, bool mua
     }
 }
 
+// Oturum sonunun yerel daraltması (A1-K23): iki tüpün izni kapanır (revizyon artar), yürürlükteki
+// itki komutu silinir. sil_kisitlayan_uygula ve kapanis_daralt'ın ortak yolu. Dönüş: izinler
+// kapandı (oturum sonu bekliyordu).
+bool Kopru::Ic::oturum_sonu_daralt()
+{
+    bool degisti = false;
+    if (oturum_sonu_bekliyor) {
+        izin_kapat(0);
+        izin_kapat(1);
+        rev_artir();
+        oturum_sonu_bekliyor = false;
+        degisti = true;
+    }
+    if (yururluk_sil) {
+        yururluk = false;
+        yururluk_sil = false;
+    }
+    return degisti;
+}
+
+// Sol 4. denetim #3 (EMNİYET): kapanışta yerel daraltma; SIL ve HIL. Oturum sonunun bekleyen
+// daraltması hemen uygulanır, izinler kapatılır ve yürürlükteki itki nötrlenir. Yeni kart çıktısı
+// tüketmez, fizik ilerletmez, sınır işlemez.
+KisitSonucu Kopru::kapanis_daralt()
+{
+    Ic& i = *ic_;
+    KisitSonucu k;
+    k.degisti = i.oturum_sonu_daralt();
+    bool acik = false;
+    for (int tup = 0; tup < 2; ++tup) {
+        acik = acik || i.emn.izin_acik[static_cast<std::size_t>(tup)];
+    }
+    if (acik) {
+        i.izin_kapat(0);
+        i.izin_kapat(1);
+        i.rev_artir();
+        k.degisti = true;
+    }
+    if (i.yururluk) {
+        i.yururluk = false;
+        k.degisti = true;
+    }
+    k.notr = true;
+    k.pwm_us.fill(static_cast<double>(i.a.esc_notr_us));
+    return k;
+}
+
 // W4-K26 (1) (EMNİYET, yalnız SIL): kilitli adımda ACTUATOR(n)'den sonraki çerçevelerin alım
 // anı, işlendikleri bekleme noktasıdır (yuva n + 1'in sınırı). Orada işlenen kısıtlayan
 // çerçevelerin etkisi fizik o sınırdan ilerlemeden yürürlüğe girer: oturum sonu (A1-K23: iki
@@ -819,17 +867,7 @@ KisitSonucu Kopru::sil_kisitlayan_uygula(std::uint64_t adim_no)
     const std::int64_t t = static_cast<std::int64_t>(adim_no) * kH;
     const bool yururluk_bas = i.yururluk;
     const std::array<double, 8> pwm_bas = i.pwm;
-    if (i.oturum_sonu_bekliyor) {
-        i.izin_kapat(0);
-        i.izin_kapat(1);
-        i.rev_artir();
-        i.oturum_sonu_bekliyor = false;
-        k.degisti = true;
-    }
-    if (i.yururluk_sil) {
-        i.yururluk = false;
-        i.yururluk_sil = false;
-    }
+    k.degisti = i.oturum_sonu_daralt();
     if (!i.esz_bekleyen.empty()) {
         std::vector<mavlink_ida_actuator_t> e;
         e.swap(i.esz_bekleyen);
