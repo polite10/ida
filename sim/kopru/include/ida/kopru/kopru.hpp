@@ -158,6 +158,18 @@ struct Sayaclar {
     std::uint64_t son_tarih_kacirildi = 0;
     std::uint64_t sim_gecikmesi = 0;
     std::uint64_t batch_incomplete = 0;          // BATCH_INCOMPLETE bayraklı yanıt (H4)
+    // W4-bagla-sonar (A1 Tablo 3.11a'nın Ping360 satırları ve tanı).
+    std::uint64_t ping360_seyreltildi = 0;       // A1-K37: gönderimi başlamamış satır yenisiyle atıldı
+    std::uint64_t ping360_gecikme_en_buyuk = 0;  // t_hazır'dan teslim partisine en büyük gecikme (periyot; A1-K53)
+    std::uint64_t ping360_satir = 0;             // HEAD'i yazılan (teslim partisi belli) satır
+    std::uint64_t ping360_cerceve = 0;           // yazılan DATA + HEAD çerçevesi
+    std::uint64_t ping360_oturum_atilan = 0;     // oturum yokken gelen ya da oturum sonunda yarıda kalan satır
+    std::uint64_t ping360_gecersiz = 0;          // A1 §3.4 gönderen aralığı dışında: gönderilmedi
+    std::uint64_t ping1d_uye = 0;                // pencereye eklenen Ping1D üyesi
+    // Parti boyu (TF dahil kodlanmış bayt; üye sayısı TF hariç; W4-bagla-sonar kabul 6).
+    std::uint64_t parti_bayt_en_buyuk = 0;
+    std::uint64_t parti_uye_en_buyuk = 0;
+    std::array<std::uint64_t, 13> parti_bayt_dagilim{};   // 100 B'lık kovalar; son kova ≥ 1 200 B
     std::uint64_t emniyet_revizyonu = 1;
     bool emniyet_rev_doydu = false;
     // Zamanlama geçerliliği (A1-K79): neden bitleri (Gecersizlik).
@@ -330,6 +342,27 @@ struct KisitSonucu {
     std::array<double, 8> pwm_us{};   // yürürlükteki komut (nötrde ESC nötrü)
 };
 
+// Sonar üyeleri (W4-bagla-sonar; A1 §3.4 Tablo 3.4b): alanlar A4 `ida_ping1d_t` ve
+// `ida_ping360_t` ile aynı ad ve birimde, dönüşümsüz kopyalanır (A1-K53, K54). Başlık sensör
+// kümesininkidir (`t_teslim_ns` parti atamasının `t_hazır`'ıdır; karta gitmez).
+struct Ping1dVerisi {
+    float distance = 0.0F;
+    float scan_start = 0.0F;
+    float scan_length = 0.0F;
+    std::uint32_t ping_number = 0;
+    std::uint32_t tx_offset_ns = 0;
+    std::uint8_t confidence = 0;
+};
+struct Ping360Verisi {
+    std::uint16_t angle_grad = 0;
+    std::uint16_t n_samples = 0;
+    std::uint16_t sample_period = 0;
+    std::uint16_t tx_duration_us = 0;
+    std::uint16_t tx_freq_khz = 0;
+    std::uint8_t gain = 0;
+    const std::uint8_t* data = nullptr;   // n_samples bayt; köprü kopyalar
+};
+
 // Görev öğesi (A1 Tablo 3.6a; A5-K55): IDA_CMD_MISSION_ITEM alanları.
 struct GorevOgesi {
     std::uint16_t index = 0;
@@ -387,6 +420,23 @@ public:
 
     // ---- Parti (A1 §4.3, §4.4) ----
     void olcum_ekle(const sensor::Olcum& o);
+    // ---- Sonar (W4-bagla-sonar) ----
+    // Ping1D: kritik sensör üyesi (A1-K35; A1-K113 sırasında DVL ile BATT arası); oturum yokken
+    // atılır (olcum_ekle ile aynı).
+    void ping1d_ekle(const sensor::OlcumBasligi& h, const Ping1dVerisi& v);
+    // Ping360 satırı: toplu üye (A1-K36). ⌈n/240⌉ IDA_PING360_DATA ve ardından IDA_PING360_HEAD
+    // olarak, aynı oturumda bu sırayla gönderilir (A1-K49); parçalar bölünmez tam çerçevelerdir ve
+    // pencerelere A1-K36 sırasıyla dağılır: pencere başında sonar kredisi C_s = min(C_s + R_s,
+    // C_s,max); (3) ayrılmış pay: kredi yeterse bir çerçeve; (4) toplu komutlar; (5) kredi ve
+    // `B_pencere` yettikçe sıradaki çerçeveler (A1-K112). Pencere bütçesi kritik payın üst sınırıyla
+    // (B_krit) denetlenir: toplu baytlar + B_krit ≤ B_pencere, böylece kritik üyeler (TF, IMU,
+    // emniyet örneği, öteki sensörler) hiçbir koşulda sonar yüzünden kaymaz. Partide en çok bir
+    // HEAD (A1-K34). Kuyrukta gönderimi başlamamış en çok bir satır bekler; yenisi gelince eskisi
+    // atılır (A1-K37, `ping360_seyreltildi`). Gönderimi başlamış satır oturum sürdükçe tamamlanır.
+    // Veri kopyalanır. A1 §3.4 aralıkları dışındaki satır gönderilmez (`ping360_gecersiz`).
+    void ping360_ekle(const sensor::OlcumBasligi& h, const Ping360Verisi& v);
+    // Kuyrukta (başlamış ya da bekleyen) Ping360 satırı sayısı (0–2).
+    std::size_t ping360_kuyruk() const;
     // Pencereyi kapatır: emniyet örneği, sonuçlar, TF(n). Dönüş: batch_seq (oturum yoksa 0).
     // w_tn: t_n'in planlanan duvar anı W(t_n) (HIL; A1-K43, K108); SIL'de < 0.
     // Oturum yoksa (A1-K28) parti gönderilmez: std::nullopt. batch_seq 0 geçerli bir değerdir.

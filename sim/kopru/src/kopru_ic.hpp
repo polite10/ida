@@ -31,6 +31,10 @@ inline constexpr std::size_t kQSonuc = 8;                   // A1-K111
 inline constexpr std::size_t kPartiSonuc = 4;
 inline constexpr std::size_t kPartiTopluKomut = 4;          // A1-K34
 inline constexpr std::uint32_t kRevAzami = 0xFFFFFFFFu;
+inline constexpr std::int64_t kRs = 260;                    // A1-K112 sonar kredisi (B/pencere)
+inline constexpr std::int64_t kCsMax = 600;                 // C_s,max
+inline constexpr std::size_t kPingParca = 240;              // A1 §3.4 PING360_DATA parça boyu
+inline constexpr std::size_t kPingOrnekAzami = 1200;
 
 // Daraltıcı türler (A1-K61): DISARM, daraltıcı SET_MODE, FC_DISARM, FC_ABORT.
 inline constexpr int kDarTurSayisi = 4;
@@ -160,7 +164,7 @@ struct SiraliHarita {
 struct SensorUye {
     std::uint32_t msgid = 0;
     std::variant<mavlink_ida_imu_t, mavlink_ida_mag_t, mavlink_ida_baro_t, mavlink_ida_gnss_t, mavlink_ida_dvl_t,
-                 mavlink_ida_batt_t, mavlink_ida_leak_t>
+                 mavlink_ida_batt_t, mavlink_ida_leak_t, mavlink_ida_ping1d_t>
         m;
     std::int64_t t_hazir = 0;   // t_teslim (bosalt'ın atama anı)
     std::uint8_t tur = 0;       // IDA_SENS_*
@@ -168,6 +172,15 @@ struct SensorUye {
     bool gecersiz = false;      // VALID = 0
     std::uint32_t kayma = 0;    // kaç parti kaydı
     std::size_t boy = 0;        // kodlanmış çerçeve boyu
+};
+
+// Gönderilecek Ping360 satırı (A1-K49): DATA 0 … n_frag − 1, sonra HEAD.
+struct Ping360Satir {
+    bool var = false;
+    mavlink_ida_ping360_head_t bas{};
+    std::array<std::uint8_t, kPingOrnekAzami> veri{};   // n_samples'tan sonrası 0 (A1 §3.4)
+    std::uint8_t sonraki = 0;                           // sıradaki parça; n_frag: HEAD
+    std::int64_t t_hazir = 0;                           // t_teslim (A1-K36 atama anı)
 };
 
 struct TfKaydi {
@@ -228,6 +241,13 @@ struct Kopru::Ic {
     std::vector<SensorUye> kayan;        // B_krit ya da A1-K34 yüzünden sonraki partiye kayanlar
     std::optional<sensor::Olcum> pen_emniyet;
     std::optional<sensor::Olcum> sonraki_emniyet;
+    // ---- Sonar (W4-bagla-sonar; A1-K36, K37, K49, K112) ----
+    Ping360Satir p360_aktif;            // gönderimi başlamış satır
+    Ping360Satir p360_bekleyen;         // gönderimi başlamamış en çok bir satır (A1-K37)
+    std::int64_t sonar_kredi = kCsMax;  // C_s
+    bool p360_bas_bu_pencerede = false; // A1-K34: partide en çok bir HEAD
+    std::int64_t pen_t_kapanis = 0;     // açık pencerenin kapanacağı sim anı (t_n)
+    void sonar_hizmet(bool ayrilmis);   // A1-K36 adım (3) (ayrilmis) ve (5)
 
     // ---- Yuvalar ve sürekli çıktılar ----
     std::map<std::uint32_t, Yuva> yuvalar;
