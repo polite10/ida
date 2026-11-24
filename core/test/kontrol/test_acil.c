@@ -714,7 +714,19 @@ static void test_k3_tutarsiz_rampa_izi_notr(void)
     K1.rampa_t0_ns = -1;
     calis(&K1, &P, &t, 1u, 1u);
     TEST_ASSERT_TRUE(itki_hepsi_sifir(&K1));
-    /* Yeni alanların tutarlılık denetimi (A4-K89). */
+    /* Yeni alanların tutarlılık denetimi (A4-K89). Rampa izi (düzeltme turu, inceleme
+       bulgu 3): rampa sürerken 0 ≤ rampa_t0_ns ≤ t_onceki_ns; rampa yokken iz denetlenmez. */
+    TEST_ASSERT_FALSE(ida_kon_tutarli(&K1)); /* rampa_t0_ns = -1 */
+    K1.rampa_t0_ns = K1.t_onceki_ns + 1;
+    TEST_ASSERT_FALSE(ida_kon_tutarli(&K1));
+    K1.rampa_t0_ns = K1.t_onceki_ns;
+    TEST_ASSERT_TRUE(ida_kon_tutarli(&K1));
+    K1.rampa_t0_ns = 0;
+    TEST_ASSERT_TRUE(ida_kon_tutarli(&K1));
+    K1.rampa_var = 0u;
+    K1.rampa_t0_ns = -1;
+    TEST_ASSERT_TRUE(ida_kon_tutarli(&K1));
+    K1.rampa_t0_ns = 0;
     K1.rampa_var = 2u;
     TEST_ASSERT_FALSE(ida_kon_tutarli(&K1));
     K1.rampa_var = 1u;
@@ -785,6 +797,7 @@ static void test_k4_ozellik_kontrolcu(void)
     uint32_t s_olagan_itki = 0u;
     uint32_t s_kanca = 0u;
     uint32_t s_oturum = 0u;
+    uint32_t s_geri = 0u; /* rampa sürerken zamanı başlangıcın gerisine düşen adım */
     for (uint32_t n = 0u; n < 200000u; n++) {
         const uint32_t z = ds_rastgele(&r) % 1000u;
         if (acil) {
@@ -882,7 +895,15 @@ static void test_k4_ozellik_kontrolcu(void)
             }
             itki = itki || (thr[i] != 0.0f);
         }
-        if (!ic_durum_esit(&K1, &K2) || !ida_kon_tutarli(&K1)) {
+        /* Rampa izinin tutarlılığı (düzeltme turu, inceleme bulgu 3): rampa sürerken zaman
+           başlangıcın gerisine düşerse iz tutarsız sayılır (çekirdekte bir oturumda ölçüm zamanı
+           yalnız artar, A4-K15; geri giden zaman yalnız bu modül düzeyindeki testte üretilir).
+           Beklenen değer modelden: başka her adımda tutarlı. */
+        const bool tutarli_beklenen = !(m_rampa && (t < m_t0));
+        if (!tutarli_beklenen) {
+            s_geri++;
+        }
+        if (!ic_durum_esit(&K1, &K2) || (ida_kon_tutarli(&K1) != tutarli_beklenen)) {
             s_ihlal++;
         }
         if (!acil && (oran < 1.0f)) {
@@ -897,7 +918,7 @@ static void test_k4_ozellik_kontrolcu(void)
         }
         TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, s_ihlal, "değişmez ihlali");
     }
-    char ileti[320];
+    char ileti[400];
     size_t k = 0u;
     ileti[0] = '\0';
     ek(ileti, sizeof(ileti), &k, "kontrolcü, 200000 adım (tohum 0x5EED2026): acil durdurmalı adım ", s_acil);
@@ -908,6 +929,7 @@ static void test_k4_ozellik_kontrolcu(void)
     ek(ileti, sizeof(ileti), &k, "), rampa dışı itkili adım ", s_olagan_itki);
     ek(ileti, sizeof(ileti), &k, ", kanca çağrısı ", s_kanca);
     ek(ileti, sizeof(ileti), &k, ", oturum başı ", s_oturum);
+    ek(ileti, sizeof(ileti), &k, ", rampada geri zaman ", s_geri);
     TEST_MESSAGE(ileti);
     TEST_ASSERT_TRUE(s_acil > 20000u);
     TEST_ASSERT_TRUE(s_kalkis > 200u);
@@ -1366,6 +1388,50 @@ static void test_c_rampa_sirasinda_yeniden_acil(void)
     kalkis_zarfi(t_onceki, 300u);
 }
 
+/* W5-kontrol-acil düzeltme turu (inceleme bulgu 3): rampa izi tutarlılık denetimindedir
+   (rampa_var = 0 ya da 0 ≤ rampa_t0_ns ≤ t_onceki_ns). Rampa sürerken bozulan başlangıç izi
+   (negatif ya da son adımdan sonra) bütünlük yolunu tetikler: core_ok 0 (mandallı),
+   CORE_INTEGRITY(3) bir kez; kontrolcü düzeyinde ida_kon_tutarli yanlış döner. Çıktı: iz negatif
+   ya da sonraki adımın da ötesindeyse nötr (rampa çarpanı 0, var olan yol); iz son adımla
+   sonraki adım arasındaysa rampa o izden yeniden sayılır: çıktı özgün rampanın zarfının altında
+   kalır (kısıtlayan yön; rampa çarpanının yolu bu turda değişmez). */
+static void rampa_izi_bozuk(int64_t t0, bool notr)
+{
+    itki_yururlukte();
+    girdi_kur(true);
+    (void)emniyet_ekle(1u, 0u, true);
+    g_estop = 1u;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    adimlar(20u);
+    kalkis_cagrisi(g_t);
+    adimlar(10u);
+    TEST_ASSERT_EQUAL_UINT8(1u, C.kon.rampa_var);
+    TEST_ASSERT_TRUE(ida_kon_tutarli(&C.kon));
+    TEST_ASSERT_TRUE(OUT.health.core_ok);
+    const int64_t ozgun_t0 = C.kon.rampa_t0_ns;
+    C.kon.rampa_t0_ns = (t0 < 0) ? t0 : (C.kon.t_onceki_ns + t0); /* hata enjeksiyonu */
+    TEST_ASSERT_FALSE(ida_kon_tutarli(&C.kon));
+    for (uint32_t i = 0u; i < 6u; i++) {
+        adim();
+        TEST_ASSERT_FALSE(OUT.health.core_ok);
+        TEST_ASSERT_EQUAL_UINT32((i == 0u) ? 1u : 0u,
+                                 ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_CORE_INTEGRITY));
+        if (notr) {
+            TEST_ASSERT_TRUE(cikti_notr());
+        } else {
+            TEST_ASSERT_TRUE(cikti_en_buyuk() <= oran_hesapla(g_t - ozgun_t0, RAMPA_NS));
+        }
+    }
+}
+
+static void test_c_tutarsiz_rampa_izi_butunluk(void)
+{
+    rampa_izi_bozuk(-1, true);
+    rampa_izi_bozuk(INT64_MIN, true);
+    rampa_izi_bozuk(1000 * DS_MS, true);
+    rampa_izi_bozuk(1, false); /* son adımdan 1 ns sonra */
+}
+
 /* Özellik testi (Ç; kabul 4): 200 000 çağrı, sabit tohum. Rastgele acil durdurma düğmesi,
    emniyet örneği kesintileri (bayatlık), reddedilen ve inst ≠ 0 örnekler, tick, reddedilen
    çağrı, out NULL çağrı, DISARM, oturum sonu/başı, GUIDED_SP hedefleri. Değişmezler:
@@ -1604,6 +1670,7 @@ int main(void)
     RUN_TEST(test_c_reddedilen_ornekte_kisitlayan_icerik);
     RUN_TEST(test_c_init_ten_beri_hic_gevsememis);
     RUN_TEST(test_c_rampa_sirasinda_yeniden_acil);
+    RUN_TEST(test_c_tutarsiz_rampa_izi_butunluk);
     RUN_TEST(test_k4_ozellik_cekirdek);
     return UNITY_END();
 }

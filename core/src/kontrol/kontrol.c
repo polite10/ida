@@ -939,6 +939,10 @@ bool ida_kon_tutarli(const ida_kon_t *k)
     bool t = (k->onb_var <= 1u) && (k->cokme <= 1u) && (k->t_var <= 1u) &&
              (k->d_ref_var <= 1u) && (k->psi_ref_var <= 1u) && (k->acil_mandal <= 1u) &&
              (k->rampa_var <= 1u) &&
+             /* Rampa izi (inceleme bulgu 3): başlangıç, başlatıldığı adımın zamanından
+                (t_onceki_ns) sonra olamaz ve bir oturumda ölçüm zamanı yalnız artar. */
+             ((k->rampa_var == 0u) ||
+              ((k->rampa_t0_ns >= 0) && (k->rampa_t0_ns <= k->t_onceki_ns))) &&
              kanal_gecerli(k->son_kip, IDA_KON_KIP_DALIS) &&
              kanal_gecerli(k->son_dikey, IDA_KON_DIKEY_KUVVET) &&
              kanal_gecerli(k->son_tutum, IDA_KON_TUTUM_MOMENT) &&
