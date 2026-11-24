@@ -247,9 +247,11 @@ typedef struct {
     ida_kes_red_t red_dvl;    /* ret izleri: yalnız kabul edilen örnekte ya da sıfırlamada      */
     ida_kes_red_t red_gnss_p; /* temizlenir (yeniden nitelendirme silmez)                       */
     ida_kes_red_t red_gnss_v;
-    /* Kuşku: kaynak KES_N_RED ardışık ret aldı ya da durum ona sıfırlandı; yalnız kapıdan geçen
-       örnek kaldırır. Kuşkulu kaynak desteklemez; etkinken yatay hız geçerliliğini düşürür
-       (kusku_gnss_p: konum geçerliliğini). */
+    /* Kuşku: kaynak KES_N_RED ardışık ret aldı ya da durum sıfırlandı (konum sıfırlaması:
+       kusku_gnss_p; hız sıfırlaması, hangi kaynağa yapılırsa yapılsın: kusku_dvl ve
+       kusku_gnss_v birlikte); yalnız kaynağın kendi kapıdan geçen örneği kaldırır. Kuşkulu
+       kaynak desteklemez; etkinken yatay hız geçerliliğini düşürür (kusku_gnss_p: konum
+       geçerliliğini). */
     bool kusku_dvl;
     bool kusku_gnss_p;
     bool kusku_gnss_v;

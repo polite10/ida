@@ -31,10 +31,20 @@
  *     örnek sayısıyla düşer. Kuşkuyu yalnız kapıdan geçen örnek kaldırır; sıfırlama kaldırmaz.
  *   - KES_N_RESET (> KES_N_RED) ardışık rette durum ölçüme sıfırlanır (geri dönüş yolu).
  *     Sıfırlama: OK adayını siler (KES_OK_MS baştan), desteği YENİLEMEZ, kaynağı kuşkulu
- *     bırakır (geçerlilik ancak sonraki, kapıdan geçen örnekle döner). Mutlak başvuru yokken
- *     (taze ve kuşkusuz GNSS konum desteği yok) yapılan hız sıfırlaması yatay konumu da
- *     geçersiz kılar: ret dizisi boyunca konum yanlış hızla tümlenmiştir; konum yeniden ancak
- *     GNSS'ten kurulunca geçerli olur. İlk fix'le konum kurulumu da bir sıfırlamadır.
+ *     bırakır (geçerlilik ancak sonraki, kapıdan geçen örnekle döner). Hız sıfırlaması BÜTÜN
+ *     hız kaynaklarını (DVL ve GNSS hızı) kuşkulu yapar (üçüncü tur; dar denetim bulgu 1):
+ *     sıfırlanan kaynağın sonraki örneği kapıdan kendiliğinden geçer (durum ona eşit) ve bu,
+ *     bağımsız destek değildir. Her kaynağın kuşkusunu yalnız KENDİ kapıdan geçen örneği
+ *     kaldırır; yatay hız geçerliliği etkin her hız kaynağının kuşkusuz olmasını ister
+ *     (kestirim.c). Çelişen iki kaynakta öteki kaynak yeni duruma karşı reddetmeyi sürdürür:
+ *     geçerlilik hiç kurulmaz (KES_OK_MS, KES_N_RED ve KES_RED_MS değerinden bağımsız). Tek
+ *     etkin kaynakta öteki bayrak etkisizdir (etkin olmayan kaynak geçerliliği düşürmez); o
+ *     kaynak sonradan etkin olursa kuşkusu ilk kabul edilen örneğiyle kalkar.
+ *   - Mutlak başvuru yokken (taze ve kuşkusuz GNSS konum desteği yok) yapılan hız sıfırlaması
+ *     yatay konumu da geçersiz kılar: ret dizisi boyunca konum yanlış hızla tümlenmiştir; konum
+ *     yeniden ancak GNSS'ten kurulunca geçerli olur. İlk fix'le konum kurulumu da bir
+ *     sıfırlamadır. Konumun tek kaynağı GNSS'tir: konum sıfırlamasından sonra bağımsız ikinci
+ *     bir kaynak aranamaz (kuşkuyu sıfırlamadan sonraki fix kaldırır).
  * Destek zamanı ölçümün zamanı değil füzyon anının duvar saatidir (inceleme bulgu 6; dilim 1 ile
  * aynı kalıp): ölçüm zamanına göre bayatlık sınırı T_*_STALE'den en çok kuyruk gecikmesi
  * (ufuk gecikmesi D ≤ 200 ms; bütçe ertelerse birkaç çağrı daha) ve taşıma süresi kadar uzar.
@@ -253,12 +263,18 @@ static bool gnss_konum_taze(const ida_kes_t *k, const ida_kes_ayar_t *a)
 
 /* Geri dönüş yolunun hız sıfırlaması (dosya başı "Kapı, ret ve sıfırlama"): OK adayı silinir;
    mutlak başvuru yoksa yatay konum da geçersiz olur (yeniden GNSS'ten kurulana kadar). Destek
-   üretmez. */
+   üretmez. Bütün hız kaynakları kuşkulu olur: sıfırlamadan sonra yatay hız geçerliliği için
+   etkin her hız kaynağının kapıdan geçen en az bir örnek vermesi gerekir; durumun eşitlendiği
+   kaynağın kendi örneğinin geçmesi öteki kaynak için destek değildir. Bayraklar etkinliğe
+   bakılmadan kurulur: etkinlik geçerlilik hesabında (kestirim.c suzgec_duzeyi) değerlendirilir
+   ve sıfırlama anında nitelenmekte olan bir kaynak da ilk kabulüne kadar kuşkulu kalır. */
 static void hiz_geri_donus(ida_kes_t *k, const ida_kes_ayar_t *a, ida_v3_t v, uint32_t n_eks,
                            float var, float t_ret)
 {
     hiz_sifirla(k, v, n_eks, var, t_ret);
     k->ok_aday_var = false;
+    k->kusku_dvl = true;
+    k->kusku_gnss_v = true;
     if (!gnss_konum_taze(k, a)) {
         k->konum_var = false;
     }
@@ -530,7 +546,8 @@ void ida_kes_dvl_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yol
         hiz_geri_donus(k, a, v_yeni, 3u, rmax + zn * zn * pth, t_ret);
         k->nit_dvl.red_n = 0u;
         red_isle(&k->red_dvl, false, a->now_ns);
-        k->kusku_dvl = true; /* destek yok: geçerlilik sonraki, kapıdan geçen örnekle döner */
+        /* Destek yok; DVL ve GNSS hızı kuşkulu (hiz_geri_donus): geçerlilik, etkin her hız
+           kaynağının sonraki, kapıdan geçen örneğiyle döner. */
     }
 }
 
@@ -598,7 +615,7 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
                 hiz_geri_donus(k, a, v_yeni, 2u, a->r_gnss_v * a->r_gnss_v, t_ret);
                 k->nit_gnss_v.red_n = 0u;
                 red_isle(&k->red_gnss_v, false, a->now_ns);
-                k->kusku_gnss_v = true; /* destek yok: sonraki, kapıdan geçen örneğe kadar */
+                /* Destek yok; GNSS hızı ve DVL kuşkulu (hiz_geri_donus). */
             }
         }
     }

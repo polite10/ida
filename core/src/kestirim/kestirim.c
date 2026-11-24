@@ -622,8 +622,11 @@ static bool surekli(const ida_kes_red_t *r, int64_t now_ns, int64_t sure_ns)
 /* Sağlık düzeyi ve geçerlilik (02 §2.3.6; tazelik 02 §4.1, A4-K36), çökme mandalı hariç.
  *
  * Bir yatay kaynak (DVL hızı, GNSS hızı, GNSS konumu) "ret altında": kuşkulu (KES_N_RED ardışık
- *   ret ya da kaynağa sıfırlama; yalnız kapıdan geçen örnek kaldırır) ya da kapı reddi
+ *   ret ya da sıfırlama; yalnız kaynağın kendi kapıdan geçen örneği kaldırır) ya da kapı reddi
  *   KES_RED_MS'tir sürüyor (ret izini yalnız kabul edilen örnek ya da sıfırlama temizler).
+ *   Hız sıfırlaması iki hız kaynağını birlikte kuşkulu yapar (kes_yatay.c hiz_geri_donus):
+ *   sıfırlamadan sonra etkin her hız kaynağı kapıdan geçen en az bir örnek vermeden yatay hız
+ *   geçerli olmaz; sıfırlanan kaynağın kendi örneğinin geçmesi yetmez.
  *   Kaynak "etkin": akışı canlı ve son kapı kararı (kabul ya da ret) bayatlık sınırı içinde;
  *   yani canlı ve nitelikli.
  * Yatay hız geçerli: tutum ve yön geçerli; bildirilen (çıkış zamanı için muhafazakâr) yatay hız
@@ -643,8 +646,8 @@ static bool surekli(const ida_kes_red_t *r, int64_t now_ns, int64_t sure_ns)
  *     bozulursa düzey aynı çağrıda DEGRADED olur ve süre baştan sayılır: kaynakların sınırda
  *     gidip gelmesi düzeyi her çağrıda değiştirmez, OK'a dönüş her seferinde KES_OK_MS ister.
  *     Hız ya da konum sıfırlaması ve orijin değişimi de süreyi baştan başlatır (kes_yatay.c,
- *     orijin_izle): hiçbir sıfırlama OK'u korumaz. Sıfırlamalar KES_OK_MS'ten sık yineleniyorsa
- *     (çelişen kaynaklar) düzey DEGRADED kalır.
+ *     orijin_izle): hiçbir sıfırlama OK'u korumaz. Çelişen iki hız kaynağında yatay hız
+ *     geçerliliği hiç kurulmaz (yukarıda), düzey KES_OK_MS'ten bağımsız olarak DEGRADED kalır.
  *   DEGRADED: ötekiler.
  */
 static void suzgec_duzeyi(ida_kes_t *k, const ida_kes_ayar_t *a)
