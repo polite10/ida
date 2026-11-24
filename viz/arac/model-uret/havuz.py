@@ -7,6 +7,9 @@ derlemenin parçası değildir (A7 §3.1, K47); `--denetle` üretilenin depodaki
 olduğunu sınar (CTest `sim.senaryo.havuz_kumesi_uretici`). Yalnız Python standart kitaplığı ve
 aynı dizindeki uret.py kullanılır (Glb yazıcısı, kutu ağları, İDA-0 aracı).
 
+`ida0.glb` `acik_su` kümesinden kopyalanır (yeniden üretilmez; platformlar arası bayt eşitliği için:
+math.sin/cos son bitte platforma göre değişebilir).
+
 Kullanım:  python3 -I viz/arac/model-uret/havuz.py [--cikti assets/havuz] [--denetle]
 
 Varlıklar (kimlikler A7 uygunluk örneğindekiyle aynı; A5 senaryoları yalnız `varliklar` tablosunu
@@ -39,6 +42,8 @@ _URET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uret.py")
 _spec = importlib.util.spec_from_file_location("ida_model_uret", _URET)
 uret = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(uret)
+
+ACIK_SU_IDA0 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "assets", "acik_su", "ida0.glb")
 
 URETICI = "İDA viz/arac/model-uret/havuz.py"
 
@@ -158,7 +163,11 @@ def uret_kume():
     for kurucu in (ida0, torpido, hedef, havuz):
         glb = uret.Glb()
         girdi, kutu, atama, degistir = kurucu(glb)
-        veri = glb.yaz(degistir)
+        if girdi["kimlik"] == "ida0":
+            with open(ACIK_SU_IDA0, "rb") as f:
+                veri = f.read()
+        else:
+            veri = glb.yaz(degistir)
         dosyalar[girdi["dosya"]] = veri
         tam = {
             "kimlik": girdi["kimlik"], "tur": girdi["tur"], "dosya": girdi["dosya"],
