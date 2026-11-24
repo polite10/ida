@@ -30,7 +30,7 @@ struct DurumAnlik {
     Vek3 dogrusal_ivme_b{};           // ν̇₁:₃ (gövde çerçevesinde zaman türevi), m/s²
     Vek3 acisal_ivme_b{};             // ν̇₄:₆ = ω̇, rad/s²
     Vek3 ozgul_kuvvet_b{};            // O_b'de (ν̇₁:₃ + ω × v) − Rᵀ g, m/s² (IMU 05'te türetir)
-    std::array<double, kIticiSayisi> itki{};         // N; gerçekleşen itki (havalanma dahil)
+    std::array<double, kIticiSayisi> itki{};         // N; gerçekleşen itki (havalanma ve itki çarpanı dahil)
     std::array<double, kIticiSayisi> itki_istegi{};  // N; durağan itki isteği F_ss
     std::array<double, kIticiSayisi> havalanma{};    // β(h/R)
     std::array<double, kIticiSayisi> pwm_us{};       // yürürlükteki komut
@@ -92,6 +92,14 @@ public:
     // yürürlükte kalır; sıralama köprünündür). Komutun ömrü ve nötre dönüş köprünün işidir
     // (A1-K74, A1-K77): fizik yeni bir komut verilene kadar son komutu uygular.
     bool itici_komutu_ver(std::uint64_t adim_no, const std::array<double, kIticiSayisi>& pwm_us);
+
+    // İtici arızası (A5 Tablo 3.10-A `aktuator/itki_carpani`; W4-K20): `adim_no` numaralı adımın
+    // başından itibaren itici başına mekanik kuvvet çarpanı; dizin kanal sırasıdır, değer [0, 1].
+    // Çarpan süzgeç ve havalanma (β) sonrasındaki kuvvete uygulanır (F_i ← c_i · β · K(s) F_ss);
+    // süzgeç durumu ve elektrik tarafı (`itki_istegi`, F_ss) arızasız komutu görür. Yeni bir
+    // çarpan verilene kadar kalır; varsayılan 1 (bit düzeyinde arızasız davranış). Adım
+    // hesaplanmışsa ya da değer aralık dışıysa reddedilir (false).
+    bool itki_carpani_ver(std::uint64_t adim_no, const std::array<double, kIticiSayisi>& carpan);
 
     bool kuruldu() const;
     std::int64_t zaman_ns() const;
