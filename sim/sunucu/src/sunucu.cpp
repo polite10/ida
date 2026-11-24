@@ -330,8 +330,6 @@ private:
     bool a3_gevsetme_onu_acik(const A3Giris& g);
     void a3_calistirma_isle(std::uint64_t b);
     bool a3_sinir_basi(std::uint64_t b);
-    bool a3_duraklat(std::uint64_t b);
-    void a3_artimli(std::uint64_t b);
     bool a3_hazirlik_durdu();
     void a3_emniyet_ver(std::uint64_t b);
     void a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
@@ -339,13 +337,13 @@ private:
                            const sensor::EmniyetDurumu& once);
     void a3_yi_uygula(std::uint64_t b, const A3Giris& g, const kopru::SinirSonucu* ss);
     void a3_yi_izle();
-    void a3_yayinla(std::uint64_t b, bool zorla);
+    void a3_yayinla(std::uint64_t b);
     void a3_sensor_yayinla();
     void a3_durum_yayinla(std::int64_t t);
     void a3_gecerlilik(std::uint64_t b);
     void a3_oturum_izle();
     void a3_olay_kararlari();
-    void a3_ariza_izle(std::uint64_t b, bool zorla);
+    void a3_ariza_izle(std::uint64_t b);
     void a3_gecis(a3::CalistirmaDurumu yeni, const char* neden, bool ic);
     void a3_sonuc(const A3Giris& g, bool uygulandi, std::uint64_t b, const char* kod, std::string_view ayrinti = {});
     void a3_olay(std::uint16_t tur, std::uint8_t onem, std::uint8_t kaynak, std::uint32_t komut_no,
@@ -452,11 +450,9 @@ private:
     std::vector<A3Giris> a3_kisit_, a3_genel_;
     std::vector<A3Giris> a3_emniyet_bekleyen_;    // köprüye verilen operatör emniyet istekleri
     std::vector<A3Giris> a3_degisen_;             // yetkili durumu değiştiren operatör istekleri
-    std::vector<kopru::EmniyetAtama> a3_atama_;   // artımlı işlemin girdisi
+    std::vector<kopru::EmniyetAtama> a3_atama_;   // sınırın operatör emniyet atamaları
     std::vector<kopru::OperatorSonucu> a3_op_sonuc_;
-    bool duraklatildi_ = false;
     bool a3_durdur_ = false;
-    std::uint64_t adimla_kalan_ = 0;              // fizik adımı
     double hiz_ = 0.0;                            // SIL hız çarpanı (A3-K66; 0: olabildiğince hızlı)
     std::int64_t hiz_t0_sim_ = 0;
     Saat::time_point hiz_t0_duvar_{};
@@ -1370,7 +1366,7 @@ constexpr std::uint64_t kYok64 = std::numeric_limits<std::uint64_t>::max();
 constexpr std::uint64_t kHizliSinir = 16;    // 50 Hz sim zamanı (fizik/durum, kart/durum)
 constexpr std::uint64_t kDurumSinir = 80;    // 10 Hz (A3 Tablo 3.3 varsayılanları)
 constexpr std::uint64_t kYavasSinir = 400;   // 2 Hz
-constexpr std::size_t kGenelAzami = 512;     // dünya tarafında bekleyen genel istek (halka 256 + duraklatmada biriken)
+constexpr std::size_t kGenelAzami = 512;     // dünya tarafında bekleyen genel istek (halka 256 + hazırlıkta biriken)
 constexpr std::size_t kKayitAzami = 65536;   // Sonuc'a yazılacak A3 komut ve emniyet kayıtları
 
 // W4-K27 (5): ölçüm ve sınama kapsamı. `g_a3_derinlik` dünya tarafındaki A3 hizmetinin iç içe
@@ -1584,9 +1580,7 @@ void Calistirici::a3_olay(std::uint16_t tur, std::uint8_t onem, std::uint8_t kay
     o.tur = tur;
     o.onem = onem;
     o.kaynak = kaynak;
-    o.adim_no = a3d_.durum == a3::CalistirmaDurumu::kosuyor || a3d_.durum == a3::CalistirmaDurumu::duraklatildi
-                    ? a3_b_
-                    : kYok64;
+    o.adim_no = a3d_.durum == a3::CalistirmaDurumu::kosuyor ? a3_b_ : kYok64;
     o.komut_no = komut_no;
     o.istemci_id = istemci;
     o.ayrinti = ayrinti;
@@ -1747,8 +1741,8 @@ bool Calistirici::a3_baslat()
     return true;
 }
 
-// Tutarlı kesimle çekiş (W4-K27 (2)). `atla`: alınmayacak kısıtlayan yuvalar (duraklatmada ve
-// hazırlıkta yer istasyonu komutları birikmez: yuvasında bekler, kitaplığın mandalı birleştirir).
+// Tutarlı kesimle çekiş (W4-K27 (2)). `atla`: alınmayacak kısıtlayan yuvalar (hazırlıkta yer
+// istasyonu komutları birikmez: yuvasında bekler, kitaplığın mandalı birleştirir).
 void Calistirici::a3_cek(std::uint16_t atla)
 {
     const std::size_t yer = a3_genel_.size() < kGenelAzami ? kGenelAzami - a3_genel_.size() : 0u;
@@ -1797,6 +1791,10 @@ bool Calistirici::a3_baslat_bekle()
             const a3::Komut& k = g.k;
             if (basla || !a3b::calistirma_mi(k.tur)) {
                 a3_sonuc(g, false, 0, basla ? "gecersiz_durum" : "canli_calistirma_yok");
+                continue;
+            }
+            if (a3b::duraklatma_mi(k.tur)) {
+                a3_sonuc(g, false, 0, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);   // W4-K28 (1)
                 continue;
             }
             if (k.beklenen_durum_rev != a3d_.durum_rev) {
@@ -1848,6 +1846,11 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             continue;
         }
         const bool hil = a_.kip == Kip::hil;
+        if (a3b::duraklatma_mi(k.tur)) {
+            // W4-K28 (1): alıcı girişte reddeder; buraya ulaşırsa da reddedilir (durum değişmez).
+            a3_sonuc(g, false, b, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);
+            continue;
+        }
         if (k.beklenen_durum_rev != a3d_.durum_rev) {
             a3_sonuc(g, false, b, "durum_rev_uyusmuyor", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
             continue;
@@ -1870,34 +1873,12 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             a3_sonuc(g, false, b, "gecersiz_durum", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
             continue;
         }
-        if (hil && (k.tur == a3::KomutTuru::calistirma_adimla || k.tur == a3::KomutTuru::calistirma_hiz)) {
+        if (hil && k.tur == a3::KomutTuru::calistirma_hiz) {
             a3_sonuc(g, false, b, "kipte_gecersiz", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
-            continue;
-        }
-        if (hil && k.tur == a3::KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
-            a3_sonuc(g, false, b, "onay_gerekli");
             continue;
         }
         ++a3d_.durum_rev;   // A3-K122
         switch (k.tur) {
-        case a3::KomutTuru::calistirma_duraklat:
-            // W4-K27 (1): sınır b'nin olağan işlemi tamamlanınca (fizik adımından önce) duraklar.
-            duraklatildi_ = true;
-            adimla_kalan_ = 0;
-            if (hil) {
-                k_->hil_duraklatma_bildir();   // A1-K41, K79; Tablo 4.7b
-            }
-            a3_gecis(a3::CalistirmaDurumu::duraklatildi, nullptr, false);
-            break;
-        case a3::KomutTuru::calistirma_surdur:
-            duraklatildi_ = false;
-            a3_gecis(a3::CalistirmaDurumu::kosuyor, nullptr, false);
-            break;
-        case a3::KomutTuru::calistirma_adimla:
-            duraklatildi_ = false;
-            adimla_kalan_ = static_cast<std::uint64_t>(k.periyot_sayisi) * kopru::kPeriyotAdim;   // A3-K65
-            a3_gecis(a3::CalistirmaDurumu::kosuyor, "adimla", false);
-            break;
         case a3::KomutTuru::calistirma_hiz:
             hiz_ = k.carpan;   // A3-K66 (yalnız SIL; 0: olabildiğince hızlı)
             hiz_t0_sim_ = static_cast<std::int64_t>(b) * kH;
@@ -1906,7 +1887,6 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             break;
         case a3::KomutTuru::calistirma_durdur:
             a3_durdur_ = true;
-            duraklatildi_ = false;
             // Tablo 4.7a: hazırlanırken durdur → yuklendi (W4-K27 (4)); koşarken → durduruldu.
             a3_gecis(hazirlikta ? a3::CalistirmaDurumu::yuklendi : a3::CalistirmaDurumu::durduruldu, nullptr, false);
             break;
@@ -1942,136 +1922,7 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b)
     return true;
 }
 
-// Duraklatma (W4-K27 (1), (3); A1-K41; A3-K58, K95): sınır b'nin olağan işlemi tamamlanmıştır,
-// fizik adımı b henüz koşmamıştır; sim zamanı t_b'de durur. Her yoklamada (≈ 1 ms):
-//   - çalıştırma denetimi (sürdür, adımla, hız, durdur);
-//   - EMNİYET: panelin emniyet istekleri beklemez; köprünün artımlı emniyet işlemiyle hemen
-//     işlenir (sınır yeniden işlenmez, senaryo atamaları yeniden girmez); acil durdurma
-//     etkinleşirse fiziğin b adımına giden itici girdisi nötrlenir;
-//   - yer istasyonu komutları birikir (kısıtlayanlar yuvasında, ötekiler dünya tarafında en çok
-//     kGenelAzami), sürdürmedeki ilk sınırda işlenir: HIL'de duraklatılmışken tele parti üyesi
-//     çıkmaz; yalnız canlılık (KEEPALIVE) ve kart çıktılarının alımı sürer.
-// Dönüş false: durdur.
-bool Calistirici::a3_duraklat(std::uint64_t b)
-{
-    const std::int64_t duraklama_bas = gercek();
-    std::int64_t son_yayin = 0;
-    while (duraklatildi_ && !a3_durdur_) {
-        if (a_.a3_sinir_kancasi) {
-            a_.a3_sinir_kancasi(b, *a3al_);   // sınama: duraklatılmış sınırda her yoklamada
-        }
-        std::int64_t yoklama_ns = 0;
-        {
-            A3Hizmet h(yoklama_ns);
-            a3_cek(A3Alici::kYiYuvalari);
-            a3_calistirma_isle(b);
-            if (duraklatildi_ && !a3_durdur_) {
-                a3_artimli(b);
-            }
-        }
-        if (!duraklatildi_ || a3_durdur_) {
-            s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, yoklama_ns);
-            break;
-        }
-        if (a_.kip == Kip::hil) {
-            // A1-K41: TF ve üyeler durur; canlılık ve kart çıktılarının alımı (panel komutundan
-            // bağımsız; bekleyen eşzamansız çıktı en çok 1: W4-K27 (3)) sürer.
-            k_->zamanla(gercek());
-            yaz();
-            pompa(0);
-            baglanti_bakim();
-        }
-        if (gercek() - son_yayin > 100 * kMs || a3_durum_kirli_ || a3_anlik_kirli_) {
-            A3Hizmet h(yoklama_ns);
-            a3_yayinla(b, true);
-            son_yayin = gercek();
-        }
-        s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, yoklama_ns);
-        sure_uyu(kMs);
-    }
-    if (a_.kip == Kip::hil && !a3_durdur_) {
-        w0_ += gercek() - duraklama_bas;   // W(t) = W0 + t sürer (A1-K29: sayılar boşluksuz)
-    }
-    if (a_.kip == Kip::sil) {
-        hiz_t0_sim_ = static_cast<std::int64_t>(b) * kH;
-        hiz_t0_duvar_ = Saat::now();
-    }
-    return !a3_durdur_;
-}
-
-// Duraklatmadaki emniyet istekleri (W4-K27 (1)): artımlı köprü işlemi, sonuçlar ve olaylar.
-void Calistirici::a3_artimli(std::uint64_t b)
-{
-    a3_atama_.clear();
-    a3_emniyet_bekleyen_.clear();
-    const sensor::EmniyetDurumu once = k_->dis_durum().emniyet;
-    // Kısıtlayan emniyet istekleri (yer istasyonu yuvaları bu çekişte alınmadı).
-    for (A3Giris& g : a3_kisit_) {
-        if (!a3b::canli(a3d_.durum)) {
-            a3_sonuc(g, false, b, "canli_calistirma_yok");
-            continue;
-        }
-        a3_atama_.push_back(operator_atamasi(g.k));
-        a3_emniyet_bekleyen_.push_back(std::move(g));
-    }
-    a3_kisit_.clear();
-    // Gevşeten emniyet istekleri; yer istasyonu komutları yerinde kalır (birikir).
-    std::size_t yaz = 0;
-    for (std::size_t i = 0; i < a3_genel_.size(); ++i) {
-        A3Giris& g = a3_genel_[i];
-        if (g.k.tur != a3::KomutTuru::emniyet_degistir) {
-            if (yaz != i) {
-                a3_genel_[yaz] = std::move(g);
-            }
-            ++yaz;
-            continue;
-        }
-        if (!a3b::canli(a3d_.durum)) {
-            a3_sonuc(g, false, b, "canli_calistirma_yok");
-        } else if (!g.k.kisitlayan && !a3_run_uyar(g.k)) {
-            a3_sonuc(g, false, b, "beklenen_durum_uyusmuyor");
-        } else if (!g.k.kisitlayan && !a3_gevsetme_onu_acik(g)) {
-            a3_sonuc(g, false, b, "kisitlama_hakim");
-        } else {
-            a3_atama_.push_back(operator_atamasi(g.k));
-            a3_emniyet_bekleyen_.push_back(std::move(g));
-        }
-    }
-    a3_genel_.resize(yaz);
-    if (a3_atama_.empty()) {
-        return;
-    }
-    std::size_t n = 0;
-    {
-        KopruCagrisi kc;
-        n = k_->emniyet_artimli(a3_atama_.data(), a3_atama_.size(), a3_op_sonuc_.data());
-    }
-    a3_sonuclari_isle(b, a3_op_sonuc_.data(), n, once);
-    if (k_->acil_durdurma() && !estop_bu_adim_) {
-        // EMNİYET (iskelet §5, W3-K1): duraklatmada basılan acil durdurma fiziğin b adımından
-        // itibaren itici girdisini nötrler (adım henüz koşmadı; aynı adıma verilen ikinci komut
-        // öncekinin yerine geçer).
-        estop_bu_adim_ = true;
-        ++s_.estop_adim;
-        std::array<double, 8> notr{};
-        notr.fill(static_cast<double>(arac_.esc.pwm_notr_us));
-        {
-            KopruCagrisi kc;
-            (void)dn_.itici_komutu_ver(b, notr);
-        }
-        if (a_.sinir_kancasi) {
-            Ayar::SinirGozlemi gz;
-            gz.b = b;
-            gz.derinlik = dn_.durum().konum_n[2];
-            gz.pwm = notr;
-            gz.itici_carpani = fizik_carpan_;
-            gz.acil_durdurma = true;
-            a_.sinir_kancasi(gz);
-        }
-    }
-}
-
-// Operatör emniyet isteklerinin sonuçları ve emniyet olayları (sınırda ya da artımlı).
+// Operatör emniyet isteklerinin sonuçları ve emniyet olayları (sınırda).
 void Calistirici::a3_sonuclari_isle(std::uint64_t b, const kopru::OperatorSonucu* sonuc, std::size_t n,
                                     const sensor::EmniyetDurumu& once)
 {
@@ -2552,7 +2403,7 @@ void Calistirici::a3_gecerlilik(std::uint64_t b)
 
 // Etkin arızalar (senaryonun sensör ve itici arızaları; plan durumundan): ariza_degisti (A3-K86)
 // ve ariza/etkin. Tablolar A3 başlarken kuruldu; burada bellek ayrılmaz.
-void Calistirici::a3_ariza_izle(std::uint64_t b, bool zorla)
+void Calistirici::a3_ariza_izle(std::uint64_t b)
 {
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
     bool degisti = false;
@@ -2570,7 +2421,7 @@ void Calistirici::a3_ariza_izle(std::uint64_t b, bool zorla)
             .sayi_u("uygulama_adimi", aktif ? static_cast<std::uint64_t>(d.baslangic_ns / kH) : b);
         a3_olay(6, 0, 3, 0, 0, j.bitir());
     }
-    if (!degisti && !zorla && b % kYavasSinir != 0u) {
+    if (!degisti && b % kYavasSinir != 0u) {
         return;
     }
     a3_ariza_yuk_.clear();
@@ -2610,11 +2461,7 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.adim_no = a3_b_;
     c.hedef_carpan = a_.kip == Kip::hil ? 1.0F : static_cast<float>(hiz_);
     const std::int64_t duvar_simdi = gercek();
-    if (duraklatildi_) {
-        a3_gerceklesen_ = 0.0F;
-        a3_carpan_ref_duvar_ = duvar_simdi;
-        a3_carpan_ref_sim_ = t;
-    } else if (duvar_simdi - a3_carpan_ref_duvar_ >= 1'000'000'000) {
+    if (duvar_simdi - a3_carpan_ref_duvar_ >= 1'000'000'000) {
         if (a3_carpan_ref_duvar_ > 0) {
             a3_gerceklesen_ = static_cast<float>(static_cast<double>(t - a3_carpan_ref_sim_) /
                                                  static_cast<double>(duvar_simdi - a3_carpan_ref_duvar_));
@@ -2778,9 +2625,8 @@ void Calistirici::a3_sensor_yayinla()
     }
 }
 
-// Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu). `zorla`: duraklatma
-// yoklaması (sensör kaydı yok; durum kanalları yinelenir).
-void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
+// Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu).
+void Calistirici::a3_yayinla(std::uint64_t b)
 {
     A3Hizmet hizmet(a3_sinir_ns_);
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
@@ -2788,10 +2634,8 @@ void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
     a3_yi_izle();
     a3_oturum_izle();
     a3_gecerlilik(b);
-    if (!zorla) {
-        a3_sensor_yayinla();
-    }
-    if (b % kHizliSinir == 0u || zorla) {
+    a3_sensor_yayinla();
+    if (b % kHizliSinir == 0u) {
         const fizik::DurumAnlik& d = dn_.durum();
         std::array<a3::yuk_fizik_durum_govdeler, 1> govde{};
         govde[0].govde_id = 1;
@@ -2834,10 +2678,10 @@ void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
         a3_olc([&] { (void)yay_->yayinla<a3::Kanal::fizik_durum>(t, f); });
 
         const kopru::KartBilgisi& kb = k_->kart();
-        // Yalnız yeni bildirimde (son IDA_NAV ya da IDA_STATUS değişti) ya da duraklatma yoklamasında.
+        // Yalnız yeni bildirimde (son IDA_NAV ya da IDA_STATUS değişti).
         const bool yeni = kb.nav.var != a3_nav_var_ || kb.nav.batch_seq != a3_nav_seq_ || kb.nav.t_ns != a3_nav_t_ ||
                           kb.durum.batch_seq != a3_durum_seq_ || kb.durum.var != a3_durum_var_;
-        if ((kb.nav.var || kb.durum.var) && (yeni || zorla)) {
+        if ((kb.nav.var || kb.durum.var) && yeni) {
             a3_nav_var_ = kb.nav.var;
             a3_nav_seq_ = kb.nav.batch_seq;
             a3_nav_t_ = kb.nav.t_ns;
@@ -2864,12 +2708,12 @@ void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
             }
             a3_olc([&] { (void)yay_->yayinla<a3::Kanal::kart_durum>(t, k); });
         }
-        a3_ariza_izle(b, zorla);
+        a3_ariza_izle(b);
     }
-    if (b % kDurumSinir == 0u || zorla || a3_durum_kirli_) {
+    if (b % kDurumSinir == 0u || a3_durum_kirli_) {
         a3_durum_yayinla(t);
     }
-    if (b % kYavasSinir == 0u || zorla) {
+    if (b % kYavasSinir == 0u) {
         const kopru::KartBilgisi& kb = k_->kart();
         if (kb.sayac.var) {
             const kopru::KartSayaclari& c = kb.sayac;
@@ -2909,7 +2753,7 @@ void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
         a3_kacirma_adet_ = 0;
         a3_kacirma_olay_duvar_ = gercek();
     }
-    if (b % kDurumSinir == 0u || a3_anlik_kirli_ || zorla) {
+    if (b % kDurumSinir == 0u || a3_anlik_kirli_) {
         a3_anlik_guncelle();
     }
 }
@@ -3346,12 +3190,9 @@ Sonuc Calistirici::kos()
         if (yay_ != nullptr) {
             // Yayın noktası: fizik sınırındaki sıranın sonu (köprü, sensörler, parti, yuva), fizik
             // adımından önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
-            a3_yayinla(b, false);
+            a3_yayinla(b);
             s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
-            // W4-K27 (1): sınır b bir kez işlendi; duraklatma burada (fizik adımı b'den önce).
-            if (duraklatildi_ && !a3_duraklat(b)) {
-                break;
-            }
+            // W4-K28 (1): duraklatma bu dilimde yoktur; sınırdan sonra her zaman fizik adımı gelir.
         }
         const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {
@@ -3359,11 +3200,6 @@ Sonuc Calistirici::kos()
             break;
         }
         adim_sonrasi(b);
-        if (adimla_kalan_ > 0u && --adimla_kalan_ == 0u) {
-            duraklatildi_ = true;   // A3-K65: n periyot ilerledi
-            a3_b_ = b + 1u;         // fizik b + 1 sınırında; duraklatma o sınırda (anlık görüntü tutarlı)
-            a3_gecis(a3::CalistirmaDurumu::duraklatildi, "adimla_bitti", true);
-        }
         if (a_.kip == Kip::hil) {
             evre_[kEvreFizik] += gercek() - e_f;
             profil_.push_back(evre_);

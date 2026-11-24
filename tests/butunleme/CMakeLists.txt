@@ -106,7 +106,7 @@ if(NOT WIN32)
 endif()
 
 # W4-bagla-a3: A3 sunucusunun ida_sim'e bağlanması (kabul 2, 4, 5; sim/sunucu/BENIOKU.md "A3").
-foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_duraklat_emniyet a3_hazirlik_durdur a3_ayirma)
+foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_hazirlik_durdur a3_ayirma)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
@@ -114,9 +114,9 @@ if(NOT WIN32)
   # Kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), A3 açık; zamanlamaya duyarlı.
   add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
   set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
-  # HIL'de onaylı duraklatma (A1-K41, Tablo 4.7b): 8 s, sözde uçbirim.
-  add_test(NAME butunleme.a3_hil_duraklat COMMAND ida_butunleme_test a3_hil_duraklat)
-  set_tests_properties(butunleme.a3_hil_duraklat PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+  # W4-K28 (1): HIL'de duraklatma (onaylı dahil) reddedilir; 4 s, sözde uçbirim.
+  add_test(NAME butunleme.a3_hil_duraklat_ret COMMAND ida_butunleme_test a3_hil_duraklat_ret)
+  set_tests_properties(butunleme.a3_hil_duraklat_ret PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 # Kabul 3: ida_sim + panelin A3 istemcisi (Node; web/src/a3, web/'e dosya eklenmez). Node yoksa
 # kaydedilmez; web/node_modules (esbuild) yoksa 77 döner ve atlanır.

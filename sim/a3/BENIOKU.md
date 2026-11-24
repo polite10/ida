@@ -53,7 +53,7 @@ test/            CTest (sim.a3.*) ve Node uyum testleri (uyum.mjs, uctan_uca.mjs
 
 ## Bu dilimin kapsamı
 
-Uygulanan uçlar: `surum`, `katalog`, `istemciler` (POST, DELETE), `durum`, `komutlar/{n}`, `olaylar`, `emniyet`, `emniyet/onay_jetonu`, `emniyet/degistir`, `yer_istasyonu/komutlar`, `yer_istasyonu/onay_jetonu`, `yer_istasyonu/komut`, `calistirma/{baslat,duraklat,surdur,adimla,hiz,durdur,sifirla}`, `yayin` ve `/ws`. Kataloğun öteki uçları (senaryo, ön denetim, hata enjeksiyonu, kayıt ve izleme, yardımcı süreçler, `calistirma/yeniden_kostur`) 404 `bulunamadi` döner; durum değiştirenler yine komut numarası alır (A3-K52).
+Uygulanan uçlar: `surum`, `katalog`, `istemciler` (POST, DELETE), `durum`, `komutlar/{n}`, `olaylar`, `emniyet`, `emniyet/onay_jetonu`, `emniyet/degistir`, `yer_istasyonu/komutlar`, `yer_istasyonu/onay_jetonu`, `yer_istasyonu/komut`, `calistirma/{baslat,duraklat,surdur,adimla,hiz,durdur,sifirla}`, `yayin` ve `/ws`. Kataloğun öteki uçları (senaryo, ön denetim, hata enjeksiyonu, kayıt ve izleme, yardımcı süreçler, `calistirma/yeniden_kostur`) 404 `bulunamadi` döner; durum değiştirenler yine komut numarası alır (A3-K52). `ida_sim`'e bağlıyken duraklatma (`duraklat`, `surdur`, `adimla`) sonraki dilimdedir (W4-duraklat): bu uçlar ayrıştırılır, sunucunun alıcısı onları `gecersiz_durum` ile reddeder (W4-K28 (1)).
 
 EMNİYET (W4-K19): kısıtlayan emniyet isteği (acil durdurma bas, fiş çıkar, pim tak) ve `daraltici` sınıfındaki yer istasyonu komutu `beklenen_run_id` uyuşmasa da ya da hiç verilmese de alıcıya iletilir (`Komut::run_id_uyusmazligi`); kabul yanıtı `guncel_run_id` taşır, uyuşmazlık `uyari` olayıyla (`kod` = `kisitlayan_run_id_uyusmazligi`) kaydedilir. Gevşeten isteklerde A3-K54 aynen geçerlidir.
 

@@ -114,7 +114,7 @@ int test_a3_kesim()
     al.cek(kisit, genel);
     dogrula_alici(icerir(kisit, 3) && icerir(genel, 4) && kisit.front().sira < genel.front().sira,
                   "sonraki çekişte ikisi birlikte; kısıtlayanın sıra numarası küçük (önce işlenir)");
-    // (3) Değişmezin denetimi: yuvası atlanan (duraklatmada yer istasyonu) kısıtlayan bekliyorken
+    // (3) Değişmezin denetimi: yuvası atlanan (çekişte alınmayan) kısıtlayan bekliyorken
     // ondan sonra teslim edilmiş gevşetme: bekleyen kısıtlayanın sırası gevşetmeninkinden küçük.
     kisit.clear();
     genel.clear();
@@ -129,5 +129,63 @@ int test_a3_kesim()
     al.cek(kisit, genel);
     dogrula_alici(icerir(kisit, 5) && al.bekleyen_kisit_en_kucuk(ida::sunucu::A3Alici::kButunYuvalar) == 0u,
                   "yuva boşalınca bekleyen yok");
+    return g_hata_alici;
+}
+
+// W4-K28 (1): duraklatma bu dilimde kapalı. Her çalıştırma durumunda (anlık görüntüde
+// `duraklatildi` yazılmış olsa bile) `duraklat`, `surdur`, `adimla` güncel ve bayat revizyonla
+// girişte `gecersiz_durum` ("bu sürümde desteklenmiyor") alır ve kuyruğa girmez; Tablo 4.7a
+// denetimi bu üç türü hiçbir durumda geçerli saymaz.
+int test_a3_duraklatma_kapali()
+{
+    using ida::a3::CalistirmaDurumu;
+    using ida::a3::KomutTuru;
+    ida::sunucu::A3Alici al(false);
+    ida::sunucu::A3Alici al_hil(true);
+    std::vector<ida::sunucu::A3Giris> kisit;
+    std::vector<ida::sunucu::A3Giris> genel;
+    kisit.reserve(16);
+    genel.reserve(512);
+    const std::string run = "20261124-000000-abcdef";
+    int ret = 0, toplam = 0;
+    bool gecerli_yok = true;
+    for (int d = 0; d <= 8; ++d) {
+        for (ida::sunucu::A3Alici* a : {&al, &al_hil}) {
+            ida::sunucu::AnlikPod p;
+            p.durum = static_cast<std::uint8_t>(d);
+            p.durum_rev = 11;
+            p.run_var = d >= 2 && d <= 7;
+            for (std::size_t i = 0; i < run.size(); ++i) {
+                p.run_id[i] = run[i];
+            }
+            a->anlik_yaz(p);
+            for (const KomutTuru t : {KomutTuru::calistirma_duraklat, KomutTuru::calistirma_surdur, KomutTuru::calistirma_adimla}) {
+                gecerli_yok = gecerli_yok && !ida::sunucu::a3b::gecis_gecerli(static_cast<CalistirmaDurumu>(d), t);
+                for (const std::uint32_t rev : {11u, 3u}) {
+                    Komut k;
+                    k.komut_no = static_cast<std::uint32_t>(++toplam);
+                    k.tur = t;
+                    if (p.run_var) {
+                        k.beklenen_run_id = run;
+                    }
+                    k.beklenen_durum_rev = rev;
+                    k.gecersizligi_onayla = true;
+                    k.periyot_sayisi = 1;
+                    const ida::a3::AlimSonucu r = a->al(k);
+                    ret += r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "gecersiz_durum" &&
+                                   r.ileti.find("bu sürümde desteklenmiyor") != std::string::npos
+                               ? 1
+                               : 0;
+                }
+            }
+        }
+    }
+    al.cek(kisit, genel);
+    al_hil.cek(kisit, genel);
+    dogrula_alici(ret == toplam && toplam == 9 * 2 * 3 * 2,
+                  "her durumda duraklat/sürdür/adımla girişte gecersiz_durum (" + std::to_string(ret) + "/" +
+                      std::to_string(toplam) + ")");
+    dogrula_alici(kisit.empty() && genel.empty(), "reddedilen istekler kuyruğa girmedi");
+    dogrula_alici(gecerli_yok, "Tablo 4.7a: üç tür hiçbir durumda geçerli değil");
     return g_hata_alici;
 }

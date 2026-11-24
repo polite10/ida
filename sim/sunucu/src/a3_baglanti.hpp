@@ -5,8 +5,8 @@
 //                                   K91, K118, K123, Tablo 4.7a/4.7b) son anlık görüntüye göre;
 //                                   yer istasyonu komutunun A1 karşılığı da burada çözülür (JSON
 //                                   ayrıştırma dünya iş parçacığına girmez: W4-K27 (5)).
-//   Dünya iş parçacığı (Calistirici) `cek()` ile istekleri yalnız fizik sınırında (ve duraklatma
-//                                   yoklamasında) alır, kararını orada yeniden verir.
+//   Dünya iş parçacığı (Calistirici) `cek()` ile istekleri yalnız fizik sınırında (ve hazırlık ile
+//                                   `yuklendi` beklemesinde) alır, kararını orada yeniden verir.
 //
 // Aktarım (EMNİYET; W4-K22, W4-K27 (2), (5)):
 //   - Genel istekler: 256'lık sınırlı halka (A3-K59); üreticiler kısa bir kilitle yazar, tüketici
@@ -40,8 +40,14 @@ namespace ida::sunucu {
 namespace a3b {
 
 // Tablo 4.7a: komutun bu durumda geçerli olup olmadığı (izleme ve tekrar kipleri bu dilimde yok).
+// W4-K28 (1): duraklatma bu dilimde kapalıdır; `duraklat`, `surdur` ve `adimla` hiçbir durumda
+// geçerli değildir (komut girişinde `gecersiz_durum`), `duraklatildi` durumuna girilmez.
 bool gecis_gecerli(a3::CalistirmaDurumu d, a3::KomutTuru t);
-bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor, duraklatildi
+bool duraklatma_mi(a3::KomutTuru t);   // duraklat, surdur, adimla
+inline constexpr const char* kDuraklatmaYokIleti =
+    "bu sürümde desteklenmiyor (duraklatma sonraki dilimde: W4-duraklat)";
+inline constexpr const char* kDuraklatmaYokAyrinti = "{\"desteklenmiyor\":\"duraklatma\",\"dilim\":\"W4-duraklat\"}";
+bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor (duraklatildi bu dilimde erişilemez)
 const char* durum_adi(a3::CalistirmaDurumu d);
 bool calistirma_mi(a3::KomutTuru t);
 
