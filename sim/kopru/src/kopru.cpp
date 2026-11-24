@@ -171,6 +171,12 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     sonraki_emniyet.reset();
     pen_sensor.clear();
     kayan.clear();
+    // W4-bagla-sonar (A1-K49): Ping360 satırı yalnız bir oturumun içinde gider; yarıda kalan ve
+    // bekleyen satır atılır (kart da oturum sonunda yuvalarını boşaltır). Kredi sürer.
+    say.ping360_oturum_atilan += (p360_aktif.var ? 1u : 0u) + (p360_bekleyen.var ? 1u : 0u);
+    p360_aktif.var = false;
+    p360_bekleyen.var = false;
+    p360_bas_bu_pencerede = false;
     // Sonucu gelmemiş ve gönderilmemiş komutlar (A1-K23: LINK_SESSION_END).
     for (std::uint32_t id : sonuc_bekleyen) {
         yerel_sonuc(id, static_cast<std::uint8_t>(IDAW_ACK_REJECTED),

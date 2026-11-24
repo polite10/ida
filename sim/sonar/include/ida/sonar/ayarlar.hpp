@@ -57,7 +57,8 @@ struct Ping360Ayar {                      // profil ping360 (A5 §3.6)
 struct Ping360Yapilandirmasi {
     std::uint16_t n_samples = 1200;          // 200–1200 (A1 §3.4, A5-K78)
     std::uint16_t sample_period = 2222;      // 25 ns birimi, 80–40 000 (05 §2.4.5 varsayılanı, 50 m)
-    std::uint16_t transmit_duration_us = 0;  // 0: 4 · T_s, µs'ye yuvarlanmış [T] (MP7 §3 md.4);
+    std::uint16_t transmit_duration_us = 0;  // 0: 4 · T_s, µs'ye yuvarlanmış [T] (MP7 §3 md.4) ve
+                                             // 1–1000 µs'ye kırpılmış (ping360_darbe_us);
                                              // açık değer 1–1000 µs (ping-protocol `transducer`)
     std::uint16_t transmit_frequency_khz = 750;   // 500–1000
     std::uint8_t gain = 1;                   // 0 düşük, 1 olağan, 2 yüksek

@@ -93,6 +93,23 @@ void uye_ekle(Kopru::Ic& i, std::uint32_t msgid, const M& m, const sensor::Olcum
 
 }  // namespace
 
+std::size_t kritik_sensor_cerceve_boyu(sensor::SensorTuru tur)
+{
+    using sensor::SensorTuru;
+    std::size_t yuk = 0;
+    switch (tur) {
+    case SensorTuru::manyetometre: yuk = MAVLINK_MSG_ID_IDA_MAG_LEN; break;
+    case SensorTuru::basinc: yuk = MAVLINK_MSG_ID_IDA_BARO_LEN; break;
+    case SensorTuru::gnss: yuk = MAVLINK_MSG_ID_IDA_GNSS_LEN; break;
+    case SensorTuru::dvl: yuk = MAVLINK_MSG_ID_IDA_DVL_LEN; break;
+    case SensorTuru::ping1d: yuk = MAVLINK_MSG_ID_IDA_PING1D_LEN; break;
+    case SensorTuru::batarya_olcer: yuk = MAVLINK_MSG_ID_IDA_BATT_LEN; break;
+    case SensorTuru::sizinti: yuk = MAVLINK_MSG_ID_IDA_LEAK_LEN; break;
+    default: return 0;   // IMU, emniyet (A1-K113 (2), (3)), Ping360 (toplu), kamera: A_sensör dışı
+    }
+    return yuk + MAVLINK_NUM_NON_PAYLOAD_BYTES;   // kırpılmamış yük: üst sınır (A1-K05)
+}
+
 std::size_t Kopru::Ic::uye_boy(const SensorUye& u) const
 {
     // Kodlanmış boy (kırpılmış yük; A1-K05): gönderici kopyasıyla, seq ilerletilmeden.
@@ -269,6 +286,144 @@ void Kopru::olcum_ekle(const sensor::Olcum& o)
     }
 }
 
+// ---------------------------------------------------------------- Sonar (W4-bagla-sonar)
+
+void Kopru::ping1d_ekle(const sensor::OlcumBasligi& h, const Ping1dVerisi& v)
+{
+    Ic& i = *ic_;
+    if (i.durum != OturumDurumu::kosuyor) {
+        return;
+    }
+    // A1 Tablo 3.4b: alanlar dönüşümsüz; t_meas yansıma anıdır, gönderim anı t_meas − tx_offset
+    // (A1-K54). Kritik üye: penceresi t_hazır'a göre (A1-K35), yazımı pencere kapanışında.
+    mavlink_ida_ping1d_t m{};
+    m.t_meas_ns = h.t_meas_ns;
+    m.seq = h.seq;
+    m.distance = v.distance;
+    m.scan_start = v.scan_start;
+    m.scan_length = v.scan_length;
+    m.ping_number = v.ping_number;
+    m.tx_offset_ns = v.tx_offset_ns;
+    m.flags = h.flags;
+    m.inst = h.inst;
+    m.confidence = v.confidence;
+    uye_ekle(i, MAVLINK_MSG_ID_IDA_PING1D, m, h);
+    ++i.say.ping1d_uye;
+}
+
+void Kopru::ping360_ekle(const sensor::OlcumBasligi& h, const Ping360Verisi& v)
+{
+    Ic& i = *ic_;
+    if (i.durum != OturumDurumu::kosuyor) {
+        ++i.say.ping360_oturum_atilan;   // A1-K49: satır yalnız bir oturumun içinde gider
+        return;
+    }
+    // A1 §3.4 gönderen aralıkları (kart aralık dışı satırı atar; sim böyle satır göndermez).
+    if (v.data == nullptr || v.angle_grad > 399u || v.n_samples < 200u || v.n_samples > kPingOrnekAzami ||
+        v.sample_period < 80u || v.sample_period > 40000u || h.inst > 3u) {
+        ++i.say.ping360_gecersiz;
+        return;
+    }
+    if (i.p360_bekleyen.var) {
+        ++i.say.ping360_seyreltildi;   // A1-K37: gönderimi başlamamış eski satır atılır
+    }
+    Ping360Satir& s = i.p360_bekleyen;
+    s.var = true;
+    s.sonraki = 0;
+    s.t_hazir = h.t_teslim_ns;
+    s.bas = mavlink_ida_ping360_head_t{};
+    s.bas.t_meas_ns = h.t_meas_ns;   // gönderim anı (A1-K53); teslimdeki gecikme değiştirmez
+    s.bas.seq = h.seq;
+    s.bas.angle_grad = v.angle_grad;
+    s.bas.n_samples = v.n_samples;
+    s.bas.sample_period = v.sample_period;
+    s.bas.tx_duration_us = v.tx_duration_us;
+    s.bas.tx_freq_khz = v.tx_freq_khz;
+    s.bas.flags = h.flags;
+    s.bas.inst = h.inst;
+    s.bas.gain = v.gain;
+    s.bas.n_frag = static_cast<std::uint8_t>((v.n_samples + kPingParca - 1u) / kPingParca);   // A1-K49
+    s.veri.fill(0u);   // son parçanın kullanılmayan kuyruğu 0 (A1 §3.4)
+    std::copy(v.data, v.data + v.n_samples, s.veri.begin());
+}
+
+std::size_t Kopru::ping360_kuyruk() const
+{
+    return (ic_->p360_aktif.var ? 1u : 0u) + (ic_->p360_bekleyen.var ? 1u : 0u);
+}
+
+// A1-K36 (3) ve (5), A1-K112. `ayrilmis`: adım (3), sonarın ayrılmış payı: kredi yeterse sıradaki
+// tek çerçeve. Değilse adım (5): kredi ve B_pencere yettikçe sıradaki çerçeveler. Çerçeveler
+// bölünmez; sığmayan sırasını koruyarak sonraki pencereye kalır. Pencere bütçesi, kritik üyelerin
+// henüz yazılmamış payı yerine üst sınırı B_krit ile denetlenir (kritik üyeler hiçbir koşulda
+// sonar yüzünden kaymaz; A1 3.10 "en kötü pencere").
+void Kopru::Ic::sonar_hizmet(bool ayrilmis)
+{
+    for (;;) {
+        Ping360Satir* s = p360_aktif.var ? &p360_aktif : (p360_bekleyen.var ? &p360_bekleyen : nullptr);
+        if (s == nullptr) {
+            return;
+        }
+        const bool bas = s->sonraki >= s->bas.n_frag;
+        if (bas && p360_bas_bu_pencerede) {
+            return;   // A1-K34: partide en çok bir IDA_PING360_HEAD
+        }
+        mavlink_ida_ping360_data_t d{};
+        std::uint32_t msgid = MAVLINK_MSG_ID_IDA_PING360_HEAD;
+        const void* m = &s->bas;
+        std::size_t mb = sizeof s->bas;
+        if (!bas) {
+            d.seq = s->bas.seq;
+            d.inst = s->bas.inst;
+            d.frag_idx = s->sonraki;
+            std::copy_n(s->veri.begin() + static_cast<std::ptrdiff_t>(s->sonraki * kPingParca), kPingParca, d.data);
+            msgid = MAVLINK_MSG_ID_IDA_PING360_DATA;
+            m = &d;
+            mb = sizeof d;
+        }
+        // Kodlanmış boy (kırpılmış yük; A1-K05): gönderici kopyasıyla, seq ilerletilmeden.
+        std::size_t boy = 0;
+        {
+            ida_link_gonderici_t g = gonderici;
+            std::uint8_t t[IDA_LINK_CERCEVE_AZAMI];
+            if (ida_link_gonder(&g, msgid, m, mb, t, sizeof t, &boy) != IDA_LINK_TAMAM) {
+                boy = 0;
+            }
+        }
+        if (boy == 0u || sonar_kredi < static_cast<std::int64_t>(boy) || pen_bayt + kBKrit + boy > kBPencere) {
+            return;
+        }
+        std::size_t n = 0;
+        cerceve(msgid, m, mb, &n);
+        sonar_kredi -= static_cast<std::int64_t>(n);
+        pen_bayt += n;
+        ++pen_uye;
+        ++say.ping360_cerceve;
+        if (s == &p360_bekleyen) {
+            // Gönderimi başladı: artık seyreltilemez (A1-K37); yeni satır boşalan yere bekler.
+            p360_aktif = p360_bekleyen;
+            p360_bekleyen.var = false;
+        }
+        Ping360Satir& ak = p360_aktif;
+        if (bas) {
+            // HEAD satırın son çerçevesidir; teslim partisi HEAD'in partisidir (A1-K49, K50).
+            p360_bas_bu_pencerede = true;
+            ++say.ping360_satir;
+            const std::int64_t gec = pen_t_kapanis - ak.t_hazir;
+            if (gec > 0) {
+                say.ping360_gecikme_en_buyuk =
+                    std::max<std::uint64_t>(say.ping360_gecikme_en_buyuk, static_cast<std::uint64_t>((gec + kP - 1) / kP));
+            }
+            ak.var = false;
+        } else {
+            ++ak.sonraki;
+        }
+        if (ayrilmis) {
+            return;
+        }
+    }
+}
+
 void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
 {
     pen_uye = 0;
@@ -281,8 +436,14 @@ void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
         sonraki_emniyet.reset();
     }
     dar_bu_pencerede.fill(false);
+    pen_t_kapanis = t_onceki + kP;
+    // A1-K112: sonar kredisi her pencere başında (kuyruk boşken de) birikir.
+    sonar_kredi = std::min<std::int64_t>(sonar_kredi + kRs, kCsMax);
+    p360_bas_bu_pencerede = false;
     // Bekleyen daraltıcılar: tür kovası izin verdiğinde (A1-K61, K119; sol #10).
     dar_hizmet();
+    // A1-K36 (3): sonarın ayrılmış payı (kuyruk boş değilse, kredi yeterse bir tam çerçeve).
+    sonar_hizmet(true);
     // Toplu komutlar (A1-K36): t_hazır ≤ t_{n−1}; partide ≤ 4, kredi ve kova içinde.
     kredi = std::min<std::int64_t>(kredi + kRc, kCcMax);
     std::size_t yazilan = 0;
@@ -320,6 +481,8 @@ void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
         ++yazilan;
     }
     say.komut_ertelendi += toplu.empty() ? 0u : (toplu.front().t_hazir <= t_onceki ? 1u : 0u);
+    // A1-K36 (5): sonar kredisi ve B_pencere yettiği sürece sıradaki tam Ping360 çerçeveleri.
+    sonar_hizmet(false);
 }
 
 std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t duvar_ns, std::int64_t w_tn)
@@ -528,6 +691,14 @@ std::optional<std::uint32_t> Kopru::parti_kapat(std::int64_t t_n, std::int64_t d
     tf.tf_flags = static_cast<std::uint8_t>(i.pen_imu ? IDAW_TF_FLAGS_IMU : 0u);
     tf.run_mode = static_cast<std::uint8_t>(i.hazirlik_gerekli ? CalistirmaKipi::hazirlik : i.a.kip);
     i.cerceve(MAVLINK_MSG_ID_IDA_TIME_FRAME, &tf, sizeof tf);
+    {
+        // Parti boyu (TF dahil; W4-bagla-sonar kabul 6): yalnız sayaç, akışı değiştirmez.
+        const std::uint64_t bayt = i.pen_bayt + kritik;
+        i.say.parti_bayt_en_buyuk = std::max<std::uint64_t>(i.say.parti_bayt_en_buyuk, bayt);
+        i.say.parti_uye_en_buyuk = std::max<std::uint64_t>(i.say.parti_uye_en_buyuk, i.pen_uye);
+        ++i.say.parti_bayt_dagilim[std::min<std::size_t>(static_cast<std::size_t>(bayt / 100u),
+                                                         i.say.parti_bayt_dagilim.size() - 1u)];
+    }
     i.tf_var = true;
     i.son_seq = tf.batch_seq;
     i.tf_kayit.koy(tf.batch_seq, TfKaydi{t_n, duvar_ns});

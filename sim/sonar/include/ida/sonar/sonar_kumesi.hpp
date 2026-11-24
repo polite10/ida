@@ -46,7 +46,15 @@ struct SonarSayaclari {
     std::uint64_t ping = 0;                // atılan ping (bütün sonarlar)
     std::uint64_t isin = 0;                // izlenen ışın
     std::uint64_t havada = 0;              // dönüştürücü havadayken atılan ping (05 §4; eko yok)
+    // Yük tamponu havuzu boşken koşu sırasında ayrılan tampon (W4-K27 (5); 0 beklenir: havuz
+    // kurulumda sonar başına en çok bulunabilecek kayıt sayısı kadar doldurulur).
+    std::uint64_t tampon_yetersiz = 0;
 };
+
+// Ping360'ın gerçekleşen darbe süresi, µs: açık değer (1–1000) aynen; 0 (otomatik) ise
+// 4 · T_s µs'ye yuvarlanır ve cihaz aralığına (1–1000 µs, ping-protocol Ping360 `transducer`)
+// kırpılır (W4-bagla-sonar sol #2: otomatik = "geçerli bir değer seç").
+std::uint16_t ping360_darbe_us(const Ping360Yapilandirmasi& y);
 
 class SonarKumesi {
 public:
@@ -67,6 +75,27 @@ public:
     std::size_t bekleyen() const;
     bool siradaki(std::int64_t t_kadar_ns, SonarOlcumu& cikti);
     void bosalt(std::int64_t t_kadar_ns, std::vector<SonarOlcumu>& cikti);
+
+    // Sabit bellekli kullanım (W4-K27 (5); W4-bagla-sonar sol #5). Çalışma tamponları ve kayıt
+    // yük tamponlarının havuzu `kur`da ayrılır; aşağıdaki düzenle `adim` ve boşaltma bellek
+    // ayırmaz (havuz boşalırsa `tampon_yetersiz` sayılır):
+    //   cikti.reserve(kume.teslim_kapasitesi());   // kurulumda bir kez
+    //   kume.geri_al(cikti);                        // her sınırda: önceki kayıtların tamponları havuza
+    //   kume.adim(...);  kume.bosalt(t_n, cikti, kume.teslim_kapasitesi());
+    // `bosalt` `cikti`'ya en çok `azami` kayıt ekler (`cikti.capacity()` ≥ `azami` olmalı); sığmayan
+    // hazır kayıtlar düşürülür, tamponları havuza döner ve sayıları döner.
+    std::size_t bosalt(std::int64_t t_kadar_ns, std::vector<SonarOlcumu>& cikti, std::size_t azami);
+    // Boşaltılmış kayıtların yük tamponlarını havuza geri verir; `v` boşalır (kapasitesi kalır).
+    void geri_al(std::vector<SonarOlcumu>& v);
+    // Bir sınırda teslim edilebilecek en çok kayıt: etkin sonar sayısı × sonar başına kuyruk sınırı.
+    std::size_t teslim_kapasitesi() const;
+
+    // A1 kapasite ön denetimi için (W4-bagla-sonar sol #1): etkin her Ping1D'nin iki gönderimi
+    // arasındaki en kısa ortalama süre, ns: max(adım, (1 + ppm·10⁻⁶) · max(ping_araligi_ns,
+    // T_dinleme + T_işlem)); T_dinleme en kısa pencereyle (otomatik menzilde 0,5 m ya da daha kısa
+    // ilk pencere). Ardışık gönderim anları adım ızgarasına yuvarlandığından tek tek aralıklar
+    // bundan bir adımın yarısı kadar kısa olabilir; uzun dönem ortalaması bunu aşmaz.
+    std::vector<std::int64_t> ping1d_en_kisa_aralik_ns() const;
 
     // Cihaz yapılandırması (05 §2.4.5 komut tablosu): süren ping tamamlanır, yeni yapılandırma
     // sonraki pingte geçerli olur; bekleyenin yerini en yenisi alır. Aralık dışı alan reddedilir,
