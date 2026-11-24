@@ -211,6 +211,7 @@ typedef struct {
 static ka_model_t K;
 static int64_t g_T_cagri; /* bu çağrıda geçerli T_emn_bayat (commit adım sonunda uygulanır) */
 static bool g_degismez = true;
+static bool g_bit_denetimi = false;
 static ka_kapsam_t g_kapsam;
 
 /* Alıcının (sim) durumu. */
@@ -240,6 +241,11 @@ static int g_n_ornek;
 void ka_degismez_ac(bool acik)
 {
     g_degismez = acik;
+}
+
+void ka_model_bit_denetimi(bool acik)
+{
+    g_bit_denetimi = acik;
 }
 
 const ka_kapsam_t *ka_kapsam(void)
@@ -342,6 +348,7 @@ static void model_sifirla(void)
 void ka_kur(int n_ornek)
 {
     g_degismez = true;
+    g_bit_denetimi = false;
     ka_ayar_varsayilan();
     kc_ortam_kur(n_ornek);
     g_n_ornek = n_ornek;
@@ -359,6 +366,7 @@ void ka_kur(int n_ornek)
 ida_rc_t ka_kur_init(int n_ornek, const ida_init_in_t *ii)
 {
     g_degismez = true;
+    g_bit_denetimi = false;
     ka_ayar_varsayilan();
     kc_ortam_kur(n_ornek);
     g_n_ornek = n_ornek;
@@ -773,6 +781,17 @@ ida_in_t *ka_girdi_seq(uint32_t seq)
     return in;
 }
 
+ida_in_t *ka_girdi_oturum_sonu(void)
+{
+    bool izgara = ka_ayar.izgara;
+    ka_ayar.izgara = true; /* tf yok; örnek, kalp atışı ve komut eklenmez */
+    ida_in_t *in = girdi_kur(false, 0u);
+    ka_ayar.izgara = izgara;
+    in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
+    in->plat.link_state = (uint8_t)IDA_LINK_NONE;
+    return in;
+}
+
 /* ---- Modelin güncellenmesi ---------------------------------------------------------------- */
 
 static bool seri_yeni(uint32_t a, uint32_t b)
@@ -969,6 +988,24 @@ static bool model_izin_acik(unsigned tube, int64_t now)
             continue;
         }
         if (now - o->now_w < (int64_t)o->e.hold_ns) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ka_model_izin_acik(uint8_t tube, int64_t now)
+{
+    return tube < IDA_PORT_N_TUBE && model_izin_acik(tube, now);
+}
+
+/* A4 §3.16 FIRE_PENDING: sonucu beklenen FIRE var. Sonucu kabul edilen bir çağrıda verilmemiş
+   (bekleyen kuyrukta duran) FIRE olayı var mı. */
+static bool model_fire_bekliyor(void)
+{
+    for (size_t k = 0; k < g_bekleyen_n; ++k) {
+        const ka_olay_t *o = olay_ref(g_bekleyen[k].i);
+        if (o != NULL && o->e.event_id == g_bekleyen[k].id && o->e.kind == IDA_EVT_FIRE && !o->teslim_edildi) {
             return true;
         }
     }
@@ -1247,8 +1284,10 @@ static void olaylari_isle(const ida_in_t *in, const ida_out_t *o, bool test_kipi
 }
 
 /* Sonucu hiç gelmeyen FIRE ve SAFETY_CLOSE: apply_by + 100 ms sonra FAULT_LATCHED (G-Ç42,
-   G-Ç49, G-Ç50; W5-K2, W5-K11 (a)). */
-static void kayiplari_denetle(const ida_in_t *in, const ida_out_t *o)
+   G-Ç49, G-Ç50; W5-K2, W5-K11 (a)). Süre, dolduktan sonraki ilk KABUL EDİLEN çağrıda
+   denetlenir: reddedilen çağrıda (BAD_INPUT, DUP_SEQ, OLD_SEQ) atış kontrolün adım kısmı
+   çalışmaz (A4-K26), geçiş ancak sonraki kabul edilen çağrıda olabilir. */
+static void kayiplari_denetle(const ida_in_t *in, const ida_out_t *o, bool kabul)
 {
     int64_t now = in->now_w.ns;
     bool fl = o->fc.state == IDA_FCS_FAULT_LATCHED ||
@@ -1263,7 +1302,7 @@ static void kayiplari_denetle(const ida_in_t *in, const ida_out_t *o)
             if (now >= son - KA_P && fl) {
                 K.kayip_tamam[k] = true;
             }
-            if (now > son) {
+            if (now > son && kabul) {
                 if (g_degismez) {
                     KA_DOGRULA(K.kayip_tamam[k],
                                "sonucu gelmeyen %s (tüp %u, olay %llx): apply_by + 100 ms (%lld ns) sonra fc.state %s, "
@@ -1339,8 +1378,41 @@ static ida_rc_t cagri_yurut(bool out_null)
                      (g_onceki_var && g_onceki.fc.state == IDA_FCS_TEST && !fc_test_exit_kabul(in, o));
     degismez_komutlar(in, o, kabul);
     olaylari_isle(in, o, test_kipi);
-    kayiplari_denetle(in, o);
+    kayiplari_denetle(in, o, kabul);
+    if (g_degismez && g_bit_denetimi && kabul) {
+        /* Modelden çıktıya (özellik testleri): girdiden bağımsız hesaplanan etkin değer
+           kısıtlayan ya da acil durdurma kesin bayatsa ilgili engel biti kurulu olmalıdır
+           (A4-K116, A4 §3.16, G-Ç29). Bayatlık yalnız T_emn_bayat bu çağrıda değişmediyse
+           (commit çağrı sonunda uygulanır; A4-K81) denetlenir. */
+        bool bayat = K.bayat && ka_t_emn_bayat() == g_T_cagri;
+        KA_DOGRULA(!(K.estop_taban || bayat) || (o->fc.inhibit_mask & IDA_FCI_ESTOP) != 0u,
+                   "modelde acil durdurma %s ama ESTOP biti yok (inhibit 0x%05lx; A4-K116, G-Ç29)",
+                   K.estop_taban ? "kısıtlayan" : "kesin bayat", (unsigned long)o->fc.inhibit_mask);
+        for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+            uint32_t fis = t == 0u ? IDA_FCI_PLUG_T0 : IDA_FCI_PLUG_T1;
+            uint32_t pim = t == 0u ? IDA_FCI_PIN_T0 : IDA_FCI_PIN_T1;
+            KA_DOGRULA(!K.fis[t] || (o->fc.inhibit_mask & fis) != 0u,
+                       "modelde tüp %u'nun fişi kısıtlayan ama PLUG biti yok (inhibit 0x%05lx; A4-K116)", t,
+                       (unsigned long)o->fc.inhibit_mask);
+            KA_DOGRULA(!K.pim[t] || (o->fc.inhibit_mask & pim) != 0u,
+                       "modelde tüp %u'nun pimi kısıtlayan ama PIN biti yok (inhibit 0x%05lx; A4-K116)", t,
+                       (unsigned long)o->fc.inhibit_mask);
+        }
+    }
     if (g_degismez) {
+        /* A4 §3.16 dış durum eşlemesi: ARMED = "açık izin yok"; FIRE_PENDING = "sonucu
+           beklenen FIRE var". */
+        if (o->fc.state == IDA_FCS_ARMED) {
+            for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+                KA_DOGRULA(!model_izin_acik(t, in->now_w.ns),
+                           "fc.state ARMED ama tüp %u'nun izni çekirdekçe açık (APPLIED alınmış, hold_ns dolmamış, "
+                           "kapatılmamış SAFETY_OPEN var; A4 §3.16: ARMED yalnız açık izin yokken)",
+                           t);
+            }
+        }
+        if (o->fc.state == IDA_FCS_FIRE_PENDING) {
+            KA_DOGRULA(model_fire_bekliyor(), "fc.state FIRE_PENDING ama sonucu beklenen FIRE yok (A4 §3.16)");
+        }
         /* Değişmez (c): FAULT_LATCHED yalnız kabul edilen FC_RESET ile terk edilir (G-Ç19, G-Ç20). */
         if (g_onceki_var && g_onceki.fc.state == IDA_FCS_FAULT_LATCHED && o->fc.state != IDA_FCS_FAULT_LATCHED) {
             KA_DOGRULA(fc_reset_kabul(in, o), "FAULT_LATCHED → %s: bu çağrıda kabul edilen FC_RESET yok (değişmez (c); G-Ç19)",
@@ -1516,36 +1588,34 @@ void ka_arac_silahla(void)
     }
 }
 
-static bool kip_dene(uint8_t kip)
-{
-    ida_in_t *in = ka_girdi();
-    if (kip == IDA_MODE_GUIDED || kip == IDA_MODE_AUTO) {
-        uint32_t id = ka_yeni_id();
-        kc_komut_ekle(in, id, (uint8_t)IDA_CMD_SET_MODE)->u.set_mode.mode = kip;
-    } else {
-        (void)ka_mandal(in, (uint8_t)IDA_NARROW_MODE);
-        in->narrow.mode = kip;
-    }
-    (void)ka_cagir();
-    ka_adimlar(2);
-    return ka_out()->status.mode == kip && (ka_out()->fc.inhibit_mask & IDA_FCI_MODE) == 0u;
-}
-
 void ka_kip_sec(void)
 {
-    static const uint8_t adaylar[] = {IDA_MODE_GUIDED, IDA_MODE_STATION_KEEP, IDA_MODE_DEPTH_HOLD, IDA_MODE_STABILIZE,
-                                      IDA_MODE_MANUAL};
-    if ((ka_out()->fc.inhibit_mask & IDA_FCI_MODE) == 0u) {
+    /* W5-K15: atış izni kümesi {GUIDED}. GUIDED'ın ön koşulu (kestirim düzeyi; A4 §3.17
+       SET_MODE satırı) zamanla sağlanabileceği için istek en çok 10 s yinelenir. */
+    if (ka_out()->status.mode == IDA_MODE_GUIDED && (ka_out()->fc.inhibit_mask & IDA_FCI_MODE) == 0u) {
         return;
     }
-    for (size_t i = 0; i < sizeof adaylar; ++i) {
-        if (kip_dene(adaylar[i])) {
+    const ida_cmd_result_t *r = NULL;
+    uint16_t son_neden = 0u;
+    uint8_t son_ack = 0u;
+    for (int k = 0; k < 200; ++k) {
+        ida_in_t *in = ka_girdi();
+        uint32_t id = ka_yeni_id();
+        kc_komut_ekle(in, id, (uint8_t)IDA_CMD_SET_MODE)->u.set_mode.mode = (uint8_t)IDA_MODE_GUIDED;
+        (void)ka_cagir();
+        r = ka_sonuc(id);
+        son_ack = r != NULL ? r->ack : 0u;
+        son_neden = r != NULL ? r->reason : 0u;
+        ka_adimlar(2);
+        if (ka_out()->status.mode == IDA_MODE_GUIDED && (ka_out()->fc.inhibit_mask & IDA_FCI_MODE) == 0u) {
             return;
         }
+        ka_adimlar(7);
     }
-    ka_basarisiz(__LINE__, "hazırlık: MODE biti GUIDED, STATION_KEEP, DEPTH_HOLD, STABILIZE ve MANUAL'ın hiçbirinde kalkmadı "
-               "(kip %u, inhibit 0x%05lx; A4 §3.16 MODE: atış izni kümesi)",
-               (unsigned)ka_out()->status.mode, (unsigned long)ka_out()->fc.inhibit_mask);
+    ka_basarisiz(__LINE__, "hazırlık: 10 s'de GUIDED'a geçilemedi ya da MODE biti kalkmadı (son SET_MODE %u/%u, kip %u, "
+               "est_level %u, inhibit 0x%05lx; W5-K15: küme {GUIDED}; GUIDED'ın ön koşulu kestirim düzeyi, W5-K12)",
+               (unsigned)son_ack, (unsigned)son_neden, (unsigned)ka_out()->status.mode, (unsigned)ka_out()->nav.est_level,
+               (unsigned long)ka_out()->fc.inhibit_mask);
 }
 
 void ka_fc_hazir_bekle(void)

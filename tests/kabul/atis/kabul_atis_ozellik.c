@@ -75,6 +75,9 @@ static uint32_t g_son_id[8];
 static void hazirla(void)
 {
     ka_kur(1);
+    /* Etkin değer ve bayatlık modeli girdiden hesaplanır; çıktının engel bitleri ona göre
+       denetlenir (çıktının ESTOP bitine dayanmaz). */
+    ka_model_bit_denetimi(true);
     ka_oturum_baslat();
     g_oturumsuz = 0;
     g_kesinti = 0;
@@ -244,12 +247,20 @@ static void adim(const profil_t *p)
         oturum_sonu = true;
         g_oturumsuz = 5 + (int)kc_rng_aralik(&R, 60u);
     }
-    /* Çağrı türü. */
+    /* Çağrı türü. Oturum sonu platformun A4-K122 çağrısıyla verilir (örnek ve komut yok):
+       SESSION_END'i aynı çağrıda gevşek emniyet örneğiyle birleştiren girdide örneğin etkisi
+       sözleşmede açıkça sıralanmadığından (mimar kararı bekleniyor; kabul.atis.G-Ç18) özellik
+       testleri ona dayanmaz. */
     uint32_t tur = kc_rng_aralik(&R, 1000u);
     bool red = false;
     bool nul = false;
     ida_in_t *in;
-    if (tur < 20u) {
+    if (oturum_sonu) {
+        nul = tur >= 995u;
+        ka_ayar.sonuclari_tut = nul;
+        in = ka_girdi_oturum_sonu();
+        ka_ayar.sonuclari_tut = false;
+    } else if (tur < 20u) {
         in = ka_girdi_seq(kc_son_seq() - (uint32_t)kc_rng_aralik(&R, 3u));
         red = true;
     } else {
@@ -263,14 +274,11 @@ static void adim(const profil_t *p)
         in = ka_girdi();
         ka_ayar.sonuclari_tut = false;
     }
-    if (oturum_sonu) {
-        in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
-        in->plat.link_state = (uint8_t)IDA_LINK_NONE;
-    } else if (oturum_baslangici) {
+    if (oturum_baslangici) {
         in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
     }
     /* Geçersiz / inst 1 emniyet örnekleri. */
-    if (olasilik(p->gecersiz, 1000u) && in->n_samples < IDA_PORT_MAX_SAMPLES) {
+    if (!oturum_sonu && olasilik(p->gecersiz, 1000u) && in->n_samples < IDA_PORT_MAX_SAMPLES) {
         uint32_t g = kc_rng_aralik(&R, 3u);
         ida_sample_t *s = ka_emniyet_ekle(in, (uint8_t)(g == 1u ? 1u : 0u), (uint8_t)kc_rng_aralik(&R, 3u), KC_TUP_ACIK,
                                           tup_eksik(IDA_TUBE_PIN_OUT));
@@ -285,8 +293,9 @@ static void adim(const profil_t *p)
        modülünde atış kontrol dışı bir sapma var (IMU_REJECTED çağrısında SET_MODE(GUIDED)
        IMU_REJECTED yerine NARROWED alıyor; A4-K45, K103; rapor). */
     bool arac_temiz = !red && !nul && !ka_ayar.tick && !ka_ayar.imu_bozuk && g_lag == 0 && ka_ayar.imu_gecikme == 0;
-    /* Kalp atışı gelmezken yer istasyonundan komut da gelmez (bağlantı yok). */
-    bool yer_ist = ka_ayar.heartbeat;
+    /* Kalp atışı gelmezken yer istasyonundan komut da gelmez (bağlantı yok); oturum sonu
+       çağrısında komut yoktur (A4-K122). */
+    bool yer_ist = ka_ayar.heartbeat && !oturum_sonu;
     if (yer_ist && arac_temiz && (m & IDA_FCI_NOT_ARMED) != 0u && olasilik(1u, 5u) && in->n_cmds < IDA_PORT_MAX_CMDS) {
         (void)ka_komut(in, (uint8_t)IDA_CMD_ARM);
     }
@@ -329,7 +338,7 @@ static void adim(const profil_t *p)
         if (d < 4u) {
             static const uint8_t bit[4] = {IDA_NARROW_FC_DISARM, IDA_NARROW_FC_ABORT, IDA_NARROW_DISARM, IDA_NARROW_MODE};
             (void)ka_mandal(in, bit[d]);
-        } else if (in->n_cmds < IDA_PORT_MAX_CMDS) {
+        } else if (!oturum_sonu && in->n_cmds < IDA_PORT_MAX_CMDS) {
             (void)ka_fc(in, (uint8_t)(d == 4u ? IDA_FC_DISARM : IDA_FC_ABORT), (uint8_t)kc_rng_aralik(&R, 256u));
             (*ka_son_komut(in)).u.fc.arg1 = (uint32_t)kc_rng_aralik(&R, 2u);
         }
@@ -342,12 +351,18 @@ static void adim(const profil_t *p)
            üretilmez. */
         in->narrow.mode = (uint8_t)IDA_MODE_DEPTH_HOLD;
     }
-    if (nul) {
-        (void)ka_cagir_out_null();
-    } else {
-        (void)ka_cagir();
+    /* Daraltıcının etkisi için çağrı öncesi model: çekirdekçe açık sayılan izinler (G-Ç11). */
+    bool izin_once[IDA_PORT_N_TUBE];
+    for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+        izin_once[t] = ka_model_izin_acik((uint8_t)t, in->now_w.ns);
     }
-    /* (e) FC_DISARM / FC_ABORT her tüpe uygulanır: çağrı sonunda ARMED ya da PERMIT_OPEN yok. */
+    ida_rc_t rc;
+    if (nul) {
+        rc = ka_cagir_out_null();
+    } else {
+        rc = ka_cagir();
+    }
+    /* (e) Daraltıcı komutun etkisi (yalnız ACCEPTED sonucu değil). */
     if (!nul) {
         bool fcdar = (in->narrow.mask & (IDA_NARROW_FC_DISARM | IDA_NARROW_FC_ABORT)) != 0u;
         unsigned nc = in->n_cmds < IDA_PORT_MAX_CMDS ? in->n_cmds : IDA_PORT_MAX_CMDS;
@@ -357,9 +372,25 @@ static void adim(const profil_t *p)
             }
         }
         if (fcdar) {
+            /* FC_DISARM / FC_ABORT her tüpe ve her dönüş kodunda uygulanır: çağrı sonunda ARMED ya
+               da PERMIT_OPEN yok ve çekirdekçe açık sayılan her izin aynı çağrıda kapatılır
+               (W5-K7, W5-K8, G-Ç06, G-Ç19, G-Ç32). */
             KA_DOGRULA(ka_out()->fc.state != IDA_FCS_ARMED && ka_out()->fc.state != IDA_FCS_PERMIT_OPEN,
                        "FC_DISARM/FC_ABORT çağrısının sonunda fc.state %s (değişmez (e); W5-K7, G-Ç06)",
                        ka_durum_adi(ka_out()->fc.state));
+            for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+                KA_DOGRULA(!izin_once[t] || ka_kapanma_var(ka_out(), (uint8_t)t),
+                           "FC_DISARM/FC_ABORT çağrısında açık izinli tüp %u için SAFETY_CLOSE yok (dönüş %d; değişmez (e); "
+                           "W5-K8, G-Ç19)",
+                           t, (int)rc);
+            }
+        }
+        /* Kip mandalı: kabul edilen çağrının sonunda kip atış izni kümesinin ({GUIDED}; W5-K15)
+           dışındadır, MODE biti kurulu (A4 §3.16, A4-K44, A4-K46). */
+        if ((in->narrow.mask & IDA_NARROW_MODE) != 0u && (rc == IDA_RC_OK || rc == IDA_RC_IMU_REJECTED)) {
+            KA_DOGRULA((ka_out()->fc.inhibit_mask & IDA_FCI_MODE) != 0u,
+                       "kip mandalının (hedef %u) kabul edilen çağrısında MODE biti yok (değişmez (e); W5-K15, A4 §3.16)",
+                       (unsigned)in->narrow.mode);
         }
     }
 }

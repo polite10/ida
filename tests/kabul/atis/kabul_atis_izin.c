@@ -749,6 +749,118 @@ static void t_f7_silahli(void)
     t_gc53_dolu_celiskisi();
 }
 
+/* ---- G-Ç29 (W5-K4 eki), G-Ç20 (G-Ç53 ikinci çelişki), A4 §3.16 durum eşlemesi ------------------- */
+
+static void t_gc29_geri_alim_zamani_silahli(void)
+{
+    /* İzin açıkken, kabul edildiği çağrıda izleri bayatlatan örnek (alım zamanı geri gider;
+       seq büyük, t_meas ilerlemiş): aynı çağrıda ESTOP kurulu, genişletici olay yok, izin o
+       çağrıda kapanır ve FC silahlı ya da izin açık durumda kalmaz (G-Ç29 ölçüt (i); W5-K4
+       eki). */
+    int64_t T = ka_t_emn_bayat();
+    ka_hazir(2, 0u);
+    ka_ayar.politika[IDA_EVT_FIRE].gecikme = 30u; /* FIRE'ın sonucu geç gelir; izin açık kalır */
+    const ka_olay_t *o = ka_izin_iste(0u, ADIM);
+    uint64_t oid = o->e.event_id;
+    for (int k = 0; k < 10; ++k) {
+        const ka_olay_t *e = ka_olay_kimlikle(oid);
+        if (e != NULL && e->teslim_edildi) {
+            break;
+        }
+        (void)ka_adim();
+    }
+    KA_DOGRULA(ka_model_izin_acik(0u, ka_simdi()), "hazırlık: SAFETY_OPEN(tüp 0) APPLIED alınmadı ya da izin açık değil");
+    /* Olağan geri okumalı (PERMIT_OPEN, LOADED alıcı modelinden) inst 0 örneğinin yalnız alım
+       zamanı geri alınır. */
+    ida_in_t *in = ka_girdi();
+    ida_sample_t *s = NULL;
+    for (unsigned i = 0; i < in->n_samples; ++i) {
+        if (in->samples[i].hdr.type == IDA_SENS_SAFETY && in->samples[i].hdr.inst == 0u) {
+            s = &in->samples[i];
+        }
+    }
+    KA_DOGRULA(s != NULL, "düzenek: emniyet örneği yok");
+    s->hdr.t_rx.ns = in->now_w.ns - (T + 65 * KA_MS);
+    (void)ka_cagir();
+    const ida_out_t *out = ka_out();
+    KA_DOGRULA((out->fc.inhibit_mask & IDA_FCI_ESTOP) != 0u,
+               "izin açıkken bayatlatan örneğin çağrısında ESTOP yok (G-Ç29 ölçüt (i); W5-K4 eki)");
+    KA_DOGRULA(!ka_genisletici_olay_var(out), "bayatlatan örneğin çağrısında genişletici olay (G-Ç29, değişmez (a))");
+    KA_DOGRULA(ka_kapanma_var(out, 0u), "izin açıkken bayatlatan örneğin çağrısında SAFETY_CLOSE(tüp 0 ya da ALL) yok (G-Ç29)");
+    KA_DOGRULA(durum() != IDA_FCS_ARMED && durum() != IDA_FCS_PERMIT_OPEN,
+               "bayatlıkta fc.state %s (G-Ç29: FC güvenli duruma)", ka_durum_adi(durum()));
+}
+
+static void t_gc20_dolu_celiskisi_reset(void)
+{
+    /* G-Ç53'ün ikinci çelişkisi (FIRE APPLIED sonrası LOADED = 1) süren nedendir: çelişki
+       sürerken FC_RESET kabul edilir ama aynı çağrıda yeniden FAULT_LATCHED olunur; çelişki
+       kalkınca FC_RESET kilitten çıkarır (W5-K1, G-Ç20). */
+    ka_hazir(2, 0u);
+    ka_ayar.loaded_elle = true; /* alıcı LOADED'ı düşürmez */
+    (void)atis_dongusu(0u);
+    bool kilit = false;
+    for (int k = 0; k < 3 && !kilit; ++k) {
+        (void)ka_adim();
+        kilit = durum() == IDA_FCS_FAULT_LATCHED;
+    }
+    KA_DOGRULA(kilit, "FIRE APPLIED sonrası LOADED = 1: FAULT_LATCHED bekleniyordu (G-Ç53, W5-K4)");
+    for (int k = 0; k < 3; ++k) {
+        ida_in_t *in = ka_girdi();
+        uint32_t r = ka_fc(in, (uint8_t)IDA_FC_RESET, 0u);
+        (void)ka_cagir();
+        KA_SONUC(r, IDA_ACK_ACCEPTED, IDA_REASON_NONE, "LOADED çelişkisi sürerken FC_RESET (W5-K1: kabul edilir)");
+        KA_DOGRULA(durum() == IDA_FCS_FAULT_LATCHED,
+                   "LOADED çelişkisi sürerken FC_RESET sonrası fc.state %s, aynı çağrıda FAULT_LATCHED bekleniyordu (G-Ç20)",
+                   ka_durum_adi(durum()));
+        KA_DOGRULA(!ka_genisletici_olay_var(ka_out()), "FC_RESET genişletici olay üretti (G-Ç20)");
+    }
+    ka_ayar.loaded_elle = false; /* geri okuma tüpü boş gösterir: çelişki kalktı */
+    ka_adimlar(3);
+    KA_DOGRULA(durum() == IDA_FCS_FAULT_LATCHED, "çelişki kalkınca kilit kendiliğinden temizlendi (G-Ç19)");
+    ida_in_t *in = ka_girdi();
+    uint32_t r = ka_fc(in, (uint8_t)IDA_FC_RESET, 0u);
+    (void)ka_cagir();
+    KA_SONUC(r, IDA_ACK_ACCEPTED, IDA_REASON_NONE, "çelişki kalkınca FC_RESET");
+    KA_DOGRULA(durum() == IDA_FCS_SAFE, "çelişki kalkınca FC_RESET sonrası fc.state %s, SAFE bekleniyordu (G-Ç20)",
+               ka_durum_adi(durum()));
+    KA_DOGRULA(!ka_genisletici_olay_var(ka_out()) && !ka_out()->armed,
+               "FC_RESET izin açtı ya da silahlandırdı (G-Ç20)");
+}
+
+static void t_gc02_durum_eslemesi(void)
+{
+    /* A4 §3.16: FIRE_PENDING yalnız sonucu beklenen FIRE varken; ARMED yalnız açık izin yokken.
+       FIRE'ın sonucu geç verilir; APPLIED geldikten sonra izin (hold_ns) dolana dek fc.state ne
+       ARMED ne FIRE_PENDING olabilir. (İki eşleme her çağrıda düzenekte de denetlenir.) */
+    ka_hazir(2, 0u);
+    ka_ayar.politika[IDA_EVT_FIRE].gecikme = 6u;
+    const ka_olay_t *f = atis_dongusu(0u);
+    uint64_t fid = f->e.event_id;
+    bool bekleme_goruldu = false;
+    bool pencere_goruldu = false;
+    for (int k = 0; k < 120; ++k) {
+        const ka_olay_t *e = ka_olay_kimlikle(fid);
+        bool bekliyor = e != NULL && !e->teslim_edildi;
+        uint8_t st = durum();
+        bool izin = ka_model_izin_acik(0u, ka_simdi());
+        if (bekliyor) {
+            bekleme_goruldu = true;
+        }
+        KA_DOGRULA(st != IDA_FCS_FIRE_PENDING || bekliyor, "FIRE'ın sonucu alındıktan sonra fc.state FIRE_PENDING (A4 §3.16)");
+        KA_DOGRULA(st != IDA_FCS_ARMED || !izin, "tüp 0'ın izni açıkken fc.state ARMED (A4 §3.16)");
+        if (!bekliyor && e != NULL && e->sonuc == IDA_EVR_APPLIED && izin) {
+            pencere_goruldu = true;
+            KA_DOGRULA(st != IDA_FCS_ARMED && st != IDA_FCS_FIRE_PENDING,
+                       "FIRE APPLIED sonrası izin süresi dolmadan fc.state %s (A4 §3.16)", ka_durum_adi(st));
+        }
+        (void)ka_adim();
+    }
+    KA_DOGRULA(bekleme_goruldu && pencere_goruldu,
+               "senaryo kapsanmadı: FIRE sonucu beklenmesi %d, APPLIED sonrası açık izin penceresi %d", (int)bekleme_goruldu,
+               (int)pencere_goruldu);
+}
+
 static const ka_test_t TESTLER[] = {
     {"izin_yalniz_fc_fire", t_gc47_izin_yalniz_fc_fire},
     {"fire_baglantisi", t_gc21_fire_baglantisi},
@@ -777,6 +889,9 @@ static const ka_test_t TESTLER[] = {
     {"f11_revizyon", t_f11_revizyon},
     {"f12_tek_cikis", t_f12_tek_cikis},
     {"f7_silahli", t_f7_silahli},
+    {"geri_alim_zamani_silahli", t_gc29_geri_alim_zamani_silahli},
+    {"dolu_celiskisi_reset", t_gc20_dolu_celiskisi_reset},
+    {"durum_eslemesi", t_gc02_durum_eslemesi},
 };
 
 int main(int argc, char **argv)

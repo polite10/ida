@@ -2,7 +2,7 @@
  * tests/kabul/atis — atış kontrolün emniyet zincirinin bağımsız kabul testleri: düzenek.
  *
  * Kaynak (yalnız bunlar): mimari Bölüm 03 sürüm 0.3'ün "Ek: uygulama gereksinimleri (emniyet
- * zinciri)" (G-Ç01–G-Ç53) ve §7 arıza tablosu; docs/gorevler/W5-ortak.md (W5-K1…K11);
+ * zinciri)" (G-Ç01–G-Ç53) ve §7 arıza tablosu; docs/gorevler/W5-ortak.md (W5-K1…K19);
  * A4 sözleşmesi (docs/sozlesmeler/A4-port.md 1.0.1, core/include/ida/port.h); var olan
  * tests/kabul/cekirdek düzeneği. Çekirdeğin uygulama kaynağı (core/src) ve birim testleri
  * (core/test) okunmadı. Çekirdeğe yalnız A4 portunun işlevleri üzerinden erişilir (kara kutu).
@@ -21,9 +21,9 @@
  *     G-Ç21, G-Ç24, G-Ç29, G-Ç47 ve W5 değişmezleri (a)–(f));
  *   - hazırlık: oturum, araç silahlandırma, kip seçimi ve FC_ARM (ka_hazir).
  *
- * Kip seçimi uyarlamalıdır: A4 §3.16 "MODE: kip atış izni kümesinde değil" der ama kümeyi
- * vermez; hazırlık sırayla GUIDED, STATION_KEEP, DEPTH_HOLD, STABILIZE ve MANUAL'ı dener ve
- * MODE bitinin kalktığı ilk kipi seçer.
+ * Kip seçimi: A4 §3.16 "MODE: kip atış izni kümesinde değil" der ama kümeyi vermez; W5-K15
+ * kümeyi bu sürümde {GUIDED} yapar. Hazırlık SET_MODE(GUIDED)'ı kabul edilene ve MODE biti
+ * kalkana kadar yineler (GUIDED'ın ön koşulu kestirim düzeyidir; W5-K12).
  */
 #ifndef KABUL_ATIS_H
 #define KABUL_ATIS_H
@@ -144,6 +144,9 @@ ida_rc_t ka_adim(void);
 void ka_adimlar(int n);
 /* Belirli bir zaman çerçevesi sıra numarasıyla (DUP_SEQ / OLD_SEQ üretmek için) girdi. */
 ida_in_t *ka_girdi_seq(uint32_t seq);
+/* A4-K122 oturum sonu çağrısı: tick, tf.present = 0, link_event = SESSION_END, link_state NONE,
+   örnek ve komut yok (olay sonuçları ve mandal bitleri bulunabilir). */
+ida_in_t *ka_girdi_oturum_sonu(void);
 
 const ida_out_t *ka_out(void);
 const ida_out_t *ka_onceki(void);
@@ -227,7 +230,7 @@ void ka_kilitle(void);
 void ka_kilit_nedeni_kaldir(void);
 /* Araç ARM (A4 §3.17 ARM satırı); armed = 1 olana kadar. */
 void ka_arac_silahla(void);
-/* MODE bitinin kalktığı kipi seçer (uyarlamalı; yukarıdaki açıklama). */
+/* GUIDED'a geçer ve MODE bitinin kalkmasını bekler (W5-K15; yukarıdaki açıklama). */
 void ka_kip_sec(void);
 /* FC_ARM satırının engel bitleri kalkana kadar bekler (en çok 10 s); kalkmazsa ayrıntılı
    iletiyle düşer. */
@@ -252,9 +255,16 @@ bool ka_model_fis_cikik(uint8_t tube);
 bool ka_model_pim_takili(uint8_t tube);
 /* Model: acil durdurma bu çağrıda kesinlikle bayat (G-Ç29'un iki ölçütünden biri aşıldı). */
 bool ka_model_bayat(void);
+/* Model (G-Ç11): tüpün izni duvar saati now'da çekirdekçe açık sayılabilir mi (APPLIED alınmış,
+   olayı çıkaran çağrının now_w'sinden hold_ns dolmamış, sonradan kapatılmamış SAFETY_OPEN). */
+bool ka_model_izin_acik(uint8_t tube, int64_t now);
 
 /* Değişmez denetimlerini kapat/aç (yalnız bilerek tutarsız alıcı davranışı kuran testler). */
 void ka_degismez_ac(bool acik);
+/* Modelden çıktıya engel biti denetimi (özellik testleri): kabul edilen her çağrının sonunda,
+   girdiden bağımsız hesaplanan modelde kısıtlayan (ya da kesin bayat) olan her emniyet alanının
+   IDA_FCI_* biti kurulu olmalıdır (A4-K116, A4 §3.16, G-Ç29). Varsayılan kapalı. */
+void ka_model_bit_denetimi(bool acik);
 
 /* Kapsam sayaçları (özellik testleri). */
 typedef struct {
