@@ -85,7 +85,9 @@ add_test(NAME butunleme.sil_oturum_dusme_belirlenim COMMAND ida_butunleme_test s
 set_tests_properties(butunleme.sil_oturum_dusme_belirlenim PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
 # W4-K26 (EMNİYET): SIL'de alım anı (kısıtlayan çerçeve yuva n + 1'in sınırında), akışın sonu
 # (FIN ve yazma hatası akıştaki yerinde) ve alım sınırları (kesintisiz 0x00).
-foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli)
+# sil_hazirlik_suresi: el sıkışma süre sınırı hazırlık oturumunun süresini kapsamaz; hazırlığın
+# kendi sınırı ayrı (W4-K26 mimar kararı).
+foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli sil_hazirlik_suresi)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 endforeach()

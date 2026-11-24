@@ -52,6 +52,9 @@ public:
     // baytlar işlenmez. TCP dışındaki taşımalarda (seri port, bellek) kapat() ile aynıdır.
     virtual void kapat_duzgun(std::int64_t /*sure_us*/) { kapat(); }
     virtual std::string ad() const = 0;
+    // Tanı: son başarısız işlemin işletim sistemi hata kodu (POSIX errno, Winsock
+    // WSAGetLastError); hata yoksa ya da taşıma bildirmiyorsa 0.
+    virtual int son_hata_kodu() const { return 0; }
 };
 
 // Aynı süreçteki iki uç: birinin yazdığını öteki okur. İki uç farklı iş parçacıklarından

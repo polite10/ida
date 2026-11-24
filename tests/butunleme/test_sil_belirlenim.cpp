@@ -162,6 +162,7 @@ private:
         bool act_sonrasi = false;
         bool sim_kapandi = false;
         Saat::time_point sessiz = Saat::now();
+        int bos = 0;
         while (!dur_) {
             bool is_var = false;
             std::size_t n = 0;
@@ -215,8 +216,7 @@ private:
             const auto simdi = Saat::now();
             while (!kuyruk_.empty() && kuyruk_.front().birak <= simdi) {
                 if (!sim_kapandi && !sim->yaz(kuyruk_.front().bayt.data(), kuyruk_.front().bayt.size())) {
-                    // Sim okunmamış veriyle kapattı (RST): taşıma soketi kapatır, sim'in son
-                    // baytları okunmadan kalabilir (W4-K25 (5)).
+                    // Sim okunmamış veriyle kapattı (RST; W4-K25 (5)): yazım hata aldı.
                     sim_kapandi = true;
                     ++sim_yazma_hatasi_;
                 }
@@ -226,7 +226,12 @@ private:
             if (sim_kapandi && kuyruk_.empty() && simdi - sessiz > std::chrono::milliseconds(300)) {
                 break;
             }
-            if (!is_var) {
+            // Windows'ta uyku çözünürlüğü kaba (~15,6 ms): boşta önce iş parçacığı sırası bırakılır.
+            if (is_var) {
+                bos = 0;
+            } else if (++bos < 2000) {
+                std::this_thread::yield();
+            } else {
                 std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
         }

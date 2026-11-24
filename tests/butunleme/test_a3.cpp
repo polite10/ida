@@ -822,6 +822,7 @@ public:
         ic_->kapat_duzgun(sure_us);
     }
     std::string ad() const override { return "cimri(" + ic_->ad() + ")"; }
+    int son_hata_kodu() const override { return ic_->son_hata_kodu(); }
 
 private:
     std::unique_ptr<ida::kopru::Tasima> ic_;

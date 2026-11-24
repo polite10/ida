@@ -93,7 +93,13 @@ struct Ayar {
     bool csv_uret = true;
     int gunluk = 1;                 // 0 sessiz, 1 özet, 2 ayrıntı (stderr)
     std::int64_t t_sil_ns = 5'000'000'000;   // A1-K76 T_SIL (duvar)
+    // Bağlantı bekleme ve el sıkışma süre sınırı (duvar): her aşama kendi payını alır (bağlantının
+    // kabulü; hazırlık oturumunun el sıkışması; çalıştırma oturumunun el sıkışması). Hazırlık
+    // oturumunun kendi süresi buna girmez (W4-K26 mimar kararı; hedef Windows düşük donanımlı, K16).
     std::int64_t baglanti_bekleme_ns = 20'000'000'000;
+    // Hazırlık oturumunun (A1-K19) duvar saati üst sınırı; aşılırsa koşu hatayla biter. 600 s bir
+    // tahmindir (ölçülmedi): olağan hazırlık SIL'de saniyeler, HIL'de en çok 8000 periyot (40 s) sürer.
+    std::int64_t hazirlik_azami_ns = 600'000'000'000;
     // pty (kartsız sınama; sol #8): aygıtın kalkması ve geri takılması. cikarma anında sözde
     // uçbirimin ana ucu kapatılır (işletim sistemi aygıtın kalktığını bildirir); takma anından
     // sonraki ilk yeniden açma denemesi yeni bir sözde uçbirim açar. < 0: yok.
