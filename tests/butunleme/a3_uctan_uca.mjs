@@ -1,8 +1,9 @@
 // W4-bagla-a3 kabul 3: `ida_sim --kip sil --senaryo scenarios/z1.toml --a3-port 0 --a3-bekle` +
 // panelin A3 istemcisi (web/src/a3; Node'un WebSocket ve fetch'i; web/'e dosya eklenmez):
 // sürüm → WebSocket → merhaba → abonelik → baslat → beş panelin kanallarında gerçek değerler
-// (fizik/durum derinliği sim'in CSV'siyle aynı adımlarda) → hız 8 → duraklat/sürdür/adımla reddi
-// (W4-K28 (1)) → ARM (onay jetonu, emniyet revizyonu) → ARM'ın kart yanıtı ve kart/durum → bitti.
+// (fizik/durum derinliği sim'in CSV'siyle aynı adımlarda) → duraklat → adımla (2 s'ye) → duraklatılmışken
+// ARM (onay jetonu, emniyet revizyonu; A3-K58: beklemeden uygulanır, tele sürdürmede çıkar) → adımla →
+// ARM'ın kart yanıtı ve kart/durum → sürdür → bitti (W4-duraklat kapsam 6: hızdan bağımsız kurulum).
 // Kullanım: node a3_uctan_uca.mjs <ida_sim> <depo kökü> <web dizini> <çıktı dizini>
 // Çıkış: 0 geçti, 1 kaldı, 77 atlandı (web/node_modules yok ya da Node'da WebSocket yok).
 
@@ -81,32 +82,43 @@ try {
   dogrula(sonuc(baslat.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'baslat uygulandı (A3-K62)');
   let d = await http.durum();
   dogrula(d.durum === 'kosuyor' && /^\d{8}-\d{6}-[0-9a-f]{6}$/.test(d.run_id ?? ''), `kosuyor, run_id ${d.run_id}`);
-  // Duraklatma bu dilimde yok (W4-K28 (1)). Hız bağımsızlığı: SIL olabildiğince hızlı koşar; koşu
-  // görülür görülmez hız çarpanı 8 verilir (A3-K66; yalnız bekleme, bayt akışı değişmez), böylece
-  // 90 s'lik senaryo ≈ 11 s duvar sürer ve ARM koşu sürerken işlenir. Kanal değerleri adım
-  // numarasıyla eşlenir (duvar zamanına bakılmaz).
+  // W4-duraklat (kapsam 6): hızdan bağımsız kurulum. SIL olabildiğince hızlı koşar; koşu görülür
+  // görülmez hız 8 verilir (A3-K66; yalnız bekleme, bayt akışı değişmez) ki duraklatma koşu bitmeden
+  // yerleşsin; sonra çalıştırma duraklatılır ve sim zamanı yalnız adımlamayla ilerler. ARM'ın sim
+  // zamanı ve kart yanıtı duvar hızına bağlı değildir. Kanal değerleri adım numarasıyla eşlenir.
   const hiz = await http.calistirma('hiz', { run_id: d.run_id, durum_rev: d.durum_rev }, { carpan: 8 });
   await bekle(() => sonuc(hiz.komut_no) !== undefined, 5000, 'hız sonucu');
   dogrula(sonuc(hiz.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'hız 8 uygulandı');
   d = await http.durum();
-  dogrula(d.durum === 'kosuyor', `hızdan sonra koşuyor (sim zamanı ${d.sim_t_ns / 1e9} s)`);
-  // W4-K28 (1): duraklat, sürdür, adımla girişte gecersiz_durum; durum ve durum_rev değişmez.
-  for (const [ad, ek] of [['duraklat', {}], ['surdur', {}], ['adimla', { periyot_sayisi: 1 }]]) {
-    let hata = null;
-    try {
-      await http.calistirma(ad, { run_id: d.run_id, durum_rev: d.durum_rev }, ek);
-    } catch (h) {
-      hata = h;
-    }
-    dogrula(hata?.kod === 'gecersiz_durum' && String(hata?.message).includes('bu sürümde desteklenmiyor'),
-      `${ad}: gecersiz_durum, "bu sürümde desteklenmiyor" (${hata?.kod})`);
+  const dur = await http.calistirma('duraklat', { run_id: d.run_id, durum_rev: d.durum_rev });
+  await bekle(() => sonuc(dur.komut_no) !== undefined, 5000, 'duraklat sonucu');
+  dogrula(sonuc(dur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'duraklat uygulandı (Tablo 4.7a)');
+  d = await http.durum();
+  dogrula(d.durum === 'duraklatildi', `duraklatildi (sim zamanı ${Number(d.sim_t_ns) / 1e9} s)`);
+  await new Promise((coz) => setTimeout(coz, 300));
+  const dDon = await http.durum();
+  dogrula(dDon.durum === 'duraklatildi' && Number(dDon.sim_t_ns) === Number(d.sim_t_ns) && dDon.durum_rev === d.durum_rev,
+    'duraklatılmışken sim zamanı ilerlemedi (300 ms)');
+  let hataDur = null;
+  try {
+    await http.calistirma('duraklat', { run_id: d.run_id, durum_rev: d.durum_rev });
+  } catch (h) {
+    hataDur = h;
   }
-  const dSonra = await http.durum();
-  dogrula(dSonra.durum === 'kosuyor' && dSonra.durum_rev === d.durum_rev, 'reddedilen isteklerden sonra durum ve durum_rev aynı');
-  // Kart kestirimi otursun diye 2 s sim zamanını bekle (fizik/durum adım numarasıyla).
-  await bekle(() => fizik.length > 0 && fizik[fizik.length - 1].adim >= 1600, 10000, '2 s sim zamanı');
+  dogrula(hataDur?.kod === 'gecersiz_durum', `duraklatılmışken duraklat: gecersiz_durum (${hataDur?.kod})`);
+  // Adımla: sim zamanı 2 s'ye (en az bir periyot); her periyot 5 ms, dört fizik adımı (A3-K65).
+  const adimlaBitti = () => olaylar.filter((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.neden === 'adimla_tamamlandi').length;
+  const n1 = Math.max(1, Math.min(10000, Math.ceil((2e9 - Number(d.sim_t_ns)) / 5e6)));
+  const t0 = Number(d.sim_t_ns);
+  const ad1 = await http.calistirma('adimla', { run_id: d.run_id, durum_rev: d.durum_rev }, { periyot_sayisi: n1 });
+  await bekle(() => sonuc(ad1.komut_no) !== undefined && adimlaBitti() >= 1, 20000, 'adımlama bitti');
+  d = await http.durum();
+  dogrula(d.durum === 'duraklatildi' && Number(d.sim_t_ns) === t0 + n1 * 5e6,
+    `adımla ${n1} periyot: sim zamanı tam ${n1} · 5 ms ilerledi, yeniden duraklatıldı (${Number(d.sim_t_ns) / 1e9} s)`);
 
-  // ARM (genişletici; onay jetonu ve emniyet revizyonu: A3-K103, K118)
+  // ARM (genişletici; onay jetonu ve emniyet revizyonu: A3-K103, K118) duraklatılmışken: A3-K58'e göre
+  // beklemeden uygulanır (uygulama adımı o anki adım); karta sürdürmeden sonra gider (A1-K41).
+  const adimDurak = Number(d.adim_no);
   const ist = { 'Ida-Istemci': String(istemci) };
   const jeton = await http.istek('POST', '/yer_istasyonu/onay_jetonu', { beklenen_run_id: d.run_id, komut: 'arm', parametreler: {} }, ist);
   const arm = await http.komut('/yer_istasyonu/komut', {
@@ -115,11 +127,18 @@ try {
   });
   dogrula(arm.sonuc === 'kuyrukta', 'ARM 202 kuyrukta');
   await bekle(() => sonuc(arm.komut_no) !== undefined, 5000, 'ARM komut_sonucu');
-  dogrula(sonuc(arm.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'ARM ağ geçidinde uygulandı');
+  dogrula(sonuc(arm.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'ARM ağ geçidinde duraklatılmışken uygulandı (A3-K58)');
+  dogrula(Number(sonuc(arm.komut_no)?.ayrinti?.uygulama_adimi) === adimDurak,
+    `ARM uygulama adımı duraklatılan sınır (${sonuc(arm.komut_no)?.ayrinti?.uygulama_adimi} / ${adimDurak})`);
   const yiKomut = () => olaylar.find((o) => o.tur === 'yer_istasyonu_komutu' && o.ayrinti?.komut_no === arm.komut_no);
   await bekle(() => yiKomut() !== undefined, 5000, 'yer_istasyonu_komutu');
   dogrula(yiKomut()?.ayrinti?.durum === 'karta_iletildi', `yer_istasyonu_komutu: ${yiKomut()?.ayrinti?.durum}`);
   const yanit = () => olaylar.find((o) => o.tur === 'yer_istasyonu_yaniti' && o.ayrinti?.komut_no === arm.komut_no);
+  await new Promise((coz) => setTimeout(coz, 200));
+  dogrula(yanit() === undefined, 'duraklatılmışken kart yanıtı yok (komut tele çıkmadı; A1-K41)');
+  d = await http.durum();
+  const ad2 = await http.calistirma('adimla', { run_id: d.run_id, durum_rev: d.durum_rev }, { periyot_sayisi: 200 });
+  await bekle(() => sonuc(ad2.komut_no) !== undefined, 5000, 'adımla (2) sonucu');
   await bekle(() => yanit() !== undefined, 10000, 'ARM kart yanıtı (yer_istasyonu_yaniti)');
   const y = yanit().ayrinti;
   console.log(`  ARM kart yanıtı: ${y.sonuc} (ack ${y.veri?.ack}, reason ${y.veri?.reason})`);
@@ -128,6 +147,12 @@ try {
     await bekle(() => kart.length > 0 && kart[kart.length - 1].silahli === 1, 5000, 'kart/durum silahlı');
     dogrula(true, 'kart/durum: silahli = 1');
   }
+  await bekle(() => adimlaBitti() >= 2, 20000, 'adımlama (2) bitti');
+  d = await http.durum();
+  dogrula(d.durum === 'duraklatildi', 'adımlamadan sonra yeniden duraklatıldı');
+  const sur = await http.calistirma('surdur', { run_id: d.run_id, durum_rev: d.durum_rev });
+  await bekle(() => sonuc(sur.komut_no) !== undefined, 5000, 'sürdür sonucu');
+  dogrula(sonuc(sur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'sürdür uygulandı');
   await bekle(() => olaylar.some((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.sonraki === 'bitti'), 60000, 'bitti');
   const kod = await bitti;
   dogrula(kod === 0, `ida_sim çıkış kodu 0 (${kod})`);
