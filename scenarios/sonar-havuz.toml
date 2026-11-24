@@ -1,0 +1,90 @@
+# Sonar örnek senaryosu (W4-bagla-sonar): kapalı havuzda batık başlayan İDA-0, Ping1D ve Ping360
+# açık (araç dosyasındaki ping1d0 ve ping360_0), sonar arızaları zaman çizelgesinde.
+# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0). Birimler SI; açılar radyan; süreler tamsayı ns.
+#
+# Çalıştırma: ida_sim --senaryo scenarios/sonar-havuz.toml --sonar [--a3-port 0] [--sonar-csv <yol>]
+# (`--sonar` olmadan sonar kurulmaz; sim/sunucu/BENIOKU.md "Sonar").
+#
+# Sahne (sim/senaryo/BENIOKU.md "Sonar kurulumu"): havuz duvarları yalnız A7 ağında (havuz_ornek.glb,
+# depoda yok) tanımlıdır ve sonar modeli ağ izlemez; duvarlar atlanmadığı için bu senaryo `--sonar`
+# ile şimdilik REDDEDİLİR (W4-bagla-sonar sol #4 (b); mimar kararı bekleniyor). Sonarlı testler bu
+# dosyayı bellekte açık suya (tek tabanlı `deniz_ornek` statik varlığı) çevirerek koşar
+# (tests/butunleme/test_sonar.cpp). Araç silahlandırılmaz: hafif pozitif yüzerlikle (İDA-0, 04 §2.6) yavaşça
+# yükselir; Ping1D irtifası zamanla büyür.
+
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad = "sonar-havuz"
+aciklama = "Sonar: kapali havuzda batik baslayan arac; Ping1D ve Ping360 acik, sonar arizalari."
+
+[arac]
+dosya = "ida0.toml"
+
+# Kapalı havuzda uydu görülmez: GNSS kapalı (ornek-havuz.toml ile aynı). Kamera kapalı (A5-K80).
+[arac.sensorler.gnss0]
+etkin = false
+
+[arac.sensorler.kamera0]
+etkin = false
+
+[varliklar]
+kume = "ornek"
+kume_surumu = 1
+manifest_ozeti = "29063c2d7f89a80e452dfbb66504e9470d5c928d0fcf7dd295497e2b22a22ca4"
+
+[calistirma]
+kip = "sil"
+sure_ns = 30_000_000_000      # 30 s
+sil_azami_hiz = true
+
+[ortam]
+tur = "havuz"
+sahne = "havuz_ornek"
+derinlik = 3.0
+manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]
+
+[ortam.orijin]
+enlem = 0.7155849933176751
+boylam = 0.5061454830783556
+yukseklik = 0.0
+
+[ortam.su]
+sicaklik_c = 20.0             # ses hızı verilmez: tatlı suda UNESCO/Chen–Millero (W4-K1)
+
+[rastgelelik]
+ana_tohum = 7
+
+[kalite]
+kamera = "kapali"
+sonar = "sade"
+
+[baslangic]
+konum = [0.0, 0.0, 2.0]       # m; Ping360 başı (montaj z −0,20 m) suyun altında
+yonelim = [1.0, 0.0, 0.0, 0.0]
+yuklu_tupler = ["f1", "f2"]
+
+# Sonar arızaları (A5 Tablo 3.10-A; sonar modelinin desteklediği gövdeli türler).
+[[olaylar]]
+kimlik = "p1d_kayip"
+sinif = "sensor"
+zaman_ns = 10_000_000_000
+sure_ns = 1_000_000_000
+tur = "kayip"
+hedef = "ping1d0"
+
+[[olaylar]]
+kimlik = "p1d_donma"
+sinif = "sensor"
+zaman_ns = 15_000_000_000
+sure_ns = 1_000_000_000
+tur = "donma"
+hedef = "ping1d0"
+
+[[olaylar]]
+kimlik = "p360_bildirim"
+sinif = "sensor"
+zaman_ns = 20_000_000_000
+sure_ns = 2_000_000_000
+tur = "kendini_bildiren"
+hedef = "ping360_0"

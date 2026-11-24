@@ -52,7 +52,8 @@ add_executable(ida_kopru_test
   test/test_parti.cpp
   test/test_emniyet2.cpp
   test/test_tasima.cpp
-  test/test_operator.cpp)
+  test/test_operator.cpp
+  test/test_sonar.cpp)   # W4-bagla-sonar
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
 target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
 ida_kopru_ayar(ida_kopru_test)
@@ -123,6 +124,12 @@ set(_ida_kopru_testleri
   operator_artimli  # W4-K27 (1) EMNİYET: duraklatmada artımlı emniyet işlemi
   esz_sinirli  # W4-K27 (3): bekleyen eşzamansız çıktı sınırlı
   esz_ilk_parti_oncesi  # W4-K28 (3) EMNİYET: ilk parti öncesi muafiyet belleği sabit
+  sonar_parcalama  # W4-bagla-sonar kabul 4: A1-K49 parçalama, parti bütçesi, kredi
+  sonar_seyreltme  # W4-bagla-sonar: A1-K37
+  sonar_kritik_oncelik  # W4-bagla-sonar kabul 4: kontrol üyeleri gecikmez
+  sonar_oturum_sonu  # W4-bagla-sonar: A1-K49 oturum içinde
+  sonar_eksik_parca  # W4-bagla-sonar kabul 4: düşen parça, A1-K50
+  ping1d_uye  # W4-bagla-sonar kabul 3: A1-K35, K54, K113
 )
 foreach(_ad IN LISTS _ida_kopru_testleri)
   add_test(NAME sim.kopru.${_ad} COMMAND ida_kopru_test ${_ad})

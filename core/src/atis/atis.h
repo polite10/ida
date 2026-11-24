@@ -1,14 +1,64 @@
 /*
- * atis.h — atış kontrol modülünün çağrı çerçevesiyle sınırı. Sahibi: W4 atış kontrol işi.
+ * atis.h — atış kontrol modülü: emniyet zinciri (W5-atis-emniyet; mimari Bölüm 03 sürüm 0.3,
+ * §2.6, §2.6.1, §2.7, §4 ve "Ek: uygulama gereksinimleri" G-Ç01–G-Ç53; mimar kararları
+ * W5-K1…K11, docs/gorevler/W5-ortak.md).
  *
- * Bu başlık yalnız çerçevenin modülden istediklerini tanımlar: daraltmanın bildirimi, emniyet
- * ve algılama girdileri, olay sonuçları, komutlar, durum ve engel maskesi, adım çağrısı.
- * İç durum makinesi, hedefle ilgili hesap ve fırlatma mantığı bu işin (W2) konusu değildir.
+ * KAPSAM SINIRI (kullanıcı kararı): bu modül yalnız emniyet zincirini yürütür: silahlandırma,
+ * süreli atış izni, acil durdurma ve sanal emniyet girdilerinin geri okuması, durum makinesi,
+ * öncelik ve sonuç kodları, olayların üretimi ve sonuçları, güvenli duruma dönüş, kilitli
+ * arıza. Hedefleme çözümü, önleme/vuruş hesabı, atış ölçütü, hedef algılama ve takip yoktur.
+ * Çekirdek kendiliğinden atış kararı üretmez: FIRE yalnız kabul edilmiş bir operatör FC_FIRE
+ * komutunun taşınmasıdır (W5-K3; G-Ç21). Algılama girdisi okunmaz; TRACKING ve
+ * SOLUTION_VALID iç durumları yoktur (03 §2.6; A4 §3.16'nın dış değerleri eşlemede kalır).
  *
- * Bu sürüm yer tutucudur: durum her zaman IDA_FCS_SAFE; engel maskesi her biti 3.16'daki
- * tanımına göre yer tutucu durumdan hesaplanır, MODE (izin kümesi boş) ve DET_STALE
- * (algılama girdisi okunmaz) her zaman kurulu; hiçbir genişletici olay adayı üretilmez;
- * komut yanıtları tablo 3.17'den.
+ * Çağrı çerçevesindeki kanca sırası (cerceve/cerceve.c, cerceve/cikti.c; core/TASARIM.md §10):
+ *   (b)  ida_fc_daralt          her çağrıda (reddedilen ve out NULL dahil): ham bütünlük
+ *                               denetimi ve onarım (çağrı bayraklarından önce), DET_STALE
+ *                               (A4-K118), emniyet örneği bayatlığı (W5-K4 ve eki), daraltıcı
+ *                               girdilere tepki (güvenli duruma dönüş; W5-K8)
+ *   (b3) ida_fc_oturum_basi     SESSION_START
+ *   (e)  ida_fc_emniyet_ornegi  kabul edilen her SAFETY örneği: bayatlık izleri ve izler
+ *                               güncellendikten sonra bayatlık (W5-K4 eki, W5-K20), gevşetme
+ *                               (A4-K116; bağlantı olayı çağrısında yok), geri okuma çelişkisi
+ *                               ve tekleme (W5-K4; G-Ç53)
+ *        ida_fc_olay_sonucu / ida_fc_olay_bilinmiyor   olay sonuçları (W5-K2, K11)
+ *        ida_fc_cagri           süreler ve evrensel geçişler (komutlardan önce)
+ *        ida_fc_komut           FC komutları (A4 §3.17 satırları)
+ *        ida_fc_adim            komutlardan sonra: evrensel geçişler yeniden, FC_RESET'in
+ *                               yeniden kilitlenmesi (W5-K1), genişletici olay adayları (yalnız
+ *                               IDA_RC_OK step), SAFETY_CLOSE isteklerinin olay modülüne
+ *                               verilmesi
+ *   çıktı ida_fc_cikti          olay modülünün çıkardığı olaylar okunur; dış durum yansıması
+ */
+/*
+ * İZLENEBİLİRLİK (03 Ek, G-Ç maddeleri → uygulandığı yer; testler core/test/atis/):
+ *   G-Ç01 ida_fc_kur; init (cerceve.c) her şeyi sıfırlar          G-Ç02 ida_fc_dis_durum, ida_fc_engel
+ *   G-Ç03 ida_fc_engel (emniyet.c ida_emn_fci; DET_STALE det_bayat)        G-Ç30 kapalı kodlar (günlük, neden)
+ *   G-Ç31 cikti.c ida_cik_kurulmamis                             G-Ç04 komut.c fc_bicimi_gecerli + ida_fc_komut
+ *   G-Ç05 komut.c ida_kom_isle (1)–(2) + ida_fc_komut (3)        G-Ç32 emniyet.c (b) + ida_fc_daralt
+ *   G-Ç06 emniyet.c d.herhangi; olay.c kapı; ida_fc_daralt        G-Ç33 komut.c NARROWED, widen_blocked
+ *   G-Ç34 komut.c ida_kom_reddet                                 G-Ç07 olay.c kapı (genis_serbest, fire_serbest)
+ *   G-Ç35 komut.c IMU_LAG; aday_uret yasak maskesi; olay.c kapı   G-Ç08 olay.c kimlik_ayir
+ *   G-Ç36 olay.c ida_olay_kur                                    G-Ç37 olay.c kimlik_ayir (yalnız kapat)
+ *   G-Ç09 olay.c ida_olay_yaz (birleştirme)                      G-Ç38 olay.c ida_olay_yaz (sığmayan aday)
+ *   G-Ç10 olay.c (apply_by her olayda, hold yalnız OPEN)          G-Ç39 atis_param.def / cerceve_param.def aralıkları
+ *   G-Ç11 ida_fc_izin_acik, ida_fc_olay_sonucu (APPLIED)          G-Ç40 aday_uret + olay.c (A4-K123)
+ *   G-Ç41 olay.c aday_gecer (A4-K129)                            G-Ç12 aday_uret (yenileme)
+ *   G-Ç13 olay.c ida_olay_sonuc                                  G-Ç42 olay.c zaman aşımı + ida_fc_olay_bilinmiyor
+ *   G-Ç14 ida_fc_emniyet_ornegi (gevşetme)                        G-Ç15 emniyet.c kapanma + ida_fc_cagri günlüğü
+ *   G-Ç16 ida_fc_daralt, ida_fc_evrensel, ida_fc_komut, aday_uret G-Ç17 emniyet.c ida_emn_fci (inst0_var)
+ *   G-Ç43 imu_zaman.c (A4-K39, K128)                             G-Ç18 ida_fc_daralt (oturum_sonu) + emniyet.c
+ *   G-Ç44 emniyet.c (oturum_kapali)                              G-Ç45 ida_fc_oturum_basi (durum değişmez)
+ *   G-Ç19 ida_fc_guvenli (W5-K8)                                 G-Ç46 ida_fc_komut FC_RESET, komut.c
+ *   G-Ç20 ida_fc_komut FC_RESET + ida_fc_adim (yeniden kilit)    G-Ç21 ida_fc_komut FC_FIRE, aday_uret, ida_fc_cikti
+ *   G-Ç22 ida_fc_komut                                           G-Ç47 aday_uret (yalnız FIRE_AUTH), ida_fc_komut
+ *   G-Ç48 ida_fc_cagri (pencere, ASSESS)                          G-Ç23 ida_fc_olay_sonucu / _bilinmiyor (OPEN)
+ *   G-Ç49 ida_fc_olay_sonucu / _bilinmiyor (FIRE)                G-Ç50 atis_emniyet.c kapat_sonucu
+ *   G-Ç24 ida_fc_komut (TEST), aday_uret yalnız FIRE_AUTH        G-Ç51 ida_fc_komut FC_TEST_EXIT
+ *   G-Ç25 ida_fc_evrensel (T_hb_fc)                              G-Ç26 ida_fc_tutarli, butunluk_onar; cerceve.c
+ *   G-Ç27 cikti.c fc_yaz (durum yansıması ida_fc_cikti'de)        G-Ç52 olay.c son_id / son_sonuc
+ *   G-Ç28 atis_param.def, cerceve_param.def (B sınıfı)            G-Ç29 ida_fc_emn_bayat, bayatlik
+ *   G-Ç53 atis_emniyet.c izleri_degerlendir; süren neden kalici_neden (atis.c)
  */
 #ifndef IDA_CORE_ATIS_H
 #define IDA_CORE_ATIS_H
@@ -21,12 +71,105 @@
 #include "ida/port.h"
 #include "olay/olay.h"
 #include "param/param.h"
+#include "telemetri/telemetri.h"
+
+/* İç durumlar: özel bit desenleri ("hep 0" ya da "hep 1" geçerli değildir) ve tümleyen kopya
+   (03 §2.6; A4-K89). Dış değer eşlemesi 03 §2.6.1 md. 1. ARMING ayrı durum değildir: kabul
+   edilen FC_ARM aynı çağrıda ARMED'e geçer (A4 §3.17'nin FC_ARM satırı ön denetimdir). */
+#define IDA_FC_IC_SAFE          0x1E2D3C4Bu /* → SAFE                                      */
+#define IDA_FC_IC_ARMED         0x2B3A4958u /* → ARMED                                     */
+#define IDA_FC_IC_FIRE_AUTH     0x3C4B5A69u /* → ARMED; izin açık sayılırken PERMIT_OPEN    */
+#define IDA_FC_IC_FIRING        0x4D5C6B7Au /* → FIRE_PENDING                              */
+#define IDA_FC_IC_ASSESS        0x5E6D7C8Bu /* → ARMED                                     */
+#define IDA_FC_IC_TEST          0x6F7E8D9Cu /* → TEST                                      */
+#define IDA_FC_IC_FAULT         0x708F9EADu /* → FAULT_LATCHED                             */
+
+#define IDA_FC_TUP_YOK 0xA5u /* silahlı tüp yok (0 ve 1 tüp numarasıdır)                    */
+
+/* Atış izninin kip kümesi (A4 §3.16 MODE biti): bu sürümde yalnız GUIDED (02 §3
+   `mode_ok`: "AUTO'da TARGET_ALIGN ya da GUIDED"; TARGET_ALIGN görev öğesi arayüzde yoktur,
+   A1 Tablo 3.6a). Uygulayıcının okuması; core/TASARIM.md §10.2. */
+#define IDA_FC_IZIN_KIPI IDA_MODE_GUIDED
+
+/* Tüp başına izin, olay ve geri okuma izleri. */
+typedef struct {
+    /* SAFETY_OPEN (A4-K66, K107, K123) */
+    bool acik_bekliyor;        /* sonucu beklenen SAFETY_OPEN var                          */
+    uint64_t acik_id;          /* son çıkan SAFETY_OPEN'ın kimliği                         */
+    int64_t acik_cikis_ns;     /* onu çıkaran çağrının now_w'si                            */
+    uint32_t acik_hold_ns;     /* onun hold_ns'i                                           */
+    bool izin_var;             /* son APPLIED SAFETY_OPEN'ın izni (çekirdeğin saatinde)    */
+    int64_t izin_bitis_ns;     /* çıkış now_w + hold_ns (G-Ç11)                            */
+    int64_t izin_t_apply_ns;   /* o sonucun t_apply'ı (ölçüm zamanı)                       */
+    /* FIRE */
+    bool fire_bekliyor;        /* sonucu beklenen FIRE var                                 */
+    bool atis_izleme;          /* FIRE APPLIED/DUPLICATE: tüp boşaldı geri okuması bekleniyor */
+    int64_t atis_t_apply_ns;   /* o sonucun t_apply'ı; INT64_MIN: oturum sonundan sonra her
+                                  örnek değerlendirilir (ölçüm zamanı oturumlar arasında
+                                  sürekli sayılmaz; A4-K72)                                 */
+    int64_t atis_izleme_bas_ns;/* duvar saati (T_tup_bos)                                  */
+    bool tekleme;              /* G-Ç53 (2) çelişkisi sürüyor: FIRE APPLIED olduktan sonra
+                                  t_meas'i t_apply'dan büyük son değerlendirilen örnekte
+                                  LOADED = 1 ya da tüp boşaldı geri okuması T_tup_bos içinde
+                                  gelmedi; t_meas > t_apply örnekte LOADED = 0 görülene dek
+                                  süren nedendir (W5-K1, G-Ç20)                            */
+    /* SAFETY_CLOSE (G-Ç50, G-Ç53) */
+    bool kapat_izleme;         /* son SAFETY_CLOSE APPLIED; araya yeni SAFETY_OPEN girmedi  */
+    int64_t kapat_t_apply_ns;
+    bool celiski;              /* G-Ç53 (1): kapatıldıktan sonra PERMIT_OPEN = 1 sürüyor   */
+    bool kapanis_dogrulanmadi; /* W5-K11 (a): SAFETY_CLOSE sonucu bilinmiyor/EXPIRED_NO_ACK */
+} ida_fc_tup_t;
 
 typedef struct {
-    uint8_t durum; /* IDA_FCS_*; yer tutucuda hep SAFE */
+    uint8_t durum;             /* dış durum yansıması (IDA_FCS_*; A4 §3.16): çıktı yazımında
+                                  ve her daraltmada iç durumdan kurulur                    */
+    uint32_t ic;               /* IDA_FC_IC_*                                               */
+    uint32_t ic_tumleyen;      /* ~ic                                                       */
+    uint8_t tup;               /* silahlı tüp (FC_ARM'ın kabul edildiği): 0, 1 ya da
+                                  IDA_FC_TUP_YOK                                            */
+    uint8_t tup_tumleyen;      /* ~tup                                                      */
+    int64_t giris_ns;          /* iç duruma giriş anı (duvar; T_pencere, T_assess)          */
+    bool istek_var;            /* kabul edilmiş ve henüz FIRE üretmemiş FC_FIRE (G-Ç21)     */
+    bool kip_izni_dusuk;       /* NARROW_MODE atış iznini kip koşulundan düşürdü (A4-K46);
+                                  kip izin kümesine yeniden girişte kalkar                  */
+    uint8_t onceki_kip;        /* kip girişini saptamak için                               */
+    ida_fc_tup_t t[IDA_PORT_N_TUBE];
+    /* Emniyet örneğinin bayatlığı (W5-K4 ve eki): son kabul edilen inst = 0 örneği */
+    int64_t emn_rx_ns;         /* (i) alım zamanı                                           */
+    int64_t emn_ilerleme_ns;   /* (ii) t_meas'in son ilerlediği örneğin alım zamanı         */
+    bool emn_tmeas_var;        /* t_meas tabanı var (SESSION_START siler)                   */
+    int64_t emn_tmeas_ns;      /* son kabul edilen inst = 0 örneğinin t_meas'i              */
+    uint8_t son_tup[IDA_PORT_N_TUBE]; /* o örneğin tüp bitleri (sonuç sonradan gelirse
+                                         G-Ç53 izleri bununla da değerlendirilir)           */
+    bool emn_gevsedi;          /* bu çağrıda etkin değer gevşedi (SAFETY_INPUT günlüğü)    */
+    bool baglanti_olayi;       /* bu çağrı plat.link_event taşıyor (SESSION_END ya da
+                                  SESSION_START): hiçbir emniyet alanı gevşemez (W5-K20 (2)) */
+    /* Kamera algılama akışının bayatlığı (A4-K118; W5-K21): bu sürümde başlık kabul edilmez
+       (algılama içeriği okunmaz, kapsam dışı); akış init'ten, oturum sonu çağrısından ya da
+       SESSION_START'tan T_det_stale sonra bayattır. */
+    int64_t det_taban_ns;      /* süre tabanı (duvar saati)                                 */
+    bool det_bayat;            /* bu çağrının (b) adımında hesaplanır; DET_STALE biti       */
+    /* Kilitli arıza nedenleri (W5-K1) */
+    bool butunluk_kilidi;      /* iç durum bozulması görüldü: init'e kadar sürer           */
+    bool bu_cagri_kilit;       /* bu çağrıda kilitli arıza nedeni ortaya çıktı              */
+    bool reset_kabul;          /* bu çağrıda FC_RESET kabul edildi                          */
+    uint8_t kapat;             /* FC'nin SAFETY_CLOSE istekleri (IDA_KAPAT_*)               */
+    /* Oturum sınırı: oturum sonundan önce çıkmış olayların kimlik sınırı (W5-K11 a'nın
+       yinelemesi yalnız sürmekte olan oturumun kapatmaları için; A1-K23, A4-K71) */
+    bool oturum_sonu_bekliyor; /* SESSION_END işlendi; sınır ilk çıktıda kurulur           */
+    uint64_t son_cikan_id;     /* çıkan en büyük olay kimliği                               */
+    uint64_t oturum_siniri_id; /* son SESSION_END çağrısına kadar çıkan en büyük kimlik     */
 } ida_fc_t;
 
-/* Atış kontrolün engel maskesini kurmak için çerçevenin verdiği çağrı durumu. */
+/* Kancaların ortak bağlamı (çağrı boyunca sabit). */
+typedef struct {
+    ida_wtime_t now;           /* kullanılan now_w (A4-K10)                                 */
+    const ida_param_t *prm;
+    ida_gunluk_t *gun;
+} ida_fc_ortam_t;
+
+/* Atış kontrolün engel maskesini ve evrensel geçişlerini kurmak için çerçevenin verdiği
+   çağrı durumu. */
 typedef struct {
     bool armed;
     uint8_t mode;
@@ -38,28 +181,46 @@ typedef struct {
     bool oturum_var;          /* plat.link_state = RUNNING                          */
     uint32_t emn_fci;         /* ida_emn_fci(): ESTOP, PLUG_T*, PIN_T*, EMPTY_T*    */
     uint8_t bekleyen_tupler;  /* ida_olay_bekleyen_tupler(): RESULT_PENDING (A4-K123) */
+    int64_t gcs_son_ns;       /* son kabul edilen HEARTBEAT'in now_w'si (A4-K52; görev
+                                 modülünün izi; hiç gelmediyse ilk adımın now_w'si)  */
 } ida_fc_baglam_t;
 
-void ida_fc_kur(ida_fc_t *fc);
-/* (b) adımında, reddedilen ve `out` NULL çağrıda da: FC_DISARM, FC_ABORT, SESSION_END,
-   kip izninin düşmesi ve emniyet kapanmaları (A4-K46, K73, K111, K122). */
-void ida_fc_daralt(ida_fc_t *fc, const ida_daralt_t *d);
-/* (e): kabul edilen her SAFETY örneği; gevşetme (A4-K116, K34, K128) burada, W4'ün
-   emniyet/emniyet_gevset.c dosyasıyla yapılır; e->cagri_kisit'teki alanlar gevşetilemez. */
-void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s);
-/* (e): algılama partileri ve kayıtları (A4-K41, K118). */
+void ida_fc_kur(ida_fc_t *fc, ida_wtime_t now);
+/* (b): her çağrıda (reddedilen ve out NULL dahil), ida_emn_daralt'tan hemen sonra. Kendi
+   SAFETY_CLOSE isteklerini e->d.kapat'a, bayatlıktan doğan kapanmayı e->d'ye ve etkin
+   değere yazar. */
+void ida_fc_daralt(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o);
+/* (b3) SESSION_START: emniyet örneğinin ölçüm zamanı tabanı silinir, algılama akışının süre
+   tabanı yeniden kurulur (A4-K118); durum değişmez (A4-K72). */
+void ida_fc_oturum_basi(ida_fc_t *fc, const ida_fc_ortam_t *o);
+/* (e): kabul edilen her SAFETY örneği (her inst; yalnız inst = 0 gevşetir; A4-K116, K34,
+   K128). */
+void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s,
+                           const ida_fc_ortam_t *o);
+/* (e): algılama girdisi bu sürümde okunmaz (kapsam dışı; A4-K118 akışı hep bayat). */
 void ida_fc_algilama(ida_fc_t *fc, const ida_in_t *in, ida_wtime_t now);
-/* Kabul edilen olay sonucu (A4-K69) ve sonucu bilinmeyen olay (A4-K70: güvenli duruma alma). */
-void ida_fc_olay_sonucu(ida_fc_t *fc, const ida_olay_bekleyen_t *olay, uint8_t sonuc);
-void ida_fc_olay_bilinmiyor(ida_fc_t *fc, const ida_olay_bekleyen_t *olay);
-/* fc.inhibit_mask (A4-K91, 3.16) ve fc.state. */
+/* Kabul edilen olay sonucu (A4-K69) ve sonucu bilinmeyen olay (A4-K70). */
+void ida_fc_olay_sonucu(ida_fc_t *fc, const ida_olay_bekleyen_t *olay,
+                        const ida_event_result_t *r, const ida_fc_ortam_t *o);
+void ida_fc_olay_bilinmiyor(ida_fc_t *fc, const ida_olay_bekleyen_t *olay,
+                            const ida_fc_ortam_t *o);
+/* (e), komutlardan önce: süre aşımları ve evrensel geçişler. */
+void ida_fc_cagri(ida_fc_t *fc, const ida_emn_t *e, const ida_fc_baglam_t *b,
+                  const ida_fc_ortam_t *o);
+/* fc.inhibit_mask (A4-K91, 3.16). */
 uint32_t ida_fc_engel(const ida_fc_t *fc, const ida_fc_baglam_t *b);
+/* fc.state: son yazılan dış durum yansıması. */
 uint8_t ida_fc_durum(const ida_fc_t *fc);
 /* FC komutu: K119 biçim denetiminden ve genişletici yasaklarından geçmiş (tablo 3.17). */
 void ida_fc_komut(ida_fc_t *fc, const ida_komut_baglam_t *b, const ida_fc_cmd_t *cmd,
                   ida_cmd_result_t *r);
-/* Yalnız IDA_RC_OK dönen step'te; genişletici adaylar olay->aday[]'a konur (kapı süzer). */
-void ida_fc_adim(ida_fc_t *fc, const ida_fc_baglam_t *b, ida_olay_t *olay);
+/* Kabul edilen her çağrıda komutlardan sonra; genişletici adaylar yalnız step_ok iken
+   (IDA_RC_OK dönen step) olay->aday[]'a konur (kapı süzer). */
+void ida_fc_adim(ida_fc_t *fc, const ida_emn_t *e, const ida_fc_baglam_t *b, ida_olay_t *olay,
+                 bool step_ok, const ida_fc_ortam_t *o);
+/* Çıktı yazımında, ida_olay_yaz'dan hemen sonra: çıkan SAFETY_OPEN ve FIRE'lar kaydedilir,
+   dış durum yansıması kurulur. */
+void ida_fc_cikti(ida_fc_t *fc, const ida_out_t *out, ida_wtime_t now);
 bool ida_fc_tutarli(const ida_fc_t *fc);
 uint8_t ida_fc_param_grup(const ida_prm_kume_t *p);
 

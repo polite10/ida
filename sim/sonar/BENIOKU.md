@@ -37,7 +37,7 @@ Hepsi tahmindir [T]/[K]; ölçüm değildir.
 | Ping360 `L_min`, `L_maks` | −95, −15 dB | Havuz duvarı ≈ 200, taban 10–90 (u8) |
 | Ping360 kazanç ofseti | gain 0/1/2 → −6/0/+6 dB | Cihaz eğrisi bilinmiyor |
 | Ping360 iletim baytı | 24 + n | ping-protocol `device_data` (başlık 8 + alan 14 + sağlama 2); doğrulanmadı |
-| Ping360 varsayılan darbe | 4 · T_s (µs'ye yuvarlanır) | MP7 §3 md. 4; açık değer 1–1000 µs (ping-protocol Ping360 `transducer`; sol #7) |
+| Ping360 varsayılan darbe | 4 · T_s (µs'ye yuvarlanır, 1–1000 µs'ye kırpılır) | MP7 §3 md. 4; açık değer 1–1000 µs (ping-protocol Ping360 `transducer`; sol #7; kırpma W4-bagla-sonar sol #2) |
 | Yakın alan bandı | 1,0 m | 05 §2.4.4 md. 2 (0,75–1 m) |
 | Ping1D gürültü tabanı | Ĩ_n = 10⁻⁹ | |
 | Ping1D u8 | −95, −25 dB (TVG 20 log r) | Havuz tabanı tepesi ≈ 200 (benek tepeleri 255) |
@@ -70,3 +70,13 @@ Sensör kümesinin zinciriyle aynı sıra, anlam ve RNG yerleri (A5 Tablo 3.10-A
 ## Yakınsama (MP7 ölçütü)
 
 `sim.sonar.yakinsama_mp7` MP7'nin dondurulmuş ölçütünü (M = 32, 8 açı, δ_E, δ_V, δ_C, bootstrap %95 üst ucu ≤ 0,05, iki adım) MP7 orta sahnesinin çözümsel karşılığında uygular. MP7 prototipi sade kademede satırı 600 örneğe indiriyordu (05 §2.4.7); ölçüt bu yapılandırmada (7 m, n = 600, sp = 622) 5 000 ışında sağlanır. A5-K78'in istediği 1 200 örnekte (sp = 311) aynı sahnede 5 000 ve 10 000 ışında sağlanmaz (`ida_sonar_test yakinsama_mp7 tani`). Bu, A5-K78'in "MP7'de ölçülen yapılandırma" gerekçesiyle çelişir; mimara bildirildi.
+
+## Bağlama (W4-bagla-sonar)
+
+`ida_sim --sonar` kümeyi senaryodan kurar (`senaryo::sonar_kur`; `sim/sunucu/BENIOKU.md` "Sonar"). W4-K18'in ara durumu sürer: model sözleşmeye uyar ve Ping360 satırı varsayılan olarak 1 200 örnektir (A5-K78); ölçülen yapılandırma (600 örnek) sözleşme değişene dek `--ping360-ornek 600` ile seçilir (menzil korunur, örnek periyodu iki katına çıkar).
+
+Bağlamanın sol incelemesinden (W4-bagla-sonar sol #1, #2, #5) üç ekleme:
+
+- **Sabit bellek (W4-K27 (5)):** ping hesabının çalışma tamponları (`yog`, `tvg`, `yum`, ışın demetinin tabloları ve biriktirme dizileri), kuyruk ve kayıt yük tamponlarının havuzu (sonar başına 34 × 1 200 B) `kur`da ayrılır; arıza zincirinin kopyaları (`son_cikti`, donma) önceden ayrılmış tamponlara yazılır. `geri_al` + `adim` + `bosalt(t, cikti, azami)` düzeni bellek ayırmaz (`ida_sim` bunu kullanır; `tests/butunleme` `sonar_ayirma` sınar). Havuz boşalırsa `SonarSayaclari::tampon_yetersiz` sayılır. Bilinen kalan ayırmalar: `gilbert_elliott` deseninin geçiş anları dizisi (`ge_anlar`) koşu boyunca büyür; koşu sırasında `arm` (koşullu arıza başlangıcı) ayırır; `ping360_yapilandir` daha büyük bir satıra geçerse demet tamponları büyür.
+- **Ping360 otomatik darbe:** `ping360_darbe_us` 4 · T_s'yi 1–1000 µs'ye kırpar (örnek periyodu 10 000'i aşınca, ör. `--ping360-ornek 200` ile `sp` = 13 332, darbe 1 333 µs yerine 1 000 µs); açık aralık dışı değer `kur`da reddedilir (değişmedi).
+- **Ping1D en kısa aralığı:** `ping1d_en_kisa_aralik_ns` sunucunun A1 `A_sensör` ön denetimine girdi verir.

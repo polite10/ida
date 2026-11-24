@@ -24,17 +24,17 @@ Her modül `core/src/<modül>/` dizinindedir ve her dosyanın tek sahibi vardır
 | Bileşim | `cekirdek.h` | W2 | tam |
 | Çağrı çerçevesi | `cerceve/`: `cerceve.{c,h}` (port işlevleri, (a1)–(e)), `komut.{c,h}` (dağıtıcı), `cikti.{c,h}`, `ornek.{c,h}` (kabul kapısı), `imu_zaman.{c,h}`, `cerceve_param.def` | W2 | tam |
 | Emniyet | `emniyet/emniyet.{c,h}`: yalnız kısıtlayan yön | W2 | tam |
-| Emniyet gevşetmesi | `emniyet/emniyet_gevset.c` (W4 açar) | W4 atış kontrol | yok |
+| Emniyet gevşetmesi | `atis/atis_emniyet.c` (W5; dosya sahipliği gereği `emniyet/` yerine) | W5 atış kontrol | tam (§10) |
 | Olaylar | `olay/olay.{c,h}`: kimlik, SAFETY_CLOSE, bekleyenler, sonuçlar, yalnız silen çıkış kapısı | W2 | tam; genişletici aday üretimi W4'ün kendi dosyasında |
 | Parametreler | `param/`: `param.{c,h}`, `param_komut.c`, `ozet.{c,h}` (SHA-256), `crc32.c` (CRC-32, tablolu; W4-param-hiz), `param_listesi.inc` | W2 | tam |
 | Zaman | `zaman/zaman.h` (yalnız `static inline`) | W2 | tam |
 | Matematik | `mat/`: `mat.{c,h}`, `ida_math.{c,h}` | W2 | tam (çekirdek küme) |
 | Günlük | `telemetri/`: `telemetri.h`, `gunluk.c` | W2 | tam |
-| Kestirim | `kestirim/`: `kestirim.{c,h}`, `kes_eskf.c`, `kes_ufuk.c`, `kes_yatay.c`, `kes_ic.h` | W3 kestirim; W5 kestirim-yatay | dilim 1 (yönelim, derinlik, dikey hız) ve dilim 2 (yatay hız, konum, irtifa, düzey histerezisi; §10) |
+| Kestirim | `kestirim/`: `kestirim.{c,h}`, `kes_eskf.c`, `kes_ufuk.c`, `kes_yatay.c`, `kes_ic.h` | W3 kestirim; W5 kestirim-yatay | dilim 1 (yönelim, derinlik, dikey hız) ve dilim 2 (yatay hız, konum, irtifa, düzey histerezisi; §11) |
 | Güdüm | `gudum/`: `gudum.{c,h}` (GUIDED_SP, kontrol isteğinin tek erişimcisi) | W3-zincir | GUIDED_SP; görev öğeleri ve `AUTO` yok |
 | Görev, kip, arıza | `gorev/`: `gorev.{c,h}`, `kip.c`, `ariza.c`, `istek.c`, `gorev_ic.h` | W3 güdüm ve görev | dilim 1 (kipler, ARM, arıza güvenliği, kontrol isteği); `MISSION_*` yok |
 | Kontrol, tahsis | `kontrol/`: `kontrol.{c,h}`, `tahsis.{c,h}` | W3 kontrol | tam (dilim 1); `MANUAL` komutu yok |
-| Atış kontrol | `atis/` | W4 atış kontrol | yer tutucu (yalnız sınır) |
+| Atış kontrol | `atis/` | W5-atis-emniyet | emniyet zinciri (§10); hedefleme, algılama, takip kapsam dışı |
 | Sonar, arka plan işi | `sonar/` | W4 sonar | yer tutucu |
 
 Durum, sağlık ve fc alanlarının yazımı `cerceve/cikti.c`'dedir (çekirdek tarafı W2'de tam; M10c). `src/iskelet.{c,h}` W2-depo'nun firmware yer tutucusu (`firmware/yer_tutucu/main.c`) için korunmuştur.
@@ -96,7 +96,7 @@ Satır biçimi: `IDA_PARAM(kimlik, AD, TIP, SINIF, en_az, en_cok, varsayilan, al
 
 Önbelleğin bütünlüğü (A4-K89; sol W4-param-hiz bulgu 1 ve sol-2 bulguları 1–3): önbellek tümleyeniyle tutarsızsa (`ida_prm_tutarli`) çerçevenin çağrı başındaki bütünlük denetimi 2'yi (tamamlayıcı kopya) verir. PARAM_SAVE'in kararı (`save_karari`) özeti ve tümleyenini `ida_prm_ozet_al` ile birer kez (volatile) okur, doğrular ve bloğu yalnız bu doğrulanmış yerel değerle kodlar; önbellek yeniden okunmaz. Tutarsızlıkta blok üretilmez, `gen` tüketilmez ve `ida_prm_cagri_sonu` 2 döner; çerçeve bunu çağrı başındaki denetimle aynı yoldan (`butunluk_bildir`) aynı çağrının bütünlük sonucuna taşır: `health.core_ok` = 0 (mandallı) ve `CORE_INTEGRITY` (arg0 2) o bozulma için bir kez. Komut sonucu: A4 bütünlük hatalı çağrıdaki komut sonucunu tanımlamaz; `ACCEPTED` blob ister (K82), `REJECTED` 3.17'den bir neden ister (K120, K124) ve sonuç yazmamak K43'e aykırıdır; `REJECTED` / `PARAM_INVALID` seçildi (sözleşme boşluğu; mimar küçük sürüm notu olarak kaydeder). Böylece bozuk özet kalıcı kayda yazılmaz; yeniden init özeti tablodan yeniden kurar ve önceki geçerli blok okunur. Denetimin çağrı başına maliyeti iki 64 bitlik okuma ve bir karşılaştırmadır; host ölçümünde komutsuz adımda ayırt edilemedi (tahmin: birkaç çevrim).
 
-Doğrulama (`cekirdek.birim.param_hiz`, 14 test): değişiklikten önceki bit bit CRC, özet gövdesi ve kodlayıcı testte çekirdek işlevleri çağrılmadan referans olarak tutulur; bayt eşitliği varsayılanlarda, tablodaki her tipin (U32, F32) en az/en çok değerinde, yedi bit deseninde, 1 000 rastgele durumda (sabit tohum), PARAM_SET + COMMIT + SAVE'in çekirdek yolunda ve I32 içeren sekiz kayıtlı düzenekte (uç değerler ve 1 000 rastgele durum) sınanır. Güncel şemanın özeti altın değere sabitlenir: `0x34065414A77F8846`, kanonik metin 2 426 B, varsayılan blok 1 296 B (eski çekirdeğin ikilisiyle ve sol incelemesinin bağımsız hesabıyla aynı; şema bilerek değişirse güncellenir, testin iletisi söyler; parametre sayısı ayrıca sabitlenmez, W3-K6). CRC bilinen vektörlerde, 256 tek baytta, 8 KB'ta ve 10 000 rastgele girdide referansla eşlenir; bozulma testi özette ve tümleyende tek bit bozar, SAVE'in blok üretmediğini, `core_ok` = 0 ve `CORE_INTEGRITY` (2) bildirildiğini, yeniden init'te eski geçerli bloğun okunduğunu gösterir; beyaz kutu testi tutarlı ama tablonunkinden farklı bir çiftin başlığa aynen yazıldığını (doğrulanan yerel değer) ve birim testi çağrı sonundaki SAVE kararının bozulmayı 2 ile döndürdüğünü, blok üretmediğini ve `gen` tüketmediğini gösterir. Denetimle kullanım arasına bozma enjekte eden kanca çekirdekte yoktur (M9); tek okuma yapısal olarak sağlanır.
+Doğrulama (`cekirdek.birim.param_hiz`, 14 test): değişiklikten önceki bit bit CRC, özet gövdesi ve kodlayıcı testte çekirdek işlevleri çağrılmadan referans olarak tutulur; bayt eşitliği varsayılanlarda, tablodaki her tipin (U32, F32) en az/en çok değerinde, yedi bit deseninde, 1 000 rastgele durumda (sabit tohum), PARAM_SET + COMMIT + SAVE'in çekirdek yolunda ve I32 içeren sekiz kayıtlı düzenekte (uç değerler ve 1 000 rastgele durum) sınanır. Güncel şemanın özeti altın değere sabitlenir: `0x34065414A77F8846`, kanonik metin 2 426 B, varsayılan blok 1 296 B (W5-atis-emniyet'te üç parametreyle `0x18BE798234EDD38D`, 2 477 B, 1 320 B; §10.4) (eski çekirdeğin ikilisiyle ve sol incelemesinin bağımsız hesabıyla aynı; şema bilerek değişirse güncellenir, testin iletisi söyler; parametre sayısı ayrıca sabitlenmez, W3-K6). CRC bilinen vektörlerde, 256 tek baytta, 8 KB'ta ve 10 000 rastgele girdide referansla eşlenir; bozulma testi özette ve tümleyende tek bit bozar, SAVE'in blok üretmediğini, `core_ok` = 0 ve `CORE_INTEGRITY` (2) bildirildiğini, yeniden init'te eski geçerli bloğun okunduğunu gösterir; beyaz kutu testi tutarlı ama tablonunkinden farklı bir çiftin başlığa aynen yazıldığını (doğrulanan yerel değer) ve birim testi çağrı sonundaki SAVE kararının bozulmayı 2 ile döndürdüğünü, blok üretmediğini ve `gen` tüketmediğini gösterir. Denetimle kullanım arasına bozma enjekte eden kanca çekirdekte yoktur (M9); tek okuma yapısal olarak sağlanır.
 
 Host ölçümü (ölçüm, bağıl; Apple M3 Pro, Apple Clang 17, çekirdek `-O3`; önce ve sonra aynı oturumda arka arkaya üçer koşu; 159 parametre, 1 296 B blok):
 
@@ -117,7 +117,7 @@ Parametre komutları (A4-K81, K82, 3.17): PARAM_SET ve PARAM_GET komut anında y
 
 ## 6. Yer tutucu çekirdeğin görünen davranışı
 
-> W2 kaydıdır. W3'te görev, güdüm, kestirim ve kontrol yazıldığı için ARM, SET_MODE(GUIDED/AUTO), HEARTBEAT, FAILSAFE_RESET ve GUIDED_SP satırları artık modüllerinindir (§9); `MANUAL`, `MISSION_*` ve FC satırları bu tablodaki gibidir.
+> W2 kaydıdır. W3'te görev, güdüm, kestirim ve kontrol yazıldığı için ARM, SET_MODE(GUIDED/AUTO), HEARTBEAT, FAILSAFE_RESET ve GUIDED_SP satırları artık modüllerinindir (§9); `MANUAL` ve `MISSION_*` satırları bu tablodaki gibidir. FC satırları W5'te atış kontrol modülünündür (§10).
 
 İtki yok, genişletici olay yok: `armed`'ı 1 yapan bir yol yoktur, `thr_cmd` yalnız `armed ∧ ¬is_safe` iken kontrolün önerisinden kopyalanır, olay kapısı yalnız siler. Kabul md.4'ü `cekirdek.birim.belirlenimcilik` sınar (sabit tohum, 2 × 20 000 karışık çağrı).
 
@@ -380,7 +380,74 @@ Sayım: 130 kural (K01–K130, boşluk ve yineleme yok; betikle denetlendi). Bas
 
 **Kapalı çevrim düzeneği** `tests/zincir/` (C++20): fizik + sade sensörler + gerçek çekirdek + platform taklidi; CTest `zincir.z1`, araç `ida_zincir_deneme` (CSV). Senaryo: dalış 1,5 m / +90°, 40 s tutma; manevra 2,5 m / −90° ve aynı anda itici arızası (itki × 0,4; şekil polinomunun tersiyle darbe genişliği ölçeklenir), 40 s tutma; DISARM. Test dört koşuyu karşılaştırır: arızasız, dikey t5, yatay t1, ikisi. Parametre bloğu SIL yoluyla verilir (A4-K78): geçici bir örnek PARAM_SET/COMMIT/SAVE ile bloğu üretir; senaryonun yapılandırması `YER_G` = 9,82 (havuz, A5 Ek E) ve `BARO_KAL_D` = yüzer denge derinliğidir.
 
-## 10. Kestirim dilim 2: yatay hız, konum, irtifa ve düzey (W5-kestirim-yatay, 2026-11-24)
+## 10. Atış kontrol emniyet zinciri (W5-atis-emniyet, 2026-11-24)
+
+Görev belgesi `docs/gorevler/W5-atis-emniyet.md`; gereksinimler mimari Bölüm 03 sürüm 0.3'ün "Ek: uygulama gereksinimleri" çekirdek maddeleri G-Ç01–G-Ç53, mimar kararları W5-K1…K11 (`docs/gorevler/W5-ortak.md`). Her maddenin kodda uygulandığı yer `atis/atis.h` başındaki izlenebilirlik tablosunda, testi `core/test/atis/`'tedir (adlar `test_gcNN_*`).
+
+### 10.1 Kapsam sınırı
+
+Yalnız emniyet zinciri: silahlandırma, süreli atış izni, acil durdurma ve sanal emniyet girdilerinin geri okuması, durum makinesi, öncelik ve sonuç kodları, olayların üretimi ve sonuçları, güvenli duruma dönüş, kilitli arıza. Hedefleme çözümü, önleme hesabı, atış ölçütü, hedef algılama, takip ve torpido başarımı yoktur. Çekirdek kendiliğinden atış kararı üretmez: `FIRE` yalnız kabul edilmiş bir operatör `FC_FIRE`'ının taşınmasıdır; araya ölçüt ya da zamanlama iyileştirmesi konmaz. Algılama girdisi okunmaz (`ida_fc_algilama` boştur); kamera akışından başlık kabul edilmediği için A4-K118'e göre akış init'ten, oturum sonu çağrısından ya da `SESSION_START`'tan `T_det_stale` (2 s) sonra bayattır (W5-K21; taban `det_taban_ns`, bit her çağrının (b) adımında hesaplanır). A4-K118'in `IDA_LOG_DET_STREAM` geçiş günlüğü yazılmaz (W5-K21 yalnız bitin koşulunu ister; açık nokta). `TRACKING` ve `SOLUTION_VALID` iç durumları yoktur.
+
+### 10.2 İç durumlar ve dış eşleme
+
+İç durum `ida_fc_t.ic` özel bit desenleriyle ve tümleyeniyle (`ic_tumleyen`) tutulur; silahlı tüp (`tup`) de tümleyenlidir (03 §2.6; A4-K89). `durum` alanı A4 §3.16 değerinin yansımasıdır: her daraltmada ve her çıktı yazımında kurulur. **Dış durum (A4 §3.16; düzeltme turu, sol bulgu 4):** iç durum `FAULT` → `FAULT_LATCHED`; değilse sonucu beklenen bir `FIRE` varsa → `FIRE_PENDING`; değilse en az bir tüpün izni çekirdeğin saatinde açık sayılıyorsa → `PERMIT_OPEN`; değilse `SAFE` → `SAFE`, `TEST` → `TEST`, öteki iç durumlar → `ARMED`. Bu, 03 §2.6.1 md. 1'in iç duruma dayalı eşlemesinden farklıdır (sözleşme önceliklidir): `FIRING`'de `FIRE`'ın sonucu alınmışsa `FIRE_PENDING` değil; `ASSESS`'te izin hâlâ açıksa `PERMIT_OPEN`.
+
+| İç durum | Dış değer | Giriş | Çıkış |
+|---|---|---|---|
+| `SAFE` | `SAFE` | init, güvenli duruma dönüş, kabul edilen `FC_RESET`, `FC_TEST_EXIT` | `FC_ARM` → `ARMED`; `FC_TEST_ENTER` → `TEST` |
+| `ARMED` | `ARMED` | `SAFE`'te kabul edilen `FC_ARM(tüp)` (ARMING ayrı durum değildir: §3.17'nin `FC_ARM` satırı ön denetimdir) | `FC_FIRE(aynı tüp)` → `FIRE_AUTH` |
+| `FIRE_AUTH` | yukarıdaki kural (izin açık sayılıyorsa `PERMIT_OPEN`) | `ARMED`'de kabul edilen `FC_FIRE` | `FIRE` çıktı → `FIRING`; `T_pencere` → `SAFE`; `FC_ABORT`, kip koşulu → `ARMED` |
+| `FIRING` | sonuç beklenirken `FIRE_PENDING`; sonra yukarıdaki kural | `FIRE` çıktı | `APPLIED`/`DUPLICATE` ve tüp boşaldı → `ASSESS`; öteki sonuçlar W5-K2 |
+| `ASSESS` | yukarıdaki kural (izin açıksa `PERMIT_OPEN`, değilse `ARMED`) | tüp boşaldı | `T_assess` → `SAFE` (+ `SAFETY_CLOSE(tüp)`) |
+| `TEST` | `TEST` | `SAFE`'te kabul edilen `FC_TEST_ENTER` | `FC_TEST_EXIT` ya da evrensel geçiş → `SAFE` |
+| `FAULT` | `FAULT_LATCHED` | W5-K1, K2, K4, K11 nedenleri; iç durum bozulması | yalnız kabul edilen `FC_RESET` |
+
+**Güvenli duruma dönüş** (`ida_fc_guvenli`; W5-K8): silahlı tüpe (ve çekirdeğin açık saydığı izne) `SAFETY_CLOSE`, silahlı tüp ve atış isteği silinir, durum `SAFE`; `FAULT` korunur. Nedenler: `FC_DISARM`, araç silahsızlandırması ya da `SESSION_END` ((b)), acil durdurmanın ya da silahlı tüpün fiş/piminin kısıtlayana dönmesi ((b)), emniyet örneğinin bayatlığı ((b); W5-K4), `armed` = 0, arıza düzeyi `HOLD` ve üstü, kestirim `OK`/`DEGRADED` dışında, IMU bayat, oturum yok, olay kimliği kullanılamaz (W5-K11 b), yer istasyonu kalp atışı `T_hb_fc` boyunca yok (`ida_fc_evrensel`; komutlardan önce ve sonra iki kez: "aynı adımda").
+
+**Kip izin kümesi (okuma).** A4 §3.16'nın `MODE` biti "kip atış izni kümesinde değil" der; küme tanımlı değildir. 02 §3'ün `mode_ok`'u "AUTO'da TARGET_ALIGN ya da GUIDED"dir; görev öğeleri kapalı listesinde TARGET_ALIGN yoktur (A1 Tablo 3.6a). Bu yüzden küme yalnız `GUIDED`'dır (`IDA_FC_IZIN_KIPI`). `NARROW_MODE` (geçerli ya da geçersiz hedef) kip koşulunu düşürür (A4-K46); kip izin kümesine yeniden girildiğinde kalkar.
+
+**FC_RESET (W5-K1).** Kabul edilen `FC_RESET` durumu `SAFE` yapar; `ida_fc_adim` çağrı sonunda bu çağrıda ortaya çıkan bir kilit nedeni ya da süren bir neden (iç durum bozulması: init'e kadar; G-Ç53'ün iki çelişkisi sürdükçe: kapatmadan sonra `PERMIT_OPEN` = 1 ve tekleme; `T_tup_bos` zaman aşımı, `t_meas > t_apply` bir örnek `LOADED` = 0 gösterene dek; W5-K11 a'nın doğrulanamamış kapatması) varsa aynı çağrıda yeniden kilitler; çağrı sonundaki durum değişmediği için `FC_STATE` günlüğü üretilmez (A4-K90).
+
+### 10.3 Çerçevedeki kanca sırası
+
+Çerçevenin yalnız çağrılma noktaları değişti (`cerceve/cerceve.c`, `cerceve/cikti.c`): init'te `ida_fc_kur(fc, now_w)` (A4-K118 tabanı); (b) `ida_emn_daralt` → `ida_fc_daralt` (önce ham bütünlük denetimi ve onarım, sonra çağrı bayrakları, `DET_STALE`, bayatlık, daraltmaya tepki; FC'nin kapatma istekleri `emn.d.kapat`'a) → `ida_olay_kapat_iste`; (b3) `ida_fc_oturum_basi(fc, ortam)`; (e) kabul edilen her `SAFETY` örneği `ida_fc_emniyet_ornegi` (ortam bağlamıyla), olay sonuçları `ida_fc_olay_sonucu` (sonucun tamamıyla: `t_apply` gerekir) ve `ida_fc_olay_bilinmiyor`, görev adımından sonra komutlardan önce `ida_fc_cagri`, komutlardan sonra kabul edilen **her** çağrıda `ida_fc_adim` (genişletici aday yalnız `IDA_RC_OK` step'te); çıktı yazımında `ida_olay_yaz`'dan hemen sonra `ida_fc_cikti` (çıkan `SAFETY_OPEN`/`FIRE`'ın kaydı, dış durum yansıması). Kalp atışının izi görev modülününkidir (`gcs_son_ns`; A4-K52: yalnız kabul edilen `HEARTBEAT`).
+
+### 10.4 Parametreler
+
+| Kimlik | Ad | Tip, sınıf | Aralık | Varsayılan | Dayanak |
+|---|---|---|---|---|---|
+| 0x0601 | `T_emn_bayat` | U32 (ms), B | 150–2000 | 250 (**tahmin**; W5-K4: `T_emniyet` = 100 ms'nin 2,5 katı; kartta ölçülecek) | G-Ç29 |
+| 0x0602 | `T_pencere` | U32 (ms), B | 100–2000 | 300 (**tahmin**; 03 §2.6) | G-Ç48 |
+| 0x0603 | `T_hb_fc` | U32 (ms), B | 200–10000 | 2500 (**tahmin**; W5-K16: A1-K70'in 1 Hz kalp atışının 2,5 katı; kartta ölçülecek) | G-Ç25 |
+| 0x0604 | `T_assess` | U32 (ms), B | 200–5000 | 1000 (**tahmin**; 03 §2.6) | G-Ç48 |
+| 0x0605 | `T_tup_bos` | U32 (ms), B | 100–2000 | 500 (**tahmin**; 03 §2.6) | G-Ç53 |
+
+`T_assess` ve `T_tup_bos` düzeltme turunda parametre oldu (W5-K13; G-Ç28). Önce `butunleme.sil_oturum_dusme_belirlenim` düzeltildi: ihlal noktaları sabit ACTUATOR sırası yerine sim'in ilk çalıştırma kipli `SESSION_ACCEPT`'inden (hazırlık oturumunun bitişi) sayılır; şema 164 parametredir. `FC_APPLY_BY_NS` ve `FC_HOLD_NS` §5'tedir; hepsi B sınıfıdır (W5-K6). Aralık alt ve üst sınırları uygulayıcının seçimidir.
+
+### 10.5 Okuma kararları (mimarın toplu onayına)
+
+1. Kip izin kümesi yalnız `GUIDED` (10.2).
+2. `ARMING` iç durumu yoktur; `FC_ARM` aynı çağrıda `ARMED`'e geçer. 03 §2.6'nın ön denetimindeki rejim, derinlik ve yörünge tablosu özeti kapsam dışıdır (atış çözümüne ait) ve A4 §3.17'de ret nedeni yoktur.
+3. `FC_DISARM`/`FC_ABORT`: `SAFE` dışındaki her iç durumda (FAULT dahil; G-Ç19) ya da çekirdek bir izni açık sayarken `SAFETY_CLOSE(IDA_TUBE_ALL)`; `SAFE`'te olay üretilmez (var olan `cekirdek.birim.olay` testi `SAFE`'te `FC_ABORT`'un olay üretmemesini bekler). `FC_ABORT` `FIRE_AUTH`'ı `ARMED`'e alır, öteki durumları değiştirmez.
+4. İzin açma ve yenileme: `FIRE_AUTH`'ta izin açık değilse `SAFETY_OPEN`; açıkken yenileme son `SAFETY_OPEN`'ın çıkışından `hold_ns / 4` ile `hold_ns / 2` arasında ve yalnız sonucu alınmışsa (G-Ç12). `FIRE` izin açık sayılırken ve son kabul edilen `inst = 0` örneği, izni veren sonucun `t_apply`'ından geç olmayan ölçüm zamanıyla `PERMIT_OPEN` = 1 gösterirken, tüpün engelleri temizse üretilir.
+5. Genişletici adayın yasak maskesi `FC_FIRE` satırının bütün koşullarıdır (`SESSION`, `EVENTS_OFF`, `MODE`, `NOT_ARMED`, `EST`, `FAILSAFE`, `ESTOP`, `IMU_STALE`, `FAULT_LATCHED`, tüpün `PLUG`/`PIN`/`EMPTY` bitleri) ve `IMU_LAG`; kestirim `DEGRADED`'da `FIRE_AUTH` sürer ama olay yoktur, pencere dolunca `SAFE`.
+6. Bayatlık iki yerde değerlendirilir (G-Ç29, W5-K4 eki, W5-K20; sol bulgu 1): (b)'de çağrı başındaki izlerle (reddedilen ve out NULL çağrıda da) ve kabul edilen her `inst = 0` örneği izleri güncelledikten sonra. İkisinde de bayatlık acil durdurmayı gevşekten kısıtlayana döndürürse dönüş o çağrının daraltıcı girdisidir (ESTOP, `SAFETY_CLOSE(ALL)`, `health.narrowed`, genişletici yasağı, FC güvenli) ve aynı çağrıda acil durdurma gevşemez (W5-K20 (1)). Bayatlık önceki bir çağrıda saptanmışsa iki ölçütü de tazeleyen gevşek örnek kabul edildiği çağrıda gevşetir (W5-K20 (3)). (ii) ölçütünün zamanı, ölçüm zamanının son ilerlediği örneğin alım zamanıdır; `SESSION_START` ölçüm zamanı tabanını siler. Geri giden `t_rx` (A4-K33 monotonluk istemez) izleri bayatlatabilir.
+7. G-Ç53 izleri: kapatma izi yalnız o kapatmadan sonra çıkmış bir `SAFETY_OPEN` yoksa kurulur (kimlik karşılaştırması); sonuç örnekten sonra gelirse son kabul edilen örnekle de değerlendirilir. İki çelişki de geri okuma çelişkisi sürdükçe süren nedendir (W5-K1, G-Ç20; sol bulgu 2): tekleme (`tekleme`) sonraki her `t_meas > t_apply` örnekle yenilenir ve `LOADED` = 0 görülünce kalkar; `T_tup_bos` zaman aşımı da tekleme izini kurar (fırlatıcının durumu doğrulanamadı). Oturum sonu tekleme izini silmez; ölçüm zamanı oturumlar arasında sürekli sayılmadığı için sonraki her örnek değerlendirilir.
+11. Bağlantı olayı taşıyan çağrıda gevşetme yoktur (W5-K20 (2); G-Ç18, G-Ç45): `SESSION_END` çağrısında kabul edilen `inst = 0` örneği hiçbir alanı gevşetmez, tüp/izin değerlerini ve izleri kurmaz (A4-K128: oturum sonundan sonra kabul edilmiş sayılmaz); `SESSION_START` çağrısında örnek kabul edilir ve izleri kurar ama hiçbir alanı gevşetmez.
+12. Bütünlük (sol bulgu 3): FC'nin ham bütünlük denetimi (b)'de çağrı bayrakları (`reset_kabul`, `bu_cagri_kilit` vb.) sıfırlanmadan önce yapılır; bozulma onarım, `FAULT_LATCHED` ve `SAFETY_CLOSE(ALL)`'a taşınır.
+8. W5-K11 (a): son `SESSION_END`'den önce çıkmış bir `SAFETY_CLOSE`'un sonucu bilinmezse yine `FAULT_LATCHED` olunur ama kapatma yinelenmez ve süren neden sayılmaz (alıcı oturum sonunda bütün izinleri düşürür: A1-K23, A4-K71). Var olan `kabul.cekirdek.A4-K113.daraltma` testi (A4-K129) oturum sonu kapatmalarını yanıtsız bırakıp `SESSION_START` çağrısında olay beklemez.
+9. 03 §4'ün "beklenmeyen tüp boşalması → FAULT_LATCHED" satırı uygulanmadı: Ek'te karşılığı yoktur ve G-Ç53 çelişkiyi iki durumla sınırlar; boşalan tüpe `FC_FIRE` `EMPTY` engeliyle reddedilir, `FIRE_AUTH`'ta olay üretilmez.
+10. İç durum bozulması (desen, tümleyen, bayrak baytı) `FAULT_LATCHED`'e götürür ve init'e kadar süren nedendir; yalnız dış durum yansıması (`durum`) bozuksa iç durumdan yeniden kurulur (`cekirdek.birim.cerceve` `test_k89_ustune_yazilan_bozulma` bu yolu bekler).
+
+### 10.6 Testler
+
+`cekirdek.birim.atis_port` (port yolu, 22 test), `cekirdek.birim.atis_durum` (düzenek yolu, 22 test), `cekirdek.birim.atis_ozellik` (yedi emniyet değişmezi; iki dizi, her biri 200 000 adım, tohum `0x5EED2026`). Düzeltme turunda özellik testi bağımsız bir modelle güçlendirildi: (a) bayatlık testin kendi örnek izlerinden hesaplanır (geri giden `t_rx` dahil) ve bayatken `ESTOP` biti beklenir; (c) süren neden testin izlediği geri okuma, bekleyen olay kümesi (8 yuva) ve olay sonucu durumundan hesaplanır (uygulamanın bayrakları okunmaz); (e) daraltıcının etkisi (genişletici yok, `narrowed`, `ARMED`/`PERMIT_OPEN`/`TEST` kalmaz, `SAFETY_CLOSE(ALL)`) denetlenir. Düzenek çerçevenin ön ve tam bütünlük denetimini, `core_ok`'u, `narrow_from_rejected`'ı, parametre commit'ini, `FC_STATE`/`FC_INHIBIT` günlüklerini ve `now_w` izini de çalıştırır. Bu sürümde kestirim düzeyi port üzerinden `OK` olamaz (`kestirim/kestirim.c`: yatay hız ve konum geçerliliği sonraki dilimdedir); A4 §3.17'nin `FC_ARM` satırı gereği atış kontrol port yolunda silahlanamaz. Silahlı yollar bu yüzden düzenekle (`core/test/atis/atis_duzenek.c`) sınanır: gerçek `ida_core_t` ve gerçek modül işlevleri çerçevenin sırasıyla çağrılır, yalnız araç silahlandırması, kip, kestirim düzeyi, arıza düzeyi, IMU durumu ve kalp atışı testin koşuludur. Var olan testlerde değişiklikler: `test_param_hiz.c`'nin altın şema özeti (bağımsız SHA-256 hesabıyla; düzeltme turunda 164 parametre: `0xE0ED504FB6AEA22D`, metin 2510 B, blok 1336 B), `test_emniyet.c`'nin W2 yer tutucusunu sınayan "gevşetmez" satırı (artık gevşetir) ve düzeltme turunda aynı testin ilk çağrıda `DET_STALE` beklentisi (W5-K21: 2 s dolmadan kurulmaz), `tests/butunleme/test_sil_belirlenim.cpp`'nin ihlal noktası tabanı (W5-K13).
+
+### 10.7 Boyut
+
+`sizeof(ida_core_t)`: 12 600 → 12 936 B (W5 ilk sürüm) → **12 984 B** (düzeltme turu; macOS arm64 ve Cortex-M33 aynı; `ida_fc_t` 280 → 296 B). Kod boyu §3 tablosunun yöntemiyle W5 raporundadır.
+
+## 11. Kestirim dilim 2: yatay hız, konum, irtifa ve düzey (W5-kestirim-yatay, 2026-11-24)
 
 Görev belgesi `docs/gorevler/W5-kestirim-yatay.md`. Bu bölümdeki bütün eşik, süre, sayı ve gürültü değerleri **tahmindir** (parametre varsayılanı ya da derleme sabiti); kartta ya da gerçek duyargayla ölçülmedi. Süre rakamları yalnız host ölçümüdür ve bağıldır.
 

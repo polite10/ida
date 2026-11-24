@@ -361,10 +361,21 @@ static void test_sema_ozeti_tablodan_turer(void)
    çekirdekten bağımsız bir hesapla (.def dosyalarından kanonik metin, SHA-256'nın ilk 8 baytı
    küçük uçlu) bulundu; aynı hesap önceki şemada eski altın değerleri veriyor.
    W5-kestirim-yatay düzeltme turu (2026-11-24): KES_N_RED eklendi (0x0253, U32); 191 parametre.
-   Önceki değerler 0xC0C86286048EBFF0, 2 917 B, 1 544 B idi; yenileri aynı bağımsız hesapla. */
-#define ALTIN_OZET UINT64_C(0xA4B1E4F1ECAADCBB)
-#define ALTIN_METIN 2933u
-#define ALTIN_BLOK 1552u
+   Önceki değerler 0xC0C86286048EBFF0, 2 917 B, 1 544 B idi; yenileri aynı bağımsız hesapla.
+   W5-atis-emniyet (2026-11-24): atış kontrolün üç emniyet zinciri parametresi eklendi
+   (0x0601–0x0603; 162 parametre); değerler kanonik metnin SHA-256'sıyla çekirdekten bağımsız
+   hesaplandı (aynı hesap eski şemada 0x34065414A77F8846 / 2426 B'yi verir).
+   W5-atis-emniyet düzeltme turu (2026-11-24; W5-K13): T_assess ve T_tup_bos parametre oldu
+   (0x0604, 0x0605; 164 parametre); değerler .def dosyalarının çekirdekten bağımsız
+   ayrıştırılmasıyla kurulan kanonik metnin SHA-256'sından (aynı hesap 162 parametrede
+   0x18BE798234EDD38D / 2477 B'yi verir).
+   Birleşim (W5-kestirim-yatay + W5-atis-emniyet, 2026-11-24): iki işin parametreleri birlikte
+   196 parametre (159 + 32 kestirim + 5 atış); değerler aynı bağımsız hesapla (.def dosyalarından
+   kanonik metin). Dalların ayrı ayrı değerleri: kestirim 0xA4B1E4F1ECAADCBB / 2 933 B / 1 552 B
+   (191 parametre), atış 0xE0ED504FB6AEA22D / 2 510 B / 1 336 B (164 parametre). */
+#define ALTIN_OZET UINT64_C(0x8F918D01B26C0791)
+#define ALTIN_METIN 3017u
+#define ALTIN_BLOK 1592u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \

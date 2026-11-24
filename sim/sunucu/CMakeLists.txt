@@ -27,6 +27,9 @@ target_include_directories(ida_sunucu
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # A5 senaryo dosyası (W4-sim-senaryo): çözümleyici ida_senaryo, yükleyiciler ida_senaryo_sensor.
 target_link_libraries(ida_sunucu PUBLIC ida_kopru ida_kopru_karsi ida_fizik ida_sensor ida_senaryo ida_senaryo_sensor)
+# Sonar (W4-bagla-sonar): sonar kümesi ida_sonar, senaryodan kurulum ida_senaryo_sonar (sim/sonar
+# sonradan tanımlanır; hedef adları üretimde çözülür).
+target_link_libraries(ida_sunucu PUBLIC ida_sonar ida_senaryo_sonar)
 # A3 sunucusu (W4-bagla-a3): --a3-port verilince başlar; ida_a3 sim/a3'te tanımlanır (hedef adı üretimde çözülür).
 target_link_libraries(ida_sunucu PUBLIC ida_a3 PRIVATE nlohmann_json::nlohmann_json)
 ida_sunucu_ayar(ida_sunucu)

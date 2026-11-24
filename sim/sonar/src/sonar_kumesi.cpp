@@ -29,6 +29,11 @@ constexpr std::int64_t kSonsuz = std::numeric_limits<std::int64_t>::max();
 constexpr std::int64_t kAzamiSure = std::int64_t{1} << 53;    // sensör kümesiyle aynı sınır
 constexpr std::int64_t kAzamiZaman = std::int64_t{1} << 62;   // IDA_TIME_MAX_NS (A4-K08)
 constexpr std::size_t kKuyrukSiniri = 16;                     // sonar başına [T]
+// Yük tamponu: en büyük satır (Ping360 1 200 örnek; Ping1D kutu_sayisi ≤ 200).
+constexpr std::size_t kTamponBoyu = 1200;
+// Sonar başına aynı anda havuz dışında bulunabilecek en çok kayıt: bekleyen 1 + kuyruk 16 +
+// kullanıcının elindeki (boşaltılmış, henüz geri verilmemiş) 16, bir de pay.
+constexpr std::size_t kSonarBasinaTampon = 2 * kKuyrukSiniri + 2;
 constexpr double kHucreKenari = 0.01;                         // Δ_h, m (MP7 kuralı; A5 tam varsayılanı)
 
 // ---------------------------------------------------------------- Ping360 modeli sabitleri
@@ -193,6 +198,47 @@ struct SonarKumesi::Ic {
     std::int64_t t_son = -1;
     ic::Demet demet;
     ic::DemetSonucu ds;
+    // Sabit bellek (W4-K27 (5); W4-bagla-sonar sol #5): ping hesabının çalışma tamponları ve kayıt
+    // yük tamponlarının havuzu `kur`da ayrılır.
+    std::vector<double> yog, tvg, yum;
+    std::vector<std::vector<std::uint8_t>> havuz;
+
+    std::vector<std::uint8_t> tampon_al()
+    {
+        if (!havuz.empty()) {
+            std::vector<std::uint8_t> v = std::move(havuz.back());
+            havuz.pop_back();
+            return v;
+        }
+        ++say.tampon_yetersiz;
+        std::vector<std::uint8_t> v;
+        v.reserve(kTamponBoyu);
+        return v;
+    }
+    // Kaydın yük tamponunu havuza geri koyar (kayıt yüksüz kalır).
+    void tampon_ver(SonarOlcumu& r)
+    {
+        std::vector<std::uint8_t>& v = std::holds_alternative<Ping360Olcumu>(r.yuk)
+                                           ? std::get<Ping360Olcumu>(r.yuk).data
+                                           : std::get<Ping1dOlcumu>(r.yuk).profil;
+        if (v.capacity() >= kTamponBoyu && havuz.size() < havuz.capacity()) {
+            v.clear();
+            havuz.push_back(std::move(v));
+        }
+    }
+    // Ayrılmış yük tamponlu boş kayıt (kurulumda ve arm'da; döngüde değil).
+    static SonarOlcumu bos_kayit(bool ping1d)
+    {
+        SonarOlcumu r;
+        if (ping1d) {
+            r.yuk = Ping1dOlcumu{};
+            std::get<Ping1dOlcumu>(r.yuk).profil.reserve(kTamponBoyu);
+        } else {
+            r.yuk = Ping360Olcumu{};
+            std::get<Ping360Olcumu>(r.yuk).data.reserve(kTamponBoyu);
+        }
+        return r;
+    }
 
     static bool once(const OlcumBasligi& a, const OlcumBasligi& b)
     {
@@ -323,9 +369,7 @@ struct SonarKumesi::Ic {
         const Ping360Yapilandirmasi& y = s.p360;
         const auto& p = std::get<Ping360Ayar>(s.a.ayar);
         const double t_s = static_cast<double>(y.sample_period) * 25e-9;
-        const std::uint16_t tx_us = y.transmit_duration_us != 0
-                                        ? y.transmit_duration_us
-                                        : static_cast<std::uint16_t>(std::max<long>(1L, std::lround(4.0 * t_s * 1e6)));
+        const std::uint16_t tx_us = ping360_darbe_us(y);
         ic::DemetGirdisi g;
         g.sahne = sahne.get();
         g.t_ns = t;
@@ -343,7 +387,6 @@ struct SonarKumesi::Ic {
         g.darbe_s = static_cast<double>(tx_us) * 1e-6;
         izle(g);
 
-        std::vector<double> yog;
         benek_ve_gurultu(s, s.ornek, ds.ham, p.gurultu_tabani, p.yakin_alan_genligi, 0.0, t_s, yog);
         Ping360Olcumu o;
         o.angle_grad = static_cast<std::uint16_t>(s.aci);
@@ -353,6 +396,7 @@ struct SonarKumesi::Ic {
         o.tx_freq_khz = y.transmit_frequency_khz;
         o.gain = y.gain;
         o.ses_hizi_mps = static_cast<float>(c);
+        o.data = tampon_al();
         o.data.assign(y.n_samples, 0);
         bool doymus = false;
         const double gk = kP360Kazanc[std::min<std::size_t>(y.gain, 2u)];
@@ -414,18 +458,17 @@ struct SonarKumesi::Ic {
         g.darbe_s = t_s;   // darbe ≈ bir kutu [T]
         const bool sudaki = izle(g);
 
-        std::vector<double> yog;
         benek_ve_gurultu(s, s.ornek, ds.ham, kP1dGurultu, 0.0, tau0, t_s, yog);
         // Algılama [S] (cihaz algoritması belgelenmemiş; 05 §2.4.6): TVG'li (20 log r + 2αr)
         // profil 5 kutuluk ortalamayla yumuşatılır (benek); yumuşatılmış ham profilin tepe SNR'si
         // ≥ 10 dB ise yumuşatılmış TVG'li tepenin −3 dB'sini aşan ilk kutunun merkezi mesafedir.
         // Basamak biçimli bir dönüşte 5 kutuluk ortalama tam basamak kutusunda yarıyı aşar.
-        std::vector<double> tvg(yog.size());
+        tvg.resize(yog.size());
         for (std::size_t i = 0; i < yog.size(); ++i) {
             const double r = w.scan_start + (static_cast<double>(i) + 0.5) * dr;
             tvg[i] = yog[i] * r * r * std::pow(10.0, 2.0 * s.alfa * r / 10.0);
         }
-        std::vector<double> yum(yog.size());
+        yum.resize(yog.size());
         double tepe = 0.0, snr_tepe = 0.0;
         for (std::size_t i = 0; i < yog.size(); ++i) {
             const std::size_t lo = i >= kP1dYumusatma ? i - kP1dYumusatma : 0u;
@@ -444,6 +487,7 @@ struct SonarKumesi::Ic {
         o.scan_start = static_cast<float>(w.scan_start);
         o.scan_length = static_cast<float>(w.scan_length);
         o.ping_number = static_cast<std::uint32_t>(s.ornek & 0xFFFFFFFFu);
+        o.profil = tampon_al();
         o.profil.assign(static_cast<std::size_t>(nk), 0);
         for (std::size_t i = 0; i < yog.size(); ++i) {
             const double L = tvg[i] < 1e-15 ? -std::numeric_limits<double>::infinity()
@@ -632,6 +676,7 @@ struct SonarKumesi::Ic {
             const auto it = std::find_if(kuyruk.begin(), kuyruk.end(), [&](const SonarOlcumu& q) {
                 return q.hdr.sensor_id == o.hdr.sensor_id;
             });
+            tampon_ver(*it);
             kuyruk.erase(it);
             ++say.kuyruk_tasma;
         }
@@ -643,6 +688,14 @@ struct SonarKumesi::Ic {
 };
 
 // ================================================================ arayüz
+std::uint16_t ping360_darbe_us(const Ping360Yapilandirmasi& y)
+{
+    if (y.transmit_duration_us != 0) return y.transmit_duration_us;
+    const double t_s = static_cast<double>(y.sample_period) * 25e-9;
+    const long us = std::lround(4.0 * t_s * 1e6);
+    return static_cast<std::uint16_t>(std::clamp<long>(us, 1L, static_cast<long>(kP360DarbeAzamiUs)));
+}
+
 SonarKumesi::SonarKumesi() : ic_(std::make_unique<Ic>()) {}
 SonarKumesi::~SonarKumesi() = default;
 SonarKumesi::SonarKumesi(SonarKumesi&&) noexcept = default;
@@ -786,7 +839,39 @@ KurulumSonucu SonarKumesi::kur(const SonarKumesiAyari& ayar, std::shared_ptr<con
                                : sogurma_db_m(1e3 * d.p360.transmit_frequency_khz, su.sicaklik_c, su.tuzluluk,
                                               0.0, su.ph);
         }
+        d.son_cikti = Ic::bos_kayit(d.ping1d);   // arıza zinciri kopyası ayırmasız (W4-K27 (5))
         c.sonarlar.push_back(std::move(d));
+    }
+    // Sabit bellek (W4-K27 (5); W4-bagla-sonar sol #5): kuyruk, yük tamponu havuzu, ping hesabının
+    // çalışma tamponları ve ışın demetinin tamponları kurulumda ayrılır.
+    const std::size_t n_sonar = c.sonarlar.size();
+    c.kuyruk.reserve(n_sonar * kKuyrukSiniri);
+    c.havuz.reserve(n_sonar * kSonarBasinaTampon);
+    for (std::size_t i = 0; i < n_sonar * kSonarBasinaTampon; ++i) {
+        std::vector<std::uint8_t> v;
+        v.reserve(kTamponBoyu);
+        c.havuz.push_back(std::move(v));
+    }
+    c.yog.reserve(kTamponBoyu);
+    c.tvg.reserve(kTamponBoyu);
+    c.yum.reserve(kTamponBoyu);
+    for (const Ic::SonarDurumu& d : c.sonarlar) {
+        ic::DemetGirdisi g;
+        g.isin_sayisi = ayar.sade_isin_sayisi;
+        if (d.ping1d) {
+            // Ping1D: darbe bir kutu (çekirdek boyu pencereden bağımsız), kutu sayısı sabit.
+            g.desen = ic::Desen::tam_genislikten(kP1dGenislik, kP1dGenislik);
+            g.n_kutu = std::get<Ping1dAyar>(d.a.ayar).kutu_sayisi;
+            g.t_s = 1e-5;
+            g.darbe_s = g.t_s;
+        } else {
+            const Ping360Yapilandirmasi& y = d.p360;
+            g.desen = ic::Desen::tam_genislikten(kP360Yatay, kP360Dusey);
+            g.n_kutu = y.n_samples;
+            g.t_s = static_cast<double>(y.sample_period) * 25e-9;
+            g.darbe_s = static_cast<double>(ping360_darbe_us(y)) * 1e-6;
+        }
+        c.demet.hazirla(g, c.ds);
     }
     c.kuruldu = true;
     s.tamam = true;
@@ -813,7 +898,11 @@ AdimSonucu SonarKumesi::adim(const fizik::DurumAnlik& d, std::uint64_t adim_no)
             s.bekleyen.reset();
             k.hdr.t_hazir_ns = t;
             k.hdr.t_teslim_ns = std::max(k.hdr.t_teslim_ns, t);   // W4-K9
-            if (c.ariza_zinciri(si, k)) c.kuyruga(std::move(k));
+            if (c.ariza_zinciri(si, k)) {
+                c.kuyruga(std::move(k));
+            } else {
+                c.tampon_ver(k);   // teslim edilmeyen kaydın tamponu havuza (W4-K27 (5))
+            }
         }
         if (s.sonraki_tx < 0) s.sonraki_tx = t;
         if (!s.bekleyen && t >= s.sonraki_tx) {
@@ -845,6 +934,55 @@ void SonarKumesi::bosalt(std::int64_t t_kadar_ns, std::vector<SonarOlcumu>& cikt
 {
     SonarOlcumu o;
     while (siradaki(t_kadar_ns, o)) cikti.push_back(std::move(o));
+}
+
+std::size_t SonarKumesi::bosalt(std::int64_t t_kadar_ns, std::vector<SonarOlcumu>& cikti, std::size_t azami)
+{
+    Ic& c = *ic_;
+    auto& q = c.kuyruk;
+    std::size_t n = 0;
+    std::size_t dusen = 0;
+    while (n < q.size() && q[n].hdr.t_teslim_ns <= t_kadar_ns) {
+        if (cikti.size() < azami) {
+            cikti.push_back(std::move(q[n]));
+        } else {
+            c.tampon_ver(q[n]);
+            ++dusen;
+        }
+        ++n;
+    }
+    // Baştaki n kayıt taşındı (yüksüz); kalanlar yüksüz yerlere kayar: ayırma ve bırakma yok.
+    q.erase(q.begin(), q.begin() + static_cast<std::ptrdiff_t>(n));
+    return dusen;
+}
+
+void SonarKumesi::geri_al(std::vector<SonarOlcumu>& v)
+{
+    for (SonarOlcumu& r : v) ic_->tampon_ver(r);
+    v.clear();
+}
+
+std::size_t SonarKumesi::teslim_kapasitesi() const { return ic_->sonarlar.size() * kKuyrukSiniri; }
+
+std::vector<std::int64_t> SonarKumesi::ping1d_en_kisa_aralik_ns() const
+{
+    const Ic& c = *ic_;
+    std::vector<std::int64_t> v;
+    for (const Ic::SonarDurumu& s : c.sonarlar) {
+        if (!s.ping1d) continue;
+        const auto& p = std::get<Ping1dAyar>(s.a.ayar);
+        const Ping1dYapilandirmasi& w = s.p1d;
+        double l = w.scan_length;
+        if (w.otomatik) {
+            // ping1d_at'ın otomatik menzili: pencere [min(0,5; kalan), kalan] aralığına kırpılır.
+            const double hi = kP1dAzamiMenzil - w.scan_start;
+            l = std::min(l, std::min(kP1dAsgariMenzil, hi));
+        }
+        const std::int64_t dinleme = ns(2.0 * (w.scan_start + l) / c.c);
+        const std::int64_t aralik = c.olcekle(s, std::max(p.ping_araligi_ns, dinleme + p.islem_suresi_ns));
+        v.push_back(std::max(c.ayar.adim_ns, aralik));
+    }
+    return v;
 }
 
 bool SonarKumesi::ping360_yapilandir(const std::string& ad, const Ping360Yapilandirmasi& y)
@@ -951,6 +1089,7 @@ ArmSonucu SonarKumesi::arm(const SensorArizasi& f)
     k.t_bitis = f.sure_ns > 0 ? ust_sinir(k.t_b + f.sure_ns, h) : kSonsuz;
     k.akis = Akis(c.ayar.ana_tohum, "ariza/" + f.kimlik);
     k.gecis = Akis(c.ayar.ana_tohum, "ariza/" + f.kimlik + "/gecis");
+    k.donma = Ic::bos_kayit(c.sonarlar[si].ping1d);   // donma kopyası adımda ayırmasız (W4-K27 (5))
     c.arizalar.push_back(std::move(k));
     s.tamam = true;
     s.tutamac = c.arizalar.back().tutamac;

@@ -67,6 +67,12 @@ int test_operator_ve_senaryo();
 int test_operator_artimli();
 int test_esz_sinirli();
 int test_esz_ilk_parti_oncesi();
+int test_sonar_parcalama();
+int test_sonar_seyreltme();
+int test_sonar_kritik_oncelik();
+int test_sonar_oturum_sonu();
+int test_sonar_eksik_parca();
+int test_ping1d_uye();
 
 namespace {
 
@@ -141,6 +147,12 @@ const Test kTestler[] = {
     {"operator_artimli", test_operator_artimli},
     {"esz_sinirli", test_esz_sinirli},
     {"esz_ilk_parti_oncesi", test_esz_ilk_parti_oncesi},
+    {"sonar_parcalama", test_sonar_parcalama},
+    {"sonar_seyreltme", test_sonar_seyreltme},
+    {"sonar_kritik_oncelik", test_sonar_kritik_oncelik},
+    {"sonar_oturum_sonu", test_sonar_oturum_sonu},
+    {"sonar_eksik_parca", test_sonar_eksik_parca},
+    {"ping1d_uye", test_ping1d_uye},
 };
 
 }  // namespace

@@ -12,6 +12,7 @@ endif()
 
 add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp test_sil_alim.cpp
   test_a3.cpp a3_istemci.cpp)   # W4-bagla-a3
+target_sources(ida_butunleme_test PRIVATE test_sonar.cpp)   # W4-bagla-sonar
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -145,4 +146,23 @@ if(IDA_NODE_BUTUNLEME)
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_uctan_uca.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node")
   set_tests_properties(butunleme.a3_uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180)
+  # W4-bagla-sonar kabul 5: sonar kanallarının panel istemcisiyle çözülen değerleri sonar CSV'siyle.
+  add_test(NAME butunleme.a3_sonar_web
+    COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_sonar_web.mjs" "$<TARGET_FILE:ida_sim>"
+            "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_sonar")
+  set_tests_properties(butunleme.a3_sonar_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240)
+endif()
+
+# W4-bagla-sonar (docs/gorevler/W4-bagla-sonar.md kabul 1–6; sim/sunucu/BENIOKU.md "Sonar").
+foreach(_ad sonar_kapali_tutarlilik sonar_belirlenim sonar_ping1d sonar_ping360 sonar_red sonar_kurulum sonar_a3
+           sonar_ayirma)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+if(NOT WIN32)
+  # Kabul 6 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), Ping360 1 200 ve 600 örnek; zamanlamaya duyarlı.
+  foreach(_n 1200 600)
+    add_test(NAME butunleme.sonar_hil_olcum_${_n} COMMAND ida_butunleme_test sonar_hil_olcum ${_n})
+    set_tests_properties(butunleme.sonar_hil_olcum_${_n} PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  endforeach()
 endif()
