@@ -114,6 +114,9 @@ if(NOT WIN32)
   # Kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), A3 açık; zamanlamaya duyarlı.
   add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
   set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  # W4-K28 (3) EMNİYET: hazırlığın son el sıkışma pompasında kabul edilen durdur kazanır (SIL ve HIL).
+  add_test(NAME butunleme.a3_hazirlik_son_durdur COMMAND ida_butunleme_test a3_hazirlik_son_durdur)
+  set_tests_properties(butunleme.a3_hazirlik_son_durdur PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
   # W4-K28 (1): HIL'de duraklatma (onaylı dahil) reddedilir; 4 s, sözde uçbirim.
   add_test(NAME butunleme.a3_hil_duraklat_ret COMMAND ida_butunleme_test a3_hil_duraklat_ret)
   set_tests_properties(butunleme.a3_hil_duraklat_ret PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)

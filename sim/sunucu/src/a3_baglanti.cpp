@@ -184,7 +184,7 @@ int A3Alici::etki_yuvasi(const Komut& k)
 
 AlimSonucu A3Alici::kuyruga(const Komut& k, const a3b::YiKarsilik& yi)
 {
-    std::lock_guard<std::mutex> kl(uretici_m_);
+    // uretici_m_ çağıranda (al) tutulur.
     const int y = k.kisitlayan ? etki_yuvasi(k) : -1;
     if (y >= 0) {
         // EMNİYET (W4-K22 (a)): etki başına sabit boylu yuva; doluysa kitaplığın mandalı bekletir
@@ -279,6 +279,9 @@ std::size_t A3Alici::genel_dolu() const
 
 AlimSonucu A3Alici::al(const Komut& k)
 {
+    // EMNİYET (W4-K28 (3)): görüntünün okunması, denetim ve kuyruğa koyma tek kilit altında
+    // (gecis_kilidi): dünyanın koşu dışı iç geçişi bu üçünün arasına giremez.
+    std::lock_guard<std::mutex> kl(uretici_m_);
     const AnlikDurum a = anlik();
     const bool run_uyar = a.run_id.has_value() == k.beklenen_run_id.has_value() &&
                           (!a.run_id || *a.run_id == *k.beklenen_run_id);

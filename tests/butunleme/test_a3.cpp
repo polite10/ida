@@ -687,6 +687,81 @@ int test_a3_hazirlik_durdur()
     return 0;
 }
 
+// W4-K28 (3) (EMNİYET; sol-2 #5): hazırlığın son el sıkışma pompası sırasında (`hazirlaniyor`
+// revizyonuyla) kabul edilen `durdur`, hazırlığın tamamlanmasıyla (iç geçiş, revizyon artışı)
+// bayatlamaz: durdurma kazanır, koşu başlamaz, fizik adımı 0 yürümez. Enjeksiyon A1 bayt kancasından
+// (kartın el sıkışma yanıtının alındığı pompa), sınır kancasının verdiği alıcıyla yapılır.
+int test_a3_hazirlik_son_durdur()
+{
+    for (const bool hil : {false, true}) {
+        const std::string ad = hil ? "HIL" : "SIL";
+        ida::sunucu::Ayar a = z1_yerlesik(5.0);
+        if (hil) {
+            a.kip = ida::sunucu::Kip::hil;
+            a.karsi = ida::sunucu::Karsi::pty;
+            a.karsi_verildi = true;
+        }
+        Kosu k;
+        gozlem_kur(a, k);
+        a.csv_uret = true;
+        a.a3_acik = true;
+        a.a3_port = 0;
+        a.a3_kapanis_bekleme_s = 0.0;
+        ida::a3::KomutAlicisi* alici = nullptr;
+        std::uint32_t no = 0;
+        bool enjekte = false;
+        bool kabul_gitti = false;
+        ida::a3::AlimSonucu::Tur tur = ida::a3::AlimSonucu::Tur::ret;
+        ida_link_alici_t cozucu{};
+        (void)ida_link_alici_kur(&cozucu, IDA_LINK_ROL_KART);   // sim → kart çerçeveleri
+        a.a3_sinir_kancasi = [&alici](std::uint64_t, ida::a3::KomutAlicisi& al) { alici = &al; };
+        auto bayt = a.a1_bayt_kancasi;
+        a.a1_bayt_kancasi = [&, bayt](bool giden, const std::uint8_t* p, std::size_t n) {
+            bayt(giden, p, n);
+            if (giden) {
+                // SESSION_ACCEPT yazıldı: kartın oturumu taşıyan ilk yanıtı el sıkışmayı bitirir;
+                // onun alındığı pompa son el sıkışma pompasıdır.
+                std::size_t kk = 0;
+                while (kk < n) {
+                    std::size_t tuk = 0;
+                    ida_link_cerceve_t c{};
+                    const ida_link_rc_t rc = ida_link_al(&cozucu, p + kk, n - kk, &tuk, &c);
+                    kk += tuk;
+                    if (rc == IDA_LINK_CERCEVE && c.msgid == 46002u) {   // IDA_SESSION_ACCEPT
+                        kabul_gitti = true;
+                    }
+                    if (tuk == 0u) {
+                        break;
+                    }
+                }
+                return;
+            }
+            if (!kabul_gitti || enjekte || alici == nullptr) {
+                return;
+            }
+            const ida::a3::AnlikDurum d = alici->anlik();
+            if (d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor) {
+                enjekte = true;
+                const Komut kd = calistirma(d, KomutTuru::calistirma_durdur);
+                no = kd.komut_no;
+                tur = alici->al(kd).tur;
+            }
+        };
+        k.s = ida::sunucu::kos(a);
+        dogrula_a3(enjekte && tur == ida::a3::AlimSonucu::Tur::kuyrukta,
+                   ad + ": son el sıkışma pompasında durdur kabul edildi (kuyrukta)");
+        const auto* o = a3_sonucu(k.s, no);
+        dogrula_a3(o != nullptr && o->sonuc == "uygulandi",
+                   ad + ": durdur uygulandı (" + (o != nullptr ? o->sonuc + " " + o->neden : std::string("sonuç yok")) + ")");
+        dogrula_a3(k.s.tamam && k.s.calistirma_sonu == "yuklendi",
+                   ad + ": çalıştırma yuklendi'de kaldı (" + k.s.calistirma_sonu + ")");
+        dogrula_a3(k.s.satirlar.empty() && k.pwm_notr_degil.empty(),
+                   ad + ": koşu başlamadı, fizik adımı 0 yürümedi (satır " + std::to_string(k.s.satirlar.size()) +
+                       ", sınır gözlemi " + std::to_string(k.pwm_notr_degil.size()) + ")");
+    }
+    return 0;
+}
+
 // W4-K28 (1) HIL: duraklatma kapalı. Hazırlıkta ve koşarken (onaylı duraklatma dahil) duraklat/sürdür/
 // adımla girişte reddedilir; durum `duraklatildi` olmaz; HIL duraklatma geçersizliği kurulmaz; TF'ler
 // boşluksuz ve çalıştırma `bitti`.
@@ -776,6 +851,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_hazirlik_son_durdur") {
+        (void)test_a3_hazirlik_son_durdur();
     } else if (ad == "a3_hil_duraklat_ret") {
         (void)test_a3_hil_duraklat_ret();
     } else if (ad == "a3_hazirlik_durdur") {

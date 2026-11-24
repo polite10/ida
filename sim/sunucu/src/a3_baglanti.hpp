@@ -173,10 +173,16 @@ public:
     std::size_t genel_dolu() const;
     // Yalnız sınama: `cek`in evreleri arasında (1: kesimden sonra, 2: yuvalardan sonra) çağrılır.
     std::function<void(int evre)> cek_kancasi;
+    // EMNİYET (W4-K28 (3)): `al` anlık görüntüyü okumaktan kuyruğa koymaya dek üretici kilidini
+    // tutar. Dünya, koşu dışındaki bir iç geçişte (hazırlık tamamlandı → kosuyor) bu kilidi alıp son
+    // bir çekiş yapar ve yeni görüntüyü yazar: eski görüntüyle denetlenmiş her istek ya bu çekişte
+    // alınır ya da yeni görüntüyle denetlenir (iç geçiş kabul edilmiş isteği bayatlatamaz). Sınır
+    // döngüsünde alınmaz (W4-K27 (5)).
+    std::unique_lock<std::mutex> gecis_kilidi() { return std::unique_lock<std::mutex>(uretici_m_); }
 
 private:
     static int etki_yuvasi(const a3::Komut& k);
-    a3::AlimSonucu kuyruga(const a3::Komut& k, const a3b::YiKarsilik& yi);
+    a3::AlimSonucu kuyruga(const a3::Komut& k, const a3b::YiKarsilik& yi);   // uretici_m_ tutulurken
 
     bool hil_ = false;
     // Üçlü tampon: dünya `arka_`'ya yazar ve `orta_` ile değiştirir; okuyucu `on_`'u okur.
@@ -191,7 +197,7 @@ private:
         A3Giris g;
     };
     std::array<Yuva, kKisitYuva> kisit_;
-    std::mutex uretici_m_;   // yalnız üreticiler arası (G/Ç ve sınama kancası)
+    std::mutex uretici_m_;   // üreticiler arası (G/Ç ve sınama kancası) ve gecis_kilidi
     std::uint64_t sira_ = 0;
     std::vector<A3Giris> halka_;
     std::atomic<std::size_t> bas_{0};   // tüketici

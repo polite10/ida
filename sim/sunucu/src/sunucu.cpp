@@ -330,7 +330,7 @@ private:
     bool a3_gevsetme_onu_acik(const A3Giris& g);
     void a3_calistirma_isle(std::uint64_t b);
     bool a3_sinir_basi(std::uint64_t b);
-    bool a3_hazirlik_durdu();
+    bool a3_hazirlik_durdu(bool kanca = true);
     void a3_emniyet_ver(std::uint64_t b);
     void a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
     void a3_sonuclari_isle(std::uint64_t b, const kopru::OperatorSonucu* sonuc, std::size_t n,
@@ -2764,12 +2764,13 @@ void Calistirici::a3_yayinla(std::uint64_t b)
 // denetimi işlenir; kabul edilen `durdur` çalıştırmayı `yuklendi`'ye döndürür ve hazırlık biter
 // (sonradan kendiliğinden başlamaz). Emniyet ve yer istasyonu istekleri birikir (kısıtlayanlar
 // yuvasında, ötekiler en çok kGenelAzami) ve ilk sınırda işlenir. Dönüş true: durduruldu.
-bool Calistirici::a3_hazirlik_durdu()
+// `kanca` false: sınama kancası çağrılmaz (gecis_kilidi altındaki son çekiş; kanca `al` çağırır).
+bool Calistirici::a3_hazirlik_durdu(bool kanca)
 {
     if (yay_ == nullptr || a3d_.durum != a3::CalistirmaDurumu::hazirlaniyor) {
         return yay_ != nullptr && a3_durdur_;
     }
-    if (a_.a3_sinir_kancasi) {
+    if (kanca && a_.a3_sinir_kancasi) {
         a_.a3_sinir_kancasi(0, *a3al_);
     }
     a3_cek(A3Alici::kButunYuvalar);
@@ -3056,7 +3057,22 @@ Sonuc Calistirici::kos()
         zamanlayici_onceligi();   // HIL 1x: duvar saatine kilitli döngü
     }
     bas_ = Saat::now();
-    if (!oturum_kur()) {
+    bool kuruldu = oturum_kur();
+    if (kuruldu && yay_ != nullptr) {
+        // EMNİYET (W4-K28 (3); sol-2 #5): hazırlığın tamamlanması ile kabul edilmiş durdurmanın
+        // sahipliği birlikte çözülür. Üretici kilidi altında son çekiş: son el sıkışma pompası
+        // sırasında `hazirlaniyor` görüntüsüyle kabul edilen `durdur` burada (aynı revizyonla)
+        // işlenir ve kazanır; kilit bırakılmadan `kosuyor` görüntüsü yazılır, sonraki her istek
+        // yeni görüntüyle denetlenir. İç geçiş kabul edilmiş durdurmayı geçersizleştiremez.
+        std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
+        if (a3_hazirlik_durdu(false)) {
+            kuruldu = false;
+        } else {
+            a3_gecis(a3::CalistirmaDurumu::kosuyor, "on_denetim_gecti", true);
+            a3_anlik_guncelle();
+        }
+    }
+    if (!kuruldu) {
         s_.sayac = k_->sayaclar();
         s_.kart = k_->kart();
         if (yay_ != nullptr && a3_durdur_) {
@@ -3088,7 +3104,6 @@ Sonuc Calistirici::kos()
         return s_;
     }
     if (yay_ != nullptr) {
-        a3_gecis(a3::CalistirmaDurumu::kosuyor, "on_denetim_gecti", true);
         if (a3_baslat_komutu_) {
             a3_sonuc(*a3_baslat_komutu_, true, 0, nullptr);
             a3_baslat_komutu_.reset();
