@@ -285,12 +285,21 @@ struct Sonuc {
     std::vector<EmniyetDegisimi> emniyet_degisimleri;   // A3 açıkken
     std::uint64_t a3_yayin_cagrisi = 0;        // Yayinci çağrısı (dünya iş parçacığı)
     std::int64_t a3_cagri_en_kotu_ns = 0;      // tek çağrının en uzun süresi (duvar; ölçüm)
-    std::int64_t a3_sinir_en_kotu_ns = 0;      // bir sınırdaki bütün yayın çağrılarının en uzun toplamı
+    // W4-K27 (5): dünya tarafındaki BÜTÜN A3 hizmetinin (istek çekme, karar, yayın hazırlığı ve
+    // yayın; köprü çağrıları dahil) bir sınırdaki (duraklatmada bir yoklamadaki) en uzun süresi.
+    std::int64_t a3_sinir_en_kotu_ns = 0;
     std::uint64_t a3_halka_tasma = 0;          // A3-K38
     std::uint64_t a3_komut = 0;                // dünyaya ulaşan A3 komutu
+    std::uint64_t a3_kayit_atilan = 0;         // kayıt tamponu dolduğu için Sonuc'a yazılmayan kayıt
+    // W4-K27 (2) (EMNİYET): önce teslim edilmiş işlenmemiş bir kısıtlayan yüzünden reddedilen gevşetme.
+    std::uint64_t a3_sira_korumasi = 0;
 };
 
 Sonuc kos(const Ayar& ayar);
+
+// Yalnız sınama (W4-K27 (5)): çağıran iş parçacığı dünya tarafındaki A3 hizmetinin içindeyken
+// (köprü ve fizik çağrıları hariç) sıfırdan büyük; bellek ayırma sayacı kancaları için.
+int a3_ayirma_sayilir() noexcept;
 
 const char* csv_basligi();
 

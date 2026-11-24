@@ -2,21 +2,23 @@
 //
 // İş parçacıkları (04 §2.12; A3-K38):
 //   A3 G/Ç iş parçacığı (kitaplık)  `anlik()` ve `al()` çağırır: eşzamanlı denetimler (A3-K54,
-//                                   K91, K118, K123, Tablo 4.7a/4.7b) bu sınıftaki son anlık
-//                                   görüntüye göre yapılır; kabul edilen komut kuyruğa girer.
-//   Dünya iş parçacığı (Calistirici) `cek()` ile komutları yalnız fizik sınırında alır (A3-K57),
-//                                   kararını orada yeniden verir ve sonucu `Yayinci` ile yayınlar.
+//                                   K91, K118, K123, Tablo 4.7a/4.7b) son anlık görüntüye göre;
+//                                   yer istasyonu komutunun A1 karşılığı da burada çözülür (JSON
+//                                   ayrıştırma dünya iş parçacığına girmez: W4-K27 (5)).
+//   Dünya iş parçacığı (Calistirici) `cek()` ile istekleri yalnız fizik sınırında (ve duraklatma
+//                                   yoklamasında) alır, kararını orada yeniden verir.
 //
-// Aktarım (W4-bagla-a3 kapsam 3; EMNİYET):
-//   - Genel komutlar: 256 komutluk sınırlı halka (A3-K59). Üretici tarafı (G/Ç) kısa bir kilitle
-//     yazar; tüketici (dünya) kilit almaz. Halka doluyken `dolu` döner (kitaplık 503 `mesgul`).
+// Aktarım (EMNİYET; W4-K22, W4-K27 (2), (5)):
+//   - Genel istekler: 256'lık sınırlı halka (A3-K59); üreticiler kısa bir kilitle yazar, tüketici
+//     (dünya) kilit almaz. Doluyken `dolu` (kitaplık 503 `mesgul`).
 //   - Kısıtlayan istekler (acil durdurma bas; tüp başına fiş çıkar, pim tak; dört daraltıcı yer
-//     istasyonu komutu): etki başına sabit boylu, taşmayan tek yuva. Yuva doluyken `dolu` döner ve
-//     kitaplığın etki başına mandalı (W4-K22 (a)) bekletir; dünya her sınırda önce bu yuvaları
-//     boşaltır. Kısıtlayan istek genel halkanın doluluğundan ve gevşeten isteklerden bağımsızdır:
-//     gevşetenin arkasında beklemez ve hiçbir doluluk yüzünden atılmaz.
-//   - Anlık görüntü: dünya `anlik_ver` ile verir (`try_lock`: G/Ç kopyalarken dünya beklemez,
-//     görüntü bir sonraki çağrıda yenilenir).
+//     istasyonu komutu): etki başına taşmayan tek yuva. Doluyken `dolu` döner, kitaplığın etki
+//     başına mandalı bekletir.
+//   - Tutarlı kesim (W4-K27 (2)): `cek` önce genel halkanın o anki ucunu okur, sonra kısıtlayan
+//     yuvaları boşaltır, sonra halkayı kesime kadar alır. Her istek G/Ç'de tek bir artan sıra
+//     numarası alır; kesimdeki bir genel istekten önce teslim edilmiş her kısıtlayan aynı `cek`te
+//     (ya da daha önce) alınır ya da yuvasında bekler (`bekleyen_kisit_en_kucuk`).
+//   - Anlık görüntü: kilitsiz üçlü tampon (dünya yazar, kilit almaz, bellek ayırmaz; G/Ç okur).
 #pragma once
 
 #include "ida/a3/komut.hpp"
@@ -25,6 +27,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -32,49 +35,6 @@
 #include <vector>
 
 namespace ida::sunucu {
-
-class A3Alici final : public a3::KomutAlicisi {
-public:
-    static constexpr std::size_t kGenelKuyruk = 256;   // A3-K59
-    // Kısıtlayan etki yuvaları: acil, fiş f1/f2, pim f1/f2, disarm, set_mode_daraltici,
-    // fc_disarm, fc_abort.
-    static constexpr std::size_t kKisitYuva = 9;
-
-    explicit A3Alici(bool hil);
-    ~A3Alici() override;
-    A3Alici(const A3Alici&) = delete;
-    A3Alici& operator=(const A3Alici&) = delete;
-
-    // ---- A3 G/Ç iş parçacığı ----
-    a3::AnlikDurum anlik() override;
-    a3::AlimSonucu al(const a3::Komut& k) override;
-
-    // ---- Dünya iş parçacığı ----
-    // Anlık görüntüyü verir; G/Ç o an kopyalıyorsa false (dünya beklemez; sonra yeniden denenir).
-    bool anlik_ver(const a3::AnlikDurum& a);
-    // Bekleyen komutları alır: önce kısıtlayan yuvalar (etki sırasıyla), sonra genel halka
-    // (komut_no sırasıyla). Kilit almaz.
-    void cek(std::vector<a3::Komut>& kisitlayan, std::vector<a3::Komut>& genel);
-    // Sınama: kuyruktaki genel komut sayısı.
-    std::size_t genel_dolu() const;
-
-private:
-    static int etki_yuvasi(const a3::Komut& k);
-    a3::AlimSonucu kuyruga(const a3::Komut& k);
-
-    bool hil_ = false;
-    std::mutex anlik_m_;
-    a3::AnlikDurum anlik_;
-    struct Yuva {
-        std::atomic<bool> dolu{false};
-        a3::Komut k;
-    };
-    std::array<Yuva, kKisitYuva> kisit_;
-    std::mutex uretici_m_;   // yalnız üreticiler arası (G/Ç ve sınama kancası)
-    std::vector<a3::Komut> halka_;
-    std::atomic<std::size_t> bas_{0};   // tüketici
-    std::atomic<std::size_t> son_{0};   // üretici
-};
 
 // A3 ↔ A1 dönüşümleri ve olay ayrıntısı yazımı (bellek ayırmaz; sabit tampon).
 namespace a3b {
@@ -123,6 +83,7 @@ enum class YiTur : std::uint8_t {
 };
 struct YiKarsilik {
     YiTur tur = YiTur::desteklenmiyor;
+    const char* ad = "";        // kataloğun komut adı (durağan metin; dünya tarafında kopyalanmaz)
     std::uint8_t a1_tur = 0;    // IDAW_CMD_TYPE (basit) ya da IDAW_FC_OP (fc)
     std::uint16_t arg = 0;      // basit: arg; fc: tube (255: ikisi)
     std::uint8_t sp_mask = 0;   // guided
@@ -143,5 +104,92 @@ std::string run_id_uret();
 std::uint32_t a1_run_id(const std::string& run_id);
 
 }  // namespace a3b
+
+// Dünya iş parçacığına aktarılan istek.
+struct A3Giris {
+    std::uint64_t sira = 0;        // G/Ç'nin verdiği teslim sırası (1'den, artan)
+    a3::Komut k;
+    a3b::YiKarsilik yi;            // yer istasyonu komutunun A1 karşılığı (G/Ç'de çözüldü)
+};
+
+// Çalıştırmanın anlık görüntüsü (dünya → G/Ç; bellek ayırmayan düz yapı).
+struct AnlikPod {
+    std::uint8_t durum = 1;        // a3::CalistirmaDurumu
+    std::uint8_t kip = 1;          // a3::ZamanKipi
+    bool run_var = false;
+    std::array<char, 40> run_id{};
+    std::int64_t sim_t_ns = 0;
+    std::uint64_t adim_no = 0;
+    bool gecerli = true;
+    bool gercek_zamani_kacirdi = false;
+    std::uint32_t gecerlilik_nedenleri = 0;
+    bool ozet_var = false;
+    std::array<char, 80> ozet{};
+    std::uint32_t a1_run_id = 0;
+    std::uint64_t durum_rev = 1;
+    std::uint32_t emniyet_rev = 1;
+    bool emniyet_rev_doydu = false;
+    std::uint8_t acil = 0;
+    std::array<std::uint8_t, 2> fis{0, 0};
+    std::array<std::uint8_t, 2> pim{1, 1};
+    bool son_degisim_var = false;
+    std::uint64_t son_degisim_adimi = 0;
+    // parti_gonderilen, parti_kacirildi, oturum_kopma, sim_gecikmesi, a3_halka_tasma
+    std::array<std::int64_t, 5> sayac{};
+};
+
+class A3Alici final : public a3::KomutAlicisi {
+public:
+    static constexpr std::size_t kGenelKuyruk = 256;   // A3-K59
+    // Kısıtlayan etki yuvaları: 0 acil, 1–2 fiş f1/f2, 3–4 pim f1/f2, 5 disarm,
+    // 6 set_mode_daraltici, 7 fc_disarm, 8 fc_abort.
+    static constexpr std::size_t kKisitYuva = 9;
+    static constexpr std::uint16_t kYiYuvalari = 0x1E0u;    // 5–8
+    static constexpr std::uint16_t kButunYuvalar = 0x1FFu;
+
+    explicit A3Alici(bool hil);
+    ~A3Alici() override;
+    A3Alici(const A3Alici&) = delete;
+    A3Alici& operator=(const A3Alici&) = delete;
+
+    // ---- A3 G/Ç iş parçacığı ----
+    a3::AnlikDurum anlik() override;
+    a3::AlimSonucu al(const a3::Komut& k) override;
+
+    // ---- Dünya iş parçacığı (kilitsiz, bellek ayırmaz; vektörler çağıranın ayırdığı kapasitede) ----
+    void anlik_yaz(const AnlikPod& p);
+    // Tutarlı kesimle alır (W4-K27 (2)): kesim, kısıtlayan yuvalar (`atla` maskesindekiler hariç;
+    // sıra numarasıyla), sonra genel halka kesime kadar (en çok `genel_azami` istek).
+    void cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla = 0,
+             std::size_t genel_azami = kGenelKuyruk);
+    // `maske`deki dolu kısıtlayan yuvalardaki isteklerin en küçük sıra numarası (yoksa 0).
+    std::uint64_t bekleyen_kisit_en_kucuk(std::uint16_t maske) const;
+    std::size_t genel_dolu() const;
+    // Yalnız sınama: `cek`in evreleri arasında (1: kesimden sonra, 2: yuvalardan sonra) çağrılır.
+    std::function<void(int evre)> cek_kancasi;
+
+private:
+    static int etki_yuvasi(const a3::Komut& k);
+    a3::AlimSonucu kuyruga(const a3::Komut& k, const a3b::YiKarsilik& yi);
+
+    bool hil_ = false;
+    // Üçlü tampon: dünya `arka_`'ya yazar ve `orta_` ile değiştirir; okuyucu `on_`'u okur.
+    std::array<AnlikPod, 3> tampon_{};
+    std::atomic<unsigned> orta_{1u};
+    unsigned arka_ = 0;
+    std::mutex okuyucu_m_;   // yalnız okuyucular arası (G/Ç ve sınama kancası); dünya almaz
+    unsigned on_ = 2;
+    struct Yuva {
+        std::atomic<bool> dolu{false};
+        std::atomic<std::uint64_t> sira{0};
+        A3Giris g;
+    };
+    std::array<Yuva, kKisitYuva> kisit_;
+    std::mutex uretici_m_;   // yalnız üreticiler arası (G/Ç ve sınama kancası)
+    std::uint64_t sira_ = 0;
+    std::vector<A3Giris> halka_;
+    std::atomic<std::size_t> bas_{0};   // tüketici
+    std::atomic<std::size_t> son_{0};   // üretici
+};
 
 }  // namespace ida::sunucu

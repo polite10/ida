@@ -108,14 +108,17 @@ try {
     beklenen_emniyet_rev: jeton.emniyet_rev,
   });
   dogrula(arm.sonuc === 'kuyrukta', 'ARM 202 kuyrukta');
-  await bekle(() => sonuc(arm.komut_no) !== undefined, 5000, 'ARM komut_sonucu (duraklatılmışken beklemez)');
+  // W4-K27 (1), (3): yer istasyonu komutları duraklatılmışken birikir, sürdürmedeki ilk sınırda işlenir.
+  await new Promise((r) => setTimeout(r, 200));
+  dogrula(sonuc(arm.komut_no) === undefined, 'ARM duraklatılmışken birikti (işlenmedi)');
+  d = await http.durum();
+  const sur = await http.calistirma('surdur', { run_id: d.run_id, durum_rev: d.durum_rev });
+  await bekle(() => sonuc(sur.komut_no) !== undefined, 5000, 'sürdür sonucu');
+  await bekle(() => sonuc(arm.komut_no) !== undefined, 5000, 'ARM komut_sonucu (sürdürmeden sonra)');
   dogrula(sonuc(arm.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'ARM ağ geçidinde uygulandı');
   const yiKomut = () => olaylar.find((o) => o.tur === 'yer_istasyonu_komutu' && o.ayrinti?.komut_no === arm.komut_no);
   await bekle(() => yiKomut() !== undefined, 5000, 'yer_istasyonu_komutu');
   dogrula(yiKomut()?.ayrinti?.durum === 'karta_iletildi', `yer_istasyonu_komutu: ${yiKomut()?.ayrinti?.durum}`);
-  d = await http.durum();
-  const sur = await http.calistirma('surdur', { run_id: d.run_id, durum_rev: d.durum_rev });
-  await bekle(() => sonuc(sur.komut_no) !== undefined, 5000, 'sürdür sonucu');
   const yanit = () => olaylar.find((o) => o.tur === 'yer_istasyonu_yaniti' && o.ayrinti?.komut_no === arm.komut_no);
   await bekle(() => yanit() !== undefined, 10000, 'ARM kart yanıtı (yer_istasyonu_yaniti)');
   const y = yanit().ayrinti;

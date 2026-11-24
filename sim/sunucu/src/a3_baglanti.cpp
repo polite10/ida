@@ -88,26 +88,63 @@ using a3b::gecis_gecerli;
 
 A3Alici::A3Alici(bool hil) : hil_(hil), halka_(kGenelKuyruk + 1u)
 {
-    anlik_.durum = CalistirmaDurumu::yuklendi;
-    anlik_.kip = hil ? a3::ZamanKipi::hil_1x : a3::ZamanKipi::sil;
+    AnlikPod p;
+    p.kip = static_cast<std::uint8_t>(hil ? a3::ZamanKipi::hil_1x : a3::ZamanKipi::sil);
+    tampon_.fill(p);
 }
 
 A3Alici::~A3Alici() = default;
 
-AnlikDurum A3Alici::anlik()
+// Üçlü tampon, dünya tarafı: kilit almaz, bellek ayırmaz (düz yapının kopyası).
+void A3Alici::anlik_yaz(const AnlikPod& p)
 {
-    std::lock_guard<std::mutex> k(anlik_m_);
-    return anlik_;
+    tampon_[arka_] = p;
+    arka_ = orta_.exchange(arka_ | 4u, std::memory_order_acq_rel) & 3u;
 }
 
-bool A3Alici::anlik_ver(const AnlikDurum& a)
+AnlikDurum A3Alici::anlik()
 {
-    std::unique_lock<std::mutex> k(anlik_m_, std::try_to_lock);
-    if (!k.owns_lock()) {
-        return false;
+    AnlikPod p;
+    {
+        std::lock_guard<std::mutex> k(okuyucu_m_);
+        if ((orta_.load(std::memory_order_acquire) & 4u) != 0u) {
+            on_ = orta_.exchange(on_, std::memory_order_acq_rel) & 3u;
+        }
+        p = tampon_[on_];
     }
-    anlik_ = a;
-    return true;
+    AnlikDurum a;
+    a.durum = static_cast<CalistirmaDurumu>(p.durum);
+    a.kip = static_cast<a3::ZamanKipi>(p.kip);
+    if (p.run_var) {
+        a.run_id = std::string(p.run_id.data());
+    }
+    a.sim_t_ns = p.sim_t_ns;
+    a.adim_no = p.adim_no;
+    a.gecerli = p.gecerli;
+    a.gercek_zamani_kacirdi = p.gercek_zamani_kacirdi;
+    a.gecerlilik_nedenleri = p.gecerlilik_nedenleri;
+    // Kademeler: 3B görünüm, kamera ve sonar ida_sim'de yoktur (kapali); kayıt (A6) yok: en alt
+    // kademe (sözleşmenin değer kümesinde "yok" yok; rapor).
+    a.kademe_gorunum = 0;
+    a.kademe_kamera = 0;
+    a.kademe_sonar = 0;
+    a.kademe_kayit = 0;
+    if (p.ozet_var) {
+        a.senaryo_ozeti = std::string(p.ozet.data());
+    }
+    a.a1_run_id = p.a1_run_id;
+    a.durum_rev = p.durum_rev;
+    a.emniyet_rev = p.emniyet_rev;
+    a.emniyet_rev_doydu = p.emniyet_rev_doydu;
+    a.acil_durdurma = p.acil;
+    a.silahlandirma_fisi = p.fis;
+    a.emniyet_pimi = p.pim;
+    if (p.son_degisim_var) {
+        a.son_degisim_adimi = p.son_degisim_adimi;
+    }
+    a.sayaclar = {{"parti_gonderilen", p.sayac[0]}, {"parti_kacirildi", p.sayac[1]}, {"oturum_kopma", p.sayac[2]},
+                  {"sim_gecikmesi", p.sayac[3]}, {"a3_halka_tasma", p.sayac[4]}};
+    return a;
 }
 
 int A3Alici::etki_yuvasi(const Komut& k)
@@ -138,20 +175,23 @@ int A3Alici::etki_yuvasi(const Komut& k)
     return -1;
 }
 
-AlimSonucu A3Alici::kuyruga(const Komut& k)
+AlimSonucu A3Alici::kuyruga(const Komut& k, const a3b::YiKarsilik& yi)
 {
     std::lock_guard<std::mutex> kl(uretici_m_);
     const int y = k.kisitlayan ? etki_yuvasi(k) : -1;
     if (y >= 0) {
-        // EMNİYET (W4-K22 (a), kapsam 3): etki başına sabit boylu yuva; doluysa kitaplığın mandalı
-        // bekletir (atılmaz). Genel halkanın doluluğu bu yolu etkilemez.
+        // EMNİYET (W4-K22 (a)): etki başına sabit boylu yuva; doluysa kitaplığın mandalı bekletir
+        // (atılmaz). Genel halkanın doluluğu bu yolu etkilemez.
         Yuva& v = kisit_[static_cast<std::size_t>(y)];
         if (v.dolu.load(std::memory_order_acquire)) {
             AlimSonucu a;
             a.tur = AlimSonucu::Tur::dolu;
             return a;
         }
-        v.k = k;
+        v.g.sira = ++sira_;
+        v.g.k = k;
+        v.g.yi = yi;
+        v.sira.store(v.g.sira, std::memory_order_relaxed);
         v.dolu.store(true, std::memory_order_release);
         AlimSonucu a;
         a.tur = AlimSonucu::Tur::kuyrukta;
@@ -164,31 +204,63 @@ AlimSonucu A3Alici::kuyruga(const Komut& k)
         a.tur = AlimSonucu::Tur::dolu;   // A3-K59 (kısıtlayan bu yola düşmez; düşerse kitaplık mandalı)
         return a;
     }
-    halka_[s] = k;
+    halka_[s].sira = ++sira_;
+    halka_[s].k = k;
+    halka_[s].yi = yi;
     son_.store(n, std::memory_order_release);
     AlimSonucu a;
     a.tur = AlimSonucu::Tur::kuyrukta;
     return a;
 }
 
-void A3Alici::cek(std::vector<Komut>& kisitlayan, std::vector<Komut>& genel)
+void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla,
+                  std::size_t genel_azami)
 {
+    // EMNİYET (W4-K27 (2)): önce kesim. Kesimdeki her genel isteğin yayınlanması (release),
+    // ondan önce teslim edilmiş kısıtlayanların yuvaya yazılmasından sonradır; burada acquire ile
+    // okunan kesimden sonra yuvalar onları gösterir.
+    const std::size_t kesim = son_.load(std::memory_order_acquire);
+    if (cek_kancasi) {
+        cek_kancasi(1);
+    }
     const std::size_t k0 = kisitlayan.size();
-    for (Yuva& v : kisit_) {
+    for (std::size_t i = 0; i < kisit_.size(); ++i) {
+        if (((atla >> i) & 1u) != 0u) {
+            continue;
+        }
+        Yuva& v = kisit_[i];
         if (v.dolu.load(std::memory_order_acquire)) {
-            kisitlayan.push_back(std::move(v.k));
+            kisitlayan.push_back(std::move(v.g));
+            v.sira.store(0, std::memory_order_relaxed);
             v.dolu.store(false, std::memory_order_release);
         }
     }
     std::sort(kisitlayan.begin() + static_cast<std::ptrdiff_t>(k0), kisitlayan.end(),
-              [](const Komut& x, const Komut& y) { return x.komut_no < y.komut_no; });
+              [](const A3Giris& x, const A3Giris& y) { return x.sira < y.sira; });
+    if (cek_kancasi) {
+        cek_kancasi(2);
+    }
     std::size_t b = bas_.load(std::memory_order_relaxed);
-    const std::size_t s = son_.load(std::memory_order_acquire);
-    while (b != s) {
+    for (std::size_t n = 0; b != kesim && n < genel_azami; ++n) {
         genel.push_back(std::move(halka_[b]));
         b = (b + 1u) % halka_.size();
     }
     bas_.store(b, std::memory_order_release);
+}
+
+std::uint64_t A3Alici::bekleyen_kisit_en_kucuk(std::uint16_t maske) const
+{
+    std::uint64_t en = 0;
+    for (std::size_t i = 0; i < kisit_.size(); ++i) {
+        if (((maske >> i) & 1u) == 0u || !kisit_[i].dolu.load(std::memory_order_acquire)) {
+            continue;
+        }
+        const std::uint64_t s = kisit_[i].sira.load(std::memory_order_relaxed);
+        if (s != 0u && (en == 0u || s < en)) {
+            en = s;
+        }
+    }
+    return en;
 }
 
 std::size_t A3Alici::genel_dolu() const
@@ -233,7 +305,7 @@ AlimSonucu A3Alici::al(const Komut& k)
             return ret("gecersiz_durum",
                        "ida_sim bu dilimde tek çalıştırma koşar: sıfırlama yalnız 'yuklendi' durumunda (A3-K67 bu dilimde yok)");
         }
-        return kuyruga(k);
+        return kuyruga(k, a3b::YiKarsilik{});
     }
     // Emniyet ve yer istasyonu (A3-K54, K91, K118; EMNİYET W4-K19).
     if (!k.kisitlayan) {
@@ -257,7 +329,12 @@ AlimSonucu A3Alici::al(const Komut& k)
                        "{\"guncel_emniyet_rev\":" + std::to_string(a.emniyet_rev) + "}");
         }
     }
-    return kuyruga(k);
+    a3b::YiKarsilik yi;
+    if (k.tur == KomutTuru::yer_istasyonu_komut && !a3b::yi_karsilik(k.yi_komut, k.yi_parametreler_json, yi)) {
+        // Kitaplık parametreleri katalog şemasıyla doğruladı; buraya düşmek bir dönüşüm hatasıdır.
+        return ret("gecersiz_deger", "yer istasyonu komutunun A1 karşılığı çözülemedi");
+    }
+    return kuyruga(k, yi);
 }
 
 namespace a3b {
@@ -394,6 +471,15 @@ std::string_view JsonYaz::bitir()
 bool yi_karsilik(const std::string& komut, const std::string& parametreler_json, YiKarsilik& k)
 {
     k = YiKarsilik{};
+    static constexpr const char* kAdlar[] = {"arm", "disarm", "set_mode_daraltici", "set_mode_genisletici", "manual",
+                                             "guided_sp", "mission_upload", "mission_ctl", "param_get", "param_apply",
+                                             "param_save", "failsafe_reset", "fc_arm", "fc_fire", "fc_disarm",
+                                             "fc_abort", "fc_reset", "fc_test_enter", "fc_test_exit"};
+    for (const char* ad : kAdlar) {
+        if (komut == ad) {
+            k.ad = ad;
+        }
+    }
     const nlohmann::json p = nlohmann::json::parse(parametreler_json, nullptr, false);
     if (p.is_discarded() || !p.is_object()) {
         return false;
