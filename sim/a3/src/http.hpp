@@ -64,8 +64,10 @@ std::string durum_metni(int durum);
 
 // Yanıt başlığı + gövde. `Cache-Control: no-store` ve `X-Content-Type-Options: nosniff` her
 // yanıttadır; `Access-Control-Allow-*` hiçbir yanıtta yoktur (A3-K10).
+// `govdesiz`: HEAD isteğinin yanıtı — başlıklar (Content-Length dahil) yazılır, gövde yazılmaz
+// (RFC 9110 §9.3.2, RFC 9112 §6.3).
 std::string yanit(int durum, std::string_view icerik_turu, std::string_view govde, bool kapat,
-                  const std::vector<std::pair<std::string, std::string>>& ek = {});
+                  const std::vector<std::pair<std::string, std::string>>& ek = {}, bool govdesiz = false);
 
 // Başlık değerindeki virgülle ayrılmış öğeler (boşlukları kırpılmış).
 std::vector<std::string> liste(std::string_view deger);

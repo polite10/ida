@@ -289,6 +289,47 @@ Tutamac baglan(const std::string& adres, std::uint16_t port)
     return sar(s);
 }
 
+namespace {
+
+bool adres_al(Tutamac t, bool karsi, sockaddr_storage& a)
+{
+    a = sockaddr_storage{};
+    UzTip uz = static_cast<UzTip>(sizeof a);
+    const int r = karsi ? getpeername(ham(t), reinterpret_cast<sockaddr*>(&a), &uz)
+                        : getsockname(ham(t), reinterpret_cast<sockaddr*>(&a), &uz);
+    return r == 0;
+}
+
+bool adres_esit(const sockaddr_storage& x, const sockaddr_storage& y)
+{
+    if (x.ss_family != y.ss_family) {
+        return false;
+    }
+    if (x.ss_family == AF_INET) {
+        const auto* a = reinterpret_cast<const sockaddr_in*>(&x);
+        const auto* b = reinterpret_cast<const sockaddr_in*>(&y);
+        return a->sin_port == b->sin_port && std::memcmp(&a->sin_addr, &b->sin_addr, sizeof a->sin_addr) == 0;
+    }
+    if (x.ss_family == AF_INET6) {
+        const auto* a = reinterpret_cast<const sockaddr_in6*>(&x);
+        const auto* b = reinterpret_cast<const sockaddr_in6*>(&y);
+        return a->sin6_port == b->sin6_port && std::memcmp(&a->sin6_addr, &b->sin6_addr, sizeof a->sin6_addr) == 0;
+    }
+    return false;
+}
+
+}  // namespace
+
+bool uclar_eslesir(Tutamac istemci, Tutamac kabul_edilen)
+{
+    sockaddr_storage iy{};
+    sockaddr_storage ik{};
+    sockaddr_storage ky{};
+    sockaddr_storage kk{};
+    return adres_al(istemci, false, iy) && adres_al(istemci, true, ik) && adres_al(kabul_edilen, false, ky) &&
+           adres_al(kabul_edilen, true, kk) && adres_esit(iy, kk) && adres_esit(ik, ky);
+}
+
 bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma)
 {
     okuma = gecersiz();
@@ -304,19 +345,8 @@ bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma)
         kapat(d);
         return false;
     }
-    // Kabul edilen ucun gerçekten `yazma` olduğu port eşleşmesiyle denetlenir (aynı anda başka
-    // bir yerel bağlantı gelirse o kapatılır).
-    auto yerel_port = [](Tutamac t) -> int {
-        sockaddr_in a{};
-        UzTip uz = static_cast<UzTip>(sizeof a);
-        return getsockname(ham(t), reinterpret_cast<sockaddr*>(&a), &uz) == 0 ? ntohs(a.sin_port) : -1;
-    };
-    auto karsi_port = [](Tutamac t) -> int {
-        sockaddr_in a{};
-        UzTip uz = static_cast<UzTip>(sizeof a);
-        return getpeername(ham(t), reinterpret_cast<sockaddr*>(&a), &uz) == 0 ? ntohs(a.sin_port) : -2;
-    };
-    const int beklenen = yerel_port(yazma);
+    // Kabul edilen ucun gerçekten `yazma`nın karşı ucu olduğu adres ailesi, IP ve port üzerinden,
+    // iki yönde denetlenir (sol #11); aynı anda gelen başka bir yerel bağlantı kapatılır.
     for (int i = 0; i < 200 && okuma == gecersiz(); ++i) {
         std::vector<Yoklama> l(1);
         l[0].t = d;
@@ -325,7 +355,7 @@ bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma)
         if (t == gecersiz()) {
             continue;
         }
-        if (karsi_port(t) == beklenen) {
+        if (uclar_eslesir(yazma, t)) {
             okuma = t;
         } else {
             kapat(t);

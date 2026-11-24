@@ -11,11 +11,11 @@ namespace ida::a3::test {
 
 namespace {
 
-HttpYanit gonder(std::uint16_t port, const std::string& ham)
+HttpYanit gonder(std::uint16_t port, const std::string& ham, bool head = false)
 {
     SoketIstemci c(port);
     HttpYanit y;
-    if (!c.gecerli() || !c.yaz(ham) || !c.yanit_bekle(y)) {
+    if (!c.gecerli() || !c.yaz(ham) || !c.yanit_bekle(y, 3000, head)) {
         y.durum = -1;
     }
     return y;
@@ -122,8 +122,8 @@ int test_erisim_http()
     DOGRULA(d, y.durum == 405, "statik yolda POST 405");
     y = gonder(p, "POST /panel/durum.html HTTP/1.1\r\n" + s.host() + "\r\nContent-Length: 0\r\n\r\n");
     DOGRULA(d, y.durum == 405, "panel yolunda POST 405");
-    y = gonder(p, "HEAD / HTTP/1.1\r\n" + s.host() + "\r\n\r\n");
-    DOGRULA(d, y.durum == 405, "statik yolda HEAD 405 (yalnız GET)");
+    y = gonder(p, "HEAD / HTTP/1.1\r\n" + s.host() + "\r\n\r\n", true);
+    DOGRULA(d, y.durum == 405 && y.govde.empty(), "statik yolda HEAD 405 (yalnız GET), gövdesiz");
     y = gonder(p, "DELETE /api/v1/surum HTTP/1.1\r\n" + s.host() + "\r\n" + s.yetki() + "\r\n\r\n");
     DOGRULA(d, y.durum == 405 && y.baslik("allow") != nullptr, "yanlış yöntem 405 + Allow");
     // Jeton yol içinde geçse bile olaya yazılmaz (A3-K12)

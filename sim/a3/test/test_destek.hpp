@@ -70,7 +70,8 @@ struct HttpYanit {
 };
 
 // `tampon`'un başındaki tek yanıtı ayırır (Content-Length; 101 gövdesiz). Eksikse false.
-bool http_yanit_ayir(std::string& tampon, HttpYanit& y);
+// `head`: yanıt bir HEAD isteğinindir; Content-Length olsa da gövde yoktur (RFC 9112 §6.3).
+bool http_yanit_ayir(std::string& tampon, HttpYanit& y, bool head = false);
 
 std::string istek(std::string_view yontem, std::string_view hedef, const std::vector<std::string>& basliklar = {},
                   std::string_view govde = {}, bool varsayilan_basliklar = true);
@@ -145,7 +146,7 @@ public:
     // En çok `zaman_asimi_ms` bekleyerek gelenleri `tampon`'a ekler; bağlantı kapandıysa false.
     bool oku(int zaman_asimi_ms);
     // Bir HTTP yanıtı gelene dek okur.
-    bool yanit_bekle(HttpYanit& y, int zaman_asimi_ms = 3000);
+    bool yanit_bekle(HttpYanit& y, int zaman_asimi_ms = 3000, bool head = false);
     bool ws_bekle(WsCerceve& c, int zaman_asimi_ms = 3000);
     void kapat();
     ag::Tutamac tutamac() const { return t_; }

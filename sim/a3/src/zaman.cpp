@@ -23,7 +23,22 @@ void hassas_bekle(std::chrono::steady_clock::time_point hedef)
         return;
     }
     // CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002 (eski SDK'larda tanımsız olabilir).
-    static thread_local HANDLE z = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002u, TIMER_ALL_ACCESS);
+    // Sol #12: tutamaç iş parçacığı ömrüne bağlıdır; iş parçacığı bitince CloseHandle çağrılır
+    // (CreateWaitableTimerExW belgesi: tutamaç CloseHandle ile kapatılır).
+    struct Zamanlayici {
+        HANDLE h = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002u, TIMER_ALL_ACCESS);
+        Zamanlayici() = default;
+        Zamanlayici(const Zamanlayici&) = delete;
+        Zamanlayici& operator=(const Zamanlayici&) = delete;
+        ~Zamanlayici()
+        {
+            if (h != nullptr) {
+                CloseHandle(h);
+            }
+        }
+    };
+    static thread_local Zamanlayici zt;
+    HANDLE z = zt.h;
     const long long ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kalan).count();
     if (z != nullptr) {
         LARGE_INTEGER sure{};

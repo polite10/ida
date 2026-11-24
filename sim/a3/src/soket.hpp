@@ -48,6 +48,9 @@ Tutamac baglan(const std::string& adres, std::uint16_t port);
 // Uyandırma çifti: 127.0.0.1 üzerinde birbirine bağlı iki engellemesiz TCP soketi (Windows'ta
 // socketpair yoktur). Tik iş parçacığı `yazma`'ya bir bayt yazar, G/Ç döngüsü `okuma`'yı yoklar.
 bool uyandirma_cifti(Tutamac& okuma, Tutamac& yazma);
+// İki ucun aynı TCP bağlantısının uçları olduğu: istemcinin yerel adresi (aile + IP + port) kabul
+// edilenin karşı adresine ve istemcinin karşı adresi kabul edilenin yerel adresine eşit.
+bool uclar_eslesir(Tutamac istemci, Tutamac kabul_edilen);
 // SO_RCVBUF / SO_SNDBUF (bayt).
 void alim_tamponu(Tutamac t, int bayt);
 void gonderim_tamponu(Tutamac t, int bayt);

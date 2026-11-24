@@ -223,7 +223,7 @@ std::size_t ParcaliCozucu::besle(std::string_view girdi, std::string& govde)
         case Asama::trailer: {
             const char c = girdi[i++];
             if (c != '\n') {
-                if (satir_.size() > 1024) {
+                if (satir_.size() > 64) {  // en kısa biçimdeki boy satırı (15 onaltılık + CR) bunun çok altında
                     asama_ = Asama::hata;
                     break;
                 }
@@ -236,16 +236,15 @@ std::size_t ParcaliCozucu::besle(std::string_view girdi, std::string& govde)
             }
             satir_.pop_back();
             if (asama_ == Asama::trailer) {
-                if (satir_.empty()) {
-                    asama_ = Asama::bitti;
-                }
+                // Sol #8, en kısıtlayan okuma: trailer alanı kabul edilmez (panel göndermez); son
+                // parçadan sonra yalnız boş satır gelir, aksi bozuk çerçeveleme (400 + kapanış).
+                asama_ = satir_.empty() ? Asama::bitti : Asama::hata;
                 satir_.clear();
                 break;
             }
-            // chunk-size [; ext]
-            std::string_view s = satir_;
-            const std::size_t nokta = s.find(';');
-            s = kirp(s.substr(0, nokta));
+            // chunk-size: yalnız onaltılık rakamlar. Sol #8, en kısıtlayan okuma: chunk uzantısı
+            // (';') ve boşluk kabul edilmez.
+            const std::string_view s = satir_;
             if (s.empty() || s.size() > 15) {
                 asama_ = Asama::hata;
                 break;
@@ -332,7 +331,7 @@ std::string durum_metni(int durum)
 }
 
 std::string yanit(int durum, std::string_view icerik_turu, std::string_view govde, bool kapat,
-                  const std::vector<std::pair<std::string, std::string>>& ek)
+                  const std::vector<std::pair<std::string, std::string>>& ek, bool govdesiz)
 {
     std::string s;
     s.reserve(256 + govde.size());
@@ -359,7 +358,9 @@ std::string yanit(int durum, std::string_view icerik_turu, std::string_view govd
         s += "Connection: close\r\n";
     }
     s += "\r\n";
-    s += govde;
+    if (!govdesiz) {
+        s += govde;
+    }
     return s;
 }
 
@@ -434,6 +435,10 @@ Okuma oku(const std::uint8_t* p, std::size_t n, std::size_t& tuketilen, Cerceve&
         }
         uz = (static_cast<std::uint64_t>(p[2]) << 8u) | p[3];
         k = 4;
+        if (uz < 126) {
+            kapanis_kodu = 1002;  // RFC 6455 §5.2: en kısa gösterim zorunlu
+            return Okuma::hata;
+        }
     } else if (uz == 127) {
         if (n < 10) {
             return Okuma::eksik;
@@ -442,7 +447,7 @@ Okuma oku(const std::uint8_t* p, std::size_t n, std::size_t& tuketilen, Cerceve&
         for (std::size_t i = 0; i < 8; ++i) {
             uz = (uz << 8u) | p[2 + i];
         }
-        if ((uz >> 63u) != 0) {
+        if ((uz >> 63u) != 0 || uz < 65536) {  // MSB 0 ve en kısa gösterim (RFC 6455 §5.2)
             kapanis_kodu = 1002;
             return Okuma::hata;
         }

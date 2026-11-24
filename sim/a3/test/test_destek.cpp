@@ -18,7 +18,7 @@ std::string HttpYanit::kod() const
     return k != nullptr ? k->metin : std::string();
 }
 
-bool http_yanit_ayir(std::string& tampon, HttpYanit& y)
+bool http_yanit_ayir(std::string& tampon, HttpYanit& y, bool head)
 {
     const std::size_t son = tampon.find("\r\n\r\n");
     if (son == std::string::npos) {
@@ -53,7 +53,7 @@ bool http_yanit_ayir(std::string& tampon, HttpYanit& y)
     if (const std::string* cl = y.baslik("content-length")) {
         uz = static_cast<std::size_t>(std::stoull(*cl));
     }
-    if (y.durum == 101) {
+    if (y.durum == 101 || head) {
         uz = 0;
     }
     if (tampon.size() < son + 4 + uz) {
@@ -382,11 +382,11 @@ bool SoketIstemci::oku(int zaman_asimi_ms)
     }
 }
 
-bool SoketIstemci::yanit_bekle(HttpYanit& y, int zaman_asimi_ms)
+bool SoketIstemci::yanit_bekle(HttpYanit& y, int zaman_asimi_ms, bool head)
 {
     const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(zaman_asimi_ms);
     for (;;) {
-        if (http_yanit_ayir(tampon, y)) {
+        if (http_yanit_ayir(tampon, y, head)) {
             return true;
         }
         if (kapandi || std::chrono::steady_clock::now() > son) {

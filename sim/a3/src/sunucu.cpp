@@ -10,9 +10,14 @@
 #include <exception>
 #include <map>
 #include <mutex>
+#include <system_error>
 #include <thread>
 
 namespace ida::a3 {
+
+namespace sinama {
+std::atomic<bool> is_parcacigi_hatasi{false};  // yalnız sınama: G/Ç iş parçacığı oluşturma hatası
+}  // namespace sinama
 
 struct Sunucu::Ic {
     SunucuAyari ayar;
@@ -175,7 +180,11 @@ struct Sunucu::Ic {
                     continue;
                 }
                 for (int tur = 0; tur < 16 && cekirdek->okumali(id); ++tur) {
-                    const long long n = ag::oku(it->second, tampon.data(), tampon.size());
+                    const std::size_t butce = std::min(tampon.size(), cekirdek->okuma_butcesi(id));
+                    if (butce == 0) {
+                        break;
+                    }
+                    const long long n = ag::oku(it->second, tampon.data(), butce);
                     if (n > 0) {
                         cekirdek->gelen(id, tampon.data(), static_cast<std::size_t>(n), simdi);
                         continue;
@@ -242,8 +251,14 @@ std::unique_ptr<Sunucu> Sunucu::baslat(const SunucuAyari& ayar, KomutAlicisi& al
     }
     ic->cekirdek->dis_tik(true);
     Ic* p = ic.get();
-    ic->tik_is = std::thread([p] { p->tik_dongusu(); });
-    ic->is = std::thread([p] {
+    // Sol #10: kısmi başlatmaya dayanıklı: iş parçacıklarından biri başlatılamazsa dur işareti
+    // verilir, başlayan birleştirilir, soketler kapanır ve hata döndürülür (std::terminate yok).
+    try {
+        ic->tik_is = std::thread([p] { p->tik_dongusu(); });
+        if (sinama::is_parcacigi_hatasi.exchange(false)) {
+            throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again), "sinama");
+        }
+        ic->is = std::thread([p] {
         // G/Ç iş parçacığındaki bir istisna sim sürecini sonlandırmaz: sunucu durur, soketler kapanır
         // ve günlüğe yazılır (A3-K43: panel bağlantıları çalıştırmayı etkilemez).
         try {
@@ -261,6 +276,20 @@ std::unique_ptr<Sunucu> Sunucu::baslat(const SunucuAyari& ayar, KomutAlicisi& al
             p->dinleyici = ag::gecersiz();
         }
     });
+    } catch (const std::exception& h) {
+        ic->dur.store(true, std::memory_order_release);
+        if (ic->tik_is.joinable()) {
+            ic->tik_is.join();
+        }
+        if (ic->is.joinable()) {
+            ic->is.join();
+        }
+        ag::kapat(ic->uyan_oku);
+        ag::kapat(ic->uyan_yaz);
+        ag::kapat(ic->dinleyici);
+        hata = std::string("G/Ç iş parçacığı başlatılamadı: ") + h.what();
+        return nullptr;
+    }
     return std::unique_ptr<Sunucu>(new Sunucu(std::move(ic)));
 }
 

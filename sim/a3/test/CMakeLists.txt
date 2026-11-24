@@ -9,6 +9,7 @@ add_executable(ida_a3_test
   test_destek.cpp
   test_erisim.cpp
   test_komut.cpp
+  test_saglam.cpp
   test_uyum.cpp
   test_yavas.cpp)
 target_include_directories(ida_a3_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
@@ -31,7 +32,9 @@ set(_ida_a3_testleri
   kuyruk_dolu_kisitlayan yer_istasyonu kisitlayan_bayat_run_id  # W4-K19
   kisitlayan_mandal_siniri jeton_erken_ret  # W4-K22, A3-K94 (sol #2, #3)
   # ölçüm ve dayanıklılık (kabul 4, 6)
-  yavas_istemci yavas_istemci_ret_duser rastgele_cekirdek rastgele_ayristirici cok_baglanti)
+  yavas_istemci yavas_istemci_ret_duser rastgele_cekirdek rastgele_ayristirici cok_baglanti
+  # sol #4-#11, #13
+  hz_aralik_disi govde_okuma_butcesi pipeline_baski head_sonra_get chunked_bozuk ws_en_kisa_uzunluk baslatma_hatasi uyandirma_eslesmesi olay_gecmisi_cok_bayt)
 foreach(_ad IN LISTS _ida_a3_testleri)
   add_test(NAME sim.a3.${_ad} COMMAND ida_a3_test ${_ad})
 endforeach()

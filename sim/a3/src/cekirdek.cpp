@@ -54,8 +54,7 @@ struct SonDeger {
 
 struct OlayKaydi {
     std::uint32_t sira = 0;
-    std::vector<std::uint8_t> cerceve;  // başlık + yük
-    std::string json;                   // A3-K45 JSON karşılığı
+    std::vector<std::uint8_t> cerceve;  // başlık + yük; JSON karşılığı istek anında üretilir (W4-K22 b)
 };
 using OlayP = std::shared_ptr<const OlayKaydi>;
 
@@ -355,7 +354,7 @@ struct Cekirdek::Ic {
     void yaz(Baglanti& b, const Yanit& y)
     {
         std::string_view tur = y.govde.empty() ? std::string_view{} : std::string_view("application/json");
-        b.cikis += http::yanit(y.http, tur, y.govde, y.kapat, y.ek);
+        b.cikis += http::yanit(y.http, tur, y.govde, y.kapat, y.ek, b.istek.yontem == "HEAD");
         if (y.kapat) {
             b.kapanacak = true;
             b.okuma_kapali = true;
@@ -365,7 +364,7 @@ struct Cekirdek::Ic {
     void yaz_ham(Baglanti& b, int http, std::string_view tur, std::string_view govde, bool kapat = false,
                  const std::vector<std::pair<std::string, std::string>>& ek = {})
     {
-        b.cikis += http::yanit(http, tur, govde, kapat, ek);
+        b.cikis += http::yanit(http, tur, govde, kapat, ek, b.istek.yontem == "HEAD");
         if (kapat) {
             b.kapanacak = true;
             b.okuma_kapali = true;
@@ -582,6 +581,8 @@ struct Cekirdek::Ic {
                     if (g.uzunluk > b.govde_siniri) {
                         // A3-K51: gövdeden en çok ilk 4096 bayt okunur; sınırın ötesi okunmaz
                         // ve yanıttan sonra bağlantı kapanır.
+                        // Başlıktan sonra soketten gerçekten okunmuş bayt (okuma bütçesiyle ≤ 4096).
+                        say.azami_asim_govde_bayti = std::max<std::uint64_t>(say.azami_asim_govde_bayti, b.girdi.size());
                         const std::size_t al = std::min<std::size_t>(
                             {b.girdi.size(), sinir::govde_onizleme, static_cast<std::size_t>(g.uzunluk)});
                         b.govde.assign(b.girdi, 0, al);
@@ -1160,7 +1161,9 @@ struct Cekirdek::Ic {
         if (!gecmis.empty()) {
             const std::uint64_t en_eski = gecmis.front()->sira;
             if (*sonra + 1 < en_eski && *sonra < olay_sira) {
-                yaz(b, ret("gecmis_yok", "istenen olaylar bellekteki geçmişte yok; kayıttan okunur (A3-K45)"));
+                yaz(b, ret("gecmis_yok",
+                           "istenen olaylar bellekteki geçmişte yok (pencere: son 65 536 olay ya da 64 MiB, hangisi önce "
+                           "dolarsa; W4-K22); kayıttan okunur (A3-K45)"));
                 return;
             }
             std::size_t i = *sonra + 1 > en_eski ? static_cast<std::size_t>(*sonra + 1 - en_eski) : 0;
@@ -1169,7 +1172,7 @@ struct Cekirdek::Ic {
                 if (liste.size() > 1) {
                     liste.push_back(',');
                 }
-                liste += gecmis[i]->json;
+                liste += olay_json(*gecmis[i]);
             }
             tamam = i >= gecmis.size();
         }
@@ -2174,10 +2177,20 @@ struct Cekirdek::Ic {
             if (k == nullptr) {
                 n.metin("sonuc", "ret").metin("neden", "bilinmeyen_kanal");
             } else if (abone) {
+                // Sol #4: hz önce double olarak izinli altı değerle karşılaştırılır; tamsayıya yalnız
+                // izinliyse dönüştürülür (aralık dışı double → tamsayı dönüşümü tanımsızdır).
+                // Dizi/olay sınıfında hz yok sayılır ve dönüştürülmez (A3-K30).
                 const json::Deger* hz = o.bul("hz");
-                const auto istenen = hz == nullptr ? std::uint32_t{k->varsayilan_hz} : static_cast<std::uint32_t>(hz->sayi);
-                const bool hz_gecerli = hz == nullptr || istenen == 50 || istenen == 25 || istenen == 10 || istenen == 5 ||
-                                        istenen == 2 || istenen == 1;
+                bool hz_gecerli = hz == nullptr;
+                std::uint32_t istenen = k->varsayilan_hz;
+                if (hz != nullptr && k->sinif == Sinif::durum) {
+                    for (const double izinli : {50.0, 25.0, 10.0, 5.0, 2.0, 1.0}) {
+                        if (hz->sayi == izinli) {
+                            hz_gecerli = true;
+                            istenen = static_cast<std::uint32_t>(izinli);
+                        }
+                    }
+                }
                 if (k->sinif == Sinif::durum && !hz_gecerli) {
                     n.metin("sonuc", "ret").metin("neden", "gecersiz_hz");
                 } else {
@@ -2543,6 +2556,32 @@ struct Cekirdek::Ic {
         olay_yayinla(t_ns, 5, 0, kaynak, adim_no, no, istemci, n.bitir());
     }
 
+    // A3-K45: saklanan çerçeveden `yuk_olay`'ın JSON karşılığı.
+    static std::string olay_json(const OlayKaydi& k)
+    {
+        CerceveBasligi h;
+        yuk_olay o;
+        if (!baslik_oku(k.cerceve.data(), k.cerceve.size(), h) ||
+            !coz(k.cerceve.data() + kBaslikBayt, k.cerceve.size() - kBaslikBayt, o)) {
+            return "{}";  // kendi kodladığımız çerçeve: olmaz
+        }
+        json::Nesne j;
+        const OlayTuru* ot = olay_turu_bul(o.tur);
+        const std::string_view onem_adi = deger_adi("yuk_olay", "onem", o.onem);
+        const std::string_view kaynak_adi = deger_adi("yuk_olay", "kaynak", o.kaynak);
+        j.sayi_u("sira", h.sira).sayi("t_ns", h.t_ns);
+        j.metin("tur", ot != nullptr ? std::string(ot->ad) : "tur_" + std::to_string(o.tur));
+        j.metin("onem", onem_adi.empty() ? std::to_string(o.onem) : std::string(onem_adi));
+        j.metin("kaynak", kaynak_adi.empty() ? std::to_string(o.kaynak) : std::string(kaynak_adi));
+        if (o.adim_no == std::numeric_limits<std::uint64_t>::max()) {
+            j.bos("adim_no");
+        } else {
+            j.sayi_u("adim_no", o.adim_no);
+        }
+        j.sayi_u("komut_no", o.komut_no).sayi_u("istemci_id", o.istemci_id).ham("ayrinti", o.ayrinti);
+        return j.bitir();
+    }
+
     void olay_yayinla(std::int64_t t_ns, std::uint16_t tur, std::uint8_t onem, std::uint8_t kaynak, std::uint64_t adim_no,
                       std::uint32_t komut, std::uint32_t istemci, const std::string& ayrinti)
     {
@@ -2574,27 +2613,13 @@ struct Cekirdek::Ic {
         h.kanal_id = olay_kanali->kanal_id;
         h.kanal_surumu = olay_kanali->kanal_surumu;
         baslik_yaz(h, kayit->cerceve.data());
-        // A3-K45: `yuk_olay`'ın JSON karşılığı.
-        json::Nesne j;
-        const OlayTuru* ot = olay_turu_bul(tur);
-        const std::string_view onem_adi = deger_adi("yuk_olay", "onem", onem);
-        const std::string_view kaynak_adi = deger_adi("yuk_olay", "kaynak", kaynak);
-        j.sayi_u("sira", olay_sira).sayi("t_ns", h.t_ns);
-        j.metin("tur", ot != nullptr ? std::string(ot->ad) : "tur_" + std::to_string(tur));
-        j.metin("onem", onem_adi.empty() ? std::to_string(onem) : std::string(onem_adi));
-        j.metin("kaynak", kaynak_adi.empty() ? std::to_string(kaynak) : std::string(kaynak_adi));
-        if (adim_no == std::numeric_limits<std::uint64_t>::max()) {
-            j.bos("adim_no");
-        } else {
-            j.sayi_u("adim_no", adim_no);
-        }
-        j.sayi_u("komut_no", komut).sayi_u("istemci_id", istemci).ham("ayrinti", ayrinti);
-        kayit->json = j.bitir();
+        // W4-K22 (b): geçmiş tek gösterimle (çerçeve) saklanır; pencere 65 536 olay ya da 64 MiB,
+        // hangisi önce dolarsa (A3-K45'in küçük sürüm notu).
         const OlayP op = kayit;
         gecmis.push_back(op);
-        gecmis_bayt += op->cerceve.size() + op->json.size();
+        gecmis_bayt += op->cerceve.size();
         while (gecmis.size() > sinir::olay_gecmisi || gecmis_bayt > sinir::olay_gecmisi_bayt) {
-            gecmis_bayt -= gecmis.front()->cerceve.size() + gecmis.front()->json.size();
+            gecmis_bayt -= gecmis.front()->cerceve.size();
             gecmis.pop_front();
         }
         for (auto& [id, bp] : bag) {
@@ -2628,6 +2653,21 @@ struct Cekirdek::Ic {
     }
 
     // ---- zaman aşımları ve bakım ---------------------------------------------------------------
+
+    // Sol #6: çıkış baskısı yüzünden işlenmeden kalan HTTP girdisi, baskı kalkınca işlenir.
+    void bekleyen_girdileri_isle(Zaman simdi)
+    {
+        std::vector<Baglanti*> l;
+        for (auto& [id, bp] : bag) {
+            (void)id;
+            if (!bp->ws && !bp->kapanacak && !bp->girdi.empty() && bp->bekleyen_cikis() <= sinir::okuma_esigi) {
+                l.push_back(bp.get());
+            }
+        }
+        for (Baglanti* b : l) {
+            http_isle(*b, simdi);
+        }
+    }
 
     void zaman_asimlari(Zaman simdi)
     {
@@ -2780,6 +2820,7 @@ void Cekirdek::dongu(Zaman simdi)
             ic.erisim_olayi_yayinla(static_cast<Neden>(n), simdi);
         }
     }
+    ic.bekleyen_girdileri_isle(simdi);
     ic.zaman_asimlari(simdi);
     if (simdi >= ic.sonraki_bakim) {
         ic.bakim(simdi);
@@ -2844,6 +2885,31 @@ SunucuSayaclari Cekirdek::sayaclar() const
         }
     }
     return s;
+}
+
+std::size_t Cekirdek::okuma_butcesi(BagId id) const
+{
+    // Sol #5 (A3-K51): soketten bir seferde okunacak en çok bayt, ayrıştırma aşamasına bağlı.
+    // Başlık aşamasında 4096: başlığı tamamlayan okuma, başlık sonundan en çok 4096 bayt gövde
+    // getirebilir; sınırı aşan Content-Length'te ardından okuma durur.
+    const Baglanti* b = ic_->bul(id);
+    if (b == nullptr || !okumali(id)) {
+        return 0;
+    }
+    constexpr std::size_t kParca = 65536;
+    if (b->ws) {
+        return kParca;
+    }
+    switch (b->asama) {
+    case Asama::govde_uzunluk:
+        return static_cast<std::size_t>(std::min<std::uint64_t>(kParca, std::max<std::uint64_t>(b->kalan, 1)));
+    case Asama::govde_parcali: {
+        const std::size_t tavan = b->govde_siniri + sinir::govde_onizleme;
+        return b->okunan_govde >= tavan ? std::size_t{1} : std::min(kParca, tavan - b->okunan_govde);
+    }
+    default:
+        return sinir::govde_onizleme;
+    }
 }
 
 std::size_t Cekirdek::okunan_govde_bayti(BagId id) const

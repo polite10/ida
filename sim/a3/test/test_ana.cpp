@@ -46,6 +46,15 @@ int test_yavas_istemci_ret_duser();
 int test_rastgele_cekirdek();
 int test_rastgele_ayristirici();
 int test_cok_baglanti();
+int test_hz_aralik_disi();
+int test_govde_okuma_butcesi();
+int test_pipeline_baski();
+int test_head_sonra_get();
+int test_chunked_bozuk();
+int test_ws_en_kisa_uzunluk();
+int test_baslatma_hatasi();
+int test_uyandirma_eslesmesi();
+int test_olay_gecmisi_cok_bayt();
 int uyum_ornekleri_yaz(const char* yol);
 }  // namespace ida::a3::test
 
@@ -94,6 +103,15 @@ int main(int argc, char** argv)
         {"rastgele_cekirdek", test_rastgele_cekirdek},
         {"rastgele_ayristirici", test_rastgele_ayristirici},
         {"cok_baglanti", test_cok_baglanti},
+        {"hz_aralik_disi", test_hz_aralik_disi},
+        {"govde_okuma_butcesi", test_govde_okuma_butcesi},
+        {"pipeline_baski", test_pipeline_baski},
+        {"head_sonra_get", test_head_sonra_get},
+        {"chunked_bozuk", test_chunked_bozuk},
+        {"ws_en_kisa_uzunluk", test_ws_en_kisa_uzunluk},
+        {"baslatma_hatasi", test_baslatma_hatasi},
+        {"uyandirma_eslesmesi", test_uyandirma_eslesmesi},
+        {"olay_gecmisi_cok_bayt", test_olay_gecmisi_cok_bayt},
     };
     if (argc != 2 || testler.count(argv[1]) == 0) {
         std::fprintf(stderr, "kullanım: ida_a3_test <test>\n");

@@ -96,6 +96,8 @@ public:
     SunucuSayaclari sayaclar() const;
     // Sınamalar: bağlantının okumadığı (ya da okunmamış) çıkış baytı ve gövde okuma sayacı.
     std::size_t okunan_govde_bayti(BagId id) const;
+    // Soketten bir seferde okunacak en çok bayt (A3-K51; ayrıştırma aşamasına bağlı); 0: okuma.
+    std::size_t okuma_butcesi(BagId id) const;
 
 private:
     struct Ic;

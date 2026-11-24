@@ -51,6 +51,7 @@ struct SunucuSayaclari {
     std::uint64_t azami_cikis_bayt = 0;     // bir bağlantıda görülen en büyük bekleyen çıkış
     std::uint64_t azami_bellek_tahmini = 0; // bağlantı kuyruklarının toplam bayt tavanı (gözlenen)
     std::uint64_t tik = 0;                  // yayın tiki sayısı
+    std::uint64_t azami_asim_govde_bayti = 0;  // sınırı aşan gövdede başlıktan sonra okunan en çok bayt (A3-K51)
 };
 
 class Sunucu {

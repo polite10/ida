@@ -275,9 +275,17 @@ int test_http_ayristirma()
     // chunked
     http::ParcaliCozucu p(100);
     std::string govde;
-    const std::string parcali = "4;ext=1\r\nWiki\r\n5\r\npedia\r\n0\r\nX-Trailer: y\r\n\r\nSONRAKI";
+    const std::string parcali = "4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\nSONRAKI";
     const std::size_t t = p.besle(parcali, govde);
     DOGRULA(d, p.bitti() && govde == "Wikipedia" && parcali.substr(t) == "SONRAKI", "chunked çözüm");
+    // Sol #8, en kısıtlayan okuma: trailer ve chunk uzantısı reddedilir.
+    for (const char* bozuk : {"0\r\nGET /x HTTP/1.1\r\n\r\n", "0\r\nX-Trailer: y\r\n\r\n", "4;ext=1\r\nWiki\r\n0\r\n\r\n",
+                              "4 \r\nWiki\r\n0\r\n\r\n", " 4\r\nWiki\r\n0\r\n\r\n", "4\r\nWikiXX0\r\n\r\n"}) {
+        http::ParcaliCozucu pb(100);
+        std::string gb;
+        pb.besle(bozuk, gb);
+        DOGRULA(d, pb.hata(), std::string("bozuk chunked: ") + bozuk);
+    }
     http::ParcaliCozucu q(5);
     std::string g2;
     q.besle("a\r\n0123456789\r\n0\r\n\r\n", g2);
