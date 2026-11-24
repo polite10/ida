@@ -1,5 +1,10 @@
 // W4-bagla-sonar kabul 5: `ida_sim --senaryo scenarios/sonar-havuz.toml --sonar --a3-port 0 --a3-bekle`
-// + panelin A3 istemcisi (web/src/a3; Node'un WebSocket ve fetch'i; web/'e dosya eklenmez).
+// (açık su biçimi; aşağıda) + panelin A3 istemcisi (web/src/a3; Node'un WebSocket ve fetch'i; web/'e
+// dosya eklenmez).
+// Sahne (W4-bagla-sonar sol #4 (b)): havuz duvarları yalnız A7 ağlarında tanımlı olduğundan
+// `ortam.tur = havuz` sonar açıkken reddedilir. Bu test, tests/butunleme/test_sonar.cpp ile aynı
+// dönüşümle çıktı dizininde bir kök kurar: A7 manifestine tek tabanlı `deniz_ornek` statik varlığı
+// eklenir, senaryo açık suya (`deniz_ornek`; havuzla aynı su değerleri) çevrilir.
 // `sonar/ping360` ve `sonar/ping1d` kanallarında çözülen her değer, sim'in aynı kayıtları yazdığı
 // sonar CSV'siyle (`--sonar-csv`: karta giden ölçümün kendisi) alan alan ve örnek baytlarının
 // CRC-32'siyle eşleşir.
@@ -7,7 +12,7 @@
 // Çıkış: 0 geçti, 1 kaldı, 77 atlandı (web/node_modules yok ya da Node'da WebSocket yok).
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { ATLA, a3Kitapligi, bekle } from '../../sim/a3/test/ortak.mjs';
@@ -43,7 +48,32 @@ const crc32 = (b) => {
 
 mkdirSync(cikti, { recursive: true });
 const sonarCsv = join(cikti, 'a3_sonar_web.sonar.csv');
-const surec = spawn(idaSim, ['--senaryo', 'scenarios/sonar-havuz.toml', '--kok', kok, '--sonar', '--a3-port', '0',
+// Açık su kökü (test_sonar.cpp `deniz_manifesti` ve `acik_suya` ile aynı).
+const DENIZ = '{ "kimlik": "deniz_ornek", "tur": "statik", "dosya": "deniz_ornek.glb", ' +
+  '"sha256": "0000000000000000000000000000000000000000000000000000000000000000", "bayt": 20, ' +
+  '"taban_derinligi_m": 3.0, "referans": { "dugum": 0, "ad": "REF" }, ' +
+  '"sinir_kutusu_govde_m": { "en_kucuk": [-50.0, -50.0, -0.5], "en_buyuk": [50.0, 50.0, 3.2] }, ' +
+  '"malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "havuz_beton" } ], ' +
+  '"gorsel": [ { "dugum": 1, "ad": "taban", "kosul": "her_zaman" } ], ' +
+  '"carpisma": [ { "dugum": 2, "ad": "COL_taban", "ayristirma": "yok" } ] },\n    ';
+const birKez = (metin, eski, yeni) => {
+  const i = metin.indexOf(eski);
+  if (i < 0 || metin.indexOf(eski, i + 1) >= 0) throw new Error(`dönüşüm metinde tam bir kez değil: ${eski}`);
+  return metin.slice(0, i) + yeni + metin.slice(i + eski.length);
+};
+const denizKok = join(cikti, 'kok');
+mkdirSync(join(denizKok, 'scenarios'), { recursive: true });
+mkdirSync(join(denizKok, 'assets', 'ornek'), { recursive: true });
+copyFileSync(join(kok, 'scenarios', 'ida0.toml'), join(denizKok, 'scenarios', 'ida0.toml'));
+writeFileSync(join(denizKok, 'assets', 'ornek', 'manifest.json'),
+  birKez(readFileSync(join(kok, 'assets', 'ornek', 'manifest.json'), 'utf8'), '"varliklar": [\n    ',
+    '"varliklar": [\n    ' + DENIZ));
+let senaryo = readFileSync(join(kok, 'scenarios', 'sonar-havuz.toml'), 'utf8');
+senaryo = birKez(senaryo, 'tur = "havuz"\nsahne = "havuz_ornek"', 'tur = "acik_su"\nsahne = "deniz_ornek"');
+senaryo = senaryo.replace(/^manifest_ozeti = "[0-9a-f]{64}".*\n/m, '');
+senaryo = birKez(senaryo, '[ortam.su]\n', '[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n');
+writeFileSync(join(denizKok, 'scenarios', 'sonar-acik-su.toml'), senaryo);
+const surec = spawn(idaSim, ['--senaryo', 'scenarios/sonar-acik-su.toml', '--kok', denizKok, '--sonar', '--a3-port', '0',
   '--a3-bekle', '--sonar-csv', sonarCsv, '--gunluk', '1'], { stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 surec.stderr.on('data', (d) => { stderr += d.toString(); });

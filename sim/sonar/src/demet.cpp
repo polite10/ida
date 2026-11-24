@@ -123,6 +123,45 @@ void biriktir(const std::vector<Katki>& katkilar, double tau0, double t_s, int n
     }
 }
 
+namespace {
+
+// Işın ızgarası (nh × nv) ve hücre tablosunun boyu (`izle` ile `hazirla` aynı hesabı kullanır).
+struct Izgara {
+    int nh = 1, nv = 1;
+    std::size_t kap = 1024;
+};
+
+Izgara izgara(const DemetGirdisi& g)
+{
+    Izgara z;
+    const double wh = g.desen.teta0;
+    const double wv = g.desen.fi0;
+    z.nh = std::max(1, static_cast<int>(std::lround(std::sqrt(static_cast<double>(g.isin_sayisi) * wh / wv))));
+    z.nv = std::max(1, static_cast<int>(std::lround(static_cast<double>(g.isin_sayisi) / static_cast<double>(z.nh))));
+    while (z.kap < 2u * static_cast<std::size_t>(z.nh * z.nv)) {
+        z.kap <<= 1;
+    }
+    return z;
+}
+
+}  // namespace
+
+void Demet::hazirla(const DemetGirdisi& g, DemetSonucu& s)
+{
+    const Izgara z = izgara(g);
+    const std::size_t nr = static_cast<std::size_t>(z.nh * z.nv);
+    tablo_.reserve(z.kap);
+    hucreler_.reserve(nr);
+    katkilar_.reserve(nr);
+    // biriktir(): çekirdek 2hw + 1, ince dizi 4n + 2hw, evrişim 4n, kutu n.
+    const std::size_t n = static_cast<std::size_t>(std::max(1, g.n_kutu));
+    const std::size_t hw = static_cast<std::size_t>(cekirdek_yari_genisligi(g.darbe_s, g.t_s / 4.0));
+    tampon_.cekirdek.reserve(2 * hw + 1);
+    tampon_.ince.reserve(4 * n + 2 * hw);
+    tampon_.evr.reserve(4 * n);
+    s.ham.reserve(n);
+}
+
 void Demet::izle(const DemetGirdisi& g, DemetSonucu& s)
 {
     // Dinlenen en uzak menzil (çekirdek payıyla).
@@ -131,17 +170,15 @@ void Demet::izle(const DemetGirdisi& g, DemetSonucu& s)
     const Desen& p = g.desen;
     const double wh = p.teta0;
     const double wv = p.fi0;
-    const int nh = std::max(1, static_cast<int>(std::lround(std::sqrt(static_cast<double>(g.isin_sayisi) * wh / wv))));
-    const int nv = std::max(1, static_cast<int>(std::lround(static_cast<double>(g.isin_sayisi) / static_cast<double>(nh))));
+    const Izgara z = izgara(g);
+    const int nh = z.nh;
+    const int nv = z.nv;
     const double dth = 2.0 * wh / static_cast<double>(nh);
     const double dph = 2.0 * wv / static_cast<double>(nv);
     const int nr = nh * nv;
     const double ln10 = std::log(10.0);
 
-    std::size_t kap = 1024;
-    while (kap < 2u * static_cast<std::size_t>(nr)) {
-        kap <<= 1;
-    }
+    const std::size_t kap = z.kap;
     tablo_.assign(kap, -1);
     hucreler_.clear();
     hucreler_.reserve(static_cast<std::size_t>(nr));

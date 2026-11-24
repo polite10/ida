@@ -348,6 +348,10 @@ struct Sonuc {
     bool sonar_acik = false;
     std::uint64_t sonar_ping1d = 0, sonar_ping360 = 0;   // teslim edilen kayıt (arıza zinciri sonrası)
     std::uint64_t sonar_ping = 0, sonar_isin = 0, sonar_havada = 0, sonar_kayip = 0, sonar_kuyruk_tasma = 0;
+    // W4-K27 (5) (sol #5): sabit kapasiteli teslim deposuna sığmadığı için düşürülen kayıt ve yük
+    // tamponu havuzu boşken ayrılan tampon (ikisi de 0 beklenir).
+    std::uint64_t sonar_teslim_tasma = 0, sonar_tampon_yetersiz = 0;
+    double sonar_a_sensor_bayt = 0.0;   // A1 §3.9 A_sensör ön denetiminin değeri (sol #1), B/parti
     // Dünya iş parçacığında sonar adımının (ping hesabı; sınır b'nin adımı fizik adımı b − 1'den hemen
     // sonra, sınırın bekleyişinden önce yapılır) süresi (duvar; ölçüm). Boşaltma ve köprüye verme
     // sınırın içindedir: sonar_bosaltma_en_uzun_ns.
@@ -365,6 +369,9 @@ Sonuc kos(const Ayar& ayar);
 // Yalnız sınama (W4-K27 (5)): çağıran iş parçacığı dünya tarafındaki A3 hizmetinin içindeyken
 // (köprü ve fizik çağrıları hariç) sıfırdan büyük; bellek ayırma sayacı kancaları için.
 int a3_ayirma_sayilir() noexcept;
+// Yalnız sınama (W4-K27 (5); W4-bagla-sonar sol #5): çağıran iş parçacığı dünya tarafındaki sonar
+// hesabının ya da boşaltmasının içindeyken sıfırdan büyük (A3 açık da kapalı da).
+int sonar_ayirma_sayilir() noexcept;
 
 const char* csv_basligi();
 

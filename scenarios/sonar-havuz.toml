@@ -5,9 +5,11 @@
 # Çalıştırma: ida_sim --senaryo scenarios/sonar-havuz.toml --sonar [--a3-port 0] [--sonar-csv <yol>]
 # (`--sonar` olmadan sonar kurulmaz; sim/sunucu/BENIOKU.md "Sonar").
 #
-# Sahne (sim/senaryo/BENIOKU.md "Sonar kurulumu"): su yüzeyi ve düz taban (ortam.derinlik, A7
-# `havuz_ornek` statik varlığının malzemesi); havuz duvarları A7 ağlarından kurulur ve bu dilimde
-# sonar sahnesinde yoktur. Araç silahlandırılmaz: hafif pozitif yüzerlikle (İDA-0, 04 §2.6) yavaşça
+# Sahne (sim/senaryo/BENIOKU.md "Sonar kurulumu"): havuz duvarları yalnız A7 ağında (havuz_ornek.glb,
+# depoda yok) tanımlıdır ve sonar modeli ağ izlemez; duvarlar atlanmadığı için bu senaryo `--sonar`
+# ile şimdilik REDDEDİLİR (W4-bagla-sonar sol #4 (b); mimar kararı bekleniyor). Sonarlı testler bu
+# dosyayı bellekte açık suya (tek tabanlı `deniz_ornek` statik varlığı) çevirerek koşar
+# (tests/butunleme/test_sonar.cpp). Araç silahlandırılmaz: hafif pozitif yüzerlikle (İDA-0, 04 §2.6) yavaşça
 # yükselir; Ping1D irtifası zamanla büyür.
 
 [meta]

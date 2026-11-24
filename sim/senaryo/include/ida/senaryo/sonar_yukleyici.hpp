@@ -11,10 +11,13 @@
 //  - Düz taban z = `ortam.derinlik` (A5-K36: dünya su derinliği; havuzda ve açık suda). Taban
 //    malzemesi `ortam.sahne`'nin A7 statik varlığının ilk malzeme atamasıdır (A7 §3.4 akustik
 //    alanları), `kalibrasyon.malzeme.<kimlik>.akustik.*` geçersiz kılar (A5-K13, K18). A7 manifesti
-//    senaryonun `varliklar.kume`sinden okunur; `varliklar.manifest_ozeti` verilmişse okunan
-//    baytların SHA-256'sı ona eşit olmalıdır (A5-K115).
-//  - Havuz duvarları ve hedef gövdeleri A7 glTF ağlarından kurulur (sonraki dilim; ağlar depoda
-//    yok): bu dilimde sahneye girmez, kurulum uyarısı verilir (sessiz değil).
+//    senaryonun `varliklar.kume`sinden yeniden okunur; baytların SHA-256'sı doğrulama raporundaki
+//    kaynak özetine (koşulsuz) ve verilmişse `varliklar.manifest_ozeti`'ne eşit, beyan edilmişse
+//    `varliklar.kume_surumu` manifestteki değere eşit olmalıdır (A5-K115; W4-bagla-sonar sol #3).
+//  - Havuz duvarları, statik varlığın tabandan başka çarpışma ağları ve hedef gövdeleri yalnız A7
+//    glTF ağlarında tanımlıdır (ağlar depoda yok; sonar modeli ağ izlemez). Bu geometri atlanmaz:
+//    `ortam.tur = havuz`, statik varlıkta birden çok çarpışma ağı ya da `hedefler` varsa (etkin
+//    sonar varken) kurulum açık hatayla reddedilir (W4-bagla-sonar sol #4 (b)).
 //
 // A5'te olmayan girdiler `ida::sonar` varsayılanında kalır: Ping360 tarama yapılandırması ve Ping1D
 // penceresi (W4-K18 (c); A1-K49 1.0.1 notu), ışın sayısı (A5-K78: sade kademede 5 000).
@@ -38,9 +41,10 @@ struct SonarKurulumu {
     std::size_t etkin_sayisi = 0;                 // etkin Ping1D + Ping360
 };
 
-// `kaynak` senaryoyu çözen kaynakla aynı olmalıdır (A7 manifesti için). Hata: nullopt, `hata`.
-// Desteklenmeyen kademe (`kalite.sonar = tam`) hatadır (sonar modeli bu dilimde sade kademededir).
+// `kaynak` senaryoyu çözen kaynakla, `rapor` o çözümün doğrulama raporuyla aynı olmalıdır (A7
+// manifesti için). Hata: nullopt, `hata`. Desteklenmeyen kademe (`kalite.sonar = tam`) hatadır
+// (sonar modeli bu dilimde sade kademededir).
 std::optional<SonarKurulumu> sonar_kur(const DogrulanmisSenaryo& cozumlenmis, const DosyaKaynagi& kaynak,
-                                       std::string* hata = nullptr);
+                                       const DogrulamaRaporu& rapor, std::string* hata = nullptr);
 
 }  // namespace ida::senaryo

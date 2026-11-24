@@ -154,7 +154,8 @@ if(IDA_NODE_BUTUNLEME)
 endif()
 
 # W4-bagla-sonar (docs/gorevler/W4-bagla-sonar.md kabul 1–6; sim/sunucu/BENIOKU.md "Sonar").
-foreach(_ad sonar_kapali_esitlik sonar_belirlenim sonar_ping1d sonar_ping360 sonar_red sonar_a3)
+foreach(_ad sonar_kapali_tutarlilik sonar_belirlenim sonar_ping1d sonar_ping360 sonar_red sonar_kurulum sonar_a3
+           sonar_ayirma)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()

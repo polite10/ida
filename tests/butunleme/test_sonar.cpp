@@ -2,8 +2,18 @@
 // docs/gorevler/W4-bagla-sonar.md, kabul 1–6). Senaryolar depodaki scenarios/z1.toml ve
 // scenarios/sonar-havuz.toml'dan bellekte türetilir (BellekKaynagi).
 //
-//   sonar_kapali_esitlik   kabul 1: sonar tanımı olmayan (ya da --sonar verilmeyen) koşu bu iş
-//                          öncesiyle aynı yoldan: CSV ve A1 bayt akışı bayt bayt aynı
+// Sonarlı testlerin sahnesi (W4-bagla-sonar sol #4 (b)): havuz duvarları yalnız A7 ağlarında
+// tanımlı olduğundan `ortam.tur = havuz` sonar açıkken reddedilir. Sonarlı koşular bu yüzden
+// sonar-havuz.toml'un açık su biçiminde yürür: A7 manifestinin bellekteki kopyasına tek tabanlı
+// (yalnız `COL_taban`) bir statik varlık (`deniz_ornek`, taban 3 m, havuz_beton) eklenir; su
+// yoğunluğu ve tuzluluk havuzdakiyle aynı tutulur (depodaki dosyalar değişmez).
+//
+//   sonar_kapali_tutarlilik kabul 1'in bu ikilideki parçası: --sonar verilmeyen koşu ile sonarları
+//                          kapalı (etkin = false) senaryonun --sonar'lı ve --sonar'sız koşuları aynı
+//                          ikilide CSV ve iki yönlü A1 bayt akışında bayt bayt aynı (sonar yolu
+//                          sonarsız koşuya hiçbir şey eklemez). Bu iş öncesiyle (0fbe30f) eşitlik bu
+//                          testte SINANMAZ: özetler yazdırılır, önceki sürümün ikilisiyle ayrıca
+//                          karşılaştırılır (düzeltme turu raporu; platformlar arası sabit özet yok)
 //   sonar_belirlenim       kabul 2: aynı senaryo ve tohumla iki koşu bayt bayt aynı; A3 açık/kapalı
 //                          aynı; öteki sensörlerin kayıtları ve kontrol çıktısı sonardan bağımsız
 //   sonar_ping1d           kabul 3: kartın aldığı menzil irtifayla (sonar eksenine göre) tutarlı;
@@ -12,8 +22,11 @@
 //                          dizisine bayt bayt eşit; her partide bayt ve üye bütçesi, en çok bir
 //                          HEAD, IMU ve emniyet örneği gecikmez; `--ping360-ornek 600` ile de
 //   sonar_red              kapsam 6: desteklenmeyen sonar arızası, tam kademe, yerleşik senaryo
+//   sonar_kurulum          sol #1, #2, #4: A1 A_sensör ön denetimi (sığmayan ret, sınırdaki kabul),
+//                          `--ping360-ornek 200` ile gerçekleşen darbe ≤ 1000 µs, havuz duvarlı sahne ret
 //   sonar_a3               kabul 5: sonar kanalları yayınlanır, dünya tarafındaki A3 hizmetinde
-//                          bellek ayırma 0
+//                          ve sonar hesabında bellek ayırma 0
+//   sonar_ayirma           sol #5 (W4-K27 (5)): A3 kapalıyken sonar hesabı ve boşaltmada ayırma 0
 //   sonar_hil_olcum <n>    kabul 6 (ölçüm): HIL 1x 60 s, sözde uçbirim, Ping360 n örnek
 #include "a3_istemci.hpp"
 #include "ida/port.h"
@@ -49,6 +62,8 @@ extern mavlink_message_t m_mavlink_buffer[MAVLINK_COMM_NUM_BUFFERS];
 
 void a3_ayirma_sifirla();             // test_a3.cpp (operator new kancası)
 std::uint64_t a3_ayirma_sayisi();
+void sonar_ayirma_sifirla();
+std::uint64_t sonar_ayirma_sayisi();
 
 namespace {
 
@@ -83,13 +98,44 @@ void degistir(std::string& m, const std::string& a, const std::string& b)
     m.replace(i, a.size(), b);
 }
 
+// Sol #4 (b): sonarın izleyebildiği tek tabanlı statik varlık (yalnız bellekteki manifestte).
+const char* const kDenizVarligi =
+    R"({ "kimlik": "deniz_ornek", "tur": "statik", "dosya": "deniz_ornek.glb", )"
+    R"("sha256": "0000000000000000000000000000000000000000000000000000000000000000", "bayt": 20, )"
+    R"("taban_derinligi_m": 3.0, "referans": { "dugum": 0, "ad": "REF" }, )"
+    R"("sinir_kutusu_govde_m": { "en_kucuk": [-50.0, -50.0, -0.5], "en_buyuk": [50.0, 50.0, 3.2] }, )"
+    R"("malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "havuz_beton" } ], )"
+    R"("gorsel": [ { "dugum": 1, "ad": "taban", "kosul": "her_zaman" } ], )"
+    R"("carpisma": [ { "dugum": 2, "ad": "COL_taban", "ayristirma": "yok" } ] },)"
+    "\n    ";
+
+std::string deniz_manifesti()
+{
+    std::string m = dosya("assets/ornek/manifest.json");
+    degistir(m, "\"varliklar\": [\n    ", std::string("\"varliklar\": [\n    ") + kDenizVarligi);
+    return m;
+}
+
+// Senaryo metnini açık suya çevirir: sahne deniz_ornek; manifest özeti (değişen manifestte) çıkarılır;
+// su yoğunluğu ve tuzluluk havuz değerlerinde (açık suyun koşullu varsayılanları yerine).
+std::string acik_suya(std::string m)
+{
+    degistir(m, "tur = \"havuz\"\nsahne = \"havuz_ornek\"", "tur = \"acik_su\"\nsahne = \"deniz_ornek\"");
+    if (const std::size_t i = m.find("manifest_ozeti = \""); i != std::string::npos) {
+        m.erase(i, m.find('\n', i) + 1u - i);
+    }
+    degistir(m, "[ortam.su]\n", "[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n");
+    return m;
+}
+
 std::shared_ptr<senaryo::BellekKaynagi> kaynak(const std::string& metin)
 {
     senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
     auto b = std::make_shared<senaryo::BellekKaynagi>();
-    for (const char* y : {"scenarios/ida0.toml", "assets/ornek/manifest.json"}) {
-        b->dosyalar[y] = d.oku(y).value_or("");
-    }
+    b->dosyalar["scenarios/ida0.toml"] = d.oku("scenarios/ida0.toml").value_or("");
+    b->dosyalar["assets/ornek/manifest.json"] = metin.find("sahne = \"deniz_ornek\"") != std::string::npos
+                                                    ? deniz_manifesti()
+                                                    : d.oku("assets/ornek/manifest.json").value_or("");
     b->dosyalar["scenarios/t.toml"] = metin;
     return b;
 }
@@ -105,10 +151,10 @@ sunucu::Ayar ayar(const std::string& metin, bool sonar)
     return a;
 }
 
-// Sonar-havuz senaryosu, süresi kısaltılmış.
+// Sonar-havuz senaryosunun açık su biçimi (sol #4 (b); üst açıklama), süresi kısaltılmış.
 std::string sonar_metni(const char* sure = "30_000_000_000")
 {
-    std::string m = dosya("scenarios/sonar-havuz.toml");
+    std::string m = acik_suya(dosya("scenarios/sonar-havuz.toml"));
     degistir(m, "sure_ns = 30_000_000_000", std::string("sure_ns = ") + sure);
     return m;
 }
@@ -231,9 +277,15 @@ std::vector<Parti> partiler(const std::vector<std::uint8_t>& v, std::size_t* son
     return r;
 }
 
-// ---------------------------------------------------------------- kabul 1
+// ---------------------------------------------------------------- kabul 1 (bu ikilideki parçası)
 
-int test_kapali_esitlik()
+// Neyi sınar: aynı ikilide sonar yolunun sonarsız koşuya hiçbir şey eklemediğini (--sonar verilmemesi,
+// etkin olmayan sonar tanımları ve --sonar'ın etkin sonarsız senaryoda kurulum yapmaması aynı CSV ve
+// A1 baytlarını verir). Neyi SINAMAZ: bu iş öncesiyle (0fbe30f) eşitliği; üç koşunun ortak bir
+// değişikliği hepsini birlikte değiştirirse bu test geçer. Önceki sürümle karşılaştırma yazdırılan
+// özetlerle, önceki sürümün ikilisinde aynı ayarlarla ayrıca yapılır (W4-bagla-sonar sol #6;
+// kayan nokta sonuçları platforma bağlı olduğundan depoda sabit özet tutulmaz).
+int test_kapali_tutarlilik()
 {
     // z1.toml: araç dosyasından iki etkin sonar alır (ida0.toml); --sonar verilmezse kurulmaz.
     std::string z1 = dosya("scenarios/z1.toml");
@@ -266,6 +318,9 @@ int test_kapali_esitlik()
                 ozet(g0.gelen).c_str());
     std::printf("  ÖZET yerleşik z1: csv %s giden %s gelen %s\n", senaryo::sha256_hex(gy.s.csv).c_str(), ozet(gy.giden).c_str(),
                 ozet(gy.gelen).c_str());
+    const Gozlem go = gozle(ayar(dosya("scenarios/ornek-havuz.toml"), false), false);
+    std::printf("  ÖZET ornek-havuz.toml: %s csv %s giden %s gelen %s\n", go.s.tamam ? "tamam" : go.s.hata.c_str(),
+                senaryo::sha256_hex(go.s.csv).c_str(), ozet(go.giden).c_str(), ozet(go.gelen).c_str());
     return 0;
 }
 
@@ -582,6 +637,130 @@ int test_red()
     return 0;
 }
 
+// ---------------------------------------------------------------- sol #1, #2, #4
+
+int test_kurulum()
+{
+    // Sol #4 (b): havuz duvarları yalnız A7 ağında; sonar açıkken havuz senaryosu açık hatayla reddedilir
+    // (depodaki sonar-havuz.toml ve z1.toml; z1.toml --sonar artık yürütülemez).
+    for (const char* yol : {"scenarios/sonar-havuz.toml", "scenarios/z1.toml"}) {
+        const sunucu::Sonuc r = sunucu::kos(ayar(dosya(yol), true));
+        dogrula(!r.tamam && r.hata_turu == sunucu::HataTuru::senaryo_yurutulemez &&
+                    r.hata.find("havuz duvarları") != std::string::npos && r.hata.find("sol #4") != std::string::npos,
+                std::string(yol) + " --sonar: havuz duvarları atlanmaz, reddedilir: " + r.hata);
+    }
+    {
+        // Açık su ama sahne havuz_ornek (tabandan başka 4 çarpışma ağı): yine ret.
+        std::string m = dosya("scenarios/sonar-havuz.toml");
+        degistir(m, "tur = \"havuz\"\n", "tur = \"acik_su\"\n");
+        const sunucu::Sonuc r = sunucu::kos(ayar(m, true));
+        dogrula(!r.tamam && r.hata.find("4 çarpışma ağı") != std::string::npos,
+                "açık su + havuz_ornek sahnesi (duvar ağları) reddedilir: " + r.hata);
+        const sunucu::Sonuc r2 = sunucu::kos(ayar(sonar_metni("200_000_000"), true));
+        dogrula(r2.tamam && r2.sonar_acik, "tek tabanlı sahne (deniz_ornek) kurulur " + r2.hata);
+    }
+    // Sol #1: A1 §3.9 A_sensör ön denetimi. Yalnız Ping1D açık (öteki kritik sensörler kapalı):
+    // A_sensör = 48 B · 5 ms / ping aralığı; 1,6 ms'de tam 150 B (sınırda: kabul).
+    auto yalniz_ping1d = [](const char* aralik, const std::string& ek) {
+        std::string m = sonar_metni("200_000_000");
+        m.erase(m.find("# Sonar arızaları"));
+        degistir(m, "[arac.sensorler.kamera0]",
+                 std::string("[arac.sensorler.mag0]\netkin = false\n\n[arac.sensorler.baro0]\netkin = false\n\n"
+                             "[arac.sensorler.dvl0]\netkin = false\n\n[arac.sensorler.batarya0]\netkin = false\n\n"
+                             "[arac.sensorler.sizinti0]\netkin = false\n\n[arac.sensorler.ping360_0]\netkin = false\n\n"
+                             "[arac.sensorler.ping1d0.ayar]\nping_araligi_ns = ") +
+                     aralik + "\n\n" + ek + "[arac.sensorler.kamera0]");
+        return m;
+    };
+    {
+        const sunucu::Sonuc r = sunucu::kos(ayar(yalniz_ping1d("1_600_000", ""), true));
+        dogrula(r.tamam && r.sonar_a_sensor_bayt == 150.0,
+                "sınırda (A_sensör = 150 B) kabul: " + std::to_string(r.sonar_a_sensor_bayt) + " " + r.hata);
+        const sunucu::Sonuc r2 = sunucu::kos(ayar(yalniz_ping1d("1_599_999", ""), true));
+        dogrula(!r2.tamam && r2.hata_turu == sunucu::HataTuru::senaryo_yurutulemez &&
+                    r2.hata.find("A_sensör") != std::string::npos,
+                "150 B'ı aşan (1,599999 ms) reddedilir: " + r2.hata);
+    }
+    {
+        // Sol'un karşı örneği: dört Ping1D (ayrı inst), ping_araligi_ns = 1, sıfır işlem süresi; en kısa
+        // çevrim bir fizik adımı (1,25 ms): 4 · 48 B · 4 = 768 B/parti. Öteki sensörler açık.
+        // Ek sensörler araç dosyasına (A5-K15: senaryo araç dosyasında olmayan sensör ekleyemez);
+        // araç dosyasının bellekteki kopyası.
+        std::string m = sonar_metni("200_000_000");
+        m.erase(m.find("# Sonar arızaları"));
+        degistir(m, "[arac.sensorler.kamera0]", "[arac.sensorler.ping1d0.ayar]\nping_araligi_ns = 1\n\n[arac.sensorler.kamera0]");
+        sunucu::Ayar a4 = ayar(m, true);
+        auto b4 = kaynak(m);
+        std::string ek;
+        for (int i = 1; i <= 3; ++i) {
+            ek += "[arac.sensorler.ping1d" + std::to_string(i) + "]\ntur = \"ping1d\"\nkimlik = " + std::to_string(40 + i) +
+                  "\ninst = " + std::to_string(i) + "\nprofil = \"ping1d\"\nmontaj = { konum = [-0.08, 0.08, 0.14], "
+                  "yonelim = [1.0, 0.0, 0.0, 0.0] }\nayar = { ping_araligi_ns = 1 }\n\n";
+        }
+        degistir(b4->dosyalar["scenarios/ida0.toml"], "[arac.sensorler.ping360_0]", ek + "[arac.sensorler.ping360_0]");
+        a4.senaryo_kaynagi = b4;
+        const sunucu::Sonuc r = sunucu::kos(a4);
+        dogrula(!r.tamam && r.hata.find("A_sensör") != std::string::npos,
+                "dört Ping1D, ping_araligi_ns = 1: çalıştırılmadan reddedilir: " + r.hata);
+        if (r.hata.find("A_sensör") == std::string::npos) {
+            std::printf("  doğrulama raporu: %s\n", r.dogrulama_raporu.c_str());
+        }
+        const sunucu::Sonuc r2 = sunucu::kos(ayar(sonar_metni("200_000_000"), true));
+        dogrula(r2.tamam && r2.sonar_a_sensor_bayt > 0.0 && r2.sonar_a_sensor_bayt <= 150.0,
+                "İDA-0 sensörleri + Ping1D (50 ms): A_sensör " + std::to_string(r2.sonar_a_sensor_bayt) + " B");
+    }
+    // Sol #2: `--ping360-ornek 200` → sp = 13 332; otomatik darbe 4 · T_s = 1 333 µs yerine cihaz
+    // sınırı 1 000 µs (gerçekleşen değer, karta ve A3'e giden kayıtta).
+    {
+        sunucu::Ayar a = ayar(sonar_metni("2_000_000_000"), true);
+        a.ping360_ornek = 200;
+        std::size_t n = 0, ici = 0, sinir = 0;
+        a.sonar_kancasi = [&](const sonar::SonarOlcumu& o) {
+            if (const auto* q = std::get_if<sonar::Ping360Olcumu>(&o.yuk)) {
+                ++n;
+                ici += (q->tx_duration_us >= 1u && q->tx_duration_us <= 1000u && q->sample_period == 13332u &&
+                        q->n_samples == 200u)
+                           ? 1u
+                           : 0u;
+                sinir += q->tx_duration_us == 1000u ? 1u : 0u;
+            }
+        };
+        const sunucu::Sonuc r = sunucu::kos(a);
+        dogrula(r.tamam && n > 0u && ici == n && sinir == n,
+                "--ping360-ornek 200: gerçekleşen darbe 1–1000 µs (" + s(ici) + " / " + s(n) + ", 1000 µs: " + s(sinir) + ") " +
+                    r.hata);
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------- sol #5 (W4-K27 (5))
+
+int test_ayirma()
+{
+#if defined(_MSC_VER)
+    std::printf("  ATLANDI: MSVC'de genel operator new değiştirilmez (ayırma sayımı yalnız POSIX'te)\n");
+    return 0;
+#else
+    // A3 kapalı; senaryonun sonar arızaları (kayıp, donma, kendini_bildiren) ve koşullu bir arıza dahil.
+    std::string m = sonar_metni("24_000_000_000");
+    m += "\n[[olaylar]]\nkimlik = \"gec\"\nsinif = \"sensor\"\nzaman_ns = 3_000_000_000\nsure_ns = 2_000_000_000\n"
+         "tur = \"gec_teslim\"\nhedef = \"ping360_0\"\nsiddet = { gecikme_ns = 20_000_000 }\n";
+    m += "\n[[olaylar]]\nkimlik = \"kosullu\"\nsinif = \"sensor\"\nkosul = { buyukluk = \"derinlik\", "
+         "karsilastirma = \"<\", deger = 1.99 }\nsure_ns = 200_000_000\ntur = \"kayip\"\nhedef = \"ping1d0\"\n";
+    sunucu::Ayar a = ayar(m, true);
+    sonar_ayirma_sifirla();
+    const sunucu::Sonuc r = sunucu::kos(a);
+    const std::uint64_t n = sonar_ayirma_sayisi();
+    dogrula(r.tamam && r.sonar_acik && r.sonar_ping360 > 0u && r.sonar_ping1d > 0u,
+            "A3 kapalı sonar koşusu tamam (Ping360 " + s(r.sonar_ping360) + ", Ping1D " + s(r.sonar_ping1d) + ") " + r.hata);
+    dogrula(n == 0u, "dünya iş parçacığında sonar hesabı ve boşaltmada bellek ayırma yok: " + s(n));
+    dogrula(r.sonar_tampon_yetersiz == 0u && r.sonar_teslim_tasma == 0u,
+            "yük tamponu havuzu yetti, teslim deposu taşmadı (" + s(r.sonar_tampon_yetersiz) + ", " +
+                s(r.sonar_teslim_tasma) + ")");
+    return 0;
+#endif
+}
+
 // ---------------------------------------------------------------- kabul 5
 
 int test_a3()
@@ -617,12 +796,14 @@ int test_a3()
     };
 #if !defined(_MSC_VER)
     a3_ayirma_sifirla();
+    sonar_ayirma_sifirla();
 #endif
     std::uint64_t p360 = 0;
     a.sonar_kancasi = [&](const sonar::SonarOlcumu& o) { p360 += o.hdr.tur == sensor::SensorTuru::ping360 ? 1u : 0u; };
     const sunucu::Sonuc r = sunucu::kos(a);
 #if !defined(_MSC_VER)
     const std::uint64_t ayirma = a3_ayirma_sayisi();
+    const std::uint64_t sonar_ayirma = sonar_ayirma_sayisi();
 #endif
     dur = true;
     if (is.joinable()) {
@@ -637,6 +818,7 @@ int test_a3()
     std::printf("  ATLANDI: MSVC'de genel operator new değiştirilmez (ayırma sayımı yalnız POSIX'te)\n");
 #else
     dogrula(ayirma == 0u, "dünya tarafındaki A3 hizmetinde bellek ayırma yok (sonar kanalları dahil): " + s(ayirma));
+    dogrula(sonar_ayirma == 0u, "dünya tarafındaki sonar hesabı ve boşaltmada bellek ayırma yok: " + s(sonar_ayirma));
 #endif
     std::printf("  ÖLÇÜM (bu Mac, SIL, A3 açık): dünya tarafındaki A3 hizmeti sınır başına en çok %.1f µs, tek yayın çağrısı en çok "
                 "%.1f µs (duvar)\n",
@@ -703,23 +885,18 @@ int test_hil_olcum(int ornek)
                     static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi), 1e-6 * static_cast<double>(r.zaman.yanit_p50_ns),
                     1e-6 * static_cast<double>(r.zaman.yanit_p99_ns), 1e-6 * static_cast<double>(r.zaman.yanit_en_cok_ns));
     }
-    // ZAMANLAMA (W4-K24): gerçek zaman kaçırma ve TF yazımının gecikmesi (sonar adımı TF'yi geciktirmez).
-    // İyileştirmesiz derlemede (host-debug; NDEBUG yok) sonarın ping hesabı 3–7 ms sürer (ölçüm, bu Mac)
-    // ve 1,25 ms'lik sınırı aşar: orada bu iki satır yalnız ölçümdür (mimar onayına; sanitizer'lı
-    // derlemedeki W4-K24 muafiyetinin karşılığı). İşlevsel denetimler her derlemede ölçüttür.
+    // ZAMANLAMA (W4-K24, W4-K29): gerçek zaman kaçırma ve TF yazımının gecikmesi (sonar adımı TF'yi
+    // geciktirmez). Ölçüt olup olmadığı yalnız ortak yardımcıdan (zamanlama_olcutu.hpp): release'te
+    // ölçüt; debug (NDEBUG yok), paylaşılan CI ve sanitizer'lı derlemede yalnız ölçüm. İşlevsel
+    // denetimler her derlemede ölçüttür.
     const bool kac = r.zaman.gercek_zaman_kacirma == 0u;
     const bool tf = r.zaman.gec_yazim_en_cok_ns <= 1'000'000;   // A1-K117 T_tf_gec (kart ızgara tick'i) 1 ms
-#if defined(NDEBUG)
     dogrula(ida::test::zamanlama(kac, "sonar_hil_olcum.gercek_zaman_kacirma", "kaçırma " + s(r.zaman.gercek_zaman_kacirma)),
             "kaçırma 0 (zamanlama)");
     dogrula(ida::test::zamanlama(tf, "sonar_hil_olcum.tf_gec_yazim",
                                  "TF geç yazım en çok " + std::to_string(1e-6 * static_cast<double>(r.zaman.gec_yazim_en_cok_ns)) +
                                      " ms"),
             "TF geç yazım ≤ T_tf_gec (zamanlama)");
-#else
-    std::printf("  ZAMANLAMA [sonar_hil_olcum] iyileştirmesiz derleme: yalnız ölçüm (kaçırma %llu, TF geç yazım %s)\n",
-                static_cast<unsigned long long>(r.zaman.gercek_zaman_kacirma), tf && kac ? "sınır içinde" : "sınır dışında");
-#endif
     return 0;
 }
 
@@ -729,8 +906,8 @@ int test_hil_olcum(int ornek)
 int sonar_testi(const std::string& ad, int argc, char** argv)
 {
     g_hata = 0;
-    if (ad == "sonar_kapali_esitlik") {
-        (void)test_kapali_esitlik();
+    if (ad == "sonar_kapali_tutarlilik") {
+        (void)test_kapali_tutarlilik();
     } else if (ad == "sonar_belirlenim") {
         (void)test_belirlenim();
     } else if (ad == "sonar_ping1d") {
@@ -739,6 +916,10 @@ int sonar_testi(const std::string& ad, int argc, char** argv)
         (void)test_ping360();
     } else if (ad == "sonar_red") {
         (void)test_red();
+    } else if (ad == "sonar_kurulum") {
+        (void)test_kurulum();
+    } else if (ad == "sonar_ayirma") {
+        (void)test_ayirma();
     } else if (ad == "sonar_a3") {
         (void)test_a3();
     } else if (ad == "sonar_hil_olcum") {

@@ -93,6 +93,23 @@ void uye_ekle(Kopru::Ic& i, std::uint32_t msgid, const M& m, const sensor::Olcum
 
 }  // namespace
 
+std::size_t kritik_sensor_cerceve_boyu(sensor::SensorTuru tur)
+{
+    using sensor::SensorTuru;
+    std::size_t yuk = 0;
+    switch (tur) {
+    case SensorTuru::manyetometre: yuk = MAVLINK_MSG_ID_IDA_MAG_LEN; break;
+    case SensorTuru::basinc: yuk = MAVLINK_MSG_ID_IDA_BARO_LEN; break;
+    case SensorTuru::gnss: yuk = MAVLINK_MSG_ID_IDA_GNSS_LEN; break;
+    case SensorTuru::dvl: yuk = MAVLINK_MSG_ID_IDA_DVL_LEN; break;
+    case SensorTuru::ping1d: yuk = MAVLINK_MSG_ID_IDA_PING1D_LEN; break;
+    case SensorTuru::batarya_olcer: yuk = MAVLINK_MSG_ID_IDA_BATT_LEN; break;
+    case SensorTuru::sizinti: yuk = MAVLINK_MSG_ID_IDA_LEAK_LEN; break;
+    default: return 0;   // IMU, emniyet (A1-K113 (2), (3)), Ping360 (toplu), kamera: A_sensör dışı
+    }
+    return yuk + MAVLINK_NUM_NON_PAYLOAD_BYTES;   // kırpılmamış yük: üst sınır (A1-K05)
+}
+
 std::size_t Kopru::Ic::uye_boy(const SensorUye& u) const
 {
     // Kodlanmış boy (kırpılmış yük; A1-K05): gönderici kopyasıyla, seq ilerletilmeden.

@@ -582,7 +582,7 @@ private:
     std::unique_ptr<sonar::SonarKumesi> sonar_;
     std::vector<sonar::SonarOlcumu> sonar_olcumler_;
     bool sonar_hedefi(const std::string& ad) const;
-    bool sonar_kur_();
+    bool sonar_kur_(const sensor::SensorKumesiAyari& sa);
     void sonar_adimi(std::int64_t t);
     bool sonar_onceden(std::uint64_t b);
     void sonar_csv_ekle(const sonar::SonarOlcumu& o);
@@ -1185,7 +1185,7 @@ bool Calistirici::dosya_plani()
     if (a_.sonar_acik) {
         // W4-bagla-sonar: sonar kurulumu da yalnız doğrulanmış senaryodan (sensor_kur ile aynı kural);
         // A7 manifesti çözümleyiciyle aynı kaynaktan.
-        sonar_kurulum_ = senaryo::sonar_kur(*cs.cozumlenmis, *kaynak, &hata);
+        sonar_kurulum_ = senaryo::sonar_kur(*cs.cozumlenmis, *kaynak, cs.rapor, &hata);
         if (!sonar_kurulum_) {
             s_.hata = "senaryo bu dilimde yürütülemez: sonar: " + hata;
             s_.hata_turu = HataTuru::senaryo_yurutulemez;
@@ -1568,8 +1568,58 @@ bool Calistirici::sonar_hedefi(const std::string& ad) const
     return false;
 }
 
+namespace {
+
+// W4-K27 (5) (W4-bagla-sonar sol #5): `g_sonar_sayim` > 0 iken bellek ayırması dünya iş parçacığındaki
+// sonar hesabına ve boşaltmasına sayılır (sınama kancası `sonar_ayirma_sayilir`). Köprüye verme,
+// sınama kancaları ve CSV bu kapsamın dışındadır.
+thread_local int g_sonar_sayim = 0;
+
+class SonarAyirmaKapsami {
+public:
+    SonarAyirmaKapsami() { ++g_sonar_sayim; }
+    ~SonarAyirmaKapsami() { --g_sonar_sayim; }
+    SonarAyirmaKapsami(const SonarAyirmaKapsami&) = delete;
+    SonarAyirmaKapsami& operator=(const SonarAyirmaKapsami&) = delete;
+};
+
+// A1 §3.9 `A_sensör` (A1-K113, E13): TF, IMU ve emniyet dışındaki kritik sensör baytının parti
+// (kontrol periyodu P) başına ortalaması, en yüksek hızlarla. Sensör kümesindeki her etkin MAG,
+// BARO, GNSS, DVL, BATT ve LEAK örneği için çerçeve boyu × P / periyot; periyot `hiz_hz`'ten ya da
+// profil hızından (sim/sensor modeller.cpp: MAG 100, BARO 25, GNSS 5, BATT 10, LEAK 10 Hz; DVL
+// modlarının en yüksek hızı 15 Hz), saat kayması (1 + ppm·10⁻⁶) ile. Ping1D: sonar kümesinin en
+// kısa ortalama ping aralığıyla. Sonuç bayttır (tahmin değil, yapılandırmadan hesap).
+double a_sensor_bayt(const sensor::SensorKumesiAyari& sa, const std::vector<std::int64_t>& ping1d_aralik_ns)
+{
+    double toplam = 0.0;
+    for (const sensor::SensorAyari& a : sa.sensorler) {
+        if (!a.etkin) {
+            continue;
+        }
+        double hiz = 0.0;
+        switch (a.tur) {
+        case sensor::SensorTuru::manyetometre: hiz = a.hiz_hz.value_or(100.0); break;
+        case sensor::SensorTuru::basinc: hiz = a.hiz_hz.value_or(25.0); break;
+        case sensor::SensorTuru::gnss: hiz = a.hiz_hz.value_or(5.0); break;
+        case sensor::SensorTuru::dvl: hiz = 15.0; break;
+        case sensor::SensorTuru::batarya_olcer: hiz = a.hiz_hz.value_or(10.0); break;
+        case sensor::SensorTuru::sizinti: hiz = a.hiz_hz.value_or(10.0); break;
+        default: continue;   // IMU, emniyet geri okuması, sonar (aşağıda), kamera
+        }
+        const double periyot_ns = 1e9 / hiz * (1.0 + a.saat_kaymasi_ppm * 1e-6);
+        toplam += static_cast<double>(kopru::kritik_sensor_cerceve_boyu(a.tur)) * static_cast<double>(kP) / periyot_ns;
+    }
+    const double p1d = static_cast<double>(kopru::kritik_sensor_cerceve_boyu(sensor::SensorTuru::ping1d));
+    for (const std::int64_t t : ping1d_aralik_ns) {
+        toplam += p1d * static_cast<double>(kP) / static_cast<double>(t);
+    }
+    return toplam;
+}
+
+}  // namespace
+
 // Sonar kümesinin kurulumu (sensör kümesinden sonra, plan hazırlığından önce). false: s_ hatalı.
-bool Calistirici::sonar_kur_()
+bool Calistirici::sonar_kur_(const sensor::SensorKumesiAyari& sa)
 {
     if (sonar_kurulum_->etkin_sayisi == 0u) {
         // Senaryoda etkin sonar yok: küme kurulmaz, koşu sonarsız koşuyla bayt bayt aynıdır.
@@ -1601,6 +1651,37 @@ bool Calistirici::sonar_kur_()
         sonar_.reset();
         return false;
     }
+    // W4-bagla-sonar sol #2: örnek/periyot dönüşümünden sonra gerçekleşen Ping360 darbesi cihaz
+    // aralığında (otomatik darbe modelde 1–1000 µs'ye kırpılır; açık değer `kur`da denetlenir).
+    for (const sonar::SonarAyari& x : ay.sonarlar) {
+        if (const auto* y = std::get_if<sonar::Ping360Yapilandirmasi>(&x.yapilandirma); y != nullptr && x.etkin) {
+            const std::uint16_t d = sonar::ping360_darbe_us(*y);
+            if (d < 1u || d > 1000u) {
+                s_.hata = "senaryo bu dilimde yürütülemez: sonar: " + x.ad + " darbe süresi " + std::to_string(d) +
+                          " µs, cihaz aralığı 1–1000 µs";
+                s_.hata_turu = HataTuru::senaryo_yurutulemez;
+                sonar_.reset();
+                return false;
+            }
+        }
+    }
+    // W4-bagla-sonar sol #1: A1 §3.9 `A_sensör` ön denetimi (A1-K113, E13). Etkin Ping1D'lerin en
+    // kısa ortalama ping aralığıyla üretebileceği bayt, öteki kritik sensörlerle birlikte parti
+    // başına 150 B'ı aşıyorsa senaryo çalıştırılmadan reddedilir (sınırdaki değer kabul).
+    {
+        const double a_sensor = a_sensor_bayt(sa, sonar_->ping1d_en_kisa_aralik_ns());
+        s_.sonar_a_sensor_bayt = a_sensor;
+        if (!(a_sensor <= kopru::kASensorAzamiB)) {
+            char m[160];
+            std::snprintf(m, sizeof m, "%.4f B > %.0f B", a_sensor, kopru::kASensorAzamiB);
+            s_.hata = std::string("senaryo bu dilimde yürütülemez: A1 §3.9 A_sensör ön denetimi (A1-K113, E13): kritik "
+                                  "sensör baytı parti başına ") +
+                      m + " (Ping1D en kısa ping aralığıyla, öteki sensörlerle birlikte)";
+            s_.hata_turu = HataTuru::senaryo_yurutulemez;
+            sonar_.reset();
+            return false;
+        }
+    }
     s_.sonar_acik = true;
     for (const std::string& u : sonar_kurulum_->uyarilar) {
         s_.sonar_uyarilari.push_back(u);
@@ -1611,7 +1692,9 @@ bool Calistirici::sonar_kur_()
     for (const std::string& u : s_.sonar_uyarilari) {
         s_.senaryo_uyarilari.push_back(u);
     }
-    sonar_olcumler_.reserve(16);
+    // Teslim deposu (W4-K27 (5); sol #5): kapasite yapılandırmadan (etkin sonar × sonar başına
+    // kuyruk sınırı); taşan kayıt düşürülür ve `sonar_teslim_tasma` sayılır, depo büyümez.
+    sonar_olcumler_.reserve(sonar_->teslim_kapasitesi());
     const auto n_sinir = static_cast<std::size_t>(plan_.sure_ns / kH);
     s_.sonar_adim_ping_ns.reserve(std::min<std::size_t>(n_sinir + 1u, std::size_t{1} << 20U));
     if (!a_.sonar_csv_yolu.empty()) {
@@ -1646,7 +1729,12 @@ bool Calistirici::sonar_onceden(std::uint64_t b)
     }
     const std::uint64_t ping_once = sonar_->sayaclar().ping;
     const std::int64_t s0 = gercek();
-    if (sonar_->adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
+    sensor::AdimSonucu sr;
+    {
+        const SonarAyirmaKapsami kapsam;   // W4-K27 (5): ping hesabı bellek ayırmaz
+        sr = sonar_->adim(dn_.durum(), b);
+    }
+    if (sr != sensor::AdimSonucu::tamam) {
         s_.hata = "sonar kümesi adımı başarısız";
         return false;
     }
@@ -1665,8 +1753,13 @@ bool Calistirici::sonar_onceden(std::uint64_t b)
 // Sınırın sonar kayıtları: boşaltma (t_teslim ≤ t), köprüye verme (Ping1D kritik, Ping360 toplu).
 void Calistirici::sonar_adimi(std::int64_t t)
 {
-    sonar_olcumler_.clear();
-    sonar_->bosalt(t, sonar_olcumler_);
+    {
+        // W4-K27 (5): önceki sınırın kayıtlarının tamponları havuza döner; boşaltma sabit kapasiteli
+        // depoya (taşan kayıt düşer, sayılır). Bellek ayırmaz.
+        const SonarAyirmaKapsami kapsam;
+        sonar_->geri_al(sonar_olcumler_);
+        s_.sonar_teslim_tasma += sonar_->bosalt(t, sonar_olcumler_, sonar_olcumler_.capacity());
+    }
     for (const sonar::SonarOlcumu& o : sonar_olcumler_) {
         if (a_.sonar_kancasi) {
             a_.sonar_kancasi(o);
@@ -3530,7 +3623,7 @@ Sonuc Calistirici::kos_ic()
         s_.hata = "sensör kümesi: " + ks.hata;
         return s_;
     }
-    if (sonar_kurulum_ && !sonar_kur_()) {
+    if (sonar_kurulum_ && !sonar_kur_(sa)) {
         return s_;
     }
     if (!plan_hazirla(sa)) {
@@ -4008,6 +4101,7 @@ Sonuc Calistirici::kos_ic()
         s_.sonar_havada = sc.havada;
         s_.sonar_kayip = sc.kayip;
         s_.sonar_kuyruk_tasma = sc.kuyruk_tasma;
+        s_.sonar_tampon_yetersiz = sc.tampon_yetersiz;
         if (!a_.sonar_csv_yolu.empty()) {
             std::ofstream f(a_.sonar_csv_yolu, std::ios::binary);
             f.write(s_.sonar_csv.data(), static_cast<std::streamsize>(s_.sonar_csv.size()));
@@ -4034,6 +4128,7 @@ const char* csv_basligi()
 }
 
 int a3_ayirma_sayilir() noexcept { return g_a3_sayim; }
+int sonar_ayirma_sayilir() noexcept { return g_sonar_sayim; }
 
 Sonuc kos(const Ayar& ayar)
 {

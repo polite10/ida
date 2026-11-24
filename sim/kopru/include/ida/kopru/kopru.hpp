@@ -539,4 +539,11 @@ std::uint64_t d7_u64(std::uint64_t tohum, const std::string& etiket, std::uint64
 // CRC-32/ISO-HDLC (A1-K68; parametre bloğu).
 std::uint32_t crc32_iso_hdlc(const std::uint8_t* p, std::size_t n);
 
+// A1 §3.9 `A_sensör` ön denetimi (A1-K113, E13): TF, IMU ve emniyet dışındaki kritik sensör
+// baytının parti başına ortalaması bu sınırı aşmamalıdır (W4-bagla-sonar sol #1).
+inline constexpr double kASensorAzamiB = 150.0;
+// A1-K113 (6) sırasındaki kritik sensör üyesinin (MAG, BARO, GNSS, DVL, PING1D, BATT, LEAK) en
+// büyük kodlanmış çerçeve boyu (MAVLink 2, imzasız: yük + 12 B); başka tür için 0.
+std::size_t kritik_sensor_cerceve_boyu(sensor::SensorTuru tur);
+
 }  // namespace ida::kopru

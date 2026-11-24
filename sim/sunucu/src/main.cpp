@@ -351,7 +351,8 @@ int main(int argc, char** argv)
                          "satır %llu, çerçeve %llu, seyreltme %llu, en büyük teslim gecikmesi %llu periyot, oturumla atılan %llu, "
                          "Ping1D üye %llu; parti en büyük %llu B / %llu üye; sonar adımı (dünya, duvar; ölçüm): en uzun %.1f µs, "
                          "ping sınırlarında p50/p99 %.1f/%.1f µs (sınırın bekleyişinden önce); sınır içinde boşaltma en uzun "
-                         "%.1f µs\n",
+                         "%.1f µs; A_sensör %.1f B/parti (sınır 150); kuyruk taşması %llu, teslim deposu taşması %llu, "
+                         "tampon yetersiz %llu\n",
                          static_cast<unsigned long long>(s.sonar_ping1d), static_cast<unsigned long long>(s.sonar_ping360),
                          static_cast<unsigned long long>(s.sonar_ping), static_cast<unsigned long long>(s.sonar_havada),
                          static_cast<unsigned long long>(s.sonar_kayip), static_cast<unsigned long long>(c.ping360_satir),
@@ -360,7 +361,10 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(c.ping360_oturum_atilan), static_cast<unsigned long long>(c.ping1d_uye),
                          static_cast<unsigned long long>(c.parti_bayt_en_buyuk), static_cast<unsigned long long>(c.parti_uye_en_buyuk),
                          1e-3 * static_cast<double>(s.sonar_adim_en_uzun_ns), yuzde(0.5), yuzde(0.99),
-                         1e-3 * static_cast<double>(s.sonar_bosaltma_en_uzun_ns));
+                         1e-3 * static_cast<double>(s.sonar_bosaltma_en_uzun_ns), s.sonar_a_sensor_bayt,
+                         static_cast<unsigned long long>(s.sonar_kuyruk_tasma),
+                         static_cast<unsigned long long>(s.sonar_teslim_tasma),
+                         static_cast<unsigned long long>(s.sonar_tampon_yetersiz));
         }
         if (a.senaryo == "z1" && a.senaryo_dosyasi.empty()) {
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",
