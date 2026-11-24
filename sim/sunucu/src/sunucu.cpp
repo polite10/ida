@@ -233,13 +233,28 @@ private:
         }
         alim_.resize(16384);   // yığında değil (MSVC C6262)
         const std::int64_t e0 = gercek();
+        std::size_t bu_tur = 0;
         for (;;) {
+            if (sil && bu_tur >= kSilOkumaTuru) {
+                break;   // W4-K26 (3): bir turun işi sınırlı; gözetim denetimine dönülür
+            }
             std::size_t n = 0;
             const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
             bekle_us = 0;
             if (r == kopru::OkumaSonucu::tamam) {
                 if (sil) {
+                    bu_tur += n;
+                    if (sil_gelen_.size() - sil_gelen_k_ + n > kSilGelenAzami) {
+                        // W4-K26 (3) (EMNİYET): bellek tavanı eklemeden önce; oturum protokol
+                        // hatasıyla biter, kuyruk (kilitli adımı bozan akış) atılır.
+                        ++s_.sil_kuyruk_tasma;
+                        k_->protokol_hatasi(duvar());
+                        sil_gelen_.clear();
+                        sil_gelen_k_ = 0;
+                        break;
+                    }
                     sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
+                    s_.sil_kuyruk_en_cok = std::max<std::uint64_t>(s_.sil_kuyruk_en_cok, sil_gelen_.size() - sil_gelen_k_);
                 } else {
                     k_->al(alim_.data(), n, duvar());
                 }
@@ -254,9 +269,6 @@ private:
             }
             break;
         }
-        if (sil && sil_gelen_.size() - sil_gelen_k_ > kSilGelenAzami) {
-            baglanti_koptu("SIL alım kuyruğu taştı");   // karşı taraf kilitli adımı bozuyor
-        }
         evre_[kEvreOkuma] += gercek() - e0;
     }
 
@@ -266,7 +278,9 @@ private:
     bool sil_besle(const std::function<bool()>& dur)
     {
         while (sil_gelen_k_ < sil_gelen_.size() && !dur()) {
-            sil_gelen_k_ += k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+            const std::size_t n = k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+            sil_gelen_k_ += n;
+            sil_beslenen_ += n;
         }
         if (sil_gelen_k_ >= sil_gelen_.size()) {
             sil_gelen_.clear();
@@ -374,7 +388,13 @@ private:
     std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
     bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
     bool sil_yazma_bitti_ = false;          // SIL: yazım hata aldı (W4-K26 (2); bağlantı kuyrukta biter)
-    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
+    std::uint64_t sil_beslenen_ = 0;        // SIL: köprüye verilen toplam bayt
+    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB (W4-K26 (3))
+    static constexpr std::size_t kSilOkumaTuru = std::size_t{1} << 20U;    // pompa turu başına en çok 1 MiB
+    // W4-K26 (3): bir yuva beklemesinde, yuva tamamlanmadan işlenebilecek en çok bayt (kartın bir
+    // çağrısının meşru çıktısı birkaç KiB; W4-K14'ün 128 çerçevelik sınırının bayt karşılığından çok
+    // büyük). Aşılırsa oturum protokol hatasıyla biter (akış sırasına bağlı, belirlenimci).
+    static constexpr std::uint64_t kSilBeklemeAzami = std::uint64_t{1} << 22U;   // 4 MiB
     // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
     static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
     std::array<std::int64_t, kEvreSayisi> evre_{};
@@ -613,8 +633,17 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
     const auto dur = [this, seq] {
         return k_->yuva_tamam(seq) || k_->durum() != kopru::OturumDurumu::kosuyor;
     };
+    const std::uint64_t beslenen_bas = sil_beslenen_;
     for (;;) {
         (void)sil_besle(dur);
+        if (!k_->yuva_tamam(seq) && k_->durum() == kopru::OturumDurumu::kosuyor &&
+            sil_beslenen_ - beslenen_bas > kSilBeklemeAzami) {
+            // W4-K26 (3) (EMNİYET): yuvayı tamamlamayan sınırsız akış (ör. kesintisiz 0x00).
+            ++s_.sil_kuyruk_tasma;
+            k_->protokol_hatasi(duvar());
+            sil_gelen_.clear();
+            sil_gelen_k_ = 0;
+        }
         if (k_->yuva_tamam(seq)) {
             return true;
         }

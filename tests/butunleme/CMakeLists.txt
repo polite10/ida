@@ -10,7 +10,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
   return()
 endif()
 
-add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp)
+add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp test_sil_alim.cpp)
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -82,6 +82,12 @@ set_tests_properties(butunleme.sil_gecikmeli_tcp PROPERTIES TIMEOUT 300)
 # 10 yüklü (6 meşgul döngü) koşunun iki yöndeki bayt akışı aynı.
 add_test(NAME butunleme.sil_oturum_dusme_belirlenim COMMAND ida_butunleme_test sil_oturum_dusme_belirlenim 10)
 set_tests_properties(butunleme.sil_oturum_dusme_belirlenim PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
+# W4-K26 (EMNİYET): SIL'de alım anı (kısıtlayan çerçeve yuva n + 1'in sınırında), akışın sonu
+# (FIN ve yazma hatası akıştaki yerinde) ve alım sınırları (kesintisiz 0x00).
+foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+endforeach()
 add_test(NAME butunleme.sil_iki_surec COMMAND ida_butunleme_test sil_iki_surec $<TARGET_FILE:ida_sil>)
 set_tests_properties(butunleme.sil_iki_surec PROPERTIES TIMEOUT 300)
 set_tests_properties(butunleme.a4_girdi_esitligi PROPERTIES TIMEOUT 300)

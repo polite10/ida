@@ -329,6 +329,9 @@ public:
     // Taşıma kapandı (SIL TCP, aygıt kalktı; A1-K23, K99) ya da SIL gözetimi doldu (A1-K76).
     void akis_kapandi(std::int64_t duvar_ns);
     void sil_gozetimi_doldu(std::int64_t duvar_ns);
+    // W4-K26 (3): karşı taraf kilitli adımı bozan sınırsız bir akış gönderdi (SIL alım sınırları):
+    // oturum varsa SESSION_CLOSE(PROTOCOL) ile biter ve yeni el sıkışma başlar (A1-K23).
+    void protokol_hatasi(std::int64_t duvar_ns);
     // Çalıştırma kipini değiştirir (hazırlık oturumundan sonra; A1-K19). Oturum yokken.
     void kip_ayarla(CalistirmaKipi kip);
 

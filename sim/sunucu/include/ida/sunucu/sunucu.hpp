@@ -242,6 +242,8 @@ struct Sonuc {
     std::uint64_t port_acma_denemesi = 0;      // 1 s aralıklı yeniden açma denemeleri
     std::uint64_t port_acildi = 0;
     std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
+    std::uint64_t sil_kuyruk_en_cok = 0;       // W4-K26 (3): SIL alım kuyruğunun en büyük boyu (B)
+    std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL alım kuyruğu/bekleme bayt sınırı aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;
