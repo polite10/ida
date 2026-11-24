@@ -45,6 +45,7 @@ private:
     void a3_ayir(const std::string& ileti);
 
     std::unique_ptr<ida::kopru::Tasima> t_;
+    std::vector<std::uint8_t> okuma_ = std::vector<std::uint8_t>(65536);   // yığında değil (MSVC C6262)
     std::string tampon_;
     std::string parca_;   // parçalı ileti
     std::uint8_t parca_opkod_ = 0;

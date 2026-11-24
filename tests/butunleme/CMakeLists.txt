@@ -114,6 +114,9 @@ if(NOT WIN32)
   # Kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), A3 açık; zamanlamaya duyarlı.
   add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
   set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  # HIL'de onaylı duraklatma (A1-K41, Tablo 4.7b): 8 s, sözde uçbirim.
+  add_test(NAME butunleme.a3_hil_duraklat COMMAND ida_butunleme_test a3_hil_duraklat)
+  set_tests_properties(butunleme.a3_hil_duraklat PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 # Kabul 3: ida_sim + panelin A3 istemcisi (Node; web/src/a3, web/'e dosya eklenmez). Node yoksa
 # kaydedilmez; web/node_modules (esbuild) yoksa 77 döner ve atlanır.

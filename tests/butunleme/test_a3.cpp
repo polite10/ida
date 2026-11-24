@@ -282,7 +282,10 @@ int test_a3_belirlenim()
     Istemciler ist;
     const Kosu acik = kos(z1_dosya(), true, &ist);
     esitlik(kapali, acik, "A3 açık, hızlı + yavaş istemci");
-    dogrula_a3(ist.baglandi, "iki istemci bağlandı ve abone oldu");
+    dogrula_a3(ist.baglandi && ist.hizli != nullptr, "iki istemci bağlandı ve abone oldu");
+    if (ist.hizli == nullptr) {
+        return 1;
+    }
     const auto& h = *ist.hizli;
     std::printf("  hızlı istemci: fizik/durum %llu, kart/durum %llu, sensor/basinc %llu, emniyet/girdiler %llu, olay %llu\n",
                 static_cast<unsigned long long>(h.cerceve_sayisi.count(10) ? h.cerceve_sayisi.at(10) : 0),
@@ -558,6 +561,10 @@ int test_a3_hil_olcum()
     ist.bitir();
     dogrula_a3(s.tamam, "HIL 1x koşusu tamam " + s.hata);
     const ida::sunucu::ZamanOlcumu& z = s.zaman;
+    dogrula_a3(ist.hizli != nullptr, "istemci oluşturuldu");
+    if (ist.hizli == nullptr) {
+        return 1;
+    }
     const auto& h = *ist.hizli;
     const std::uint64_t fizik = h.cerceve_sayisi.count(10) ? h.cerceve_sayisi.at(10) : 0u;
     std::printf("  ÖLÇÜM (bu Mac, 2026-11-24, HIL 1x, sözde uçbirim, 60 s, A3 açık, bir istemci 50 Hz): TF %llu; "
@@ -587,10 +594,66 @@ int test_a3_hil_olcum()
     return 0;
 }
 
+// HIL'de duraklatma (A1-K41, Tablo 4.7b): onaylı istekle; TF ve üyeler durur, canlılık sürer,
+// çalıştırma geçersiz (hil_duraklatma); sürdürünce TF'ler boşluksuz sürer (A1-K29). Duraklatılmışken
+// acil durdurma beklemez.
+int test_a3_hil_duraklat()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 1;
+    a.kip = ida::sunucu::Kip::hil;
+    a.karsi = ida::sunucu::Karsi::pty;
+    a.sure_s = 8.0;
+    int yoklama = 0;
+    std::uint32_t no_acil = 0;
+    Kosu k;
+    gozlem_kur(a, k);
+    a.a3_acik = true;
+    a.a3_port = 0;
+    a.a3_kapanis_bekleme_s = 0.0;
+    a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+        const ida::a3::AnlikDurum d = al.anlik();
+        if (b == 1600 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && yoklama == 0) {
+            Komut p = calistirma(d, KomutTuru::calistirma_duraklat);
+            p.gecersizligi_onayla = true;
+            dogrula_a3(al.al(p).tur == ida::a3::AlimSonucu::Tur::kuyrukta, "onaylı duraklatma kuyrukta");
+            yoklama = 1;
+        } else if (b == 1600 && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
+            ++yoklama;
+            if (yoklama == 300) {
+                const Komut e = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true);
+                no_acil = e.komut_no;
+                (void)al.al(e);
+            } else if (yoklama == 700) {
+                (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
+            }
+        }
+    };
+    k.s = ida::sunucu::kos(a);
+    const ida::sunucu::Sonuc& s = k.s;
+    dogrula_a3(s.tamam && s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + s.hata);
+    dogrula_a3(yoklama >= 700, "duraklatıldı ve ≈ 0,7 s sonra sürdürüldü (" + std::to_string(yoklama) + " yoklama)");
+    dogrula_a3((s.sayac.calistirma_gecersiz & ida::kopru::kGecDuraklatma) != 0u, "çalıştırma geçersiz: HIL duraklatma (A1-K79)");
+    dogrula_a3(s.sayac.oturum_kopma == 0u, "oturum duraklatmada sürdü (canlılık; A1-K41)");
+    dogrula_a3(s.zaman.tf_sayisi >= 1598u, "TF'ler boşluksuz sürdü (" + std::to_string(s.zaman.tf_sayisi) + ")");
+    const auto* o = a3_sonucu(s, no_acil);
+    dogrula_a3(o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 2'000'000'000, "duraklatılmışken acil durdurma 2 s sınırında uygulandı");
+    dogrula_a3(notr_araligi(k, 1600, 6400), "acil durdurmadan sonra itki nötr");
+    // ZAMANLAMA (W4-K24): W(t) sürdürmede kaydırılır; sonrasında sim gecikmesi beklenmez.
+    dogrula_a3(ida::test::zamanlama(s.zaman.sim_gecikmesi == 0u, "a3_hil_duraklat.sim_gecikmesi",
+                                    std::to_string(s.zaman.sim_gecikmesi) + " (0)"),
+               "sürdürmeden sonra sim gecikmesi yok (zamanlama)");
+    return 0;
+}
+
 }  // namespace
 
 int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
 {
+    if (ad == "a3_hil_duraklat") {
+        (void)test_a3_hil_duraklat();
+        return g_hata_a3;
+    }
     if (ad == "a3_belirlenim") {
         (void)test_a3_belirlenim();
     } else if (ad == "a3_emniyet_yolu") {

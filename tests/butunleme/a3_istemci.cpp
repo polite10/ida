@@ -35,14 +35,13 @@ bool Istemci::baglan(std::uint16_t port, const std::string& jeton, int bekle_ms)
     const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(bekle_ms);
     bool baslik = false;
     while (std::chrono::steady_clock::now() < son) {
-        std::uint8_t b[4096];
         std::size_t n = 0;
-        const ida::kopru::OkumaSonucu r = t_->oku(b, sizeof b, 20'000, n);
+        const ida::kopru::OkumaSonucu r = t_->oku(okuma_.data(), okuma_.size(), 20'000, n);
         if (r == ida::kopru::OkumaSonucu::kapandi) {
             return false;
         }
         if (r == ida::kopru::OkumaSonucu::tamam) {
-            tampon_.append(reinterpret_cast<const char*>(b), n);
+            tampon_.append(reinterpret_cast<const char*>(okuma_.data()), n);
         }
         if (!baslik) {
             const std::size_t e = tampon_.find("\r\n\r\n");
@@ -100,15 +99,14 @@ bool Istemci::oku(int bekle_ms)
     }
     const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(bekle_ms);
     do {
-        std::uint8_t b[65536];
         std::size_t n = 0;
-        const ida::kopru::OkumaSonucu r = t_->oku(b, sizeof b, 5'000, n);
+        const ida::kopru::OkumaSonucu r = t_->oku(okuma_.data(), okuma_.size(), 5'000, n);
         if (r == ida::kopru::OkumaSonucu::kapandi) {
             kapandi = true;
             return false;
         }
         if (r == ida::kopru::OkumaSonucu::tamam) {
-            tampon_.append(reinterpret_cast<const char*>(b), n);
+            tampon_.append(reinterpret_cast<const char*>(okuma_.data()), n);
             while (cerceve_isle()) {
             }
         }
@@ -152,7 +150,7 @@ bool Istemci::cerceve_isle()
     if (tampon_.size() < k + boy) {
         return false;
     }
-    const std::uint8_t op = b0 & 0x0Fu;
+    const auto op = static_cast<std::uint8_t>(b0 & 0x0Fu);
     const bool fin = (b0 & 0x80u) != 0u;
     std::string yuk = tampon_.substr(k, static_cast<std::size_t>(boy));
     tampon_.erase(0, k + static_cast<std::size_t>(boy));

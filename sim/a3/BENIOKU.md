@@ -1,6 +1,6 @@
 # sim/a3 — A3 sunucusu (`ida_a3`)
 
-Sim tarafında web panellerine hizmet veren A3 sunucusu (`docs/sozlesmeler/A3-web.md`): tek TCP portunda HTTP/1.1 ve WebSocket, yalnız döngü arabiriminde. C++20 kitaplığı olarak yazılır; veri kaynağı ve komut alıcısı soyuttur. Bu dilimde (`docs/gorevler/W4-a3.md`) sunucu sahte bir kaynakla (`ida_a3_sahte`) sınanır; `ida_sim`'e bağlanması sonraki dilimdir.
+Sim tarafında web panellerine hizmet veren A3 sunucusu (`docs/sozlesmeler/A3-web.md`): tek TCP portunda HTTP/1.1 ve WebSocket, yalnız döngü arabiriminde. C++20 kitaplığı olarak yazılır; veri kaynağı ve komut alıcısı soyuttur. Bu dilimde (`docs/gorevler/W4-a3.md`) sunucu sahte bir kaynakla (`ida_a3_sahte`) sınanır; `ida_sim`'e bağlanması W4-bagla-a3'tedir (`ida_sim --a3-port`; `sim/sunucu/BENIOKU.md` "A3 sunucusu").
 
 ## Derleme
 

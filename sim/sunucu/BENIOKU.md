@@ -68,3 +68,34 @@ Yer istasyonu canlılığı (1 Hz `HEARTBEAT`, A1-K70) A5 olayı değildir: dosy
 ## CSV
 
 Her kontrol adımında bir satır (`csv_basligi()`): gerçek durum (derinlik, yön, yalpa, baş-kıç), kartın bildirdiği seyrüsefer (son `IDA_NAV`), kartın yanıtındaki ve yürürlükteki ve fiziğin uyguladığı darbe genişlikleri, kip/silahlı/arıza düzeyi, oturum ve kaçırma sayaçları, uçtan uca yanıt süresi (`yanit_sure_us`: TF yazımından o partinin yanıtının alınmasına, duvar; HIL'de anlamlı), kartın son `IDA_FC_STATUS`'undaki durum ve engel maskesi (`fc_state`, `fc_inhibit`; yalnız gözlem) ve sim'in yetkili izin bitleri (`sim_izin`). HIL özetinde yanıt süresinin p50/p99/en çoğu ve karttan gelen akışın çalıştırma oturumundaki çerçeve hataları ayrıca yazılır. Kart tarafı alanları bir parti sonra doldurulur: HIL'de sonraki partinin gönderiminde (yanıt ve telemetri o ana kadar gelmiştir); SIL'de (W4-K14) satır, sonraki partinin `ACTUATOR`'ı alındıktan sonra yazılır, yani CSV'ye bir periyot geç girer ve satır n çağrı n'in telemetrisini taşır. Son satır kapanıştan önce o anda işlenmiş durumla (`ACTUATOR(N)` ve çağrı N − 1'in çıktısı) tamamlanır. Özet satırında karttan gelen başlık `seq`'inin tanısı da yazılır: sıra dışı gelen ile kaybolan çerçeve ayrı sayılır (32 numaralık pencere; davranışı değiştirmez, A1-K08).
+
+## A3 sunucusu (W4-bagla-a3)
+
+```
+# SIL, kendiliğinden başlar; açılış adresi (erişim jetonuyla) standart çıktıya bir kez yazılır:
+ida_sim --kip sil --senaryo scenarios/z1.toml --a3-port 0 --a3-kok web/dist
+# Çalıştırma panelden `calistirma/baslat` ile başlar (yuklendi'de bekler):
+ida_sim --senaryo scenarios/z1.toml --a3-port 47100 --a3-kok web/dist --a3-bekle
+```
+
+`--a3-port` verilmezse sunucu hiç başlamaz ve koşu bugünkü davranışla bayt bayt aynıdır. Verilirse `sim/a3` kitaplığının sunucusu kendi G/Ç iş parçacığında çalışır (yalnız 127.0.0.1; A3-K01…K12); dünya iş parçacığı veriyi `Yayinci` ile verir, komutlar `A3Alici` (`src/a3_baglanti.*`) üzerinden fizik sınırında uygulanır. Koşu bitince son durum yayınlanır, kalan komutlar reddedilir ve sunucu 1001 ile kapanır (A3-K49).
+
+**Yayın (dünya → A3; `Calistirici::a3_yayinla`).** Yayın noktası fizik sınırındaki sıranın sonudur (köprü, sensörler, parti, SIL'de yuva beklemesi), fizik adımından önce; yayınlanan durum b sınırınındır ve CSV satırıyla aynı andır. Yayın çağrıları köprüye ve fiziğe dokunmaz: A3 açıkken ve kapalıyken aynı tohumla CSV ve A1 bayt akışı aynıdır (`tests/butunleme` `a3_belirlenim`). Zaman damgaları sim zamanıdır. Sıklık sim zamanına göredir (dizi ve olay sınıfı üretildikçe); duvar saatindeki 50 Hz seyreltmeyi kitaplık yapar (A3-K33).
+
+| Kanal | Sıklık (sim) | Kaynak |
+|---|---|---|
+| `calistirma/durum`, `sayac/gercek_zaman`, `emniyet/girdiler`, `atis/durum`, `baglanti/durum` | 10 Hz ve değişimde | çalıştırma durum makinesi (aşağıda); köprü sayaçları (`kopru::Sayaclar`), sensör kümesi sayaçları; köprünün yetkili emniyet durumu ve revizyonu, kartın `IDA_FC_STATUS.inhibit_mask`'i (A3-K97); tüp doluluğu, süreli izin ve bitişi, olay kararları (A3-K98); A1 oturumu |
+| `fizik/durum`, `kart/durum` | 50 Hz (kart/durum yeni bildirimde) | fizik durumu (yer gerçeği; `a_n` = R(q)(ν̇ + ω×v)); kartın son `IDA_NAV` ve `IDA_STATUS`'u |
+| `sensor/basinc`, `sensor/dvl`, `sensor/batarya` | her kayıt | sensör kümesinin teslim ettiği kayıt (arıza zinciri sonrası) |
+| `ariza/etkin`, `kart/cekirdek_sayaclari` | 2 Hz ve değişimde | sensör kümesinin etkin arızaları ve itici çarpanı arızaları; kartın `IDA_CORE_COUNTERS`'ı |
+| `olay` | olduğunda | `calistirma_durumu_degisti`, `gecerlilik_dustu`, `gercek_zaman_kacirildi`, `parti_kacirildi_ozeti`, `komut_sonucu`, `ariza_degisti`, `emniyet_girdisi_degisti`, `atis_olayi_sonucu`, `a1_oturum_degisti`, `kart_sifirlandi`, `yer_istasyonu_komutu`, `yer_istasyonu_yaniti`, `senaryo_ogesi_uygulandi`, `atama_celiskisi`, `gevsetme_reddedildi`, `emniyet_rev_doydu` |
+
+Sonar kanalları ayrı iştir (W4-bagla-sonar). Sim'de karşılığı olmayan alanlar sözleşmedeki "yok" değeriyle gider: sensör kaydının `parti_step_seq` ve `quality`'si; `fizik/durum`'un `iticiler[].akim_a`, `paket_akimi_a`, `soc`'u (fizikte güç modeli yok; `bara_gerilimi_v` A5'teki ideal kaynak); `kart/durum`'un `batarya_soc`, `adim_suresi_us`'u; `baglanti/durum`'un `d_asagi_ort_ns`'i ve boş `emulator` dizisi (bağlantı emülatörü yok). `yok_degeri` tanımsız alanlarda ve tutulmayan sayaçlarda 0 gider (liste W4-bagla-a3 raporunda).
+
+**Komutlar (A3 → dünya).** Eşzamanlı denetim (A3-K54, K91, K118, K123, Tablo 4.7a/4.7b) `A3Alici::al`'da son anlık görüntüyle; uygulama, durum ve revizyonla aynı atomik adımda fizik sınırında yeniden denetlenerek (A3-K57). Genel komutlar 256'lık sınırlı halkadan (A3-K59), kısıtlayanlar (acil durdurma bas; tüp başına fiş çıkar, pim tak; `disarm`, `set_mode_daraltici`, `fc_disarm`, `fc_abort`) etki başına taşmayan tek yuvadan geçer: yuva doluyken kitaplığın mandalı bekletir (W4-K22), kısıtlayan genel halkanın doluluğundan ve gevşetenlerden etkilenmez.
+
+- *Sanal emniyet girdileri (EMNİYET):* panelin isteği senaryo zaman çizelgesinin kullandığı aynı köprü yolundan girer (`Kopru::emniyet_ata` → `sinir_isle`; `EmniyetAtama::operator_kimligi`); A1-K85 sırasını köprü uygular: kısıtlayan istek başına bir revizyon artırır ve `beklenen_run_id` bayat olsa da uygulanır (W4-K19), gevşeten revizyonla değerlendirilir (`kisitlama_hakim`, `emniyet_rev_uyusmuyor`, `emniyet_rev_doydu`). Aynı sınırda senaryonun ve panelin atamaları tek `sinir_isle` çağrısında işlenir. Değişimler `Sonuc::emniyet_degisimleri`'ne kaynağıyla yazılır.
+- *Yer istasyonu komutları:* `arm`, `disarm`, `set_mode_*`, `failsafe_reset`, `mission_ctl`, `param_get`, `guided_sp` ve `fc_*` senaryonun operatör komutlarıyla aynı köprü yolundan (`komut_basit`, `komut_guided`, `komut_fc`) karta gider; `fc_fire` katalogdaki biçimiyle taşınan komuttur (köprüde `IDA_CMD_FC` karşılığı var; atış mantığı yok). Genişletici komut adım 4'ün yerinde değerlendirilir (revizyon bu sınırda arttıysa `kisitlama_hakim`). `manual` (köprüde yol yok) ve bileşik komutlar (`mission_upload`, `param_apply`, `param_save`) `yer_istasyonu_yaniti`'nda `desteklenmiyor` alır. Kartın yanıtı `yer_istasyonu_yaniti`'nda, A1-K129 düşürmesi `yer_istasyonu_komutu` `bayat_yetki`'de bildirilir.
+- *Çalıştırma denetimi:* `baslat` (yalnız `--a3-bekle` ile `yuklendi`'de), `duraklat`, `surdur`, `adimla`, `hiz` (SIL), `durdur`; `sifirla` yalnız `yuklendi`'de (karşılığı olmayan durumda `gecersiz_durum`). SIL'de duraklatma sim zamanını durdurur; HIL'de yalnız `gecersizligi_onayla` ile, TF ve üyeler durur, canlılık sürer, çalıştırma geçersiz olur (A1-K41), sürdürünce `W(t)` kaydırılır. Duraklatılmışken gelen emniyet ve yer istasyonu istekleri beklemez: aynı köprü yolundan, sim zamanı ilerlemeden işlenir (A3-K58, K95).
+
+A3'ten gelen komutların sonucu `Sonuc::olay_sonuclari`'na senaryo olaylarıyla aynı biçimde, `kaynak = "a3"` ve kimlik `a3/<komut_no>/<uç>` ile yazılır.

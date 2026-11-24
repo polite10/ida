@@ -465,7 +465,8 @@ private:
     std::uint32_t a3_boot_onceki_ = 0;
     bool a3_boot_var_ = false;
     std::uint32_t a3_nav_seq_ = 0, a3_durum_seq_ = 0;
-    bool a3_nav_var_ = false;
+    std::int64_t a3_nav_t_ = 0;
+    bool a3_nav_var_ = false, a3_durum_var_ = false;
     std::uint64_t a3_kacirma_adet_ = 0, a3_kacirma_ilk_ = 0, a3_kacirma_son_ = 0;
     std::int64_t a3_kacirma_olay_duvar_ = 0;
     std::map<std::string, std::uint64_t> a3_arizalar_;   // etkin arızalar: kimlik → başlangıç adımı
@@ -479,6 +480,7 @@ private:
     sensor::EmniyetDurumu a3_emn_once_{};         // sınır işleminden önceki yetkili emniyet durumu
     std::optional<a3::Komut> a3_baslat_komutu_;   // `baslat` (a3_bekle): sonucu ön denetimden sonra
     std::uint32_t a3_son_komut_no_ = 0;
+    bool a3_kapaniyor_ = false;
 };
 
 std::unique_ptr<kopru::Tasima> Calistirici::port_ac(std::string& hata)
@@ -1648,8 +1650,15 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             continue;
         }
         if (!run_uyar) {
-            a3_sonuc(k, false, b, "beklenen_durum_uyusmuyor",
-                     a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+            // A3 §3.9: ayrıntı güncel run_id, durum ve durum revizyonu (A3-K54, K123).
+            a3b::JsonYaz ay;
+            if (a3d_.run_id) {
+                ay.metin("guncel_run_id", *a3d_.run_id);
+            } else {
+                ay.ham("guncel_run_id", "null");
+            }
+            ay.metin("guncel_durum", a3b::durum_adi(a3d_.durum)).sayi_u("guncel_durum_rev", a3d_.durum_rev);
+            a3_sonuc(k, false, b, "beklenen_durum_uyusmuyor", ay.bitir());
             continue;
         }
         if (!a3b::gecis_gecerli(a3d_.durum, k.tur) ||
@@ -2150,7 +2159,8 @@ void Calistirici::a3_oturum_izle(std::uint64_t b)
     const std::uint8_t once = a1_oturum_kodu(a3_a1_onceki_, a3_a1_kopuk_);
     const kopru::KartBilgisi& kb = k_->kart();
     if (simdi != once) {
-        const char* neden = simdi == 3u                                ? "el_sikisma_tamam"
+        const char* neden = a3_kapaniyor_                                ? "sim_kapanisi"
+                             : simdi == 3u                                ? "el_sikisma_tamam"
                              : k_->durum() == kopru::OturumDurumu::reddedildi ? "uyumsuzluk"
                              : kopuk                                    ? "aygit_kalkti"
                              : k_->yeniden_baslatma_bekleniyor()        ? "reboot_istendi"
@@ -2159,7 +2169,7 @@ void Calistirici::a3_oturum_izle(std::uint64_t b)
         a3b::JsonYaz j;
         j.metin("onceki", a1_oturum_adi(once)).metin("sonraki", a1_oturum_adi(simdi)).sayi_u("sess", k_->sess())
             .sayi_u("acilis_sayaci", kb.boot_count).metin("neden", neden)
-            .mantik("planli", std::string_view(neden) == "reboot_istendi" || simdi == 3u);
+            .mantik("planli", a3_kapaniyor_ || std::string_view(neden) == "reboot_istendi" || simdi == 3u);
         a3_olay(9, 0, 0, 0, 0, j.bitir());
         a3_a1_onceki_ = k_->durum();
         a3_a1_kopuk_ = kopuk;
@@ -2528,11 +2538,15 @@ void Calistirici::a3_yayinla(std::uint64_t b, bool zorla)
         a3_olc([&] { (void)yay_->yayinla<a3::Kanal::fizik_durum>(t, f); });
 
         const kopru::KartBilgisi& kb = k_->kart();
-        const bool yeni_nav = kb.nav.var && (!a3_nav_var_ || kb.nav.batch_seq != a3_nav_seq_ || kb.nav.t_ns != 0);
-        if ((kb.nav.var || kb.durum.var) && (yeni_nav || kb.durum.batch_seq != a3_durum_seq_ || zorla)) {
+        // Yalnız yeni bildirimde (son IDA_NAV ya da IDA_STATUS değişti) ya da duraklatma yoklamasında.
+        const bool yeni = kb.nav.var != a3_nav_var_ || kb.nav.batch_seq != a3_nav_seq_ || kb.nav.t_ns != a3_nav_t_ ||
+                          kb.durum.batch_seq != a3_durum_seq_ || kb.durum.var != a3_durum_var_;
+        if ((kb.nav.var || kb.durum.var) && (yeni || zorla)) {
             a3_nav_var_ = kb.nav.var;
             a3_nav_seq_ = kb.nav.batch_seq;
+            a3_nav_t_ = kb.nav.t_ns;
             a3_durum_seq_ = kb.durum.batch_seq;
+            a3_durum_var_ = kb.durum.var;
             a3::yuk_kart_durum k;
             k.kart_t_ns = kb.nav.var ? kb.nav.t_ns : 0;
             k.acilis_sayaci = kb.boot_count;
@@ -2621,6 +2635,7 @@ void Calistirici::a3_bitir()
     a3_kisit_.clear();
     a3_genel_.clear();
     if (k_) {
+        a3_kapaniyor_ = true;   // planlı kapanış (A1-K21): oturum değişiminin nedeni
         a3_yi_izle();
         a3_oturum_izle(a3_b_);
     }

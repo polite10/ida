@@ -306,12 +306,16 @@ std::string_view neden_adi(unsigned bit)
 
 void JsonYaz::ekle_(std::string_view s)
 {
-    if (tasti_ || n_ + s.size() + 2u > t_.size()) {
+    // Kapanış '}' için bir bayt ayrılır; sığmazsa yazıcı taşmış sayılır ve "{}" döner.
+    if (tasti_ || s.size() + 1u > t_.size() - n_) {
         tasti_ = true;
         return;
     }
     for (const char c : s) {
-        t_[n_++] = c;
+        if (n_ < t_.size()) {
+            t_[n_] = c;
+            ++n_;
+        }
     }
 }
 
@@ -378,8 +382,11 @@ std::string_view JsonYaz::bitir()
         ekle_("{");
         ilk_ = false;
     }
-    if (!tasti_) {
-        t_[n_++] = '}';
+    if (!tasti_ && n_ < t_.size()) {
+        t_[n_] = '}';
+        ++n_;
+    } else {
+        tasti_ = true;
     }
     return tasti_ ? std::string_view("{}") : std::string_view(t_.data(), n_);
 }

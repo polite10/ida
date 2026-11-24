@@ -268,6 +268,9 @@ int main(int argc, char** argv)
         }
         std::size_t uyg = 0, red = 0, yok = 0;
         for (const auto& o : s.olay_sonuclari) {
+            if (o.kaynak != "senaryo") {
+                continue;   // A3 komutları ayrı satırda
+            }
             uyg += o.sonuc == "uygulandi" ? 1u : 0u;
             red += o.sonuc == "reddedildi" ? 1u : 0u;
             yok += o.sonuc == "uygulanmadi" ? 1u : 0u;
@@ -300,6 +303,15 @@ int main(int argc, char** argv)
                          "act_flags 0x%x, önceki uygulanan out_seq %u, oturumda olağan yanıt alınmıştı %d\n",
                          static_cast<unsigned long long>(e.adim), 1.25e-3 * static_cast<double>(e.adim), e.out_seq,
                          static_cast<unsigned>(e.act_flags), e.onceki_out_seq, e.ilk_yanit_alindi ? 1 : 0);
+        }
+        if (a.a3_acik) {
+            std::fprintf(stderr,
+                         "ida_sim: A3: çalıştırma %s; dünyaya ulaşan komut %llu; yayın çağrısı %llu, tek çağrı en çok %.1f µs, "
+                         "sınırdaki çağrılar en çok %.1f µs (ölçüm, duvar); halka taşması %llu\n",
+                         s.calistirma_sonu.empty() ? "başlamadı" : s.calistirma_sonu.c_str(),
+                         static_cast<unsigned long long>(s.a3_komut), static_cast<unsigned long long>(s.a3_yayin_cagrisi),
+                         1e-3 * static_cast<double>(s.a3_cagri_en_kotu_ns), 1e-3 * static_cast<double>(s.a3_sinir_en_kotu_ns),
+                         static_cast<unsigned long long>(s.a3_halka_tasma));
         }
         if (a.senaryo == "z1" && a.senaryo_dosyasi.empty()) {
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",
