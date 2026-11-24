@@ -62,6 +62,7 @@ int test_operator_emniyet();
 int test_operator_ve_senaryo();
 int test_operator_artimli();
 int test_esz_sinirli();
+int test_esz_ilk_parti_oncesi();
 
 namespace {
 
@@ -131,6 +132,7 @@ const Test kTestler[] = {
     {"operator_ve_senaryo", test_operator_ve_senaryo},
     {"operator_artimli", test_operator_artimli},
     {"esz_sinirli", test_esz_sinirli},
+    {"esz_ilk_parti_oncesi", test_esz_ilk_parti_oncesi},
 };
 
 }  // namespace

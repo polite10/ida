@@ -129,9 +129,8 @@ Canlilik Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         // W4-K6: batch_seq = 0 taşıyan ve bu oturumda kartın henüz hiçbir partiyi kapattığı
         // görülmemişken (olağan yanıt alınmamışken) gelen eşzamansız çıktı A1-K79'a sayılmaz.
         // Parti kapandıktan sonra batch_seq = 0 iddia eden çıktı muaf değildir (Okumalar).
-        if (m.batch_seq == 0u && !ilk_yanit_alindi) {
-            esz_muaf.insert(m.out_seq);
-        }
+        // W4-K28 (3): muafiyet yalnız tutulan tek çıktının yanında saklanır (bellek sabit).
+        const bool muaf = m.batch_seq == 0u && !ilk_yanit_alindi;
         out_seq_var = true;
         son_out_seq = m.out_seq;
         // W4-K27 (3): yalnız en yeni eşzamansız güvenli çıktı bekler (ötekini geçersiz kılar: daha
@@ -145,6 +144,7 @@ Canlilik Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
             esz_bekleyen.clear();
         }
         esz_bekleyen.push_back(m);
+        esz_bekleyen_muaf = muaf;
         return Canlilik::aninda;   // ASYNC: beklemeden uygulanır
     }
     // A1-K72: yuva doluysa ya da uygulama anı geçtiyse reddedilir. Partinin ilk alınmış yanıtı
@@ -884,6 +884,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     struct Aday {
         mavlink_ida_actuator_t m;
         bool esz;
+        bool muaf = false;   // W4-K6: ilk parti öncesi eşzamansız çıktı
     };
     std::vector<Aday> adaylar;
     const auto ay = i.adim_yuva.find(adim_no);
@@ -932,9 +933,10 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         }
     }
     for (const auto& m : i.esz_bekleyen) {
-        adaylar.push_back({m, true});
+        adaylar.push_back({m, true, i.esz_bekleyen_muaf});
     }
     i.esz_bekleyen.clear();
+    i.esz_bekleyen_muaf = false;
     std::sort(adaylar.begin(), adaylar.end(),
               [](const Aday& x, const Aday& y) { return yeni(y.m.out_seq, x.m.out_seq); });
     for (const Aday& ad : adaylar) {
@@ -948,7 +950,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         i.son_uygulanan_out_seq = ad.m.out_seq;
         if (ad.esz) {
             ++i.say.esz_guvenli_uygulanan;
-            if (i.esz_muaf.count(ad.m.out_seq) != 0u) {
+            if (ad.muaf) {
                 ++i.say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
             } else {
                 i.say.calistirma_gecersiz |= kGecEszamansiz;

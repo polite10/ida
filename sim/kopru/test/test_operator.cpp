@@ -3,6 +3,50 @@
 // muhasebesidir (A3-K117 (1), (6): istek başına) ve gevşeten isteğin A3-K95 (4) değerlendirmesidir.
 #include "test_destek.hpp"
 
+#include <atomic>
+#include <cstdlib>
+#include <new>
+
+// W4-K28 (3): canlı yığın baytı sayacı (yalnız bu sınama programında; MSVC'de değiştirilmez).
+// Her bloğun başında boyu ve sayılıp sayılmadığı saklanır; `g_say` açıkken ayrılan bloklar
+// serbest bırakılınca düşülür.
+namespace {
+std::atomic<long long> g_canli_bayt{0};
+std::atomic<bool> g_bayt_say{false};
+constexpr std::size_t kBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
+}  // namespace
+#if !defined(_MSC_VER)
+void* operator new(std::size_t n)
+{
+    auto* p = static_cast<unsigned char*>(std::malloc(n + kBaslik));
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
+    const bool say = g_bayt_say.load(std::memory_order_relaxed);
+    reinterpret_cast<std::size_t*>(p)[0] = n;
+    reinterpret_cast<std::size_t*>(p)[1] = say ? 1u : 0u;
+    if (say) {
+        g_canli_bayt.fetch_add(static_cast<long long>(n), std::memory_order_relaxed);
+    }
+    return p + kBaslik;
+}
+void* operator new[](std::size_t n) { return ::operator new(n); }
+void operator delete(void* q) noexcept
+{
+    if (q == nullptr) {
+        return;
+    }
+    auto* p = static_cast<unsigned char*>(q) - kBaslik;
+    if (reinterpret_cast<std::size_t*>(p)[1] != 0u) {
+        g_canli_bayt.fetch_sub(static_cast<long long>(reinterpret_cast<std::size_t*>(p)[0]), std::memory_order_relaxed);
+    }
+    std::free(p);
+}
+void operator delete[](void* q) noexcept { ::operator delete(q); }
+void operator delete(void* q, std::size_t) noexcept { ::operator delete(q); }
+void operator delete[](void* q, std::size_t) noexcept { ::operator delete(q); }
+#endif
+
 using namespace ida::kopru;
 using namespace ida::kopru::test;
 
@@ -228,5 +272,56 @@ int test_esz_sinirli()
     z.sinir_ilerle();
     DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u && z.k.esz_bekleyen_sayisi() == 0u,
             "sürdürmede en yenisi uygulandı");
+    return d.hata;
+}
+
+// W4-K28 (3) (EMNİYET; sol-2 #4): ilk parti (ilk TF ve olağan yanıt) öncesinde gelen batch_seq = 0
+// eşzamansız çıktılar A1-K79'dan muaftır; muafiyet yalnız tutulan tek çıktının yanında saklanır.
+// 360 000 çıktı (10 ms ızgarada bir saat) boyunca köprünün canlı belleği büyümez; en yenisi
+// uygulanır ve muaf sayılır (geçersizlik biti kurulmaz).
+int test_esz_ilk_parti_oncesi()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    std::array<std::uint16_t, 8> notr{};
+    notr.fill(1500);
+    const auto bayrak = static_cast<std::uint16_t>(IDAW_ACT_FLAGS_THR_VALID | IDAW_ACT_FLAGS_IS_SAFE |
+                                                   IDAW_ACT_FLAGS_SRC_TICK | IDAW_ACT_FLAGS_ASYNC);
+    std::size_t en_cok = 0;
+    long long isinma = 0;
+    long long en_cok_artis = 0;
+    g_canli_bayt.store(0);
+    for (int i = 0; i < 360'000; ++i) {
+        if (i == 10'000) {
+            g_bayt_say.store(true);   // ısınmadan sonra: tamponlar oturdu
+            isinma = g_canli_bayt.load();
+        }
+        z.sk.yanit(0u, bayrak, notr);
+        if (i % 1000 == 999) {
+            alisveris(z.k, z.sk, z.t);
+            en_cok = std::max(en_cok, z.k.esz_bekleyen_sayisi());
+            en_cok_artis = std::max(en_cok_artis, g_canli_bayt.load() - isinma);
+        }
+    }
+    alisveris(z.k, z.sk, z.t);
+    g_bayt_say.store(false);
+    en_cok = std::max(en_cok, z.k.esz_bekleyen_sayisi());
+    DOGRULA(d, z.k.son_parti() == 0u, "ön koşul: hiç parti kapanmadı (ilk TF öncesi)");
+    DOGRULA(d, en_cok == 1u, "bekleyen eşzamansız çıktı en çok 1 (" + std::to_string(en_cok) + ")");
+    DOGRULA(d, z.k.sayaclar().esz_birlesen == 359'999u,
+            "geçersiz kılınanlar sayıldı (" + std::to_string(z.k.sayaclar().esz_birlesen) + ")");
+#if !defined(_MSC_VER)
+    // Kimlik başına küme düğümü olsaydı 350 000 düğüm (onlarca bayt/düğüm) MB düzeyinde büyürdü.
+    DOGRULA(d, en_cok_artis < 64 * 1024,
+            "köprünün canlı belleği sabit (ısınmadan sonra en çok artış " + std::to_string(en_cok_artis) + " B)");
+#else
+    (void)en_cok_artis;
+#endif
+    z.sinir_ilerle();
+    const Sayaclar& c = z.k.sayaclar();
+    DOGRULA(d, c.esz_guvenli_uygulanan == 1u && c.eszamansiz_ilk_parti_oncesi == 1u &&
+                   (c.calistirma_gecersiz & kGecEszamansiz) == 0u,
+            "en yenisi uygulandı ve ilk parti öncesi muaf sayıldı (A1-K79 biti kurulmadı)");
     return d.hata;
 }

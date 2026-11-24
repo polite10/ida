@@ -151,7 +151,7 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     yuvalar.clear();
     adim_yuva.clear();
     esz_bekleyen.clear();
-    esz_muaf.clear();
+    esz_bekleyen_muaf = false;
     ilk_yanit_alindi = false;
     kume.temizle();
     olay_bekleyen.clear();

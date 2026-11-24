@@ -236,8 +236,10 @@ struct Kopru::Ic {
     SiraliHarita<std::int64_t> yanit_sure{64};              // TF yazımından yanıt alımına
     std::vector<std::int64_t> yanit_sureleri;           // çalıştırma boyunca (ölçüm)
     std::vector<std::int64_t> sira_boslugu_t;           // A1-K08 boşluklarının sim zamanı
-    std::vector<mavlink_ida_actuator_t> esz_bekleyen;
-    std::set<std::uint32_t> esz_muaf;       // W4-K6: ilk parti öncesi eşzamansız çıktıların out_seq'i
+    std::vector<mavlink_ida_actuator_t> esz_bekleyen;   // en çok 1 (W4-K27 (3))
+    // W4-K6, W4-K28 (3): tutulan tek eşzamansız çıktının ilk parti öncesi muafiyeti. Muafiyet
+    // çıktıyla birlikte saklanır; birleşen çıktıların kimlikleri biriktirilmez (bellek sabit).
+    bool esz_bekleyen_muaf = false;
     bool ilk_yanit_alindi = false;          // bu oturumda olağan yanıt alındı
     // W4-K14 (SIL; A1-K121 (ii) okuması): KOSUYOR'da ACTUATOR, SESSION_CLOSE ve BOARD_HELLO
     // dışındaki çerçeveler tamponlanır; sonraki ACTUATOR alındığında ondan önce, oturum sonunda
