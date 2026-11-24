@@ -3,6 +3,7 @@
 #include "zamanlama_olcutu.hpp"   // W4-K24
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -90,6 +91,57 @@ int test_tcp_tasima()
         r = sunucu->oku(t, sizeof t, 10'000, n);
     }
     DOGRULA(d, r == OkumaSonucu::kapandi, "karşı ucun kapanışı görülür (A1-K99)");
+    return d.hata;
+}
+
+// W4-K26 (3): düzgün kapanışın süre sınırı mutlak son tarihtir; karşı uç durmadan veri gönderse
+// de (okuma hiç beklemeye düşmese de) kapat_duzgun sınırda döner. W4-K26 (2): FIN'den sonra
+// yazma hatası okunmamış veriyi yok etmez.
+int test_tcp_kapat_duzgun_sinirli()
+{
+    Denetci d;
+    std::string hata;
+    auto din = tcp_dinle(0, hata);
+    DOGRULA(d, din != nullptr, "dinleyici: " + hata);
+    if (!din) {
+        return d.hata;
+    }
+    std::unique_ptr<Tasima> istemci;
+    std::thread baglan([&] {
+        std::string h2;
+        istemci = tcp_baglan(din->port(), h2);
+    });
+    auto sunucu = din->kabul(2'000'000, hata);
+    baglan.join();
+    DOGRULA(d, sunucu != nullptr && istemci != nullptr, "bağlantı kuruldu");
+    if (!sunucu || !istemci) {
+        return d.hata;
+    }
+    std::atomic<bool> dur{false};
+    std::atomic<std::uint64_t> gonderilen{0};
+    std::thread sel([&] {
+        std::vector<std::uint8_t> v(65536, 0x5A);
+        while (!dur.load()) {
+            const long long k = istemci->yaz_biraz(v.data(), v.size());
+            if (k < 0) {
+                break;
+            }
+            gonderilen += static_cast<std::uint64_t>(k);
+        }
+    });
+    // Sel başlasın: sunucunun alım tamponu dolu olsun.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const auto t0 = std::chrono::steady_clock::now();
+    sunucu->kapat_duzgun(100'000);   // sınır 100 ms
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    dur = true;
+    sel.join();
+    // İşlevsel ölçüt: kapanış döndü (asılmadı) ve uç kapandı.
+    DOGRULA(d, !sunucu->acik(), "sürekli veri gönderen karşı uçla kapat_duzgun döndü ve uç kapandı (" +
+                                    std::to_string(gonderilen.load()) + " B gönderildi)");
+    // ZAMANLAMA (W4-K24): üst sınır duvar saatine bağlı.
+    DOGRULA(d, ida::test::zamanlama(ms < 100 + 400, "kapat_duzgun.sinir", std::to_string(ms) + " ms (sınır 100 + pay 400)"),
+            "kapat_duzgun süre sınırında döndü (zamanlama)");
     return d.hata;
 }
 

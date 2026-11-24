@@ -216,14 +216,18 @@ public:
 #else
             const ssize_t k = ::recv(s_, t.data(), t.size(), 0);
 #endif
+            if (k == 0 || (k < 0 && !bekliyor_hatasi(son_hata()))) {
+                break;      // karşı taraf kapattı ya da hata
+            }
+            // W4-K26 (3): mutlak son tarih her turda (okunan atılır; sürekli veri asılma yapmaz).
+            const auto kalan = std::chrono::duration_cast<std::chrono::microseconds>(son - std::chrono::steady_clock::now());
+            if (kalan.count() <= 0) {
+                break;
+            }
             if (k > 0) {
                 continue;   // atılır (işlenmez)
             }
-            if (k == 0 || !bekliyor_hatasi(son_hata())) {
-                break;      // karşı taraf kapattı ya da hata
-            }
-            const auto kalan = std::chrono::duration_cast<std::chrono::microseconds>(son - std::chrono::steady_clock::now());
-            if (kalan.count() <= 0 || bekle(s_, false, kalan.count()) <= 0) {
+            if (bekle(s_, false, kalan.count()) <= 0) {
                 break;      // süre sınırı: asılma yok
             }
         }
