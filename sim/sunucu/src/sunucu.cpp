@@ -364,6 +364,7 @@ private:
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
     std::vector<sensor::Olcum> olcumler_;
     std::array<double, 8> pwm_yur_{};
+    Ayar::SinirGozlemi gozlem_;   // bu sınırın fiziğe verilen girdisi (kancaya adımdan önce)
     std::array<double, 8> son_pwm_yur_{};
     std::string pty_yol_;
     bool estop_bu_adim_ = false;
@@ -974,15 +975,12 @@ bool Calistirici::sinir_on(std::uint64_t b)
         fizik_carpan_ = carpanlar;
     }
     (void)dn_.itici_komutu_ver(b, pwm);
-    if (a_.sinir_kancasi) {
-        Ayar::SinirGozlemi g;
-        g.b = b;
-        g.derinlik = dn_.durum().konum_n[2];
-        g.pwm = pwm;
-        g.itici_carpani = carpanlar;
-        g.acil_durdurma = estop_bu_adim_;
-        a_.sinir_kancasi(g);
-    }
+    // Gözlem fizik adımından hemen önce bildirilir (SIL'de W4-K26 (1) komutu değiştirebilir).
+    gozlem_.b = b;
+    gozlem_.derinlik = dn_.durum().konum_n[2];
+    gozlem_.pwm = pwm;
+    gozlem_.itici_carpani = carpanlar;
+    gozlem_.acil_durdurma = estop_bu_adim_;
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -1464,6 +1462,23 @@ Sonuc Calistirici::kos()
             if (!oturum_kur()) {
                 break;
             }
+        }
+        if (a_.kip == Kip::sil) {
+            // W4-K26 (1) (EMNİYET): bu sınırın yuva beklemesinde işlenen kısıtlayan çerçeveler
+            // (oturum sonu, eşzamansız güvenli çıktı) fizik bu sınırdan ilerlemeden yürürlüğe girer.
+            const kopru::KisitSonucu kisit = k_->sil_kisitlayan_uygula(b);
+            if (kisit.degisti) {
+                pwm_yur_ = kisit.pwm_us;
+                std::array<double, 8> girdi = kisit.pwm_us;
+                if (estop_bu_adim_) {
+                    girdi.fill(static_cast<double>(arac_.esc.pwm_notr_us));
+                }
+                (void)dn_.itici_komutu_ver(b, girdi);
+                gozlem_.pwm = girdi;
+            }
+        }
+        if (a_.sinir_kancasi) {
+            a_.sinir_kancasi(gozlem_);
         }
         const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {
