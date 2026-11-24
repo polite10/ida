@@ -1,0 +1,5 @@
+# Komut satırı aracının "geçersiz" çıkış kodu testi için bilerek bozuk dosya (TOML sözdizimi).
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad =
