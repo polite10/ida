@@ -51,6 +51,8 @@ ida_core_birim_testi(gorev_sol gorev/test_gorev_sol.c)
 ida_core_birim_testi(gudum gudum/test_gudum.c)
 ida_core_birim_testi(gudum_gecis gudum/test_gudum_gecis.c)
 ida_core_birim_testi(gorev_cokme gorev/test_gorev_cokme.c)
+# W5-atis-emniyet: atış kontrol emniyet zinciri (core/test/atis/).
+include("${CMAKE_CURRENT_SOURCE_DIR}/atis/testler.cmake")
 
 # ---- A4-K22: çekirdek nesnelerinde yazılabilir veri bölümüne düşen simge yok --------------
 # Sanitizer derlemesi araç simgeleri (ASan global tanımları) eklediği için orada kurulmaz.

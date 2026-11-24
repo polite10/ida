@@ -164,6 +164,7 @@ void ida_cik_yaz(ida_core_t *c, const ida_cagri_t *cg, const ida_in_t *in, ida_o
         .widen_blocked = &c->cer.cnt.widen_blocked,
     };
     ida_olay_yaz(&c->olay, &kapi, out);
+    ida_fc_cikti(&c->fc, out, cg->now); /* çıkan olaylar ve fc.state yansıması (W5) */
 
     /* Seyrüsefer (A4-K87). */
     if (step_ok) {
