@@ -36,9 +36,11 @@ target_link_libraries(ida_sim PRIVATE ida_sunucu)
 ida_sunucu_ayar(ida_sim)
 
 # Yardımcı sınamaları (sim.sunucu.*): Windows argüman kaçışı (sol #14).
-add_executable(ida_sunucu_test test/test_yardimci.cpp)
+add_executable(ida_sunucu_test test/test_yardimci.cpp test/test_a3_alici.cpp)
 target_include_directories(ida_sunucu_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_sunucu_test PRIVATE ida_sunucu)
 ida_sunucu_ayar(ida_sunucu_test)
 add_test(NAME sim.sunucu.arguman_kacisi COMMAND ida_sunucu_test arguman_kacisi)
 add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)
+# W4-K27 (2) (EMNİYET): A3 alıcısının tutarlı kesimi, belirlenimci iş parçacığı sırasıyla.
+add_test(NAME sim.sunucu.a3_kesim COMMAND ida_sunucu_test a3_kesim)

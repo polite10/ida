@@ -3234,6 +3234,7 @@ Sonuc Calistirici::kos()
         if (yay_ != nullptr) {
             // A3-K62: ön denetim kaldı → yuklendi; `baslat` reddedildi (on_denetim_kaldi).
             a3_gecis(a3::CalistirmaDurumu::yuklendi, "on_denetim_kaldi", true);
+            s_.calistirma_sonu = "yuklendi";   // W4-K27 (4): sonradan kendiliğinden başlamaz
             if (a3_baslat_komutu_) {
                 a3_sonuc(*a3_baslat_komutu_, false, 0, "on_denetim_kaldi");
                 a3_baslat_komutu_.reset();

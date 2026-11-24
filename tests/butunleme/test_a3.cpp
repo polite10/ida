@@ -13,8 +13,14 @@
 //   a3_calistirma     SIL'de duraklat/adımla/hız/sürdür CSV ve A1 akışını değiştirmez; duraklatılmışken
 //                     emniyet isteği beklemez; durdur çalıştırmayı bitirir
 //   a3_hil_olcum      kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim, A3 açık ve 50 Hz abonelikli istemci
+//   a3_duraklat_emniyet  W4-K27 (1) (EMNİYET): duraklatılmış sınırda artımlı emniyet; sol'un karşı
+//                     örneği; nötr dışı komut yürürlükteyken bas → bırak (W4-K3)
+//   a3_hil_duraklat   W4-K27 (3) (EMNİYET): HIL duraklatmada tele yalnız KEEPALIVE; DISARM sürdürünce
+//   a3_hazirlik_durdur  W4-K27 (4): hazırlanırken durdur → yuklendi, başlamaz
+//   a3_ayirma         W4-K27 (5): dünya tarafındaki A3 hizmetinde bellek ayırma yok (operator new kancası)
 #include "a3_istemci.hpp"
 #include "ida/a3/komut.hpp"
+#include "ida_link/tel.h"
 #include "ida/sunucu/sunucu.hpp"
 #include "../../sim/kopru/test/zamanlama_olcutu.hpp"   // W4-K24
 
@@ -28,9 +34,35 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
+
+// W4-K27 (5): dünya tarafındaki A3 hizmeti sırasında yapılan bellek ayırmalarını sayan kanca
+// (yalnız bu sınama programında; MSVC'de değiştirilmez).
+namespace {
+std::atomic<std::uint64_t> g_a3_ayirma{0};
+}  // namespace
+void a3_ayirma_sifirla() { g_a3_ayirma.store(0); }
+std::uint64_t a3_ayirma_sayisi() { return g_a3_ayirma.load(); }
+#if !defined(_MSC_VER)
+void* operator new(std::size_t n)
+{
+    if (ida::sunucu::a3_ayirma_sayilir() > 0) {
+        g_a3_ayirma.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (void* p = std::malloc(n == 0u ? 1u : n)) {
+        return p;
+    }
+    throw std::bad_alloc();
+}
+void* operator new[](std::size_t n) { return ::operator new(n); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+#endif
 
 namespace {
 
@@ -81,6 +113,11 @@ void gozlem_kur(ida::sunucu::Ayar& a, Kosu& k)
 }
 
 std::uint64_t kopru_lact() { return 8; }   // L_act / h (A1 §3.9)
+
+bool notr_disi(const Kosu& k, std::uint64_t b)
+{
+    return b < k.pwm_notr_degil.size() && k.pwm_notr_degil[b] > 0.0;
+}
 
 std::size_t ilk_fark(const std::vector<std::uint8_t>& x, const std::vector<std::uint8_t>& y)
 {
@@ -377,6 +414,7 @@ int test_a3_emniyet_yolu()
         dogrula_a3(notr_araligi(*k, kBas, kKalk + kopru_lact()), "bastıktan sonraki sınırdan bırakmadan L_act sonrasına dek itki nötr");
         dogrula_a3(k->acil.size() > kBas && k->acil[kBas] == 1u && k->acil[kBas - 1u] == 0u, "acil durdurma tam istenen sınırda");
     }
+    dogrula_a3(notr_disi(p1, kBas - 1u) && notr_disi(p2, kBas - 1u), "ön koşul: basmadan önce nötr dışı komut yürürlükte");
     dogrula_a3(komutlar.size() == 4u, "dört panel komutu");
     if (komutlar.size() == 4u) {
         const auto* a = a3_sonucu(p1.s, komutlar[0]);
@@ -439,6 +477,7 @@ int test_a3_emniyet_ret()
         }
     });
     dogrula_a3(k.s.tamam, "koşu tamam " + k.s.hata);
+    dogrula_a3(notr_disi(k, 3999), "ön koşul: senaryonun basmasından önce nötr dışı komut yürürlükte");
     const auto* h = a3_sonucu(k.s, no_hakim);
     dogrula_a3(h != nullptr && h->sonuc == "reddedildi" && h->neden == "kisitlama_hakim",
                "senaryonun kısıtlamasıyla aynı sınırdaki gevşetme: kisitlama_hakim (" + (h ? h->neden : std::string("yok")) + ")");
@@ -495,29 +534,6 @@ int test_a3_calistirma()
         hepsi = hepsi && o != nullptr && o->sonuc == "uygulandi";
     }
     dogrula_a3(hepsi, "komutlar uygulandı");
-    // Duraklatılmışken emniyet isteği beklemez: aynı sınırda (sim zamanı ilerlemeden) uygulanır.
-    int y2 = 0;
-    std::uint32_t no_acil = 0;
-    const Kosu e = kos(z1_yerlesik(4.0), true, nullptr, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-        const ida::a3::AnlikDurum d = al.anlik();
-        if (b == 2000 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && y2 == 0) {
-            (void)al.al(calistirma(d, KomutTuru::calistirma_duraklat));
-            y2 = 1;
-        } else if (b == 2000 && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
-            ++y2;
-            if (y2 == 10) {
-                const Komut a = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true);
-                no_acil = a.komut_no;
-                (void)al.al(a);
-            } else if (y2 == 30) {
-                dogrula_a3(d.acil_durdurma == 1u && d.adim_no == 2000u, "duraklatılmışken acil durdurma uygulandı (sim zamanı 2,5 s)");
-                (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
-            }
-        }
-    });
-    const auto* o = a3_sonucu(e.s, no_acil);
-    dogrula_a3(o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 2'500'000'000, "acil durdurmanın uygulama adımı duraklatılan sınır");
-    dogrula_a3(e.acil.size() > 2000u && e.acil[2000] == 1u && notr_araligi(e, 2000, 3000), "o sınırdan itibaren itki nötr");
     // Durdur: çalıştırma biter (A3 Tablo 4.7a: kosuyor → durduruldu).
     const Kosu d = kos(z1_yerlesik(12.0), true, nullptr, [](std::uint64_t b, ida::a3::KomutAlicisi& al) {
         if (b == 4000) {
@@ -557,9 +573,16 @@ int test_a3_hil_olcum()
             dogrula_a3(r2.tur == ida::a3::AlimSonucu::Tur::ret && r2.hata_kodu == "kipte_gecersiz", "HIL'de hız: kipte_gecersiz");
         }
     };
+    a3_ayirma_sifirla();
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    const std::uint64_t ayirma = a3_ayirma_sayisi();
     ist.bitir();
     dogrula_a3(s.tamam, "HIL 1x koşusu tamam " + s.hata);
+#if !defined(_MSC_VER)
+    dogrula_a3(ayirma == 0u, "W4-K27 (5): dünya tarafındaki A3 hizmetinde bellek ayırma yok (" + std::to_string(ayirma) + ")");
+#else
+    (void)ayirma;
+#endif
     const ida::sunucu::ZamanOlcumu& z = s.zaman;
     dogrula_a3(ist.hizli != nullptr, "istemci oluşturuldu");
     if (ist.hizli == nullptr) {
@@ -574,8 +597,9 @@ int test_a3_hil_olcum()
                 static_cast<unsigned long long>(z.sim_gecikmesi), static_cast<unsigned long long>(s.sayac.parti_kacirildi),
                 static_cast<unsigned long long>(s.sayac.son_tarih_kacirildi), 1e-6 * static_cast<double>(z.periyot_en_cok_ns),
                 1e-6 * static_cast<double>(z.gec_yazim_en_cok_ns));
-    std::printf("  ÖLÇÜM: yayın çağrısı %llu; dünya iş parçacığında tek çağrının en uzun süresi %.1f µs, bir sınırdaki "
-                "çağrıların en uzun toplamı %.1f µs; halka taşması %llu; istemcinin aldığı fizik/durum %llu, "
+    std::printf("  ÖLÇÜM: yayın çağrısı %llu; dünya iş parçacığında tek yayın çağrısının en uzun süresi %.1f µs, dünya "
+                "tarafındaki bütün A3 hizmetinin (çekme, karar, hazırlık, yayın) sınır başına en uzun süresi %.1f µs; "
+                "halka taşması %llu; istemcinin aldığı fizik/durum %llu, "
                 "kart/durum %llu, olay %llu\n",
                 static_cast<unsigned long long>(s.a3_yayin_cagrisi), 1e-3 * static_cast<double>(s.a3_cagri_en_kotu_ns),
                 1e-3 * static_cast<double>(s.a3_sinir_en_kotu_ns), static_cast<unsigned long long>(s.a3_halka_tasma),
@@ -594,18 +618,152 @@ int test_a3_hil_olcum()
     return 0;
 }
 
-// HIL'de duraklatma (A1-K41, Tablo 4.7b): onaylı istekle; TF ve üyeler durur, canlılık sürer,
-// çalıştırma geçersiz (hil_duraklatma); sürdürünce TF'ler boşluksuz sürer (A1-K29). Duraklatılmışken
-// acil durdurma beklemez.
+// ---- W4-K27 düzeltme turu (sol incelemesi #1, #3, #4, #6, #7) ----
+
+// Duraklatılmış sınırda emniyet (W4-K27 (1); sol #1, #7). Yerleşik z1: ARM 3 s, dalış komutu
+// 3,2 s; 6 s'de (b = 4800) nötr dışı komut yürürlükte.
+int test_a3_duraklat_emniyet()
+{
+    constexpr std::uint64_t kB = 4800;   // 6 s
+    // (a) Sol'un karşı örneği: senaryo 5 s'de basar, 6 s'de bırakır; b = 4800'de duraklat; operatör
+    // "bas"; sürdür → basılı kalır (senaryonun bırakması duraklatmadan önce işlendi, yeniden işlenmez).
+    {
+        ida::sunucu::Ayar a = z1_yerlesik(9.0);
+        a.acil_durdurma_s = 5.0;
+        a.acil_kalkar_s = 6.0;
+        a.acil_verildi = a.acil_kalk_verildi = true;
+        int y = 0;
+        std::uint32_t no_bas = 0;
+        const Kosu k = kos(a, true, nullptr, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (b == kB && d.durum == ida::a3::CalistirmaDurumu::kosuyor && y == 0) {
+                (void)al.al(calistirma(d, KomutTuru::calistirma_duraklat));
+                y = 1;
+            } else if (b == kB && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
+                ++y;
+                if (y == 5) {
+                    dogrula_a3(d.acil_durdurma == 0u, "duraklatıldığında senaryonun bırakması işlenmişti");
+                    const Komut kb = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true);
+                    no_bas = kb.komut_no;
+                    (void)al.al(kb);
+                } else if (y == 20) {
+                    dogrula_a3(d.acil_durdurma == 1u && d.adim_no == kB, "duraklatmada operatörün basması hemen uygulandı");
+                    (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
+                }
+            }
+        });
+        dogrula_a3(k.s.tamam, "(a) koşu tamam " + k.s.hata);
+        dogrula_a3(notr_disi(k, 3999), "(a) ön koşul: basmadan önce nötr dışı komut yürürlükte");
+        const auto* o = a3_sonucu(k.s, no_bas);
+        dogrula_a3(o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 6'000'000'000, "(a) operatörün basması 6 s sınırında uygulandı");
+        bool basili = k.acil.size() > kB + 100u;
+        for (std::uint64_t b = kB + 1u; b < k.acil.size(); ++b) {
+            basili = basili && k.acil[b] == 1u;
+        }
+        dogrula_a3(basili && notr_araligi(k, kB, k.pwm_notr_degil.size()), "(a) sürdürmeden sonra acil basılı kaldı, itki nötr");
+        dogrula_a3(k.s.gevsetme_retleri.empty(), "(a) senaryonun bırakması yeniden işlenmedi");
+        int sira = 0;
+        for (const auto& e : k.s.emniyet_degisimleri) {
+            if (e.t_ns == 6'000'000'000 && e.alan == "acil_durdurma") {
+                sira = sira * 10 + (e.kaynak == "senaryo" ? 1 : 2);
+            }
+        }
+        dogrula_a3(sira == 12, "(a) 6 s'de önce senaryo bıraktı, sonra operatör bastı (" + std::to_string(sira) + ")");
+    }
+    // (b) Nötr dışı komut yürürlükteyken duraklatmada bas → bırak (güncel revizyonla) → sürdür:
+    // b adımı nötr, eski komut geri gelmez (W4-K3).
+    {
+        int y = 0;
+        std::uint32_t no_bas = 0, no_birak = 0;
+        const Kosu k = kos(z1_yerlesik(9.0), true, nullptr, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (b == kB && d.durum == ida::a3::CalistirmaDurumu::kosuyor && y == 0) {
+                (void)al.al(calistirma(d, KomutTuru::calistirma_duraklat));
+                y = 1;
+            } else if (b == kB && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
+                ++y;
+                if (y == 5) {
+                    const Komut kb = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true);
+                    no_bas = kb.komut_no;
+                    (void)al.al(kb);
+                } else if (y == 15) {
+                    dogrula_a3(d.acil_durdurma == 1u, "(b) bas uygulandı");
+                    const Komut kk = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::serbest, false);
+                    no_birak = kk.komut_no;
+                    (void)al.al(kk);
+                } else if (y == 25) {
+                    dogrula_a3(d.acil_durdurma == 0u, "(b) bırak (güncel revizyon) uygulandı");
+                    (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
+                }
+            }
+        });
+        dogrula_a3(k.s.tamam, "(b) koşu tamam " + k.s.hata);
+        dogrula_a3(notr_disi(k, kB - 1u), "(b) ön koşul: duraklatmadan önce nötr dışı komut yürürlükte");
+        const auto* ob = a3_sonucu(k.s, no_bas);
+        const auto* ok = a3_sonucu(k.s, no_birak);
+        dogrula_a3(ob != nullptr && ob->sonuc == "uygulandi" && ok != nullptr && ok->sonuc == "uygulandi",
+                   "(b) bas ve bırak duraklatmada uygulandı");
+        // Sürdürmeden sonraki ilk parti 4804'te gider; yanıtı en erken 4804 + L_act'te uygulanır.
+        dogrula_a3(notr_araligi(k, kB, kB + 4u + kopru_lact()), "(b) b adımı nötr; eski nötr dışı komut geri gelmedi (W4-K3)");
+        bool geri = false;
+        for (std::uint64_t b = kB + 12u; b < k.pwm_notr_degil.size(); ++b) {
+            geri = geri || notr_disi(k, b);
+        }
+        dogrula_a3(geri, "(b) itki yalnız bırakmadan sonra gönderilen partilerle döndü");
+    }
+    return 0;
+}
+
+// Hazırlanırken durdurma (W4-K27 (4); sol #6): SIL TCP, koşucu bağlanmıyor (hazırlık bekliyor);
+// panelden `durdur` → çalıştırma `yuklendi`'ye döner ve başlamaz. Hazırlık başarısızlığında da.
+int test_a3_hazirlik_durdur()
+{
+    std::uint32_t no = 0;
+    ida::sunucu::Ayar a = z1_yerlesik(5.0);
+    a.karsi = ida::sunucu::Karsi::tcp;
+    a.karsi_verildi = true;
+    a.baglanti_bekleme_ns = 20'000'000'000;
+    const auto bas = std::chrono::steady_clock::now();
+    const Kosu k = kos(a, true, nullptr, [&no](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+        const ida::a3::AnlikDurum d = al.anlik();
+        if (b == 0 && d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor && no == 0u) {
+            const Komut k2 = calistirma(d, KomutTuru::calistirma_durdur);
+            no = k2.komut_no;
+            dogrula_a3(al.al(k2).tur == ida::a3::AlimSonucu::Tur::kuyrukta, "hazırlanırken durdur kuyrukta");
+        }
+    });
+    const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    dogrula_a3(k.s.tamam && k.s.calistirma_sonu == "yuklendi" && k.s.satirlar.empty(),
+               "durdur: çalıştırma yuklendi'ye döndü ve başlamadı (" + k.s.calistirma_sonu + ")");
+    const auto* o = a3_sonucu(k.s, no);
+    dogrula_a3(o != nullptr && o->sonuc == "uygulandi", "durdur uygulandı");
+    dogrula_a3(sure < 10.0, "hazırlık beklemesinde işlendi (" + std::to_string(sure) + " s; bağlantı bekleme 20 s)");
+    // Hazırlık başarısız (koşucu yok, 0,5 s): yuklendi, başlamaz.
+    ida::sunucu::Ayar f = z1_yerlesik(5.0);
+    f.karsi = ida::sunucu::Karsi::tcp;
+    f.karsi_verildi = true;
+    f.baglanti_bekleme_ns = 500'000'000;
+    const Kosu kf = kos(f, true, nullptr);
+    dogrula_a3(!kf.s.tamam && kf.s.calistirma_sonu == "yuklendi" && kf.s.satirlar.empty(),
+               "hazırlık başarısız: yuklendi, başlamadı (" + kf.s.calistirma_sonu + ")");
+    return 0;
+}
+
+// HIL'de duraklatma (A1-K41, Tablo 4.7b; W4-K27 (3); sol #3, #4, #7): onaylı istekle, ARM'dan sonra
+// nötr dışı komut yürürlükteyken. Duraklatılmışken: DISARM verilir → tele yalnız KEEPALIVE çıkar
+// (parti üyesi yok); acil durdurma beklemez. Sürdürünce DISARM ilk partide gider; TF'ler boşluksuz;
+// oturum sürer; çalıştırma geçersiz (hil_duraklatma).
 int test_a3_hil_duraklat()
 {
+    constexpr std::uint64_t kB = 4800;   // 6 s
     ida::sunucu::Ayar a;
     a.gunluk = 1;
     a.kip = ida::sunucu::Kip::hil;
     a.karsi = ida::sunucu::Karsi::pty;
-    a.sure_s = 8.0;
+    a.sure_s = 10.0;
     int yoklama = 0;
-    std::uint32_t no_acil = 0;
+    std::uint32_t no_acil = 0, no_disarm = 0;
+    std::size_t tel_bas = 0, tel_son = 0;
     Kosu k;
     gozlem_kur(a, k);
     a.a3_acik = true;
@@ -613,18 +771,25 @@ int test_a3_hil_duraklat()
     a.a3_kapanis_bekleme_s = 0.0;
     a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
         const ida::a3::AnlikDurum d = al.anlik();
-        if (b == 1600 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && yoklama == 0) {
+        if (b == kB && d.durum == ida::a3::CalistirmaDurumu::kosuyor && yoklama == 0) {
             Komut p = calistirma(d, KomutTuru::calistirma_duraklat);
             p.gecersizligi_onayla = true;
             dogrula_a3(al.al(p).tur == ida::a3::AlimSonucu::Tur::kuyrukta, "onaylı duraklatma kuyrukta");
             yoklama = 1;
-        } else if (b == 1600 && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
+        } else if (b == kB && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
             ++yoklama;
-            if (yoklama == 300) {
+            if (yoklama == 2) {
+                tel_bas = k.sim_giden.size();   // duraklatma başladı: bundan sonra üretilen baytlar
+            } else if (yoklama == 100) {
+                const Komut dz = yi(d, "disarm", ida::a3::KomutSinifi::daraltici, "{}");
+                no_disarm = dz.komut_no;
+                dogrula_a3(al.al(dz).tur == ida::a3::AlimSonucu::Tur::kuyrukta, "duraklatmada DISARM kuyrukta");
+            } else if (yoklama == 300) {
                 const Komut e = emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true);
                 no_acil = e.komut_no;
                 (void)al.al(e);
             } else if (yoklama == 700) {
+                tel_son = k.sim_giden.size();
                 (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
             }
         }
@@ -632,13 +797,35 @@ int test_a3_hil_duraklat()
     k.s = ida::sunucu::kos(a);
     const ida::sunucu::Sonuc& s = k.s;
     dogrula_a3(s.tamam && s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + s.hata);
-    dogrula_a3(yoklama >= 700, "duraklatıldı ve ≈ 0,7 s sonra sürdürüldü (" + std::to_string(yoklama) + " yoklama)");
+    dogrula_a3(notr_disi(k, kB - 1u), "ön koşul: duraklatmadan önce nötr dışı komut yürürlükte (ARM ve dalış)");
+    dogrula_a3(yoklama >= 700 && tel_bas > 0u && tel_son >= tel_bas, "duraklatıldı ve ≈ 0,7 s sonra sürdürüldü");
+    // A1-K41, W4-K27 (3): duraklatmadaki tel akışında yalnız canlılık.
+    std::vector<std::uint8_t> pencere(k.sim_giden.begin() + static_cast<std::ptrdiff_t>(tel_bas),
+                                      k.sim_giden.begin() + static_cast<std::ptrdiff_t>(tel_son));
+    ida_link_alici_t alici{};
+    (void)ida_link_alici_kur(&alici, IDA_LINK_ROL_KART);
+    std::size_t kk = 0, keepalive = 0, oteki = 0;
+    while (kk < pencere.size()) {
+        std::size_t tuk = 0;
+        ida_link_cerceve_t c{};
+        const ida_link_rc_t rc = ida_link_al(&alici, pencere.data() + kk, pencere.size() - kk, &tuk, &c);
+        kk += tuk;
+        if (rc != IDA_LINK_CERCEVE) {
+            break;
+        }
+        (c.msgid == 46003u ? keepalive : oteki) += 1u;
+    }
+    dogrula_a3(keepalive > 0u && oteki == 0u, "duraklatmada tele yalnız KEEPALIVE çıktı (KEEPALIVE " + std::to_string(keepalive) +
+                                                  ", öteki " + std::to_string(oteki) + ")");
+    const auto* dz = a3_sonucu(s, no_disarm);
+    dogrula_a3(dz != nullptr && dz->sonuc == "uygulandi" && dz->t_ns > 6'000'000'000,
+               "DISARM sürdürmeden sonraki ilk sınırda işlendi (" + std::to_string(dz != nullptr ? dz->t_ns : -1) + " ns)");
     dogrula_a3((s.sayac.calistirma_gecersiz & ida::kopru::kGecDuraklatma) != 0u, "çalıştırma geçersiz: HIL duraklatma (A1-K79)");
     dogrula_a3(s.sayac.oturum_kopma == 0u, "oturum duraklatmada sürdü (canlılık; A1-K41)");
-    dogrula_a3(s.zaman.tf_sayisi >= 1598u, "TF'ler boşluksuz sürdü (" + std::to_string(s.zaman.tf_sayisi) + ")");
+    dogrula_a3(s.zaman.tf_sayisi >= 1998u, "TF'ler boşluksuz sürdü (" + std::to_string(s.zaman.tf_sayisi) + ")");
     const auto* o = a3_sonucu(s, no_acil);
-    dogrula_a3(o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 2'000'000'000, "duraklatılmışken acil durdurma 2 s sınırında uygulandı");
-    dogrula_a3(notr_araligi(k, 1600, 6400), "acil durdurmadan sonra itki nötr");
+    dogrula_a3(o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 6'000'000'000, "duraklatılmışken acil durdurma 6 s sınırında uygulandı");
+    dogrula_a3(notr_araligi(k, kB, 8000), "acil durdurmadan sonra itki nötr");
     // ZAMANLAMA (W4-K24): W(t) sürdürmede kaydırılır; sonrasında sim gecikmesi beklenmez.
     dogrula_a3(ida::test::zamanlama(s.zaman.sim_gecikmesi == 0u, "a3_hil_duraklat.sim_gecikmesi",
                                     std::to_string(s.zaman.sim_gecikmesi) + " (0)"),
@@ -646,14 +833,55 @@ int test_a3_hil_duraklat()
     return 0;
 }
 
+// W4-K27 (5): dünya tarafındaki A3 hizmeti bellek ayırmaz. Ayırmalar `operator new` kancasıyla, A3
+// hizmeti kapsamında (köprü ve fizik çağrıları hariç) sayılır. Kapsam: bağlı istemci, emniyet bas/
+// bırak, genişletici ve nötr yer istasyonu komutları, duraklat/sürdür ve senaryo arızası.
+int test_a3_ayirma()
+{
+#if defined(_MSC_VER)
+    std::printf("  ATLANDI: MSVC'de genel operator new değiştirilmez (yalnız POSIX derleyicilerinde sınanır)\n");
+    return 0;
+#else
+    a3_ayirma_sifirla();
+    int y = 0;
+    Istemciler ist;
+    ist.yavas_var = true;
+    const Kosu k = kos(z1_yerlesik(12.0), true, &ist, [&y](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+        const ida::a3::AnlikDurum d = al.anlik();
+        if (b == 4000) {
+            (void)al.al(emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::basili, true));
+            (void)al.al(yi(d, "param_get", ida::a3::KomutSinifi::notr, "{\"param_id\":1}"));
+        } else if (b == 4400) {
+            (void)al.al(emniyet(d, ida::a3::EmniyetGirdisi::acil_durdurma, -1, ida::a3::GirdiDurumu::serbest, false));
+            (void)al.al(yi(d, "arm", ida::a3::KomutSinifi::genisletici, "{}"));
+        } else if (b == 6000 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && y == 0) {
+            (void)al.al(calistirma(d, KomutTuru::calistirma_duraklat));
+            y = 1;
+        } else if (b == 6000 && d.durum == ida::a3::CalistirmaDurumu::duraklatildi) {
+            ++y;
+            if (y == 5) {
+                (void)al.al(emniyet(d, ida::a3::EmniyetGirdisi::emniyet_pimi, 0, ida::a3::GirdiDurumu::takili, true));
+                (void)al.al(yi(d, "disarm", ida::a3::KomutSinifi::daraltici, "{}"));
+            } else if (y == 20) {
+                (void)al.al(calistirma(d, KomutTuru::calistirma_surdur));
+            }
+        }
+    });
+    const std::uint64_t n = a3_ayirma_sayisi();
+    dogrula_a3(k.s.tamam && k.s.a3_komut >= 8u, "koşu tamam, komutlar işlendi (" + std::to_string(k.s.a3_komut) + ")");
+    dogrula_a3(n == 0u, "dünya tarafındaki A3 hizmetinde bellek ayırma yok (" + std::to_string(n) + ")");
+    std::printf("  ÖLÇÜM (bu Mac, 2026-11-24, SIL olabildiğince hızlı): dünya tarafındaki A3 hizmeti sınır/yoklama "
+                "başına en çok %.1f µs; yayın çağrısı %llu, tek çağrı en çok %.1f µs\n",
+                1e-3 * static_cast<double>(k.s.a3_sinir_en_kotu_ns), static_cast<unsigned long long>(k.s.a3_yayin_cagrisi),
+                1e-3 * static_cast<double>(k.s.a3_cagri_en_kotu_ns));
+    return 0;
+#endif
+}
+
 }  // namespace
 
 int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
 {
-    if (ad == "a3_hil_duraklat") {
-        (void)test_a3_hil_duraklat();
-        return g_hata_a3;
-    }
     if (ad == "a3_belirlenim") {
         (void)test_a3_belirlenim();
     } else if (ad == "a3_emniyet_yolu") {
@@ -664,6 +892,14 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_hil_duraklat") {
+        (void)test_a3_hil_duraklat();
+    } else if (ad == "a3_duraklat_emniyet") {
+        (void)test_a3_duraklat_emniyet();
+    } else if (ad == "a3_hazirlik_durdur") {
+        (void)test_a3_hazirlik_durdur();
+    } else if (ad == "a3_ayirma") {
+        (void)test_a3_ayirma();
     } else {
         return -1;   // bu dosyanın testi değil
     }
