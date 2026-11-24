@@ -33,6 +33,11 @@ int test_sol5_cekirdek_birim();
 int test_sol6_saat_kaymasi();
 int test_sol7_darbe_suresi();
 int test_sol8_gecerlilik_alani();
+int test_ag_kaba_kuvvet();
+int test_ag_esitlik();
+int test_ag_hareket();
+int test_ag_hucre();
+int test_ag_cozumsel();
 
 }  // namespace ida::sonar::test
 
@@ -72,6 +77,11 @@ int main(int argc, char** argv)
         {"sol6_saat_kaymasi", test_sol6_saat_kaymasi},
         {"sol7_darbe_suresi", test_sol7_darbe_suresi},
         {"sol8_gecerlilik_alani", test_sol8_gecerlilik_alani},
+        {"ag_kaba_kuvvet", test_ag_kaba_kuvvet},
+        {"ag_esitlik", test_ag_esitlik},
+        {"ag_hareket", test_ag_hareket},
+        {"ag_hucre", test_ag_hucre},
+        {"ag_cozumsel", test_ag_cozumsel},
     };
     if (argc < 2) {
         std::printf("kullanım: %s <test>\n", argv[0]);
