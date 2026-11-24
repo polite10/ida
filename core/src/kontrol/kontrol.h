@@ -14,10 +14,37 @@
  *
  * EMNİYET (W3-kontrol md. 3; W3-K1, W3-K4): silahsızken, kestirim INIT/BAD/FAULT iken, arıza
  * eylemi itkisiz düzeydeyken (PASSIVE_SURFACE ve üstü), istek KAPALI ya da geçersizken sekiz
- * komut tam 0.0f'tır ve döngü durumu sıfırlanır. Acil durdurma itki kapısında yer almaz (yalnız
- * atış kontrol izinlerini kapatır; iticileri sim keser). Kararın girdileri çerçeveden ve görev
+ * komut tam 0.0f'tır ve döngü durumu sıfırlanır. Kararın girdileri çerçeveden ve görev
  * modülünden gelir (ida_kon_girdi_topla); bu modül yalnız uygular. Sonlu olmayan durum ya da
  * ara sonuçta komut 0 ve *cokme = true (A4-K55).
+ *
+ * EMNİYET — acil durdurma (W5-kontrol-acil; W5-K26; W3-K1 ve W3-K4'ün "acil durdurma itki
+ * kapısında yer almaz" maddesinin yerine geçer). Etkin acil durdurma değeri kısıtlayanken
+ * (basılı, bayat ya da init'ten beri hiç gevşememiş; A4-K116, W5-K4; ida_kon_acil_kisitli):
+ *  1. Çıktı nötrdür: ida_kon_cikti sekiz komutu tam 0.0f verir (kip, silah durumu ve görevden
+ *     bağımsız; değerin kısıtlayana döndüğü çağrı dahil). Bu kapı kontrolcünün iç durumuna
+ *     bakmaz; is_safe ve thr_valid değişmez (A4-K55'in koşulları kapalı listedir).
+ *  2. Birikimli durum sıfırdır ve birikmez: integraller, derinlik ve yön referansları, itki
+ *     değişim hızı belleği (f[]) ve tahsisin doyma belleği her çağrıda (ida_kon_acil_izle;
+ *     reddedilen ve out NULL çağrıda da) ve her etkin adımda (ida_kon_hesapla) sıfırlanır.
+ *  3. Kalkıştan sonra çıktı sınırlı hızla açılır (mimar kararı: rampa son çıktı düzeyinde,
+ *     itici komutu üzerinde; kuvvet düzeyinde değil): değer gevşedikten sonraki ilk step OK
+ *     adımı kalkış adımıdır (k = 0; çoğu durumda gevşemenin olduğu çağrının kendisi). Kontrolcü
+ *     ve tahsis o adımda sıfırdan başlayıp olağan biçimde koşar; yalnız son komut vektörü
+ *     çarpan_k = min(1, (k + 1) · P / T) ile ölçeklenir (P: adım aralığı, T = KON_ACIL_RAMPA,
+ *     ms): |çıktı_i| = çarpan · |rampasız_i|. Uygulama zamanla sayar: çarpan = (tf.t − t0) / T,
+ *     t0 = kalkıştan önceki son adımın zamanı (aralık 50 ms'den uzunsa kalkış − 50 ms; önceki
+ *     adım yoksa kalkış adımının kendisi: çarpan o adımda 0); rampa içinde çarpan 1 − 2⁻²²
+ *     ile küçültülür ki zarf yuvarlamayla da aşılmasın. Geçen süre ≥ T olunca çıktı
+ *     rampasız değerle bit bit aynıdır. Kontrolcünün iç durumu (integraller, f[], doyma belleği)
+ *     rampa boyunca ölçeksiz koşar: T = 0 ile koşan eş kontrolcününkiyle her adımda aynıdır.
+ *     Ölçekli komut ESC'nin dur ölü bandına düşebilir (|u| < THR_U_MIN): o iticide itki rampanın
+ *     başında yoktur; komut değiştirilmez. Referanslar kalkış adımında ölçülen durumdan kurulur
+ *     (d_ref_var = psi_ref_var = 0). T = 0: çarpan her adımda 1. SESSION_START süren rampayı
+ *     baştan başlatır (zaman tabanı yenilenir).
+ *  4. Sim tarafındaki nötrlemeden (A1-K85) bağımsızdır ve onun yerine geçmez.
+ * Silah durumu, kip ve saklı hedefler bu kuralla değişmez. Kuşkuda kısıtlayan: etkin değerin
+ * tanımsız biti varsa ya da mandal (acil_mandal) tutarsızsa çıktı nötrdür.
  *
  * MANUAL komutu (A4-K49) bu sürümde uygulanmaz: UNSUPPORTED / NONE (A4-K124).
  */
@@ -28,6 +55,7 @@
 #include <stdint.h>
 
 #include "cerceve/komut.h"
+#include "emniyet/emniyet.h"
 #include "ida/port.h"
 #include "kontrol/tahsis.h"
 #include "param/param.h"
@@ -90,7 +118,10 @@ typedef struct {
     int64_t t_ns;            /* adımın zaman çerçevesi (tf.t, ns)                          */
     bool armed;              /* emniyet modülünün armed'ı                                  */
     bool kisit;              /* itkisiz arıza eylemi: itki sıfır (ida_kon_girdi_topla:
-                                fs_level ≥ PASSIVE_SURFACE; acil durdurma DEĞİL, W3-K1/K4) */
+                                fs_level ≥ PASSIVE_SURFACE)                                */
+    bool acil;               /* etkin acil durdurma kısıtlayan (ida_kon_acil_kisitli; W5-K26;
+                                EMNİYET): itki sıfır, döngü durumu sıfır, kalkış rampası
+                                kurulur                                                    */
     bool kestirim_yeterli;   /* ida_kon_adim: est_level OK ya da DEGRADED                  */
     uint8_t itici_disi;      /* görevden devre dışı itici maskesi (THR_OFF_MASK ile VEYA)  */
     bool ref_yenile;         /* kontrolün iptal biti kurulu (ida_emn_t.hedef_iptal,
@@ -141,12 +172,20 @@ typedef struct {
     uint8_t cokme;                 /* 1: son adımda sayısal çökme                          */
 
     uint8_t t_var;
+    /* Acil durdurma (W5-kontrol-acil; EMNİYET). acil_mandal: 1 = etkin acil durdurma kısıtlayan
+       görüldü ve o günden beri rampa başlatılmadı (0 dışındaki her değer kurulu sayılır);
+       çıktı nötrdür. rampa_var: 1 = kalkış rampası sürüyor, rampa_t0_ns rampanın sayıldığı
+       başlangıçtır (kalkıştan önceki son adımın zaman çerçevesi; tf.t, ns). */
+    uint8_t acil_mandal;
+    uint8_t rampa_var;
     int64_t t_onceki_ns;
+    int64_t rampa_t0_ns;
 
 } ida_kon_t;
 
 void ida_kon_kur(ida_kon_t *k);
-/* SESSION_START: döngü durumu sıfırlanır (önbellek korunur). */
+/* SESSION_START: döngü durumu sıfırlanır (önbellek korunur); süren kalkış rampası baştan
+   başlar (acil durdurma mandalı ve rampa başka türlü değişmez). */
 void ida_kon_oturum_basi(ida_kon_t *k);
 /* MANUAL (tablo 3.17; A4-K49): bu sürümde UNSUPPORTED. */
 void ida_kon_komut(ida_kon_t *k, const ida_komut_baglam_t *b, const ida_cmd_t *cmd,
@@ -158,8 +197,27 @@ void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g);
 void ida_kon_adim(ida_kon_t *k, ida_core_t *c);
 /* Bir adım (çekirdekten bağımsız; testler doğrudan çağırır). prm: yürürlükteki küme. */
 void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_girdi_t *g);
-/* Son adımın itki önerisi (A5 itici sırası, [−1, 1]); sayısal çökmede *cokme = true. */
+/* Son adımın itki önerisi (A5 itici sırası, [−1, 1]); sayısal çökmede *cokme = true. Acil
+   durdurma kapısını İÇERMEZ: çerçeve ida_kon_cikti'yi kullanır. */
 void ida_kon_itki(const ida_kon_t *k, float thr[IDA_PORT_N_THR], bool *cokme);
+
+/* ---- Acil durdurma (W5-kontrol-acil; EMNİYET) -------------------------------------------- */
+
+/* Etkin acil durdurma değeri kısıtlayan mı (A4-K116; bayatlık W5-K4 ile aynı bite düşer).
+   Tanımsız bit taşıyan (bozuk) değer de kısıtlayandır. Yalnız okur. */
+bool ida_kon_acil_kisitli(const ida_emn_t *e);
+/* Her step/tick çağrısında, (b) ve (b3)'ten sonra (reddedilen ve out NULL çağrıda da): etkin
+   değer kısıtlayansa döngü durumunu sıfırlar ve mandalı kurar. Kısıtlayan her dönem ya bu
+   kancada ya da aynı çağrının ida_kon_adim'inde görülür ((e)'de başlayan dönem o çağrıda
+   gevşeyemez, W5-K20 (1); sonraki çağrının kancası görür). Döngü durumu tutarsızsa
+   (ida_kon_tutarli) yalnız mandal kurulur: bozulmanın kanıtı çağrının iç tutarlılık denetimine
+   kalır (A4-K89). */
+void ida_kon_acil_izle(ida_kon_t *k, const ida_emn_t *e);
+/* Çerçevenin sürekli komut kaynağı: ida_kon_itki + acil durdurma kapısı. Etkin değer
+   kısıtlayansa ya da mandal kuruluysa sekiz komut tam 0.0f'tır (kontrolcünün öteki durumundan
+   bağımsız). *cokme ida_kon_itki'ninkidir. */
+void ida_kon_cikti(const ida_kon_t *k, const ida_emn_t *e, float thr[IDA_PORT_N_THR],
+                   bool *cokme);
 bool ida_kon_tutarli(const ida_kon_t *k);
 uint8_t ida_kon_param_grup(const ida_prm_kume_t *p);
 

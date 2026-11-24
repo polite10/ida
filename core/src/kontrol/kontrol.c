@@ -11,6 +11,7 @@
 #include "kestirim/kestirim.h"
 #include "mat/ida_math.h"
 #include "mat/mat.h"
+#include "zaman/zaman.h"
 
 #define KANAL_YOK      255u
 #define DT_EN_BUYUK_NS 50000000LL /* 50 ms: daha uzun aralık integrale bu kadar girer   */
@@ -18,6 +19,11 @@
 #define ACI_EN_BUYUK   0.6f       /* rad: yalpa ve baş-kıç isteğinin kırpma sınırı       */
 #define DOYMA_MUTLAK   1.0e-3f    /* kalıntı eşiği: mutlak + göreli · |istek|            */
 #define DOYMA_GORELI   1.0e-3f
+/* Kalkış rampasının yuvarlama payı: 1 − 2⁻²² (binary32'de tam). Çarpan bununla küçültülür ki
+   bölme, bu çarpma ve komut çarpmasının yuvarlamaları (her biri en çok 2⁻²⁴ bağıl) birlikte de
+   |çıktı| ≤ (Δt / T) · |rampasız| eşitsizliğini gerçek sayılarda bozmasın: zarf yuvarlama
+   payıyla güvenli taraftadır. */
+#define RAMPA_PAY      0.99999976f
 
 typedef union {
     uint32_t u;
@@ -109,12 +115,30 @@ static void dongu_sifirla(ida_kon_t *k)
     cikti_sifirla(k);
 }
 
+/* Etkin acil durdurma kısıtlayan (W5-kontrol-acil kural 2; EMNİYET): birikimli durumun tamamı
+   sıfırlanır (integraller, referanslar, itki değişim hızı belleği f[], doyma belleği, son
+   çıktı), mandal kurulur, süren rampa düşer. Adım zamanı izi (t_var, t_onceki_ns) korunur:
+   kalkıştaki ilk adımın dt'si, acil durdurma görmemiş ve aynı anda sıfırdan başlayan bir
+   kontrolcününkiyle aynıdır. */
+static void acil_sifirla(ida_kon_t *k)
+{
+    dongu_sifirla(k);
+    k->acil_mandal = 1u;
+    k->rampa_var = 0u;
+    k->rampa_t0_ns = 0;
+}
+
 void ida_kon_kur(ida_kon_t *k)
 {
     (void)memset(k, 0, sizeof(*k));
     k->onb_var = 0u;
     k->cokme = 0u;
     k->t_var = 0u;
+    /* Mandal burada kurulmaz: çekirdekte etkin değer init'te kısıtlayandır (ida_emn_kur) ve ilk
+       çağrının ida_kon_acil_izle kancası mandalı herhangi bir adımdan önce kurar. */
+    k->acil_mandal = 0u;
+    k->rampa_var = 0u;
+    k->rampa_t0_ns = 0;
     dongu_sifirla(k);
 }
 
@@ -124,6 +148,79 @@ void ida_kon_oturum_basi(ida_kon_t *k)
     k->cokme = 0u;
     k->t_var = 0u;
     k->t_onceki_ns = 0;
+    if (k->rampa_var != 0u) {
+        /* Rampanın başlangıcı önceki oturumun zaman tabanındadır (A4-K72: ölçüm zamanı
+           oturumlar arasında sürekli sayılmaz): rampa yeni oturumun ilk adımında baştan başlar
+           (kısıtlayan yön). */
+        k->rampa_var = 0u;
+        k->rampa_t0_ns = 0;
+        k->acil_mandal = 1u;
+    }
+}
+
+/* ---- Acil durdurma (W5-kontrol-acil; EMNİYET) -------------------------------------------- */
+
+bool ida_kon_acil_kisitli(const ida_emn_t *e)
+{
+    const uint32_t v = (uint32_t)e->kisitli;
+    /* Tanımsız bit: değer okunamıyor sayılır (kuşkuda kısıtlayan). */
+    return ((v & IDA_EMN_ESTOP) != 0u) || ((v & ~(uint32_t)IDA_EMN_TUMU) != 0u);
+}
+
+void ida_kon_acil_izle(ida_kon_t *k, const ida_emn_t *e)
+{
+    if (!ida_kon_acil_kisitli(e)) {
+        return;
+    }
+    if (ida_kon_tutarli(k)) {
+        acil_sifirla(k);
+    } else if (k->acil_mandal == 0u) {
+        k->acil_mandal = 1u; /* bozuk durumun kanıtı silinmez (A4-K89); çıktı yine nötr */
+    } else {
+        /* mandal kurulu (ya da bozuk: kurulu sayılır) */
+    }
+}
+
+void ida_kon_cikti(const ida_kon_t *k, const ida_emn_t *e, float thr[IDA_PORT_N_THR],
+                   bool *cokme)
+{
+    ida_kon_itki(k, thr, cokme);
+    if (ida_kon_acil_kisitli(e) || (k->acil_mandal != 0u)) {
+        for (uint32_t i = 0u; i < IDA_PORT_N_THR; i++) {
+            thr[i] = 0.0f;
+        }
+    }
+}
+
+/* Kalkış rampasının çarpanı, [0, 1] (kural 3). Rampa yoksa ya da bittiyse 1. Süre tam sayı
+   ns'de karşılaştırılır: geçen süre ≥ T olduğu adımda çarpan tam 1'dir ve rampa düşer (çıktı o
+   adımdan sonra ölçeklenmez: bit bit olağan değer). Rampa içinde çarpan Δt / T'nin RAMPA_PAY
+   katıdır (yuvarlama payı). Başlangıç izi tutarsızsa (negatif ya da gelecekte) çarpan 0'dır. */
+static float rampa_orani(ida_kon_t *k, const ida_prm_kume_t *prm, int64_t t_ns)
+{
+    if (k->rampa_var == 0u) {
+        return 1.0f;
+    }
+    const int64_t sure = ida_ms_ns(prm->ham[IDA_PRM_kon_acil_rampa_ms]);
+    if ((k->rampa_t0_ns < 0) || (t_ns < k->rampa_t0_ns)) {
+        return 0.0f;
+    }
+    const int64_t gecen = t_ns - k->rampa_t0_ns; /* ikisi de ≥ 0: taşmaz */
+    if (gecen >= sure) {
+        k->rampa_var = 0u;
+        return 1.0f;
+    }
+    return ((float)gecen / (float)sure) * RAMPA_PAY; /* 0 ≤ gecen < sure: [0, 1) */
+}
+
+/* Rampa içindeki adımın çıktısı: son komut vektörü · çarpan (mimar kararı: rampa itici komutu
+   düzeyindedir, kuvvet düzeyinde değil). Yalnız k->thr[] değişir; f[], integraller ve tahsisin
+   doyma belleği ölçeksiz kalır (sarma önlemi olağan tahsise göre çalışır). */
+static void rampa_uygula(ida_kon_t *k, float oran)
+{
+    for (uint32_t i = 0u; i < IDA_PORT_N_THR; i++) {
+        k->thr[i] = (oran > 0.0f) ? (k->thr[i] * oran) : 0.0f;
+    }
 }
 
 void ida_kon_komut(ida_kon_t *k, const ida_komut_baglam_t *b, const ida_cmd_t *cmd,
@@ -720,12 +817,17 @@ static bool hesapla_etkin(ida_kon_t *k, const kazanc_t *z, const ida_kon_girdi_t
 void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_girdi_t *g)
 {
     float dt = 0.0f;
+    int64_t adim_ns = 0; /* bu adımın aralığı, [0, DT_EN_BUYUK_NS]; önceki adım yoksa 0 */
     if (k->t_var == 1u) {
         const int64_t d = g->t_ns - k->t_onceki_ns;
         if (d >= DT_EN_BUYUK_NS) {
             dt = DT_EN_BUYUK;
+            adim_ns = DT_EN_BUYUK_NS;
         } else if (d > 0) {
             dt = (float)d * 1.0e-9f;
+            adim_ns = d;
+        } else {
+            /* zaman ilerlemedi */
         }
     }
     k->t_var = 1u;
@@ -735,6 +837,25 @@ void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_gird
     const uint8_t disi =
         (uint8_t)(g->itici_disi | (uint8_t)(prm->ham[IDA_PRM_kon_itici_disi] & 0xFFu));
     const bool tahsis_hazir = onbellek_guncelle(k, prm, disi);
+
+    /* EMNİYET (W5-kontrol-acil kural 1, 2): etkin acil durdurma kısıtlayanken itki sıfır,
+       birikimli durum sıfır; silah durumu, kip ve istekten bağımsız. */
+    if (g->acil) {
+        acil_sifirla(k);
+        return;
+    }
+    /* Kural 3: acil durdurma görüldükten sonraki ilk adım kalkış adımıdır (k = 0); durum
+       sıfırdan, referanslar ölçülen durumdan başlar. Rampa bir önceki (nötr) adımın zamanından
+       sayılır: kalkış adımının çarpanı P / T, k. adımınki (k + 1) · P / T'dir (P: adım aralığı;
+       önceki adım yoksa ya da zaman ilerlemediyse kalkış adımında 0, aralık 50 ms'den uzunsa
+       50 ms sayılır). Rampa zamanla ilerler (etkin olmayan adımlarda da). */
+    if (k->acil_mandal != 0u) {
+        dongu_sifirla(k);
+        k->acil_mandal = 0u;
+        k->rampa_var = 1u;
+        k->rampa_t0_ns = g->t_ns - adim_ns;
+    }
+    const float oran = rampa_orani(k, prm, g->t_ns);
 
     /* EMNİYET: kuşkuda sıfır itki (W3-kontrol md. 3). */
     const bool etkin =
@@ -755,6 +876,10 @@ void ida_kon_hesapla(ida_kon_t *k, const ida_prm_kume_t *prm, const ida_kon_gird
     if (!hesapla_etkin(k, &z, g, dt)) {
         dongu_sifirla(k);
         k->cokme = 1u;
+        return;
+    }
+    if (oran < 1.0f) {
+        rampa_uygula(k, oran);
     }
 }
 
@@ -773,11 +898,13 @@ void ida_kon_girdi_topla(const ida_core_t *c, ida_kon_girdi_t *g)
     ida_kes_nav(&c->kes, t, &g->nav);
     g->t_ns = c->cer.tf_t_ns;
     g->armed = c->emn.armed;
-    /* W3-K1, W3-K4: kısıt yalnız itkisiz arıza eylemidir (PASSIVE_SURFACE ve üstü). Acil
-       durdurmanın etkin değeri itki kapısında yer almaz: yalnız atış kontrol izinlerini kapatır
-       (A4-K116, engel biti ESTOP); iticileri acil durdurmada sim keser (iskelet §5). */
+    /* W3-K4: kısıt itkisiz arıza eylemidir (PASSIVE_SURFACE ve üstü). */
     const uint8_t fs = ida_gor_fs_duzey(&c->gor);
     g->kisit = fs >= (uint8_t)IDA_FS_PASSIVE_SURFACE;
+    /* W5-K26 (W3-K1'in açık noktası): etkin acil durdurma kısıtlayanken çekirdek de nötrler;
+       sim'in nötrlemesi (iskelet §5) ayrıca sürer. Değer bu noktada çağrı için kesindir: (b) ve
+       kabul edilen örnekler (ida_fc_emniyet_ornegi) ida_kon_adim'den önce işlenir. */
+    g->acil = ida_kon_acil_kisitli(&c->emn);
     const uint8_t est = ida_kes_duzey(&c->kes);
     g->kestirim_yeterli = (est == (uint8_t)IDA_EST_OK) || (est == (uint8_t)IDA_EST_DEGRADED);
     g->itici_disi = ida_gor_itici_disi(&c->gor); /* görev modülünün itici arıza maskesi */
@@ -810,7 +937,8 @@ static bool kanal_gecerli(uint8_t v, uint8_t en_cok)
 bool ida_kon_tutarli(const ida_kon_t *k)
 {
     bool t = (k->onb_var <= 1u) && (k->cokme <= 1u) && (k->t_var <= 1u) &&
-             (k->d_ref_var <= 1u) && (k->psi_ref_var <= 1u) &&
+             (k->d_ref_var <= 1u) && (k->psi_ref_var <= 1u) && (k->acil_mandal <= 1u) &&
+             (k->rampa_var <= 1u) &&
              kanal_gecerli(k->son_kip, IDA_KON_KIP_DALIS) &&
              kanal_gecerli(k->son_dikey, IDA_KON_DIKEY_KUVVET) &&
              kanal_gecerli(k->son_tutum, IDA_KON_TUTUM_MOMENT) &&
