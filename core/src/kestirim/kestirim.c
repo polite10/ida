@@ -1,6 +1,7 @@
 /*
- * kestirim.c — kestirim kancaları, hizalama, sağlık düzeyi ve nav (W3 kestirim, dilim 1).
- * Sahibi: W3 kestirim işi. Yöntem ve sınırlar kestirim.h başındadır.
+ * kestirim.c — kestirim kancaları, hizalama, sağlık düzeyi ve nav (W3 kestirim dilim 1; W5
+ * kestirim-yatay dilim 2: DVL, GNSS ve Ping1D örnekleri, yatay geçerlilik, düzey histerezisi,
+ * irtifa). Yöntem ve sınırlar kestirim.h başındadır.
  */
 #include "kestirim/kestirim.h"
 
@@ -74,6 +75,38 @@ void ida_kes_ayar_oku(const ida_core_t *c, ida_kes_ayar_t *a)
     a->baro_stale_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_t_baro_stale));
     a->mag_stale_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_t_mag_stale));
     a->imu_gap_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_imu_gap_max));
+    a->l_gnss.x = ida_prm_f32(p, IDA_PRM_gnss_l_x);
+    a->l_gnss.y = ida_prm_f32(p, IDA_PRM_gnss_l_y);
+    a->l_gnss.z = ida_prm_f32(p, IDA_PRM_gnss_l_z);
+    a->l_dvl.x = ida_prm_f32(p, IDA_PRM_dvl_l_x);
+    a->l_dvl.y = ida_prm_f32(p, IDA_PRM_dvl_l_y);
+    a->l_dvl.z = ida_prm_f32(p, IDA_PRM_dvl_l_z);
+    a->e_dvl.x = ida_prm_f32(p, IDA_PRM_dvl_roll);
+    a->e_dvl.y = ida_prm_f32(p, IDA_PRM_dvl_pitch);
+    a->e_dvl.z = ida_prm_f32(p, IDA_PRM_dvl_yaw);
+    a->l_ping.x = ida_prm_f32(p, IDA_PRM_ping_l_x);
+    a->l_ping.y = ida_prm_f32(p, IDA_PRM_ping_l_y);
+    a->l_ping.z = ida_prm_f32(p, IDA_PRM_ping_l_z);
+    a->orj_lat_e7 = ida_prm_i32(p, IDA_PRM_orijin_lat);
+    a->orj_lon_e7 = ida_prm_i32(p, IDA_PRM_orijin_lon);
+    a->r_dvl = ida_prm_f32(p, IDA_PRM_r_dvl);
+    a->dvl_fom_max = ida_prm_f32(p, IDA_PRM_dvl_fom_max);
+    a->dvl_alt_min = ida_prm_f32(p, IDA_PRM_dvl_alt_min);
+    a->r_gnss_p = ida_prm_f32(p, IDA_PRM_r_gnss_p);
+    a->gnss_sig_k = ida_prm_f32(p, IDA_PRM_gnss_sig_k);
+    a->r_gnss_v = ida_prm_f32(p, IDA_PRM_r_gnss_v);
+    a->gnss_eph_max = ida_prm_f32(p, IDA_PRM_gnss_eph_max);
+    a->kapi_g2 = ida_prm_f32(p, IDA_PRM_kapi_g2);
+    a->yuzey_d = ida_prm_f32(p, IDA_PRM_kes_yuzey_d);
+    a->dr_oran = ida_prm_f32(p, IDA_PRM_dr_oran);
+    a->sig_hvel = ida_prm_f32(p, IDA_PRM_sig_hvel);
+    a->konum_sicra = ida_prm_f32(p, IDA_PRM_konum_sicra);
+    a->n_iyi = ida_prm_u32(p, IDA_PRM_kes_n_iyi);
+    a->n_reset = ida_prm_u32(p, IDA_PRM_kes_n_reset);
+    a->n_red = ida_prm_u32(p, IDA_PRM_kes_n_red);
+    a->ok_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_kes_ok_ms));
+    a->dvl_stale_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_t_dvl_stale));
+    a->gnss_stale_ns = ida_ms_ns(ida_prm_u32(p, IDA_PRM_t_gnss_stale));
 }
 
 /* ---- Kurulum ve yeniden başlama -------------------------------------------------------- */
@@ -85,6 +118,32 @@ void ida_kes_kur(ida_kes_t *k)
     k->xh.q.w = 1.0f;
     k->duzey = (uint8_t)IDA_EST_INIT;
     k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
+    k->irtifa = -1.0f;
+}
+
+/* Yatay hız ve konumun bütün desteğini ve nitelendirmesini düşürür (yeniden hizalama). Yatay
+   konum hizalamada bir kabuldür: yeniden GNSS'ten kurulana kadar geçersizdir. Akışların alım
+   izleri (canlılık), seyreltme izleri ve irtifa kaynakları korunur. */
+static void yatay_birak(ida_kes_t *k)
+{
+    k->yolc_n = 0u;
+    k->konum_var = false;
+    (void)memset(&k->nit_dvl, 0, sizeof(k->nit_dvl));
+    (void)memset(&k->nit_gnss, 0, sizeof(k->nit_gnss));
+    (void)memset(&k->nit_gnss_v, 0, sizeof(k->nit_gnss_v));
+    k->akis_dvl.destek_var = false;
+    k->akis_gnss.destek_var = false;
+    k->gnss_hiz_destek_var = false;
+    k->red_dvl.var = false;
+    k->red_gnss_p.var = false;
+    k->red_gnss_v.var = false;
+    k->kusku_dvl = false;
+    k->kusku_gnss_p = false;
+    k->kusku_gnss_v = false;
+    k->kapi_dvl_var = false;
+    k->kapi_gnss_var = false;
+    k->hiz_fuz_var = false;
+    k->ok_aday_var = false;
 }
 
 /* Filtreyi INIT'e döndürür (IMU boşluğu, sayısal çökme). Basınç referansı, çökme mandalı,
@@ -107,6 +166,7 @@ static void yeniden_hizala(ida_kes_t *k)
     k->gecerlilik = 0u;
     k->duzey = k->ariza ? (uint8_t)IDA_EST_FAULT : (uint8_t)IDA_EST_INIT;
     k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
+    yatay_birak(k);
 }
 
 void ida_kes_oturum_basi(ida_kes_t *k)
@@ -114,15 +174,18 @@ void ida_kes_oturum_basi(ida_kes_t *k)
     /* A4-K72: ölçüm zamanı oturumlar arasında sürekli sayılmaz; filtre baştan hizalanır.
        Korunanlar: basınç referansı (mimar kararı: atmosfer kalibrasyonu yalnız init'ten
        sonraki ilk hizalamada; oturum yenilenmesi aracın yüzeyde olduğunu göstermez), sayısal
-       çökme mandalı (kısıtlayan okuma), konum sıfırlama sayacı ve bilgi sayaçları. */
+       çökme mandalı (kısıtlayan okuma), konum sıfırlama sayacı ve bilgi sayaçları. Yatay konum
+       korunmaz: oturumlar arasında geçen süre ve yol bilinmez; konum yeniden GNSS'ten kurulana
+       kadar geçersizdir. */
     /* Korunan alanlar yerel değişkenlerde (yapının kopyası yığını büyütürdü). */
     const bool ariza = k->ariza;
     const bool kalibre = k->kalibre;
     const float p_atm = k->p_atm;
     const uint8_t reset_sayac = k->reset_sayac;
-    const uint32_t sayac[9] = {k->n_gec,       k->n_tasma,         k->n_cokme,
-                               k->n_hizalama,  k->n_yon_sifir,     k->n_derinlik_sifir,
-                               k->n_inst,      k->n_geri,          k->n_bayrak};
+    const uint32_t sayac[14] = {k->n_gec,       k->n_tasma,      k->n_cokme,     k->n_hizalama,
+                                k->n_yon_sifir, k->n_derinlik_sifir, k->n_inst,  k->n_geri,
+                                k->n_bayrak,    k->n_seyrek,     k->n_dvl_red,   k->n_gnss_red,
+                                k->n_hiz_sifir, k->n_konum_sifir};
     ida_kes_kur(k);
     k->ariza = ariza;
     k->kalibre = kalibre;
@@ -137,6 +200,11 @@ void ida_kes_oturum_basi(ida_kes_t *k)
     k->n_inst = sayac[6];
     k->n_geri = sayac[7];
     k->n_bayrak = sayac[8];
+    k->n_seyrek = sayac[9];
+    k->n_dvl_red = sayac[10];
+    k->n_gnss_red = sayac[11];
+    k->n_hiz_sifir = sayac[12];
+    k->n_konum_sifir = sayac[13];
     k->duzey = k->ariza ? (uint8_t)IDA_EST_FAULT : (uint8_t)IDA_EST_INIT;
     k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
 }
@@ -182,15 +250,105 @@ static void akis_guncelle(ida_kes_akis_t *a, int64_t tm_ns, int64_t rx_ns)
     }
 }
 
+/* Seyreltme (kes_ic.h): kuyruğa alınan son örnekten bu yana ölçüm zamanı en kısa aralık kadar
+   ilerlemediyse örnek kuyruğa alınmaz. true: alınır (iz güncellenir). */
+static bool seyrelt(bool *var, int64_t *son_ns, int64_t tm_ns, int64_t aralik_ns)
+{
+    if (*var && ((tm_ns - *son_ns) < aralik_ns)) {
+        return false;
+    }
+    *var = true;
+    *son_ns = tm_ns;
+    return true;
+}
+
+static void dvl_ornegi(ida_kes_t *k, const ida_sample_t *s, bool bayrakli)
+{
+    const int64_t tm = s->hdr.t_meas.ns;
+    if (!bayrakli) {
+        akis_guncelle(&k->akis_dvl, tm, s->hdr.t_rx.ns);
+    }
+    /* İrtifa kaynağı her örnekte yenilenir: bilinmeyen (−1) ya da bayraklı örnek kaynağı siler. */
+    k->irt_dvl_var = !bayrakli && (s->u.dvl.altitude >= 0.0f);
+    k->irt_dvl = k->irt_dvl_var ? s->u.dvl.altitude : 0.0f;
+    if (!seyrelt(&k->dvl_kuy_var, &k->dvl_kuy_ns, tm, (int64_t)IDA_KES_DVL_ARALIK_NS)) {
+        k->n_seyrek++;
+        return;
+    }
+    ida_kes_yolc_t y;
+    (void)memset(&y, 0, sizeof(y));
+    y.t_ns = tm;
+    y.tur = (uint8_t)IDA_SENS_DVL;
+    y.sira = 1u;
+    uint32_t b = bayrakli ? IDA_KES_YB_KULLANILMAZ : 0u;
+    b |= ((s->u.dvl.dvl_flags & IDA_DVL_VEL_VALID) != 0u) ? IDA_KES_YB_HIZ : 0u;
+    b |= ((s->u.dvl.dvl_flags & IDA_DVL_TRACK_BOTTOM) != 0u) ? IDA_KES_YB_DIP : 0u;
+    b |= ((s->u.dvl.dvl_flags & IDA_DVL_COV_PRESENT) != 0u) ? IDA_KES_YB_KOV : 0u;
+    y.bayrak = (uint8_t)b;
+    for (uint32_t i = 0u; i < 3u; i++) {
+        y.v[i] = s->u.dvl.vel[i];
+    }
+    for (uint32_t i = 0u; i < 6u; i++) {
+        y.v[3u + i] = s->u.dvl.cov[i];
+    }
+    y.v[9] = s->u.dvl.fom;
+    y.v[10] = s->u.dvl.altitude;
+    ida_kes_yolc_ekle(k, &y);
+}
+
+static void gnss_ornegi(ida_kes_t *k, const ida_sample_t *s, bool bayrakli)
+{
+    const int64_t tm = s->hdr.t_meas.ns;
+    if (!bayrakli) {
+        akis_guncelle(&k->akis_gnss, tm, s->hdr.t_rx.ns);
+    }
+    if (!seyrelt(&k->gnss_kuy_var, &k->gnss_kuy_ns, tm, (int64_t)IDA_KES_GNSS_ARALIK_NS)) {
+        k->n_seyrek++;
+        return;
+    }
+    ida_kes_yolc_t y;
+    (void)memset(&y, 0, sizeof(y));
+    y.t_ns = tm;
+    y.tur = (uint8_t)IDA_SENS_GNSS;
+    y.sira = 3u;
+    y.bayrak = bayrakli ? (uint8_t)IDA_KES_YB_KULLANILMAZ : (uint8_t)0u;
+    y.fix = s->u.gnss.fix_type;
+    y.lat_e7 = s->u.gnss.lat_e7;
+    y.lon_e7 = s->u.gnss.lon_e7;
+    y.v[0] = s->u.gnss.vel_ned[0];
+    y.v[1] = s->u.gnss.vel_ned[1];
+    y.v[2] = s->u.gnss.eph;
+    ida_kes_yolc_ekle(k, &y);
+}
+
+static void ping_ornegi(ida_kes_t *k, const ida_sample_t *s, bool bayrakli)
+{
+    /* Ping1D yalnız irtifa içindir; filtreye girmez (02 §2.3.3). */
+    if (!bayrakli) {
+        akis_guncelle(&k->akis_ping, s->hdr.t_meas.ns, s->hdr.t_rx.ns);
+    }
+    k->irt_ping_var = !bayrakli && (s->u.ping1d.distance >= 0.0f) &&
+                      ((uint32_t)s->u.ping1d.confidence >= IDA_KES_PING_GUVEN_EN_AZ);
+    k->irt_ping = k->irt_ping_var ? s->u.ping1d.distance : 0.0f;
+}
+
 void ida_kes_ornek(ida_kes_t *k, const ida_sample_t *s)
 {
-    /* Kapıdan geçmiş örnek. Bu dilimde yalnız inst = 0 kullanılır; SATURATED ya da
-       SENSOR_FAULT bayraklı değer kullanılmaz. İkisi de akışı canlı saymaz. */
-    if ((s->hdr.flags & (uint16_t)(IDA_HF_SATURATED | IDA_HF_SENSOR_FAULT)) != 0u) {
+    /* Kapıdan geçmiş örnek. Her türün yalnız inst = 0 örneği kullanılır; SATURATED ya da
+       SENSOR_FAULT bayraklı değer kullanılmaz. İkisi de akışı canlı saymaz. Bayraklı DVL ve
+       GNSS örneği yine de kuyruğa "kullanılmaz" olarak girer: nitelendirmenin ardışık iyi
+       örnek sayımı onu zaman sırasında görür. */
+    const bool bayrakli =
+        (s->hdr.flags & (uint16_t)(IDA_HF_SATURATED | IDA_HF_SENSOR_FAULT)) != 0u;
+    const bool yardim = (s->hdr.type == (uint8_t)IDA_SENS_DVL) ||
+                        (s->hdr.type == (uint8_t)IDA_SENS_GNSS) ||
+                        (s->hdr.type == (uint8_t)IDA_SENS_PING1D);
+    if (bayrakli && !(yardim && (s->hdr.inst == 0u))) {
         return;
     }
     if (s->hdr.inst != 0u) {
-        if ((s->hdr.type == (uint8_t)IDA_SENS_MAG) || (s->hdr.type == (uint8_t)IDA_SENS_BARO)) {
+        if ((s->hdr.type == (uint8_t)IDA_SENS_MAG) || (s->hdr.type == (uint8_t)IDA_SENS_BARO) ||
+            yardim) {
             k->n_inst++;
         }
         return;
@@ -206,6 +364,11 @@ void ida_kes_ornek(ida_kes_t *k, const ida_sample_t *s)
         o.v[1] = s->u.mag.field[1];
         o.v[2] = s->u.mag.field[2];
         akis_guncelle(&k->akis_mag, s->hdr.t_meas.ns, s->hdr.t_rx.ns);
+        if (!seyrelt(&k->mag_kuy_var, &k->mag_kuy_ns, s->hdr.t_meas.ns,
+                     (int64_t)IDA_KES_MAG_ARALIK_NS)) {
+            k->n_seyrek++;
+            break;
+        }
         ida_kes_olc_ekle(k, &o);
         break;
     case IDA_SENS_BARO:
@@ -215,10 +378,23 @@ void ida_kes_ornek(ida_kes_t *k, const ida_sample_t *s)
         o.sira = 0u;
         o.v[0] = s->u.baro.p_abs;
         akis_guncelle(&k->akis_baro, s->hdr.t_meas.ns, s->hdr.t_rx.ns);
+        if (!seyrelt(&k->baro_kuy_var, &k->baro_kuy_ns, s->hdr.t_meas.ns,
+                     (int64_t)IDA_KES_BARO_ARALIK_NS)) {
+            k->n_seyrek++;
+            break;
+        }
         ida_kes_olc_ekle(k, &o);
         break;
+    case IDA_SENS_DVL:
+        dvl_ornegi(k, s, bayrakli);
+        break;
+    case IDA_SENS_GNSS:
+        gnss_ornegi(k, s, bayrakli);
+        break;
+    case IDA_SENS_PING1D:
+        ping_ornegi(k, s, bayrakli);
+        break;
     default:
-        /* GNSS, DVL, PING1D: sonraki dilimler. */
         break;
     }
 }
@@ -443,12 +619,43 @@ static bool surekli(const ida_kes_red_t *r, int64_t now_ns, int64_t sure_ns)
     return r->var && ((now_ns - r->bas_ns) >= sure_ns);
 }
 
-/* Sağlık düzeyi ve geçerlilik (02 §2.3.6; tazelik 02 §4.1, A4-K36), çökme mandalı hariç. */
+/* Sağlık düzeyi ve geçerlilik (02 §2.3.6; tazelik 02 §4.1, A4-K36), çökme mandalı hariç.
+ *
+ * Bir yatay kaynak (DVL hızı, GNSS hızı, GNSS konumu) "ret altında": kuşkulu (KES_N_RED ardışık
+ *   ret ya da sıfırlama; yalnız kaynağın kendi kapıdan geçen örneği kaldırır) ya da kapı reddi
+ *   KES_RED_MS'tir sürüyor (ret izini yalnız kabul edilen örnek ya da sıfırlama temizler).
+ *   Hız sıfırlaması iki hız kaynağını birlikte kuşkulu yapar (kes_yatay.c hiz_geri_donus):
+ *   sıfırlamadan sonra etkin her hız kaynağı kapıdan geçen en az bir örnek vermeden yatay hız
+ *   geçerli olmaz; sıfırlanan kaynağın kendi örneğinin geçmesi yetmez.
+ *   Kaynak "etkin": akışı canlı ve son kapı kararı (kabul ya da ret) bayatlık sınırı içinde;
+ *   yani canlı ve nitelikli.
+ * Yatay hız geçerli: tutum ve yön geçerli; bildirilen (çıkış zamanı için muhafazakâr) yatay hız
+ *   σ'sı ≤ SIG_HVEL; bir hız kaynağı destekliyor (akış canlı, son kabul edilen füzyon T_DVL_STALE
+ *   / T_GNSS_STALE içinde, ret altında değil); VE etkin hiçbir hız kaynağı ret altında değil.
+ *   İki nitelikli kaynak çelişirken birinin kabul edilmesi yetmez (inceleme bulgu 2): hangisinin
+ *   doğru olduğu bilinmez.
+ * Konum geçerli: yatay konum GNSS'ten kuruldu ve o günden beri bilinir sayılıyor (hizalama,
+ *   orijin değişimi ve mutlak başvuru yokken yapılan hız sıfırlaması düşürür); yatay konum σ'sı
+ *   ≤ SIG_HPOS; konumu taşıyan bir destek var (geçerli yatay hızla ölü hesap ya da canlı ve taze
+ *   GNSS konumu); GNSS konum kapısı ret altında değil (akış kesilse de: ret izi kabul edilen
+ *   fix'e ya da sıfırlamaya, kuşku kabul edilen fix'e kadar sürer).
+ * Düzey (güvenli yöne yaslanır; IDA_EST_OK silahlanmanın ön koşuludur, A4 §3.16):
+ *   BAD: bayraklı IMU, tutum σ'sı eşik üstü, yerçekimi ya da basınç kapısının sürekli reddi.
+ *   OK: tutum, yön, derinlik, yatay hız ve konum geçerli, çıkış gecikmesi yok VE bu koşullar
+ *     KES_OK_MS boyunca (duvar saati) kesintisiz sağlandı. Koşullardan biri bir çağrıda
+ *     bozulursa düzey aynı çağrıda DEGRADED olur ve süre baştan sayılır: kaynakların sınırda
+ *     gidip gelmesi düzeyi her çağrıda değiştirmez, OK'a dönüş her seferinde KES_OK_MS ister.
+ *     Hız ya da konum sıfırlaması ve orijin değişimi de süreyi baştan başlatır (kes_yatay.c,
+ *     orijin_izle): hiçbir sıfırlama OK'u korumaz. Çelişen iki hız kaynağında yatay hız
+ *     geçerliliği hiç kurulmaz (yukarıda), düzey KES_OK_MS'ten bağımsız olarak DEGRADED kalır.
+ *   DEGRADED: ötekiler.
+ */
 static void suzgec_duzeyi(ida_kes_t *k, const ida_kes_ayar_t *a)
 {
     if (!k->hizali) {
         k->duzey = (uint8_t)IDA_EST_INIT;
         k->gecerlilik = 0u;
+        k->ok_aday_var = false;
         return;
     }
     const int64_t now = a->now_ns;
@@ -480,8 +687,32 @@ static void suzgec_duzeyi(ida_kes_t *k, const ida_kes_ayar_t *a)
         k->kalibre && (sd <= a->sig_depth) && canli(&k->akis_baro, now, a->baro_stale_ns) &&
         destekli(k->akis_baro.destek_var, k->akis_baro.destek_ns, now, a->baro_stale_ns) &&
         !baro_kotu;
-    const bool yatay_hiz = false; /* DVL/GNSS: sonraki dilim (Ö3, Ö4) */
-    const bool konum = false;
+    /* Yatay hız σ'sı: nav'da bildirilen, çıkış zamanı için muhafazakâr değer (cikis_sigma; bu
+       çağrıda, düzeyden önce hesaplandı). Ufuk σ'sından küçük olamaz. Ufuk σ'sı hızlanırken
+       iyimserdir (yerçekimi ölçümü ivmeyi eğim sanar; yalnız GNSS hızıyla hata / ufuk σ'sı ≈ 3
+       ölçüldü, inceleme bulgu 8); geçerlilik bildirilen σ'ya bakar. */
+    const float sv = (k->sig_v.x > k->sig_v.y) ? k->sig_v.x : k->sig_v.y;
+    const bool dvl_canli = canli(&k->akis_dvl, now, a->dvl_stale_ns);
+    const bool gnss_canli = canli(&k->akis_gnss, now, a->gnss_stale_ns);
+    const bool dvl_ret = k->kusku_dvl || surekli(&k->red_dvl, now, a->red_ns);
+    const bool gnss_v_ret = k->kusku_gnss_v || surekli(&k->red_gnss_v, now, a->red_ns);
+    const bool gnss_p_ret = k->kusku_gnss_p || surekli(&k->red_gnss_p, now, a->red_ns);
+    const bool dvl_etkin = dvl_canli && destekli(k->kapi_dvl_var, k->kapi_dvl_ns, now, a->dvl_stale_ns);
+    const bool gnss_etkin =
+        gnss_canli && destekli(k->kapi_gnss_var, k->kapi_gnss_ns, now, a->gnss_stale_ns);
+    const bool hiz_dvl =
+        dvl_canli && destekli(k->akis_dvl.destek_var, k->akis_dvl.destek_ns, now, a->dvl_stale_ns) &&
+        !dvl_ret;
+    const bool hiz_gnss =
+        gnss_canli &&
+        destekli(k->gnss_hiz_destek_var, k->gnss_hiz_destek_ns, now, a->gnss_stale_ns) && !gnss_v_ret;
+    /* VE: etkin (canlı ve nitelikli) her hız kaynağı ret altında olmamalı. */
+    const bool hiz_celiski = (dvl_etkin && dvl_ret) || (gnss_etkin && gnss_v_ret);
+    const bool yatay_hiz =
+        tutum && yon && (sv <= a->sig_hvel) && (hiz_dvl || hiz_gnss) && !hiz_celiski;
+    const bool kon_gnss =
+        gnss_canli && destekli(k->akis_gnss.destek_var, k->akis_gnss.destek_ns, now, a->gnss_stale_ns);
+    const bool konum = k->konum_var && (sh <= a->sig_hpos) && (yatay_hiz || kon_gnss) && !gnss_p_ret;
 
     uint32_t g = 0u;
     g |= tutum ? IDA_KES_G_TUTUM : 0u;
@@ -493,13 +724,22 @@ static void suzgec_duzeyi(ida_kes_t *k, const ida_kes_ayar_t *a)
 
     if (k->imu_bayrakli || !(stilt <= a->sig_tilt) || grav_kotu || baro_kotu) {
         k->duzey = (uint8_t)IDA_EST_BAD;
+        k->ok_aday_var = false;
         if (k->imu_bayrakli) {
             k->gecerlilik = 0u; /* bayraklı IMU ile yayılım yapılamaz (bulgu 3) */
         }
-    } else if (!(sh <= a->sig_hpos) || !yon || !derinlik || !yatay_hiz || k->cikis_gec) {
+    } else if (!(sh <= a->sig_hpos) || !tutum || !yon || !derinlik || !yatay_hiz || !konum ||
+               k->cikis_gec) {
         k->duzey = (uint8_t)IDA_EST_DEGRADED;
+        k->ok_aday_var = false;
     } else {
-        k->duzey = (uint8_t)IDA_EST_OK;
+        /* Koşullar sağlanıyor: OK ancak KES_OK_MS kesintisiz sürdükten sonra. */
+        if (!k->ok_aday_var) {
+            k->ok_aday_var = true;
+            k->ok_aday_ns = now;
+        }
+        k->duzey = ((now - k->ok_aday_ns) >= a->ok_ns) ? (uint8_t)IDA_EST_OK
+                                                       : (uint8_t)IDA_EST_DEGRADED;
     }
     if (k->cikis_gec) {
         k->gecerlilik = 0u; /* çıkış durumu t_ref'in 100 ms'den fazla gerisinde (bulgu 8) */
@@ -567,9 +807,64 @@ static void cikis_sigma(ida_kes_t *k, const ida_kes_ayar_t *a)
     k->sig_bg = vb;
 }
 
+/* nav.altitude: O_b'nin dibe mesafesi. Kaynaklar DVL irtifası (dönüştürücüden dibe dik mesafe;
+   A4 §3.3, W4-K8) ve Ping1D menzilidir (ışın gövde +z ekseninde sayılır; düz dip kabulüyle
+   düşeye izdüşümü). Her ikisi de montaj kolunun düşey bileşeniyle O_b'ye taşınır. Kaynak canlı
+   ve son örneği kullanılabilir olmalıdır; ikisi de varsa küçüğü verilir (en az irtifa
+   denetiminde güvenli yön). Son örnekten beri derinlik değişimi eklenmez: değer en çok bir
+   örnek aralığı eskidir. Kaynak yoksa −1. */
+static void irtifa_guncelle(ida_kes_t *k, const ida_kes_ayar_t *a)
+{
+    k->irtifa = -1.0f;
+    if (!k->hizali) {
+        return;
+    }
+    const bool dvl = k->irt_dvl_var && canli(&k->akis_dvl, a->now_ns, a->dvl_stale_ns);
+    const bool ping = k->irt_ping_var && canli(&k->akis_ping, a->now_ns, a->dvl_stale_ns);
+    if (!dvl && !ping) {
+        return;
+    }
+    const ida_m3_t r = ida_q_dcm(k->q_o);
+    bool var = false;
+    float alt = 0.0f;
+    if (dvl) {
+        alt = k->irt_dvl + (r.m[2][0] * a->l_dvl.x + r.m[2][1] * a->l_dvl.y + r.m[2][2] * a->l_dvl.z);
+        var = true;
+    }
+    if (ping && (r.m[2][2] >= IDA_KES_PING_COS_EN_AZ)) {
+        const float x = k->irt_ping * r.m[2][2] +
+                        (r.m[2][0] * a->l_ping.x + r.m[2][1] * a->l_ping.y + r.m[2][2] * a->l_ping.z);
+        if (!var || (x < alt)) {
+            alt = x;
+        }
+        var = true;
+    }
+    if (var && ida_sonlu(alt)) {
+        k->irtifa = (alt > 0.0f) ? alt : 0.0f;
+    }
+}
+
+/* Orijin (ORIJIN_LAT, ORIJIN_LON) değişimi (inceleme bulgu 3): yatay konum durumu eski orijine
+   göredir ve ötelenmez. Konum geçersiz olur, OK adayı silinir ve konum yeni orijine göre
+   GNSS'ten yeniden kurulur (nitelikli ilk fix; kes_yatay.c). Bu çağrıda işlenecek GNSS
+   örnekleri yeni orijinle dönüştürüleceği için füzyondan (IMU işlemesi dahil) önce çağrılır.
+   Kurulumdan ve oturum yenilenmesinden sonraki ilk çağrı da "değişim"dir; o anda konum zaten
+   bilinmiyordur. */
+static void orijin_izle(ida_kes_t *k, const ida_kes_ayar_t *a)
+{
+    if ((k->orj_lat_e7 != a->orj_lat_e7) || (k->orj_lon_e7 != a->orj_lon_e7)) {
+        k->konum_var = false;
+        k->akis_gnss.destek_var = false; /* eski orijine göre kabul edilmiş fix desteklemez */
+        k->ok_aday_var = false;
+    }
+    k->orj_lat_e7 = a->orj_lat_e7;
+    k->orj_lon_e7 = a->orj_lon_e7;
+}
+
 static void ortak(ida_kes_t *k, const ida_kes_ayar_t *a)
 {
     if (!k->hizali) {
+        k->yolc_n = 0u; /* hizalamadan önceki yatay yardım ölçümleri kullanılmaz */
         hizalama_olcumler(k, a);
         const ida_kes_hiz_t *h = &k->hz;
         if ((h->n >= 2u) && (ida_kes_ns_s(h->t_son_ns - h->t0_ns) >= a->hiz_s)) {
@@ -590,6 +885,7 @@ static void ortak(ida_kes_t *k, const ida_kes_ayar_t *a)
             yeniden_hizala(k);
         }
     }
+    irtifa_guncelle(k, a);
     duzey_guncelle(k, a);
 }
 
@@ -597,6 +893,7 @@ void ida_kes_adim(ida_kes_t *k, const ida_core_t *c)
 {
     ida_kes_ayar_t a;
     ida_kes_ayar_oku(c, &a);
+    orijin_izle(k, &a);
     imu_isle(k, &a);
     ortak(k, &a);
 }
@@ -605,6 +902,7 @@ void ida_kes_tick(ida_kes_t *k, const ida_core_t *c)
 {
     ida_kes_ayar_t a;
     ida_kes_ayar_oku(c, &a);
+    orijin_izle(k, &a);
     ortak(k, &a);
 }
 
@@ -674,7 +972,9 @@ void ida_kes_nav(const ida_kes_t *k, ida_stime_t t, ida_nav_out_t *nav)
     nav->omega_b[1] = k->w_o.y;
     nav->omega_b[2] = k->w_o.z;
     nav->depth = p.z;
-    nav->altitude = -1.0f; /* Ping1D/DVL irtifası sonraki dilimde */
+    nav->altitude = k->irtifa; /* bilinmiyorsa −1 */
+    nav->origin_lat_e7 = k->orj_lat_e7; /* p_ned bu noktaya göredir (ORIJIN_LAT, ORIJIN_LON) */
+    nav->origin_lon_e7 = k->orj_lon_e7;
     /* Çıkış zamanının muhafazakâr σ'sı (cikis_sigma) ve t_ref'e taşımanın katkısı. */
     nav->p_sigma[0] = k->sig_p.x + dt * k->sig_v.x;
     nav->p_sigma[1] = k->sig_p.y + dt * k->sig_v.y;
@@ -693,11 +993,13 @@ bool ida_kes_tutarli(const ida_kes_t *k)
     return (k->duzey <= (uint8_t)IDA_EST_FAULT) && (k->suzgec_duzey <= (uint8_t)IDA_EST_BAD) &&
            (k->imu_n <= IDA_KES_IMU_N) &&
            (k->imu_bas < IDA_KES_IMU_N) && (k->olc_n <= IDA_KES_OLC_N) &&
-           (k->gecerlilik <= 0x3Fu);
+           (k->yolc_n <= IDA_KES_YOLC_N) && (k->gecerlilik <= 0x3Fu);
 }
 
 uint8_t ida_kes_param_grup(const ida_prm_kume_t *p)
 {
-    (void)p; /* bu dilimde ilişkili grup koşulu yok; her parametre kendi aralığıyla geçerli */
-    return 0u;
+    /* KES_N_RED < KES_N_RESET (ikisi de U32): ardışık ret, durum ölçüme sıfırlanmadan önce
+       geçerliliği düşürür (inceleme bulgu 1, mimar kararı 1 (iii)). */
+    const bool ret = p->ham[IDA_PRM_kes_n_red] < p->ham[IDA_PRM_kes_n_reset];
+    return ret ? (uint8_t)0u : (uint8_t)1u;
 }

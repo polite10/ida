@@ -15,24 +15,24 @@
 # Etiketler ve seçenekler (W5-K12):
 #   - kabul_atis_silahli: FC'nin silahlı duruma geçmesini (ya da onun ön koşulu olan kestirim
 #     düzeyi OK'yi) gerektiren testler: hazırlıkta FC_ARM / GUIDED isteyenler ve kapsam koşullu
-#     özellik testleri. IDA_KABUL_ATIS_SILAHLI kapalıyken (varsayılan) DISABLED kaydedilir.
-#     Silahlı durumu erişilir kılan dilim (W5-kestirim-yatay) birleşince açılır; W5-K12 (4)
-#     gereği o dilim bu testlerin TAMAMI varsayılan turda geçmeden main'e girmez.
+#     özellik testleri. IDA_KABUL_ATIS_SILAHLI kapalıyken DISABLED kaydedilir. Varsayılanı ON:
+#     silahlı durumu erişilir kılan dilim (W5-kestirim-yatay) ile emniyet zinciri dalının
+#     birleşiminde testlerin tamamı geçti (W5-K12 (4)); silahlı testler varsayılan turdadır.
 #   - kabul_atis: yer tutucu atış kontrole karşı düşen ("bekleniyor") ama silahlanma
 #     gerektirmeyen testler. IDA_KABUL_ATIS_BEKLENEN varsayılanı ON'dur: bu testler uygulama
 #     dalıyla (W5-atis-emniyet) birlikte varsayılan turda koşar. Bu dal tek başına main'e
 #     girmez, uygulama dalına birleştirilir; yer tutucuya karşı koşturmak için seçenek OFF
 #     verilir.
 # Koşturma:
-#   ctest --preset host-debug -R '^kabul\.atis\.'                                   (varsayılan)
-#   cmake --preset host-debug -DIDA_KABUL_ATIS_SILAHLI=ON && cmake --build build/host-debug
+#   ctest --preset host-debug -R '^kabul\.atis\.'                     (varsayılan; silahlılar dahil)
 #   ctest --preset host-debug -L kabul_atis_silahli                                    (silahlı)
+#   cmake --preset host-debug -DIDA_KABUL_ATIS_SILAHLI=OFF                (silahlılar kapalı)
 #   cmake --preset host-debug -DIDA_KABUL_ATIS_BEKLENEN=OFF                            (yer tutucu)
 
 option(IDA_KABUL_ATIS_BEKLENEN
   "Yer tutucu atış kontrole karşı düşen (bekleniyor) atış kabul testlerini varsayılan turda koştur" ON)
 option(IDA_KABUL_ATIS_SILAHLI
-  "FC'nin silahlanmasını (kestirim OK) gerektiren atış kabul testlerini varsayılan turda koştur" OFF)
+  "FC'nin silahlanmasını (kestirim OK) gerektiren atış kabul testlerini varsayılan turda koştur" ON)
 
 ida_unity_kur()
 

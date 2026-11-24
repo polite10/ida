@@ -2,8 +2,10 @@
  * kes_ic.h — kestirim modülünün iç işlevleri (yalnız kestirim/ içinden). Sahibi: W3 kestirim.
  *
  * kes_eskf.c: filtre matematiği (yayılım, skaler güncelleme, enjeksiyon, sağlamlık denetimi).
- * kes_ufuk.c: IMU halkası, ölçüm kuyruğu, füzyon ufkunun ilerletilmesi, ölçüm modelleri ve
- *             çıkış öngörücüsü.
+ * kes_ufuk.c: IMU halkası, ölçüm kuyruğu, füzyon ufkunun ilerletilmesi, basınç, manyetometre ve
+ *             yerçekimi ölçüm modelleri ve çıkış öngörücüsü.
+ * kes_yatay.c: DVL ve GNSS ölçüm modelleri, nitelendirme, konum ve hız sıfırlamaları, yerel
+ *             düzlem dönüşümü (W5 kestirim-yatay).
  * kestirim.c: kancalar, parametre görüntüsü, hizalama, sağlık düzeyi, nav.
  */
 #ifndef IDA_CORE_KES_IC_H
@@ -63,6 +65,31 @@ typedef struct {
     int64_t baro_stale_ns;
     int64_t mag_stale_ns;
     int64_t imu_gap_ns;
+    /* W5 kestirim-yatay */
+    ida_v3_t l_gnss;
+    ida_v3_t l_dvl;
+    ida_v3_t e_dvl;      /* DVL montaj açıları (roll, pitch, yaw); matris füzyonda kurulur */
+    ida_v3_t l_ping;
+    int32_t orj_lat_e7;
+    int32_t orj_lon_e7;
+    float r_dvl;
+    float dvl_fom_max;
+    float dvl_alt_min;
+    float r_gnss_p;
+    float gnss_sig_k;
+    float r_gnss_v;
+    float gnss_eph_max;
+    float kapi_g2;
+    float yuzey_d;
+    float dr_oran;
+    float sig_hvel;
+    float konum_sicra;
+    uint32_t n_iyi;
+    uint32_t n_reset;
+    uint32_t n_red;      /* KES_N_RED: ardışık retten sonra kaynak kuşkulu */
+    int64_t ok_ns;
+    int64_t dvl_stale_ns;
+    int64_t gnss_stale_ns;
 } ida_kes_ayar_t;
 
 /* Parametre görüntüsü (kestirim.c); now_ns = c->cer.now_izi_ns. */
@@ -78,6 +105,31 @@ void ida_kes_ayar_oku(const ida_core_t *c, ida_kes_ayar_t *a);
 
 /* Adım başına skaler güncelleme sınırı (02 §2.3.2; tahmin). */
 #define IDA_KES_BUTCE 8u
+
+/* Ölçümlerin kuyruğa alınmadaki en kısa ölçüm zamanı aralığı (seyreltme; tahmin). Cihazların
+   olağan hızları (manyetometre 100 Hz, basınç 25 Hz, GNSS 5 Hz, DVL 2–15 Hz; sim'in adım
+   sınırına bağlamasından doğan ± 1,25 ms'lik oynamayla) geçer; daha sık gelen akış (ör. çağrı
+   başına bir örnek) seyreltilir: yoksa kuyruk sürekli dolu kalır, boşalan yeri her çağrıda
+   sıralamada önce gelen tür alır ve öteki türler hiç füzyonlanmaz; kartın adım süresi de
+   büyür. Seyreltilen örnek akışı canlı sayar ama füzyonlanmaz. Bu aralıklarla ve D ≤ 200 ms
+   ile bekleyen ölçüm sayısı kuyruk boylarını aşmaz: manyetometre ≤ 200/8 = 25, basınç ≤
+   200/18 → 12, toplam 37 ≤ IDA_KES_OLC_N = 40 (testte çağrı sonunda 36 ölçüldü); DVL ≤ 5 + GNSS ≤ 3 = 8 ≤
+   IDA_KES_YOLC_N. Teslimi geciken örnekler bekleme süresini uzatmaz (ufka göre geç kalan
+   atılır); bütçe yüzünden ufuk geride kalırsa taşan örnek atılır ve sayılır (n_tasma). */
+#define IDA_KES_MAG_ARALIK_NS   8000000 /* ≤ 125 Hz */
+#define IDA_KES_BARO_ARALIK_NS 18000000 /* ≤ ≈ 55 Hz */
+#define IDA_KES_GNSS_ARALIK_NS 90000000 /* ≤ ≈ 11 Hz */
+#define IDA_KES_DVL_ARALIK_NS  45000000 /* ≤ ≈ 22 Hz */
+
+/* GNSS konumunun orijinden en büyük enlem ve boylam farkı (1e-7 derece; 0,2° ≈ 22 km).
+   Dışındaki örnek kullanılmaz: yerel düzlem dönüşümünün (ida_kes_gnss_ne) üçüncü mertebe
+   hatası bu uzaklıkta ≈ 0,3 m'dir (tahmin; testte 5 km'ye kadar ölçülür). */
+#define IDA_KES_GNSS_UZAK_E7 2000000
+
+/* Ping1D: bu güvenin altındaki örnek irtifa vermez (%; tahmin). */
+#define IDA_KES_PING_GUVEN_EN_AZ 50u
+/* Ping1D: ışın ekseninin düşeyle kosinüsü bunun altındaysa irtifa verilmez (≈ 37°; tahmin). */
+#define IDA_KES_PING_COS_EN_AZ 0.8f
 
 /* ---- kes_eskf.c ------------------------------------------------------------------------- */
 /* ns farkı → s (float). Farklar en çok birkaç saniyedir; int64 → float dönüşümü açıktır. */
@@ -107,6 +159,9 @@ void ida_kes_P_duzelt(float P[IDA_KES_N][IDA_KES_N]);
 bool ida_kes_saglam(const ida_kes_t *k);
 /* 3×3 simetrik pozitif tanımlı S için yᵀ S⁻¹ y (Cholesky); S pozitif tanımlı değilse false. */
 bool ida_kes_nis3(float S[3][3], const float y[3], float *nis);
+/* 3×3 simetrik S = C Cᵀ (alt üçgen C; yalnız S'nin alt üçgeni okunur). c: c00, c10, c11, c20,
+   c21, c22. S pozitif tanımlı ve sonlu değilse false. */
+bool ida_kes_chol3(float S[3][3], float c[6]);
 
 /* ---- kes_ufuk.c ------------------------------------------------------------------------- */
 /* Ufku ve çıkışı x'ten başlatır (hizalama), halkayı boşaltır. */
@@ -122,5 +177,38 @@ void ida_kes_ufuk_ilerle(ida_kes_t *k, const ida_kes_ayar_t *a);
 void ida_kes_olc_ekle(ida_kes_t *k, const ida_kes_olc_t *o);
 /* Kuyruğun başındakini atar. */
 void ida_kes_olc_cikar(ida_kes_t *k);
+/* Yatay yardım ölçümünü (DVL, GNSS) kendi kuyruğuna koyar (sıralı); doluysa atar ve sayar. */
+void ida_kes_yolc_ekle(ida_kes_t *k, const ida_kes_yolc_t *o);
+
+/* ---- kes_yatay.c ------------------------------------------------------------------------ */
+/* Ölçüm modelleri: x'teki öngörü ve hata durumuna göre Jacobian (kabuller kes_yatay.c başında).
+   w_ham: ham açısal hız (sapma burada çıkarılır); l: O_b'den sensöre kol, gövde çerçevesinde. */
+/* DVL, gövde çerçevesinde üç eksen: hb = R̂ᵀ v̂ + ω̂ × l. */
+void ida_kes_dvl_model(const ida_kes_nominal_t *x, ida_v3_t w_ham, ida_v3_t l, float hb[3],
+                       float h[3][IDA_KES_N]);
+/* GNSS yatay hız (kuzey, doğu): hv = (v̂ + R̂ (ω̂ × l))_NE. */
+void ida_kes_gnss_hiz_model(const ida_kes_nominal_t *x, ida_v3_t w_ham, ida_v3_t l, float hv[2],
+                            float h[2][IDA_KES_N]);
+/* GNSS yatay konum (kuzey, doğu): hp = (p̂ + R̂ l)_NE. */
+void ida_kes_gnss_konum_model(const ida_kes_nominal_t *x, ida_v3_t l, float hp[2],
+                              float h[2][IDA_KES_N]);
+/* Ufuk o.t_ns anındayken DVL ya da GNSS ölçümünü işler: nitelik, kapı, füzyon, sıfırlama.
+   w_ham: ölçüm anını içeren IMU kaydının ham açısal hızı (sapma burada çıkarılır). */
+void ida_kes_dvl_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yolc_t *o,
+                        ida_v3_t w_ham);
+void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yolc_t *o,
+                         ida_v3_t w_ham);
+/* WGS-84 enlem ve boylamından (1e-7 derece) orijine göre yerel teğet düzlem kuzey ve doğu
+   koordinatları (m; NED'in ilk iki bileşeni). İkinci mertebeye kadar:
+     n₀ = M Δφ, e₀ = N cos φ₀ Δλ,
+     n = n₀ + e₀² tan φ₀ / (2N) + (3/2) e² sin φ₀ cos φ₀ n₀² / ((1 − e² sin² φ₀) M),
+     e = e₀ − e₀ n₀ tan φ₀ / N
+   (M, N: orijin enlemindeki meridyen ve doğu-batı eğrilik yarıçapları). Farklar int64'te
+   alınır, boylam farkı ±180°'ye sarılır (02 §2.3.4). Fark IDA_KES_GNSS_UZAK_E7'yi aşarsa ya da
+   |φ₀| > 89° ise false. */
+bool ida_kes_gnss_ne(int32_t lat_e7, int32_t lon_e7, int32_t lat0_e7, int32_t lon0_e7, float ne[2]);
+/* Ölü hesap büyümesi: yatay hız ölçümle destekliyken (son hız füzyonu T_DVL_STALE içinde, ölçüm
+   zamanında) dt boyunca yatay konum σ'sını DR_ORAN × kat edilen yol kadar büyütür. */
+void ida_kes_dr_buyut(ida_kes_t *k, const ida_kes_ayar_t *a, float dt);
 
 #endif /* IDA_CORE_KES_IC_H */
