@@ -115,3 +115,12 @@ if(NOT WIN32)
   add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
   set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 endif()
+# Kabul 3: ida_sim + panelin A3 istemcisi (Node; web/src/a3, web/'e dosya eklenmez). Node yoksa
+# kaydedilmez; web/node_modules (esbuild) yoksa 77 döner ve atlanır.
+find_program(IDA_NODE_BUTUNLEME node)
+if(IDA_NODE_BUTUNLEME)
+  add_test(NAME butunleme.a3_uctan_uca_web
+    COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_uctan_uca.mjs" "$<TARGET_FILE:ida_sim>"
+            "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node")
+  set_tests_properties(butunleme.a3_uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180)
+endif()
