@@ -10,6 +10,7 @@
 #include "test_destek.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <thread>
 
 namespace ida::a3::test {
@@ -106,7 +107,15 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
     Saat::time_point son_fizik{};
     double en_buyuk_bosluk = 0.0;
     std::size_t fizik = 0;
+    std::size_t fizik_ikinci_yari = 0;  // pencerenin ikinci yarısında alınan fizik/durum
     std::size_t ping = 0;
+    std::uint64_t fizik_bosluk = 0;     // fizik/durum sıra numaralarındaki boşluklar (ezilen üretimler)
+    bool fizik_sira_artan = true;
+    bool bosluk_aciklanan = true;       // her baglanti/durum karesinde: görülen boşluk ≤ ezilen
+    std::size_t baglanti_karesi = 0;
+    std::uint32_t son_sira = 0;
+    std::uint64_t hizli_ezilen = 0;     // baglanti/durum: bu_baglanti_ezilen_durum (hızlı istemci)
+    std::uint64_t hizli_dusen = 0;      // baglanti/durum: bu_baglanti_dusen_dizi (hızlı istemci)
     double en_kotu_http = 0.0;
     double kisitlayan_ms = -1.0;
     std::uint32_t kisitlayan_no = 0;
@@ -132,7 +141,33 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
                         en_buyuk_bosluk = std::max(en_buyuk_bosluk, ms(simdi - son_fizik));
                     }
                     son_fizik = simdi;
+                    if (fizik > 0) {
+                        if (x.baslik.sira > son_sira) {
+                            fizik_bosluk += x.baslik.sira - son_sira - 1;
+                        } else {
+                            fizik_sira_artan = false;
+                        }
+                    }
+                    son_sira = x.baslik.sira;
                     ++fizik;
+                    if (simdi - bas > std::chrono::seconds(pencere_saniye) / 2) {
+                        ++fizik_ikinci_yari;
+                    }
+                } else if (x.baslik.kanal_id == 52 && x.yuk.size() >= 20) {
+                    // baglanti/durum'un bağlantıya özgü son 20 baytı: u64 ezilen, u64 düşen, u32 olay kuyruğu
+                    auto u64 = [&](std::size_t o) {
+                        std::uint64_t v = 0;
+                        for (std::size_t i = 8; i-- > 0;) {
+                            v = (v << 8u) | x.yuk[o + i];
+                        }
+                        return v;
+                    };
+                    hizli_ezilen = u64(x.yuk.size() - 20);
+                    hizli_dusen = u64(x.yuk.size() - 12);
+                    // Bu kareden önce görülen her boşluk, sunucunun bu kareyi yazarken saydığı ezilen
+                    // değerlerde bulunmalı (A3-K40, K41: bağlantıya özgü sayaç).
+                    bosluk_aciklanan = bosluk_aciklanan && fizik_bosluk <= hizli_ezilen;
+                    ++baglanti_karesi;
                 } else if (x.baslik.kanal_id == 30) {
                     ++ping;
                 } else if (x.baslik.kanal_id == 3 && kisitlayan_no != 0 && kisitlayan_ms < 0.0) {
@@ -213,24 +248,45 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
                 static_cast<unsigned long long>(say.dusen_dizi), static_cast<unsigned long long>(say.ezilen_durum),
                 static_cast<unsigned long long>(say.azami_cikis_bayt), static_cast<unsigned long long>(say.azami_bellek_tahmini),
                 static_cast<unsigned long long>(s.sunucu->yayinci().halka_tasma()));
-    // Ölçüt (A3-K33, K39): hızlı istemci her tikte yeni değer varsa onu alır; beklenen en çok
-    // min(üretilen, tik). Üretim ve tik aynı hızda (50 Hz) ama bağımsız saatlerde koştuğu için iki
-    // üretim aynı tik aralığına düşebilir (biri ezilir); %70 bu evre kaymasına pay bırakır. Yavaş
-    // istemcinin sunucuyu bekletmesi ise teslimi saniyelerce durdurur: en büyük boşluk 500 ms'yi
-    // aşmamalı. Sayılar platformun zamanlayıcısından bağımsızdır (ikisi de gerçekleşen değerdir).
+    // W4-K24: duvar saatine bağlı eşikler (adıyla: tik hızı, hızlı istemcinin aldığı çerçeve oranı,
+    // en büyük teslim boşluğu, kısıtlayan sonucunun gecikmesi) `GITHUB_ACTIONS` varken ölçüt
+    // sayılmaz, yazdırılır. Paylaşılan koşucuda (ve yerelde `taskpolicy -b` ile verimlilik
+    // çekirdeklerinde) hızlı istemcinin kendisi de okumada geri kalır: çerçeve oranı yavaş istemci
+    // olmadan da aynı ölçüde düşer (yerel deneme: yavaş istemciyle 74/133, yavaş istemci olmadan
+    // 71/115); bu sözleşmedeki seyreltmedir (A3-K40), yavaş istemcinin etkisi değil. İşlevsel
+    // ölçütler her ortamda geçerlidir: hızlı istemcide teslim pencerenin sonuna dek sürer, sıra
+    // numaraları artar ve her boşluk sunucunun bu bağlantı için saydığı ezilen değerlerle açıklanır.
+    const bool ci = std::getenv("GITHUB_ACTIONS") != nullptr;
+    auto zamanlama = [&](bool kosul, const std::string& ad) {
+        if (ci) {
+            std::printf("  ZAMANLAMA (W4-K24, CI'da ölçüt değil): %s: %s\n", ad.c_str(), kosul ? "tuttu" : "TUTMADI");
+        } else {
+            DOGRULA(d, kosul, ad);
+        }
+    };
     const std::uint64_t beklenen = std::min(uretilen_fizik, tikler);
     std::printf("ÖLÇÜM: pencere %.2f s; sunucu tiki %llu (%.1f Hz); dünya fizik/durum üretimi %llu (%.1f Hz); hızlı istemci %zu çerçeve "
                 "(beklenen en çok %llu); en büyük boşluk %.1f ms\n",
                 pencere_s, static_cast<unsigned long long>(tikler), static_cast<double>(tikler) / pencere_s,
                 static_cast<unsigned long long>(uretilen_fizik), static_cast<double>(uretilen_fizik) / pencere_s, fizik,
                 static_cast<unsigned long long>(beklenen), en_buyuk_bosluk);
-    DOGRULA(d, beklenen > 0 && static_cast<double>(fizik) >= 0.7 * static_cast<double>(beklenen),
-            "hızlı istemci yavaş olanı beklemeden aldı: " + std::to_string(fizik) + " / " + std::to_string(beklenen));
-    DOGRULA(d, en_buyuk_bosluk < 500.0, "hızlı istemcide teslim durmadı (en büyük boşluk < 500 ms)");
-    DOGRULA(d, static_cast<double>(tikler) / pencere_s > 40.0, "yayın tiki ≈ 50 Hz (A3-K33): " + std::to_string(tikler));
+    std::printf("ÖLÇÜM: hızlı istemci: fizik/durum sıra boşluğu %llu, bu_baglanti_ezilen_durum %llu, bu_baglanti_dusen_dizi %llu, "
+                "ikinci yarıda %zu çerçeve\n",
+                static_cast<unsigned long long>(fizik_bosluk), static_cast<unsigned long long>(hizli_ezilen),
+                static_cast<unsigned long long>(hizli_dusen), fizik_ikinci_yari);
+    // İşlevsel (her ortamda)
+    DOGRULA(d, fizik > 0 && fizik_ikinci_yari > 0, "hızlı istemcide teslim pencerenin sonuna dek sürdü");
+    DOGRULA(d, fizik_sira_artan, "fizik/durum sıra numaraları artan");
+    DOGRULA(d, baglanti_karesi > 0 && bosluk_aciklanan, "sıra boşlukları sunucunun saydığı ezilen değerlerle açıklanır (A3-K40)");
+    // Zamanlama (W4-K24)
+    zamanlama(beklenen > 0 && static_cast<double>(fizik) >= 0.7 * static_cast<double>(beklenen),
+              "hızlı istemci yavaş olanı beklemeden aldı: " + std::to_string(fizik) + " / " + std::to_string(beklenen));
+    zamanlama(en_buyuk_bosluk < 500.0, "hızlı istemcide teslim durmadı (en büyük boşluk < 500 ms)");
+    zamanlama(static_cast<double>(tikler) / pencere_s > 40.0, "yayın tiki ≈ 50 Hz (A3-K33): " + std::to_string(tikler));
     DOGRULA(d, say.dusen_dizi > 0, "yavaş istemcinin dizi kuyruğu düşürdü (A3-K41)");
     DOGRULA(d, bayrak_goruldu, "düşmeden sonraki çerçevede oncesinde_dusme");
-    DOGRULA(d, kisitlayan_ms >= 0.0 && kisitlayan_ms < 1000.0, "kısıtlayan komutun sonucu yavaş istemci varken geldi");
+    DOGRULA(d, kisitlayan_ms >= 0.0, "kısıtlayan komutun sonucu yavaş istemci varken geldi");
+    zamanlama(kisitlayan_ms < 1000.0, "kısıtlayan komutun sonucu 1 s içinde geldi");
     DOGRULA(d, sonuc.kisitlayan_uygulandi, "kısıtlayan komutun sonucu `uygulandi` (sol #14)");
     DOGRULA(d, sonuc.acil_basili, "yetkili acil durdurma basılı (sol #14)");
     DOGRULA(d, say.azami_cikis_bayt <= sinir::baski_esigi + sinir::ikili_ileti + 65536, "bağlantı çıkışı sınırlı");
