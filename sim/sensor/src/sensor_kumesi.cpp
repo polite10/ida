@@ -599,9 +599,13 @@ KurulumSonucu SensorKumesi::kur(const SensorKumesiAyari& ayar_girdi)
     // Chen–Millero, deniz suyunda Mackenzie; yüzeyde değerlendirilir).
     SensorKumesiAyari ayar = ayar_girdi;
     if (!ayar.ortam.su.ses_hizi) {
-        ayar.ortam.su.ses_hizi = sonar::ortam_ses_hizi(ayar.ortam.su.sicaklik_c, ayar.ortam.su.tuzluluk,
-                                                        std::nullopt, 0.0, ayar.ortam.su.yogunluk,
-                                                        ayar.ortam.yercekimi).c;
+        const sonar::SesHizi sh = sonar::ortam_ses_hizi(ayar.ortam.su.sicaklik_c, ayar.ortam.su.tuzluluk,
+                                                         std::nullopt, 0.0, ayar.ortam.su.yogunluk,
+                                                         ayar.ortam.yercekimi);
+        ayar.ortam.su.ses_hizi = sh.c;
+        if (sh.dislama) {
+            s.uyarilar.emplace_back(sonar::ses_hizi_uyarisi(sh));   // W4-sonar sol #8
+        }
     }
     if (ayar.adim_ns <= 0 || ayar.kontrol_periyodu_ns <= 0 ||
         ayar.kontrol_periyodu_ns % ayar.adim_ns != 0) {
