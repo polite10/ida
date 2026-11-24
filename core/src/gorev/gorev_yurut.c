@@ -142,6 +142,10 @@ static void hedef_dikey(ida_gor_gorev_t *v, float d, float w, float yuzey_d)
 static void oge_baslat(ida_gor_t *g, const ida_gor_girdi_t *gi)
 {
     ida_gor_gorev_t *v = &g->gv;
+    if (g->mission_item >= IDA_GOR_GOREV_AZAMI) {
+        iptal(g, IDA_FSR_GEOFENCE); /* savunma: çağıran mission_item < n ≤ 128 sağlar */
+        return;
+    }
     const ida_gor_oge_t *o = &v->oge[g->mission_item];
     const ida_param_t *p = gi->prm;
     v->oge_basladi = true;
@@ -208,6 +212,9 @@ static bool bacak_gecildi(const float bas[2], const float hedef[2], const float 
 static bool oge_yurut(ida_gor_t *g, const ida_gor_girdi_t *gi)
 {
     ida_gor_gorev_t *v = &g->gv;
+    if (g->mission_item >= IDA_GOR_GOREV_AZAMI) {
+        return false; /* savunma */
+    }
     const ida_gor_oge_t *o = &v->oge[g->mission_item];
     const ida_param_t *p = gi->prm;
     const float yuzey_d = ida_prm_f32(p, IDA_PRM_gor_yuzey_d);
@@ -390,7 +397,7 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
         v->oge_gecen_ns += dt; /* öğe süresi yalnız RUNNING'de */
     }
     v->kosuyordu = true;
-    if (g->mission_item >= v->n) {
+    if ((g->mission_item >= v->n) || (g->mission_item >= IDA_GOR_GOREV_AZAMI)) {
         g->mission_state = (uint8_t)IDA_MS_COMPLETE; /* boş görev (savunma) */
         v->hedef.yatay = (uint8_t)IDA_GOR_HY_YOK;
         return;
@@ -403,8 +410,7 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
     }
     const bool bitti = oge_yurut(g, gi);
     if (bitti) {
-        const ida_gor_oge_t *o = &v->oge[g->mission_item];
-        v->onceki_yol = o->tur == (uint8_t)IDA_MI_WAYPOINT;
+        v->onceki_yol = v->oge[g->mission_item].tur == (uint8_t)IDA_MI_WAYPOINT;
         v->onceki_ne[0] = v->oge_hedef_ne[0];
         v->onceki_ne[1] = v->oge_hedef_ne[1];
         if ((uint32_t)g->mission_item + 1u >= (uint32_t)v->n) {
