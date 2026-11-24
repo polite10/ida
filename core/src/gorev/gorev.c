@@ -88,6 +88,7 @@ void ida_gor_oturum_basi(ida_gor_t *g)
     g->tut_derinlik_var = false;
     g->tut_yon_var = false;
     g->tut_konum_var = false;
+    ida_gor_gorev_oturum_basi(g);
 }
 
 void ida_gor_ornek(ida_gor_t *g, const ida_sample_t *s)
@@ -141,6 +142,10 @@ static void nav_goruntusu(ida_gor_t *g, const ida_gor_girdi_t *gi)
     g->yuzeyde = g->nav_derinlik_var &&
                  (g->nav_derinlik <= ida_prm_f32(gi->prm, IDA_PRM_gor_yuzey_d));
     g->yukselme_hizi = ida_prm_f32(gi->prm, IDA_PRM_gor_yukselme_hizi);
+    g->nav_irtifa_var = gi->irtifa_var && ida_sonlu(gi->irtifa) && (gi->irtifa >= 0.0f);
+    g->nav_irtifa = g->nav_irtifa_var ? gi->irtifa : -1.0f;
+    g->gnss_taze = gi->gnss_taze && g->nav_konum_var;
+    g->t_olcum_ns = gi->t_olcum_ns;
 }
 
 /* Tutma hedefleri bulunulan durumdan yakalanır: silahlanmada, kip değişiminde ve arıza eylemi
@@ -213,6 +218,10 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     const bool armed0 = yetki->armed;
     const uint8_t onceki_fs = g->fs_level;
 
+    /* 0. Görev (W5-gorev-yurutucu): ilerleme, bitiş, zaman aşımı, engeller. Kip düşmesinden
+       önce: aynı adımda biten görev AUTO'yu düşürür; iptal mandalı bu adımın arızasına girer. */
+    ida_gor_gorev_adim(g, yetki, gi);
+
     /* 1. Kip: tanımsız kip silahsız (EMNİYET); INIT'ten çıkış; ön koşul düşmeleri. */
     const uint8_t kip0 = yetki->mode;
     if (yetki->mode >= IDA_GOR_KIP_SAYI) {
@@ -225,7 +234,8 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
             (void)ida_gor_kip_uygula(yetki, (uint8_t)IDA_GOR_OLAY_KONUM_YOK, gun, now);
         }
         if ((yetki->mode == (uint8_t)IDA_MODE_AUTO) &&
-            (g->mission_state != (uint8_t)IDA_MS_RUNNING)) {
+            (g->mission_state != (uint8_t)IDA_MS_RUNNING) &&
+            (g->mission_state != (uint8_t)IDA_MS_PAUSED)) {
             (void)ida_gor_kip_uygula(yetki, (uint8_t)IDA_GOR_OLAY_GOREV_YOK, gun, now);
         }
     }
@@ -233,8 +243,11 @@ void ida_gor_adim_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_gor_girdi_t *gi,
     /* Bu adımdaki kip değişimi INIT'ten çıkış değilse daraltmadır (W3-K2). */
     const bool kip_dustu = (yetki->mode != kip0) && (kip0 != (uint8_t)IDA_MODE_INIT);
 
-    /* 2. Arıza eylemi (kipin son hâline göre). */
+    /* 2. Arıza eylemi (kipin son hâline göre). Arıza görevin önündedir: HOLD görevi duraklatır,
+       SURFACE ve üstü iptal eder (iptal mandalı aynı adımda). */
     ida_gor_ariza_degerlendir(g, yetki, gi, gun);
+    ida_gor_gorev_ariza(g, yetki->mode, gun, now);
+    g->irtifa_kisit = (g->etkin & IDA_GOR_K_BIT(IDA_GOR_K_IRTIFA)) != 0u;
     g->dalis_yasak = (g->etkin & IDA_GOR_K_BIT(IDA_GOR_K_SIZINTI_BAYAT)) != 0u;
     if (g->dalis_yasak && !g->onceki_dalis_yasak) {
         /* derinlik hedefi bulunulan derinliğe kırpılır: kontrol referansı da yenilenir */
@@ -294,6 +307,19 @@ static void girdi_topla(const ida_core_t *c, ida_gor_girdi_t *gi)
     gi->nav_yon = ida_atan2(2.0f * ((w * z) + (x * y)), 1.0f - (2.0f * ((y * y) + (z * z))));
     gi->nav_ne[0] = nav.p_ned[0];
     gi->nav_ne[1] = nav.p_ned[1];
+    gi->t_olcum_ns = c->cer.tf_t_ns;
+    /* nav.altitude (bilinmiyorsa −1); INIT ve FAULT'ta nav sıfırdır (A4-K87): irtifa yok sayılır. */
+    gi->irtifa_var = (gi->est_level != (uint8_t)IDA_EST_INIT) &&
+                     (gi->est_level < (uint8_t)IDA_EST_FAULT) && (nav.altitude >= 0.0f);
+    gi->irtifa = nav.altitude;
+    gi->orijin_lat_e7 = nav.origin_lat_e7;
+    gi->orijin_lon_e7 = nav.origin_lon_e7;
+    /* GNSS konumu füzyonlandı ve taze (kestirimin "mutlak başvuru" koşulu, kes_yatay.c
+       gnss_konum_taze ile aynı): ölü hesap yolu ve WAIT_GNSS (W5-K24). Yalnız okunur. */
+    const ida_kes_t *k = &c->kes;
+    gi->gnss_taze =
+        k->konum_var && !k->kusku_gnss_p && k->akis_gnss.destek_var &&
+        ((now.ns - k->akis_gnss.destek_ns) <= ida_ms_ns(ida_prm_u32(&c->prm, IDA_PRM_t_gnss_stale)));
     gi->prm = &c->prm;
 }
 
@@ -344,7 +370,8 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
         return;
     }
     const bool gorev_hazir = (g->mission_state == (uint8_t)IDA_MS_LOADED) ||
-                             (g->mission_state == (uint8_t)IDA_MS_PAUSED);
+                             (g->mission_state == (uint8_t)IDA_MS_PAUSED) ||
+                             (g->mission_state == (uint8_t)IDA_MS_RUNNING);
     /* W3-K7: GUIDED tutum, yön ve derinlik ister (yatay istemez); AUTO ayrıca yatay
        geçerlilik (ida_gor_yatay_gecerli) ve yüklü görev ister. */
     const bool dikey = g->nav_tutum_var && g->nav_yon_var && g->nav_derinlik_var;
@@ -357,6 +384,13 @@ static void kip_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t 
     }
     const uint8_t onceki = yetki->mode;
     (void)ida_gor_kip_uygula(yetki, olay, gun, b->now_w.ns);
+    if (yetki->mode == (uint8_t)IDA_MODE_AUTO) {
+        ida_gor_gorev_kip_auto(g); /* LOADED → RUNNING (öğe 0); PAUSED → RUNNING */
+    } else if (onceki == (uint8_t)IDA_MODE_AUTO) {
+        ida_gor_gorev_kip_cikis(g); /* AUTO'dan çıkış: görev duraklar */
+    } else {
+        /* görev etkilenmez */
+    }
     if (yetki->mode != onceki) {
         /* W3-K13 (sol bulgu 1): arıza düzeyi yeni kipin sütununa göre o anda yeniden
            hesaplanır (mandallar, düzey, FAILSAFE_CHANGE) ve arm ön koşulunun görüntüsü
@@ -386,6 +420,7 @@ static void ariza_sifirla_komutu(ida_gor_t *g, ida_emn_t *yetki, const ida_komut
     }
     const uint8_t onceki = g->fs_level;
     g->mandal = 0u;
+    g->gv.iptal_nedeni = 0u; /* görev iptal mandalının nedeni de temizlenir */
     ida_gor_ariza_yayinla(g, yetki->mode, gun, b->now_w.ns);
     if (g->fs_level != onceki) {
         tut_yakala(g, yetki);
@@ -422,8 +457,15 @@ void ida_gor_komut_ic(ida_gor_t *g, ida_emn_t *yetki, const ida_komut_baglam_t *
     case IDA_CMD_FAILSAFE_RESET:
         ariza_sifirla_komutu(g, yetki, b, r, prm, gun);
         break;
+    case IDA_CMD_MISSION_BEGIN:
+    case IDA_CMD_MISSION_ITEM:
+    case IDA_CMD_MISSION_END:
+    case IDA_CMD_MISSION_CTL:
+        /* Nötr (3.17): kip ve silahlandırmaya yazmaz (W5-gorev-yurutucu). */
+        ida_gor_gorev_komut(g, yetki, cmd, r);
+        break;
     default:
-        /* MISSION_* dilim 2'dedir; bilinmeyen tür etkisizdir (A4-K124). */
+        /* Bilinmeyen tür etkisizdir (A4-K124). */
         desteksiz(r);
         break;
     }
@@ -482,6 +524,13 @@ void ida_gor_durum(const ida_gor_t *g, ida_status_t *st)
         st->regime = 0u;
         st->phase = 0u;
     }
+    /* AUTO'da yürüyen ya da duraklamış görevin güdüm aşaması (02 §2.4; arıza eylemi yoksa). */
+    if (g->nav_derinlik_var && (g->son_kip == (uint8_t)IDA_MODE_AUTO) &&
+        (g->gv.hedef.yatay != (uint8_t)IDA_GOR_HY_YOK) && (g->fs_level < (uint8_t)IDA_FS_HOLD) &&
+        ((g->mission_state == (uint8_t)IDA_MS_RUNNING) ||
+         (g->mission_state == (uint8_t)IDA_MS_PAUSED))) {
+        st->phase = g->gv.hedef.asama;
+    }
     st->mission_state = g->mission_state;
     st->mission_item = g->mission_item;
 }
@@ -512,12 +561,13 @@ bool ida_gor_tutarli(const ida_gor_t *g)
         b_gecerli(&g->yuzeyde) && b_gecerli(&g->dalis_yasak) &&
         b_gecerli(&g->tut_derinlik_var) && b_gecerli(&g->tut_yon_var) &&
         b_gecerli(&g->tut_konum_var) && b_gecerli(&g->onceki_dalis_yasak);
-    if (!bool_gecerli) {
+    if (!bool_gecerli || !ida_gor_gorev_tutarli(g)) {
         return false;
     }
     const uint32_t nedenler = IDA_FSR_LEAK | IDA_FSR_GCS_LOSS | IDA_FSR_BATT_LOW |
                               IDA_FSR_BATT_CRIT | IDA_FSR_EST_DEGRADED | IDA_FSR_EST_BAD |
-                              IDA_FSR_NUMERIC | IDA_FSR_IMU_STALE | IDA_FSR_PARAM;
+                              IDA_FSR_NUMERIC | IDA_FSR_IMU_STALE | IDA_FSR_PARAM |
+                              IDA_FSR_GEOFENCE | IDA_FSR_ALT_MIN;
     return (g->son_kip < IDA_GOR_KIP_SAYI) && (g->fs_level <= (uint8_t)IDA_FS_DISARM) &&
            ((g->fs_nedenleri & ~nedenler) == 0u) && ((g->etkin & ~IDA_GOR_K_TANIMLI) == 0u) &&
            ((g->mandal & ~IDA_GOR_K_TANIMLI) == 0u) && (g->est_level <= (uint8_t)IDA_EST_FAULT) &&

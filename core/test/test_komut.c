@@ -116,7 +116,7 @@ static void test_317_yer_tutucu_satirlari(void)
     desteksiz_bekle(4u); /* MANUAL: bu sürümde yok */
     /* GUIDED_SP güdümce uygulanır (W3-zincir): mask = 0 → OUT_OF_RANGE (3.17, A4-K50). */
     ret_bekle(5u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
-    desteksiz_bekle(6u); /* MISSION_BEGIN: görev dilim 2 */
+    ret_bekle(6u, (uint16_t)IDA_REASON_OUT_OF_RANGE); /* MISSION_BEGIN count 0 (W5-gorev) */
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, sonuc_al(7u)->ack);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NONE, sonuc_al(7u)->reason);
     ret_bekle(8u, (uint16_t)IDA_REASON_BAD_MODE);
@@ -128,9 +128,10 @@ static void test_317_yer_tutucu_satirlari(void)
     komut(3u, 14u, (uint8_t)IDA_CMD_SET_MODE);
     IN.cmds[3].u.set_mode.mode = (uint8_t)IDA_MODE_AUTO;
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    desteksiz_bekle(11u);
-    desteksiz_bekle(12u);
-    desteksiz_bekle(13u);
+    /* W5-gorev-yurutucu: açık yükleme yok (ITEM, END), action 0 (CTL) → OUT_OF_RANGE. */
+    ret_bekle(11u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    ret_bekle(12u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    ret_bekle(13u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
     ret_bekle(14u, (uint16_t)IDA_REASON_BAD_MODE);
     /* UNSUPPORTED pencereye girer (A4-K48) */
     IN.n_cmds = 0u;

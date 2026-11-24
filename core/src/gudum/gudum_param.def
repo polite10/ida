@@ -7,3 +7,9 @@
  * kestirimde yok (W3-kestirim dilim 1), bu yüzden kazanç fizikle ayarlanmadı.
  */
 IDA_PARAM(0x0301u, GUD_POS_KP, F32, A, 0.0f, 5.0f, 0.3f, gud_konum_kp) /* 1/s, TAHMİN */
+/* W5-gorev-yurutucu (02 §2.4): ILOS yol takibi (Caharija vd. 2016; Fossen ve Pettersen 2014),
+   derinlik referans modelinin ivme sınırı, GUIDED_SP'nin tazelik süresi (02 §2.6). TAHMİN. */
+IDA_PARAM(0x0302u, GUD_LOS_DELTA, F32, A, 0.5f, 50.0f, 3.0f, gud_los_delta)  /* m, ileri bakış */
+IDA_PARAM(0x0303u, GUD_ILOS_SIGMA, F32, A, 0.0f, 1.0f, 0.2f, gud_ilos_sigma) /* integral kazancı */
+IDA_PARAM(0x0304u, GUD_DER_IVME, F32, A, 0.01f, 2.0f, 0.05f, gud_der_ivme)   /* m/s², derinlik ref. */
+IDA_PARAM(0x0305u, GUD_SP_ASIM_MS, U32, A, 500u, 60000u, 3000u, gud_sp_asim_ms) /* ms; 02 §2.6 (3 s) */

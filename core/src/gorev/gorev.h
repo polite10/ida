@@ -18,8 +18,14 @@
  * FAILSAFE_RESET'in kararı adım anındaki görüntüye dayanır; aynı çağrıdaki komutların
  * sırasından bağımsızdır.
  *
- * Komutlar (tablo 3.17): HEARTBEAT (A4-K52), ARM, SET_MODE (GUIDED/AUTO), FAILSAFE_RESET bu
- * sürümde uygulanır; MISSION_* dilim 2'dedir ve UNSUPPORTED / NONE alır (A4-K124).
+ * Komutlar (tablo 3.17): HEARTBEAT (A4-K52), ARM, SET_MODE (GUIDED/AUTO), FAILSAFE_RESET,
+ * MISSION_BEGIN/ITEM/END/CTL (W5-gorev-yurutucu; gorev_yukle.c).
+ *
+ * Görev (W5-gorev-yurutucu; 02 §2.6): atomik yükleme (A4-K51, A1 Tablo 3.6a), durum makinesi
+ * IDLE → LOADED → RUNNING ⇄ PAUSED → COMPLETE | ABORTED, öğe yürütücüleri (gorev_yurut.c).
+ * Yürütücü yalnız güdüme hedef (ida_gor_hedef_t) üretir; arıza eylemi her zaman görevin
+ * önündedir: HOLD görevi duraklatır, SURFACE ve üstü görevi iptal eder. Görev hiçbir koşulda
+ * silahlandırma, kip genişletmesi, atış izni ya da FC komutu üretmez.
  */
 #ifndef IDA_CORE_GOREV_H
 #define IDA_CORE_GOREV_H
@@ -35,6 +41,92 @@
 
 /* Kestirim bileşenlerinin geçerliliği (W3-K5): kestirim/kestirim.h'nin IDA_KES_G_* bitleri
    (ida_kes_gecerlilik). Kontrol isteği: kontrol/kontrol.h'nin ida_kon_istek_t'si (IDA_KON_*). */
+
+/* ---- Görev deposu ve yürütücüsü (W5-gorev-yurutucu; 02 §2.6, A4-K51, A1 Tablo 3.6a) ----- */
+
+#define IDA_GOR_GOREV_AZAMI 128u /* A4 3.17 MISSION_BEGIN: count 1–128 */
+
+/* Öğenin konum alanları: LOCAL'de ne (m, NED, senaryo orijini), GLOBAL'de ll (lat_e7, lon_e7);
+   NONE'da kullanılmaz. Yalnız çerçevenin üyesi okunur. */
+typedef union {
+    float ne[2];
+    int32_t ll[2];
+} ida_gor_konum_t;
+
+/* Depodaki öğe (ida_mission_item_t'nin index'siz, sıkıştırılmış biçimi; 32 B). */
+typedef struct {
+    uint8_t tur;     /* IDA_MI_*       */
+    uint8_t cerceve; /* IDA_MI_FRAME_* */
+    uint8_t bos[2];
+    float p[4];
+    ida_gor_konum_t konum;
+    float derinlik;  /* m, aşağı +     */
+} ida_gor_oge_t;
+
+/* Yürütücünün güdüme verdiği hedef (gudum.c ida_gud_adim / ida_gud_kon_istegi okur). */
+#define IDA_GOR_HY_YOK 0u /* güdüm hedefi yok: AUTO isteği görev modülünün tutmasıdır      */
+#define IDA_GOR_HY_YOL 1u /* bas_ne → hedef_ne doğrusunda yol takibi (ILOS), hız `hiz`      */
+#define IDA_GOR_HY_TUT 2u /* hedef_ne'de konum ve `yon`'de yön tutma                        */
+#define IDA_GOR_HD_DERINLIK 0u /* derinlik referansı hedef_d'ye, en çok `dikey_hiz`          */
+#define IDA_GOR_HD_YUZEY    1u /* yüzeye çıkış (`dikey_hiz`); yüzeyde dikey kapalı (yüzey kipi) */
+
+typedef struct {
+    uint8_t yatay;     /* IDA_GOR_HY_*                                                      */
+    uint8_t dikey;     /* IDA_GOR_HD_*                                                      */
+    uint8_t asama;     /* IDA_PH_* (status.phase; AUTO'da)                                  */
+    uint32_t kusak;    /* hedef değişti (öğe, durum): güdüm ILOS integralini sıfırlar        */
+    float bas_ne[2];   /* m, NED                                                            */
+    float hedef_ne[2]; /* m, NED                                                            */
+    float hiz;         /* m/s, yol hızı (YOL)                                               */
+    float yon;         /* rad (TUT)                                                         */
+    float hedef_d;     /* m (DERINLIK)                                                      */
+    float dikey_hiz;   /* m/s, referansın hız sınırı (> 0)                                  */
+} ida_gor_hedef_t;
+
+typedef struct {
+    /* Yürürlükteki görev */
+    ida_gor_oge_t oge[IDA_GOR_GOREV_AZAMI];
+    uint16_t n;
+    /* Açık yükleme (A4-K51: ya tümü ya hiçbiri; ayrı tampon) */
+    ida_gor_oge_t yuk[IDA_GOR_GOREV_AZAMI];
+    uint16_t yuk_n;            /* MISSION_BEGIN'in count'u                                    */
+    uint16_t yuk_alinan;       /* sırayla kabul edilen öğe                                    */
+    bool yuk_acik;
+    /* Yürütme */
+    bool oge_basladi;          /* etkin öğenin başlangıcı yapıldı                             */
+    bool kosuyordu;            /* önceki adımın sonunda RUNNING (öğe süresi sayılır)          */
+    bool operator_durdu;       /* MISSION_CTL PAUSE ya da silahsızlanma: yalnız RESUME ya da
+                                  SET_MODE(AUTO) kaldırır                                     */
+    bool dr_bekliyor;          /* ölü hesap yol sınırı: yüzeyde GNSS bekleniyor (W5-K24)      */
+    bool iptal_bekliyor;       /* görevin iptal isteği arıza mandalına alınmadı               */
+    bool gorev_bas_var;
+    bool son_now_var;
+    bool onceki_yol;           /* önceki öğe yol noktasıydı: bacak onun hedefinden başlar     */
+    bool bant_say;             /* DIVE_TO bandı sayılıyor / HOLD'da önceki RUNNING adımı içerideydi */
+    bool dr_son_var;
+    bool durak_var;            /* duraklama noktası yakalandı                                 */
+    uint8_t asama;             /* öğe içi: WAIT_GNSS 0 yükselme, 1 bekleme                     */
+    uint32_t iptal_nedeni;     /* IDA_FSR_*: iptal mandalının nedeni                          */
+    int64_t gorev_bas_ns;      /* duvar: görevin başladığı an (toplam görev süresi)           */
+    int64_t son_now_ns;
+    int64_t oge_gecen_ns;      /* duvar: öğede RUNNING geçen süre                             */
+    int64_t oge_asim_ns;       /* duvar: öğenin (ya da alt aşamanın) zaman aşımı              */
+    int64_t bant_bas_ns;       /* ölçüm zamanı: DIVE_TO bandının başı; HOLD'da son içerideki
+                                  RUNNING adımının ölçüm zamanı                               */
+    int64_t hold_birikim_ns;   /* ölçüm zamanı: HOLD'da RUNNING ve tolerans içinde biriken süre */
+    int64_t dr_bas_ns;         /* duvar: GNSS beklemesinin başı                               */
+    float dr_yol;              /* m: GNSS desteği olmadan kat edilen yatay yol                 */
+    float dr_son_ne[2];
+    float onceki_ne[2];        /* önceki yol noktasının hedefi                                */
+    float oge_ne[2];           /* öğe başında yakalanan konum, derinlik ve yön                */
+    float oge_d;
+    float oge_yon;
+    float oge_hedef_ne[2];     /* öğenin yatay hedefi (LOCAL/GLOBAL çözülmüş ya da oge_ne)    */
+    float durak_ne[2];         /* duraklamada yakalanan konum, derinlik ve yön                */
+    float durak_d;
+    float durak_yon;
+    ida_gor_hedef_t hedef;
+} ida_gor_gorev_t;
 
 /* ---- Modül durumu ------------------------------------------------------------------------ */
 
@@ -105,9 +197,16 @@ typedef struct {
     float tut_ne[2];
     /* Kuşaklar (sol bulgular 1, 2; EMNİYET) */
     bool onceki_dalis_yasak;
-    /* Görev (dilim 2) */
+    /* Konuma dayalı arıza koşulları ve görevin girdileri (W5-gorev-yurutucu) */
+    bool nav_irtifa_var;       /* nav.altitude ≥ 0 ve sonlu                                 */
+    float nav_irtifa;          /* m                                                         */
+    bool gnss_taze;            /* GNSS konumu füzyonlandı ve taze (kestirim)                */
+    bool irtifa_kisit;         /* en az irtifa koşulu etkin: güdüm derinleşmeyi keser       */
+    int64_t t_olcum_ns;        /* son zaman çerçevesinin ölçüm zamanı                        */
+    /* Görev */
     uint8_t mission_state;     /* IDA_MS_*                                                  */
     uint16_t mission_item;
+    ida_gor_gorev_t gv;
 } ida_gor_t;
 
 void ida_gor_kur(ida_gor_t *g);
