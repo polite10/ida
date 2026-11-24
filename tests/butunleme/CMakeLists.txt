@@ -84,8 +84,9 @@ set_tests_properties(butunleme.a4_girdi_esitligi PROPERTIES TIMEOUT 300)
 add_test(NAME butunleme.z1_sil_tcp COMMAND ida_butunleme_test z1_sil_tcp $<TARGET_FILE:ida_sil>)
 set_tests_properties(butunleme.z1_sil_tcp PROPERTIES TIMEOUT 300)
 if(NOT WIN32)
-  # Sözde uçbirim yalnız POSIX'te; gerçek zamanlı 60 s (zamanlamaya duyarlı: ağır yük altında
-  # koşturulmaz; ölçümün eşiği yoktur).
+  # Sözde uçbirim yalnız POSIX'te (Windows'ta bu testler tanımlanmaz); gerçek zamanlı 60 s
+  # (zamanlamaya duyarlı: ağır yük altında koşturulmaz). Duvar saati eşikleri W4-K24'e göre
+  # `GITHUB_ACTIONS` ve sanitizer'lı derlemede yalnız yazdırılır (sim/kopru/test/zamanlama_olcutu.hpp).
   add_test(NAME butunleme.hil_pty COMMAND ida_butunleme_test hil_pty)
   set_tests_properties(butunleme.hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   add_test(NAME butunleme.hil_cikarma_takma COMMAND ida_butunleme_test hil_cikarma_takma)

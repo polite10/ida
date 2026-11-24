@@ -1,5 +1,6 @@
 // Taşıma sınamaları: bellek, TCP (A1-K97) ve sözde uçbirimle seri port yolu (A1-K01).
 #include "test_destek.hpp"
+#include "zamanlama_olcutu.hpp"   // W4-K24
 
 #include <algorithm>
 #include <chrono>
@@ -178,12 +179,16 @@ int test_yazma_sinirli()
     const bool ok = sunucu->yaz(v.data(), v.size(), 300'000);
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
     DOGRULA(d, !ok, "okumayan karşı uca yazım başarısız döndü");
-    DOGRULA(d, ms < 2000, "sınırlı sürede (" + std::to_string(ms) + " ms; sınır 300 ms + bir dilim)");
+    // ZAMANLAMA (W4-K24): üst sınır duvar saatine bağlı; başarısızlık işlevseldir (yukarıda).
+    DOGRULA(d, ida::test::zamanlama(ms < 2000, "yazma_sinirli.tcp_sure", std::to_string(ms) + " ms (< 2000)"),
+            "sınırlı sürede (zamanlama)");
     // Tampon doluyken yaz_biraz beklemeden 0 döner.
     const auto t1 = std::chrono::steady_clock::now();
     const long long k = sunucu->yaz_biraz(v.data(), 4096);
     const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t1).count();
-    DOGRULA(d, k == 0 && us < 50'000, "dolu tamponda yaz_biraz 0 ve beklemesiz (" + std::to_string(us) + " µs)");
+    DOGRULA(d, k == 0, "dolu tamponda yaz_biraz 0 (" + std::to_string(k) + ")");
+    DOGRULA(d, ida::test::zamanlama(us < 50'000, "yazma_sinirli.yaz_biraz_beklemesiz", std::to_string(us) + " µs (< 50 000)"),
+            "yaz_biraz beklemesiz (zamanlama)");
 
     // Platformdan bağımsız kısım (Windows CI'da düşen eski vaka): sahte uç, her çağrıda en çok
     // 3 bayt yazar; her ikinci çağrıda ilerlemez; `durgun_sonra` çağrıdan sonra hiç ilerlemez.
@@ -238,7 +243,9 @@ int test_yazma_sinirli()
     const auto ms2 = ms_gecen(t2);
     std::printf("  tanı (2): sonuç %d, yazılan %zu, alınan %zu, çağrı %d (ilerlemesiz %d), %lld ms (sınır 200)\n",
                 ok2 ? 1 : 0, yazilan, ks2.al.size(), ks2.sayac, ks2.sifir, static_cast<long long>(ms2));
-    DOGRULA(d, !ok2 && ms2 >= 200 && ms2 < 1500, "durgun uca yazım süre sınırında başarısız döndü");
+    DOGRULA(d, !ok2 && ms2 >= 200, "durgun uca yazım süre sınırından önce dönmedi ve başarısız döndü");
+    DOGRULA(d, ida::test::zamanlama(ms2 < 1500, "yazma_sinirli.durgun_sure", std::to_string(ms2) + " ms (< 1500)"),
+            "durgun uca yazım süre sınırından kısa sürede döndü (zamanlama)");
     DOGRULA(d, yazilan == 30u && ks2.al.size() == 30u && std::equal(ks2.al.begin(), ks2.al.end(), w.begin()),
             "yazılan önek bildirildi; veri bozulmadı ve yinelenmedi");
     ks2.durgun_sonra = -1;
