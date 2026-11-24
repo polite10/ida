@@ -210,14 +210,13 @@ bool gltf_kurallari(const Glb& g, Ret& ret)
         }
     }
     // A7-K10: dış URI yok; tek tampon GLB'nin BIN parçasıdır.
-    if (const auto* bs = dizi(j, "buffers")) {
-        for (std::size_t i = 0; i < bs->size(); ++i) {
-            if ((*bs)[i].bul("uri") != nullptr) return ret("GLTF", "tampon " + std::to_string(i) + " dış URI kullanıyor");
-            if (i > 0) return ret("GLTF", "GLB'de BIN parçası dışında tampon var");
-            std::int64_t n = 0;
-            if (!tam_al((*bs)[i].bul("byteLength"), n) || n < 0 || static_cast<std::uint64_t>(n) > g.bin.size()) {
-                return ret("GLTF", "tampon 0 byteLength BIN parçasıyla uyuşmuyor");
-            }
+    {
+        const auto* bs = dizi(j, "buffers");
+        if (bs == nullptr || bs->size() != 1u) return ret("GLTF", "buffers tam bir eleman olmalı (GLB'nin BIN parçası)");
+        if ((*bs)[0].bul("uri") != nullptr) return ret("GLTF", "tampon 0 dış URI kullanıyor");
+        std::int64_t n = 0;
+        if (!tam_al((*bs)[0].bul("byteLength"), n) || n < 0 || static_cast<std::uint64_t>(n) > g.bin.size()) {
+            return ret("GLTF", "tampon 0 byteLength BIN parçasıyla uyuşmuyor");
         }
     }
     if (const auto* im = dizi(j, "images")) {
@@ -341,7 +340,7 @@ struct Gorunum {
     std::size_t bas = 0, adim = 0, sayi = 0;
 };
 
-bool erisimci(const Glb& g, std::int64_t ai, std::size_t eleman, Gorunum& o, std::string& neden)
+bool erisimci(const Glb& g, std::int64_t ai, std::size_t eleman, std::size_t bilesen, Gorunum& o, std::string& neden)
 {
     const auto* ac = dizi(g.json, "accessors");
     const auto* bv = dizi(g.json, "bufferViews");
@@ -359,7 +358,7 @@ bool erisimci(const Glb& g, std::int64_t ai, std::size_t eleman, Gorunum& o, std
         neden = "erişimci sayısı geçersiz";
         return false;
     }
-    if (e.bul("byteOffset") != nullptr && (!tam_al(e.bul("byteOffset"), eo) || eo < 0)) {
+    if (e.bul("byteOffset") != nullptr && (!tam_al(e.bul("byteOffset"), eo) || eo < 0 || eo % static_cast<std::int64_t>(bilesen) != 0)) {
         neden = "erişimci byteOffset geçersiz";
         return false;
     }
@@ -374,18 +373,29 @@ bool erisimci(const Glb& g, std::int64_t ai, std::size_t eleman, Gorunum& o, std
         neden = "bufferView sınırları geçersiz";
         return false;
     }
-    if (v.bul("byteStride") != nullptr && (!tam_al(v.bul("byteStride"), adim) || adim < static_cast<std::int64_t>(eleman))) {
+    if (v.bul("byteStride") != nullptr && (!tam_al(v.bul("byteStride"), adim) || adim < static_cast<std::int64_t>(eleman) || adim > 252 || adim % 4 != 0)) {
         neden = "byteStride geçersiz";
         return false;
     }
-    const std::uint64_t bin = g.bin.size();
-    if (static_cast<std::uint64_t>(vo) > bin || static_cast<std::uint64_t>(vl) > bin - static_cast<std::uint64_t>(vo)) {
+    // Sınırlar çarpmadan, bölmeyle sınanır (64 bit taşma yok); sayi >= 1 yukarıda sağlandı.
+    std::uint64_t sinir = g.bin.size();
+    {
+        const auto* bs = dizi(g.json, "buffers");
+        std::int64_t bl = -1;
+        if (bs == nullptr || bs->size() != 1u || !tam_al((*bs)[0].bul("byteLength"), bl) || bl < 0) {
+            neden = "buffers[0].byteLength geçersiz";
+            return false;
+        }
+        sinir = std::min<std::uint64_t>(sinir, static_cast<std::uint64_t>(bl));
+    }
+    if (static_cast<std::uint64_t>(vo) > sinir || static_cast<std::uint64_t>(vl) > sinir - static_cast<std::uint64_t>(vo)) {
         neden = "bufferView BIN parçasının dışında";
         return false;
     }
-    const std::uint64_t gerek = static_cast<std::uint64_t>(eo) +
-                                static_cast<std::uint64_t>(adim) * static_cast<std::uint64_t>(sayi - 1) + eleman;
-    if (static_cast<std::uint64_t>(sayi) > bin || gerek > static_cast<std::uint64_t>(vl)) {
+    const std::uint64_t vlu = static_cast<std::uint64_t>(vl);
+    const std::uint64_t eou = static_cast<std::uint64_t>(eo);
+    if (eou > vlu || eleman > vlu - eou ||
+        static_cast<std::uint64_t>(sayi - 1) > (vlu - eou - eleman) / static_cast<std::uint64_t>(adim)) {
         neden = "erişimci bufferView'in dışına taşıyor";
         return false;
     }
@@ -448,7 +458,7 @@ bool ag_oku(const Glb& g, std::size_t dugum, const std::string& ad, const Don& g
         (void)tam_al(p.yol_bul("attributes.POSITION"), ai);
         Gorunum kg;
         std::string neden;
-        if (!erisimci(g, ai, 12u, kg, neden)) return ret("GLTF", "POSITION: " + neden, static_cast<int>(dugum), ad);
+        if (!erisimci(g, ai, 12u, 4u, kg, neden)) return ret("GLTF", "POSITION: " + neden, static_cast<int>(dugum), ad);
         const std::size_t taban = o.koseler.size();
         for (std::size_t k = 0; k < kg.sayi; ++k) {
             float f[3];
@@ -475,7 +485,7 @@ bool ag_oku(const Glb& g, std::size_t dugum, const std::string& ad, const Don& g
                 return ret("GLTF", "indices u8/u16/u32 SCALAR değil", static_cast<int>(dugum), ad);
             }
             Gorunum ig;
-            if (!erisimci(g, ii, boy, ig, neden)) return ret("GLTF", "indices: " + neden, static_cast<int>(dugum), ad);
+            if (!erisimci(g, ii, boy, boy, ig, neden)) return ret("GLTF", "indices: " + neden, static_cast<int>(dugum), ad);
             idx.resize(ig.sayi);
             for (std::size_t k = 0; k < ig.sayi; ++k) {
                 const char* q = g.bin.data() + ig.bas + k * ig.adim;
@@ -713,6 +723,25 @@ std::optional<A7Varlik> a7_varlik_yukle(const Deger& manifest, std::string_view 
         }
         dunya[i] = d;
     }
+    // A7-K20: adı REF olan düğüm tam bir tane; A7-K21: ağ taşıyan her düğümün mesh indeksi dizi içinde.
+    {
+        std::size_t ref_sayisi = 0;
+        const auto* ms = dizi(j, "meshes");
+        for (std::size_t i = 0; i < nn; ++i) {
+            if (dizgi((*nodes)[i].bul("name")) == "REF") ++ref_sayisi;
+            if (const Deger* m = (*nodes)[i].bul("mesh")) {
+                std::int64_t mi = -1;
+                if (!tam_al(m, mi) || ms == nullptr || mi < 0 || static_cast<std::size_t>(mi) >= ms->size()) {
+                    ret("GLTF", "düğümün mesh indeksi meshes dizisinin dışında", static_cast<int>(i), dizgi((*nodes)[i].bul("name")));
+                    return std::nullopt;
+                }
+            }
+        }
+        if (ref_sayisi != 1u) {
+            ret("DUGUM", "adı REF olan düğüm sayısı " + std::to_string(ref_sayisi) + " (beklenen 1)");
+            return std::nullopt;
+        }
+    }
     // Roller (A7-K20, K21).
     std::vector<RolGirdisi> roller;
     {
@@ -875,10 +904,14 @@ std::optional<A7Varlik> a7_varlik_yukle(const Deger& manifest, std::string_view 
         }
         if (r.rol == Rol::carpisma) {
             // Ayrıştırma türü manifestteki girdiden (aynı sıra: carpisma[] listesi).
-            std::string ay = "yok";
+            std::string ay;
             for (const Deger& x : *dizi(*girdi, "carpisma")) {   // rol listesi buradan okundu
                 std::int64_t d = -1;
                 if (tam_al(x.bul("dugum"), d) && d == r.dugum) ay = dizgi(x.bul("ayristirma"));
+            }
+            if (ay != "yok" && ay != "coacd") {
+                ret("SEMA", "çarpışma girdisinde ayristirma yok ya da 'yok'/'coacd' değil", static_cast<int>(r.dugum), r.ad);
+                return std::nullopt;
             }
             out.carpisma_kaynak_ucgen += a.ucgenler.size();
             if (!kapali_disbukey(a, ay == "yok", ret)) return std::nullopt;

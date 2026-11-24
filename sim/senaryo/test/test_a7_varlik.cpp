@@ -12,6 +12,7 @@
 #include "test_destek.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <functional>
 
 namespace ida::senaryo::test {
@@ -91,6 +92,33 @@ void json_degis(Deneme& x, const std::string& eski, const std::string& yeni)
         if (i != std::string::npos) j.replace(i, eski.size(), yeni);
     };
 }
+
+// GLB baytlarını (boyutu değiştirmeden ya da başlık uzunluğunu kendisi düzelterek) bozar; manifestteki
+// özet ve bayt alanı bozuk dosyaya göre yeniden yazılır, böylece okuyucunun GLB denetimlerine ulaşılır.
+void ham_ret_bekle(Denetci& d, const Deneme& x, const std::string& kod, const std::string& ne,
+                   const std::function<void(std::string&)>& boz)
+{
+    BellekKaynagi k = x.kaynak();
+    std::string& b = k.dosyalar["assets/deneme/deneme.glb"];
+    boz(b);
+    std::string& m = k.dosyalar["assets/deneme/manifest.json"];
+    m.replace(m.find("\"sha256\":\"") + 10u, 64u, sha256_hex(b));
+    const std::size_t bi = m.find("\"bayt\":") + 7u;
+    const std::size_t bs = m.find_first_not_of("0123456789", bi);
+    m.replace(bi, bs - bi, std::to_string(b.size()));
+    A7Hata h;
+    const auto v = yukle(k, "deneme", "deneme", h);
+    DOGRULA(d, !v && h.kod == kod, ne + ": beklenen " + kod + ", bulunan " + (v ? std::string("kabul") : h.metin()));
+}
+
+std::uint32_t glb_u32_oku(const std::string& b, std::size_t o)
+{
+    std::uint32_t v = 0;
+    std::memcpy(&v, b.data() + o, 4);
+    return v;
+}
+
+void glb_u32_yaz(std::string& b, std::size_t o, std::uint32_t v) { std::memcpy(&b[o], &v, 4); }
 
 }  // namespace
 
@@ -366,6 +394,111 @@ int test_a7_varlik_olumsuz(const TestBaglami&)
         const auto w = yukle(x.kaynak(), "deneme", "deneme", h);
         DOGRULA(d, w && w->akustik_carpismadan && w->akustik_ucgen == w->carpisma_kaynak_ucgen && w->akustik_ucgen == 24u,
                 "akustik[] boş: çarpışma kaynak ağlarının hepsi (24 üçgen) " + h.metin());
+    }
+    // İnceleme bulguları: GLB parça, erişimci ve tampon sınırları (taşmasız denetim).
+    {
+        const Deneme x;
+        ham_ret_bekle(d, x, "GLTF", "kesik parça başlığı", [](std::string& b) {
+            b.append(4, '\0');
+            glb_u32_yaz(b, 8, static_cast<std::uint32_t>(b.size()));
+        });
+        ham_ret_bekle(d, x, "GLTF", "4'ün katı olmayan parça uzunluğu", [](std::string& b) {
+            const std::size_t bo = 20u + glb_u32_oku(b, 12);
+            glb_u32_yaz(b, bo, glb_u32_oku(b, bo) - 1u);
+        });
+        ham_ret_bekle(d, x, "GLTF", "dosyayı aşan parça uzunluğu", [](std::string& b) {
+            const std::size_t bo = 20u + glb_u32_oku(b, 12);
+            glb_u32_yaz(b, bo, glb_u32_oku(b, bo) + 4u);
+        });
+        ham_ret_bekle(d, x, "GLTF", "NaN köşe", [](std::string& b) {
+            const std::size_t bin = 28u + glb_u32_oku(b, 12);   // ilk görünüm = kutu köşeleri
+            const float nan = std::nanf("");
+            std::memcpy(&b[bin], &nan, 4);
+        });
+        ham_ret_bekle(d, x, "GLTF", "indeks köşe sayısını aşıyor", [](std::string& b) {
+            const std::size_t bin = 28u + glb_u32_oku(b, 12) + 96u;   // ikinci görünüm = indeksler
+            const std::uint16_t v = 99;
+            std::memcpy(&b[bin], &v, 2);
+        });
+        Deneme y;
+        json_degis(y, "\"byteLength\":96,", "\"byteLength\":99996,");
+        ret_bekle(d, y, "GLTF", "BIN dışına taşan bufferView");
+        // Karşı örnek: byteStride 2^52, byteLength 12, count 4097, BIN 8 KiB eklenmiş: 2^52 · 4096 = 2^64 sarar
+        // (çarpmayla yapılan denetim, düzeltme öncesi kabul edip bellek dışından okurdu).
+        Deneme s1;
+        s1.glb.json_degistir = [](std::string& j) {
+            for (const auto& [eski, yeni] : {std::pair<const char*, const char*>{"\"count\":8,", "\"count\":4097,"},
+                                              {"\"byteLength\":96,", "\"byteLength\":12,\"byteStride\":4503599627370496,"}}) {
+                const std::string e = eski;
+                if (const std::size_t i = j.find(e); i != std::string::npos) j.replace(i, e.size(), yeni);
+            }
+        };
+        ham_ret_bekle(d, s1, "GLTF", "byteStride 2^52 · 4096 sarması", [](std::string& b) {
+            const std::size_t bo = 20u + glb_u32_oku(b, 12);
+            glb_u32_yaz(b, bo, glb_u32_oku(b, bo) + 8192u);
+            b.append(8192u, '\0');
+            glb_u32_yaz(b, 8, static_cast<std::uint32_t>(b.size()));
+        });
+        Deneme s2;
+        json_degis(s2, "\"byteLength\":96,", "\"byteLength\":96,\"byteStride\":4503599627370496,");
+        ret_bekle(d, s2, "GLTF", "byteStride 2^52");
+        Deneme s3;
+        json_degis(s3, "\"bufferView\":0,", "\"bufferView\":0,\"byteOffset\":4503599627370496,");
+        ret_bekle(d, s3, "GLTF", "erişimci byteOffset 2^52");
+        Deneme s4;
+        json_degis(s4, "\"bufferView\":0,", "\"bufferView\":0,\"byteOffset\":2,");
+        ret_bekle(d, s4, "GLTF", "erişimci byteOffset bileşen boyunun katı değil");
+        Deneme s5;
+        json_degis(s5, "\"byteLength\":96,", "\"byteLength\":96,\"byteStride\":14,");
+        ret_bekle(d, s5, "GLTF", "byteStride 4'ün katı değil");
+        Deneme b1;
+        json_degis(b1, "\"buffers\":[{", "\"buffers\":[{\"byteLength\":4},{");
+        ret_bekle(d, b1, "GLTF", "buffers iki elemanlı");
+        Deneme b2;
+        json_degis(b2, "\"buffers\":[{\"byteLength\":", "\"buffers\":[{\"byteLength\":8,\"x\":");
+        ret_bekle(d, b2, "GLTF", "buffers[0].byteLength bufferView'leri kapsamıyor");
+        // Döngülü hiyerarşi: her düğümün tek ebeveyni var ama kök yok.
+        Deneme c;
+        // ikinci düğüm de birinciyi çocuk yapar: COL_kutu'ya children eklenir.
+        BellekKaynagi kc = c.kaynak();
+        (void)kc;
+        c.glb.json_degistir = [](std::string& j) {
+            const std::string e1 = "{\"name\":\"kutu\",\"mesh\":0}";
+            const std::string e2 = "{\"name\":\"COL_kutu\",\"mesh\":1}";
+            if (const std::size_t i = j.find(e1); i != std::string::npos) j.replace(i, e1.size(), "{\"name\":\"kutu\",\"mesh\":0,\"children\":[2]}");
+            if (const std::size_t i = j.find(e2); i != std::string::npos) j.replace(i, e2.size(), "{\"name\":\"COL_kutu\",\"mesh\":1,\"children\":[1]}");
+            const std::string sc = "\"nodes\":[0,1,2]";
+            if (const std::size_t i = j.find(sc); i != std::string::npos) j.replace(i, sc.size(), "\"nodes\":[0]");
+        };
+        ret_bekle(d, c, "ERISILEMEZ", "döngülü düğüm hiyerarşisi");
+    }
+    // A7-K20/K21: REF sayısı ve mesh indeksi.
+    {
+        Deneme x;
+        json_degis(x, "{\"name\":\"kutu\",\"mesh\":0}", "{\"name\":\"REF\",\"mesh\":0}");
+        ret_bekle(d, x, "DUGUM", "iki REF düğümü");
+        Deneme y;
+        json_degis(y, "{\"name\":\"COL_kutu\",\"mesh\":1}", "{\"name\":\"COL_kutu\",\"mesh\":7}");
+        ret_bekle(d, y, "GLTF", "mesh indeksi meshes dışında");
+        Deneme z;
+        z.glb.dugumler.push_back({"HIT_a", true, {-0.1, -0.1, -0.1}, {0.1, 0.1, 0.1}});
+        z.roller = R"("gorsel":[{"dugum":1,"ad":"kutu","kosul":"her_zaman"}],)"
+                   R"("carpisma":[{"dugum":2,"ad":"COL_kutu","ayristirma":"yok"}],)"
+                   R"("isabet_bolgeleri":[{"dugum":3,"ad":"HIT_a"}])";
+        A7Hata h;
+        DOGRULA(d, yukle(z.kaynak(), "deneme", "deneme", h).has_value(), "HIT_ düğümlü varlık geçerli: " + h.metin());
+        json_degis(z, "{\"name\":\"HIT_a\",\"mesh\":2}", "{\"name\":\"HIT_a\",\"mesh\":9}");
+        ret_bekle(d, z, "GLTF", "HIT_ düğümünün mesh indeksi dizi dışında");
+    }
+    // ayristirma alanı: yalnız yok | coacd.
+    {
+        Deneme x;
+        x.roller = R"("gorsel":[{"dugum":1,"ad":"kutu","kosul":"her_zaman"}],)"
+                   R"("carpisma":[{"dugum":2,"ad":"COL_kutu"}])";
+        ret_bekle(d, x, "SEMA", "ayristirma alanı yok");
+        x.roller = R"("gorsel":[{"dugum":1,"ad":"kutu","kosul":"her_zaman"}],)"
+                   R"("carpisma":[{"dugum":2,"ad":"COL_kutu","ayristirma":"vhacd"}])";
+        ret_bekle(d, x, "SEMA", "ayristirma = vhacd");
     }
     return d.hata;
 }

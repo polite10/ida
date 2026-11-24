@@ -294,8 +294,8 @@ int test_ag_cozumsel()
     auto coz = havuz_sahnesi(3.0);
     const Vek3 arac{5.0, 0.0, 1.0};
     const double c = 1482.36;
-    for (const auto& [aci, sp, beklenen] : {std::tuple<std::uint16_t, std::uint16_t, double>{100, 311, 6.25},
-                                            std::tuple<std::uint16_t, std::uint16_t, double>{0, 1111, 20.0}}) {
+    for (const auto& [aci, sp, beklenen] : {std::tuple<std::uint16_t, std::uint16_t, double>{std::uint16_t{100}, std::uint16_t{311}, 6.25},
+                                            std::tuple<std::uint16_t, std::uint16_t, double>{std::uint16_t{0}, std::uint16_t{1111}, 20.0}}) {
         std::size_t tepe[2] = {0, 0};
         int i = 0;
         for (std::shared_ptr<const Sahne> s : {std::shared_ptr<const Sahne>(coz), std::shared_ptr<const Sahne>(ag)}) {
