@@ -127,6 +127,9 @@ struct Sunucu::Ic {
             if (!kapanis_basladi) {
                 ag::Yoklama y;
                 y.t = dinleyici;
+                // Kabul bekletilirken dinleyici yoklanmaz (okunabilir kalır ve döngüyü boşa döndürürdü);
+                // bekleme, yayın tikinin en çok 20 ms'lik yoklama süresiyle sınırlıdır.
+                y.oku_iste = cekirdek->kabul_karari(simdi) != KabulKarari::bekle;
                 liste.push_back(y);
             }
             for (const auto& [id, t] : soketler) {
@@ -175,11 +178,6 @@ struct Sunucu::Ic {
                     break;
                 }
             }
-            // W4-K23 (2'): bu turda yoklanan her bağlantı bir okuma fırsatı bulmuş sayılır; aynı turda
-            // kabul edilenler henüz bulmadı (yer açmak için kapatılmaz).
-            for (const BagId id : sira) {
-                cekirdek->okuma_firsati_ver(id);
-            }
             // W4-K23 (2): yeni bağlantılar, mevcut okunabilir soketler işlendikten SONRA kabul edilir
             // (gövdesinin son baytı gelmiş bir emniyet isteği önce tamamlanır).
             if (!kapanis_basladi) {
@@ -187,7 +185,7 @@ struct Sunucu::Ic {
                     for (int n = 0; n < 64; ++n) {
                         // W4-K23 (2''): kapatılabilecek bağlantı yoksa ve okuma fırsatı bekleyen
                         // bağlantı varsa kabul bu turda bırakılır (bekleyenler dinleme kuyruğunda kalır).
-                        const KabulKarari karar = cekirdek->kabul_karari();
+                        const KabulKarari karar = cekirdek->kabul_karari(simdi);
                         if (karar == KabulKarari::bekle) {
                             ++kabul_bekletme;
                             break;

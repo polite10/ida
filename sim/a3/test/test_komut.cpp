@@ -1516,8 +1516,57 @@ int test_yer_acma_soket()
     const SunucuSayaclari say = s.sunucu->sayaclar();
     std::printf("  TANI: meşru yanıt %s %d; yer açmak için kapatılan %llu; reddedilen %llu\n", geldi ? "geldi" : "gelmedi", y.durum,
                 static_cast<unsigned long long>(say.yer_acmak_icin_kapatilan), static_cast<unsigned long long>(say.baglanti_reddi));
+    std::printf("  TANI: meşru bağlantının alınan baytları %zu, tampon %zu B\n", y.govde.size(), meshru.tampon.size());
+    {
+        // Kapatılan her bağlantının kimliği (kabul sıra numarası), okunup okunmadığı, yaşı, aşaması.
+        std::lock_guard<std::mutex> kilit(*s.gunluk_kilidi);
+        for (const auto& g : s.gunluk) {
+            if (g.find("yer açmak") != std::string::npos) {
+                std::printf("  TANI: %s\n", g.c_str());
+            }
+        }
+    }
     DOGRULA(d, geldi && y.durum == 202, "meşru acil durdurma 202");
     DOGRULA(d, basili, "yetkili acil durdurma basılı");
+    return d.hata;
+}
+
+// W4-a3 Windows CI (sol-6 sonrası): soketsiz, belirlenimci. (1) Verisi henüz gelmemiş, yalnız
+// yoklanmış yeni bağlantı yer açmak için kapatılmaz. (2) Kimliği doğrulanmış isteği işlenmiş ve
+// yanıtı henüz yazılmamış bağlantı da kapatılmaz (Windows'ta görülen: acil durdurma uygulandı ama
+// 202 yanıtı bağlantıyla birlikte atıldı). (3) Sessiz bağlantı başlık süresinden (2 s) sonra
+// kapatılabilir olur.
+int test_yer_acma_veri_gelmeden()
+{
+    Denetci d;
+    SunucuAyari sa;
+    sa.azami_http = 2;
+    Ortam o({}, sa);
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    const BagId h = o.ac();
+    o.gonder(h, "POST /api/v1/emniyet/degistir HTTP/1.1\r\nHo");  // okunmuş, kimliği doğrulanmamış
+    const BagId meshru = o.ac();                                  // yoklanmış ama verisi gelmemiş
+    o.dongu();
+    const BagId a1 = o.ac();
+    DOGRULA(d, a1 != 0 && o.cekirdek.kapatilmali(h) && !o.cekirdek.kapatilmali(meshru), "(1) verisi gelmemiş meşru bağlantı korunur");
+    DOGRULA(d, o.cekirdek.kabul_karari(o.simdi) == KabulKarari::bekle && o.ac() == 0, "(1) kapatılabilecek yok: kabul bekletilir");
+    o.gonder(meshru, istek("POST", "/api/v1/emniyet/degistir", k.basliklar(), emniyet(k, "acil_durdurma", "", "basili", run)));
+    const std::size_t yanit_boyu = o.cekirdek.cikis(meshru).size();
+    DOGRULA(d, yanit_boyu > 0, "(2) yanıt çıkışta, henüz yazılmadı");
+    o.gonder(a1, "GET / HT");
+    const BagId a2 = o.ac();  // a1 okundu → kapatılabilir; meşru (doğrulanmış) değil
+    DOGRULA(d, a2 != 0 && o.cekirdek.kapatilmali(a1) && !o.cekirdek.kapatilmali(meshru) && o.cekirdek.cikis(meshru).size() == yanit_boyu,
+            "(2) kimliği doğrulanmış, yanıtı bekleyen bağlantı kapatılmadı");
+    DOGRULA(d, o.cekirdek.kabul_karari(o.simdi) == KabulKarari::bekle, "(3) sessiz a2 genç: kabul bekletilir");
+    o.ilerle(std::chrono::milliseconds(2100));
+    DOGRULA(d, o.cekirdek.kabul_karari(o.simdi) == KabulKarari::kabul, "(3) sessiz a2 başlık süresinden sonra kapatılabilir");
+    std::string t = o.al(meshru);
+    HttpYanit y;
+    DOGRULA(d, http_yanit_ayir(t, y) && y.durum == 202, "meşru 202 yanıtı teslim edildi");
+    o.dunya.adim();
+    o.dongu();
+    DOGRULA(d, acil_basili(o), "yetkili acil durdurma basılı");
     return d.hata;
 }
 
@@ -1642,9 +1691,8 @@ int test_kabul_bekletme()
     int yeniden = 0;
     HttpYanit yanit;
     for (; tur < 20 && yanit.durum == 0; ++tur) {
-        // Okuma turu: önceki turda kabul edilenler okuma fırsatı bulur, verilerini gönderir.
+        // Okuma turu: önceki turda kabul edilenlerin verisi gelir ve okunur.
         for (const auto& [id, m] : yeni) {
-            o.cekirdek.okuma_firsati_ver(id);
             if (m) {
                 yanit = o.http(id, acil);
             } else {
@@ -1654,7 +1702,7 @@ int test_kabul_bekletme()
         yeni.clear();
         // Kabul turu
         while (!kuyruk.empty()) {
-            const KabulKarari karar = o.cekirdek.kabul_karari();
+            const KabulKarari karar = o.cekirdek.kabul_karari(o.simdi);
             if (karar == KabulKarari::bekle) {
                 ++bekletme;
                 break;
@@ -1689,7 +1737,7 @@ int test_kabul_bekletme()
     DOGRULA(d, kabul_turu >= 1 && kabul_turu <= 4, "en çok 4 kabul turunda (12 / 4 + 1)");
     for (const auto& [id, m] : yeni) {
         (void)m;
-        o.cekirdek.okuma_firsati_ver(id);  // son okuma turu: denetim isteği için yer açılabilsin
+        o.gonder(id, yarim);  // son okuma turu: veri okunur, denetim isteği için yer açılabilir
     }
     o.dunya.adim();
     o.dongu();

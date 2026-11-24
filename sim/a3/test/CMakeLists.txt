@@ -42,7 +42,9 @@ set(_ida_a3_testleri
   # W4-K23 ek (sol-4)
   yer_acma_okuma_firsati yer_acma_soket cikis_tavani_dogrulanmamis jeton_istemci_kapsami
   # W4-K23 ek 2 (sol-5)
-  kabul_bekletme kabul_bekletme_soket dogrulanmamis_cikis_toplami)
+  kabul_bekletme kabul_bekletme_soket dogrulanmamis_cikis_toplami
+  # Windows CI: veri gelmeden yoklanan bağlantı
+  yer_acma_veri_gelmeden)
 foreach(_ad IN LISTS _ida_a3_testleri)
   add_test(NAME sim.a3.${_ad} COMMAND ida_a3_test ${_ad})
 endforeach()

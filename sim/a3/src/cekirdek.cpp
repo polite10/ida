@@ -105,7 +105,7 @@ struct Baglanti {
     bool eof = false;  // karşı taraf gönderim yönünü kapattı
     Zaman eof_bas{};
     bool eksik_islendi = false;
-    bool okuma_firsati = false;  // kabulden sonra en az bir okuma fırsatı buldu (W4-K23 2')
+    bool okuma_firsati = false;  // kabulden sonra soketten en az bir kez veri okundu (W4-K23 2')
     bool hic_dogrulandi = false;  // geçerli Bearer taşıyan bir istek başlığı çerçevelendi (W4-K23 3'')
     // İşleme bağlamı (istek_isle ve işleyiciler)
     http::Istek istek;
@@ -565,24 +565,35 @@ struct Cekirdek::Ic {
     // ---- bağlantılar ---------------------------------------------------------------------------
 
     // Kimliği doğrulanmış (geçerli Bearer) ve isteği süren bağlantı: gövdesi gelmekte olan ya da
-    // sırada işlenmemiş isteği var.
+    // sırada işlenmemiş isteği var, ya da isteği işlenmiş ve yanıtı henüz yazılmamış.
     static bool dogrulanmis_suren(const Baglanti& x)
     {
         if (x.asama != Asama::baslik && x.cer_dogrulandi) {
             return true;
         }
         for (const auto& e : x.sira) {
-            if (!e.islendi && e.dogrulandi) {
+            if (e.dogrulandi) {
                 return true;
             }
         }
-        return false;
+        return x.hic_dogrulandi && x.bekleyen_cikis() > 0;
     }
 
-    // EMNİYET (W4-K23 2''): sınır doluyken kapatılabilecek bağlantı yoksa, okuma fırsatı bulmamış
-    // kimliği doğrulanmamış bağlantı varsa kabul o turda bırakılır (bekle); sınırı yalnız kimliği
-    // doğrulanmış bağlantılar dolduruyorsa yeni bağlantı reddedilir (503).
-    KabulKarari kabul_karari() const
+    // EMNİYET (W4-K23 2', 2''): yer açmak için kapatılabilecek bağlantı. Kimliği doğrulanmış ve
+    // isteği süren bağlantı (yanıtı yazılmayı bekleyen dahil) kapatılmaz. Öteki bağlantı ancak
+    // kabulden sonra soketten en az bir kez veri okunduysa ya da başlık süresi (2 s) kadar
+    // yaşlandıysa kapatılabilir: yalnız "yoklanmış" olmak yetmez (verisi henüz gelmemiş meşru
+    // bağlantı korunur; sessiz bağlantı başlık süresinden sonra kapatılabilir olur). İsteği bitmiş,
+    // boşta bekleyen kimliği doğrulanmış (keep-alive) bağlantı kapatılabilir.
+    static bool tahliye_edilebilir(const Baglanti& x, Zaman simdi)
+    {
+        return !x.ws && !dogrulanmis_suren(x) && (x.okuma_firsati || simdi - x.olusma >= sure::baslik);
+    }
+
+    // EMNİYET (W4-K23 2''): sınır doluyken kapatılabilecek bağlantı yoksa, henüz kapatılabilir
+    // olmayan kimliği doğrulanmamış bağlantı varsa kabul o turda bırakılır (bekle); sınırı yalnız
+    // kimliği doğrulanmış bağlantılar dolduruyorsa yeni bağlantı reddedilir (503).
+    KabulKarari kabul_karari(Zaman simdi) const
     {
         if (kapaniyor) {
             return KabulKarari::reddet;
@@ -597,10 +608,10 @@ struct Cekirdek::Ic {
                 continue;
             }
             ++http_sayisi;
-            if (!x.kapanacak && dogrulanmis_suren(x)) {
-                continue;
+            if (dogrulanmis_suren(x)) {
+                continue;  // yalnız bunlar sınırı dolduruyorsa 503
             }
-            (x.okuma_firsati ? aday : korunan) = true;
+            (tahliye_edilebilir(x, simdi) ? aday : korunan) = true;
         }
         if (ayar.azami_http == 0 || http_sayisi < ayar.azami_http || aday) {
             return KabulKarari::kabul;
@@ -621,19 +632,17 @@ struct Cekirdek::Ic {
             }
         }
         if (http_sayisi >= ayar.azami_http && ayar.azami_http > 0) {
-            // EMNİYET (W4-K23 2'): yer açmak için kimliği doğrulanmamış (ya da kapanmakta olan)
-            // bağlantılar arasından yalnız yaş sırasıyla en eskisi kapatılır; sınıf önceliği yoktur.
-            // Kabulden sonra henüz bir okuma fırsatı bulmamış bağlantı (aynı kabul turunda kabul
-            // edilenler dahil) kapatılmaz. Kimliği doğrulanmış ve isteği süren bağlantı kapatılmaz;
-            // kapatılacak yoksa yeni bağlantı reddedilir (çağıran 503 yazmayı dener ve kapatır).
+            // EMNİYET (W4-K23 2'): kapatılabilir bağlantılar (tahliye_edilebilir) arasından yalnız
+            // yaş sırasıyla en eskisi kapatılır; yaş saatten bağımsız kabul sıra numarasıdır (BagId
+            // artan). Kapatılacak yoksa yeni bağlantı reddedilir (çağıran 503 yazmayı dener).
             Baglanti* secilen = nullptr;
             for (const auto& [id, bp] : bag) {
                 (void)id;
                 const Baglanti& x = *bp;
-                if (x.ws || !x.okuma_firsati || (!x.kapanacak && dogrulanmis_suren(x))) {
+                if (!tahliye_edilebilir(x, simdi)) {
                     continue;
                 }
-                if (secilen == nullptr || x.olusma < secilen->olusma || (x.olusma == secilen->olusma && x.id < secilen->id)) {
+                if (secilen == nullptr || x.id < secilen->id) {
                     secilen = bp.get();
                 }
             }
@@ -642,6 +651,14 @@ struct Cekirdek::Ic {
                 return 0;
             }
             ++say.yer_acmak_icin_kapatilan;
+            if (ayar.gunluk) {
+                gunluk("yer açmak için kapatıldı: bağlantı " + std::to_string(secilen->id) + ", okundu " +
+                       std::to_string(secilen->okuma_firsati ? 1 : 0) + ", yaş " +
+                       std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(simdi - secilen->olusma).count()) +
+                       " ms, aşama " + std::to_string(static_cast<int>(secilen->asama)) + ", sıra " +
+                       std::to_string(secilen->sira.size()) + ", bekleyen çıkış " + std::to_string(secilen->bekleyen_cikis()) +
+                       " B; yeni bağlantı " + std::to_string(sonraki_bag));
+            }
             baglanti_birak(*secilen);
             kapatilacak.push_back(secilen->id);
             bag.erase(secilen->id);
@@ -3260,14 +3277,7 @@ void Cekirdek::kapandi(BagId id)
     ic_->bag.erase(id);
 }
 
-KabulKarari Cekirdek::kabul_karari() const { return ic_->kabul_karari(); }
-
-void Cekirdek::okuma_firsati_ver(BagId id)
-{
-    if (Baglanti* b = ic_->bul(id)) {
-        b->okuma_firsati = true;
-    }
-}
+KabulKarari Cekirdek::kabul_karari(Zaman simdi) const { return ic_->kabul_karari(simdi); }
 
 std::string Cekirdek::dolu_yaniti() const
 {

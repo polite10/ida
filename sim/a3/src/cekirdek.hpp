@@ -111,10 +111,8 @@ public:
     std::size_t okuma_butcesi(BagId id) const;
     // Bağlantı sınırı dolu ve kapatılabilecek bağlantı yokken yeni bağlantıya yazılacak 503 yanıtı.
     std::string dolu_yaniti() const;
-    // Bağlantıya bir okuma fırsatı verildi (G/Ç döngüsü yokladı); W4-K23 (2').
-    void okuma_firsati_ver(BagId id);
     // Dinleyicide bekleyen bir bağlantının bu turda kabul edilip edilmeyeceği (W4-K23 2'').
-    KabulKarari kabul_karari() const;
+    KabulKarari kabul_karari(Zaman simdi) const;
 
 private:
     struct Ic;
