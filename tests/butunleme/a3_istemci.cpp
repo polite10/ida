@@ -2,6 +2,7 @@
 #include "a3_istemci.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 
 namespace ida::test::a3 {
@@ -16,7 +17,82 @@ T oku_le(const std::string& s, std::size_t k)
     return v;
 }
 
+std::string json_metin_alani(const std::string& g, const std::string& ad)
+{
+    const std::string a = "\"" + ad + "\":\"";
+    const std::size_t k = g.find(a);
+    if (k == std::string::npos) {
+        return {};
+    }
+    const std::size_t e = g.find('"', k + a.size());
+    return e == std::string::npos ? std::string() : g.substr(k + a.size(), e - k - a.size());
+}
+
 }  // namespace
+
+std::string HttpSonuc::kod() const { return json_metin_alani(govde, "kod"); }
+
+std::uint32_t HttpSonuc::komut_no() const
+{
+    const std::string a = "\"komut_no\":";
+    const std::size_t k = govde.find(a);
+    if (k == std::string::npos) {
+        return 0;
+    }
+    std::uint32_t v = 0;
+    for (std::size_t i = k + a.size(); i < govde.size() && govde[i] >= '0' && govde[i] <= '9'; ++i) {
+        v = v * 10u + static_cast<std::uint32_t>(govde[i] - '0');
+    }
+    return v;
+}
+
+HttpSonuc http_istek(std::uint16_t port, const std::string& jeton, const std::string& yontem, const std::string& yol,
+                     const std::string& govde, const std::string& ek_baslik, int bekle_ms)
+{
+    HttpSonuc s;
+    std::string hata;
+    std::unique_ptr<ida::kopru::Tasima> t = ida::kopru::tcp_baglan(port, hata);
+    if (!t) {
+        return s;
+    }
+    std::string istek = yontem + " " + yol + " HTTP/1.1\r\nHost: 127.0.0.1:" + std::to_string(port) +
+                        "\r\nAuthorization: Bearer " + jeton + "\r\nConnection: close\r\n" + ek_baslik;
+    if (!govde.empty()) {
+        istek += "Content-Type: application/json\r\nContent-Length: " + std::to_string(govde.size()) + "\r\n";
+    }
+    istek += "\r\n" + govde;
+    if (!t->yaz(reinterpret_cast<const std::uint8_t*>(istek.data()), istek.size())) {
+        return s;
+    }
+    std::vector<std::uint8_t> b(16384);
+    std::string tampon;
+    const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(bekle_ms);
+    while (std::chrono::steady_clock::now() < son) {
+        std::size_t n = 0;
+        const ida::kopru::OkumaSonucu r = t->oku(b.data(), b.size(), 20'000, n);
+        if (r == ida::kopru::OkumaSonucu::tamam) {
+            tampon.append(reinterpret_cast<const char*>(b.data()), n);
+        }
+        const std::size_t e = tampon.find("\r\n\r\n");
+        if (e != std::string::npos && tampon.size() >= 12u) {
+            std::size_t boy = 0;
+            const std::size_t c = tampon.find("Content-Length: ");
+            if (c != std::string::npos && c < e) {
+                boy = static_cast<std::size_t>(std::strtoul(tampon.c_str() + c + 16, nullptr, 10));
+            }
+            if (tampon.size() >= e + 4u + boy) {
+                s.durum = std::atoi(tampon.c_str() + 9);
+                s.govde = tampon.substr(e + 4u, boy);
+                break;
+            }
+        }
+        if (r == ida::kopru::OkumaSonucu::kapandi) {
+            break;
+        }
+    }
+    t->kapat();
+    return s;
+}
 
 bool Istemci::baglan(std::uint16_t port, const std::string& jeton, int bekle_ms)
 {

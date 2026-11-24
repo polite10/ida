@@ -21,6 +21,16 @@ struct FizikOrnegi {
     double derinlik = 0.0;   // govdeler[0].p_n[2]
 };
 
+// Tek bir HTTP/1.1 isteği (yeni bağlantı, `Connection: close`; W4-K28 E: gerçek kitaplık yolu).
+struct HttpSonuc {
+    int durum = 0;          // 0: yanıt gelmedi
+    std::string govde;
+    std::string kod() const;              // yanit_ret ise hata.kod
+    std::uint32_t komut_no() const;       // yoksa 0
+};
+HttpSonuc http_istek(std::uint16_t port, const std::string& jeton, const std::string& yontem, const std::string& yol,
+                     const std::string& govde = {}, const std::string& ek_baslik = {}, int bekle_ms = 3000);
+
 class Istemci {
 public:
     // El sıkışma ve `merhaba` (en çok bekle_ms).

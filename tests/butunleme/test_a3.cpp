@@ -23,6 +23,7 @@
 #include "../../sim/kopru/test/zamanlama_olcutu.hpp"   // W4-K24
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -33,6 +34,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -879,6 +881,145 @@ int test_a3_hazirlik_kapanis()
     return 0;
 }
 
+// ---- W4-K28 E (EMNİYET; sol-2 #2 olağan işletimde): aynı etkiye iki ardışık daraltıcı istek ve
+// ardından farklı etkide kısıtlayan (DISARM → DISARM → acil bas), gerçek kitaplık yolundan (HTTP →
+// A3 çekirdeği → alıcı → dünya). İkinci DISARM kitaplığın mandalına düşer; acil bas onun arkasında
+// beklememeli: dünya yuvaları boşalttığı ilk sınırda uygulanmalı. ----
+
+struct A3Uc {
+    std::uint16_t port = 0;
+    std::string jeton;
+    std::string istemci;   // "Ida-Istemci: n\r\n"
+    int istek = 0;
+    ida::test::a3::HttpSonuc post(const std::string& yol, const std::string& govde)
+    {
+        char kimlik[32];
+        std::snprintf(kimlik, sizeof kimlik, "%024x", ++istek);   // istek_kimligi deseni: 24 onaltılık
+        const std::string g = "{\"istek_kimligi\":\"" + std::string(kimlik) + "\"," + govde.substr(1);
+        return ida::test::a3::http_istek(port, jeton, "POST", "/api/v1" + yol, g, istemci);
+    }
+    bool kaydol()
+    {
+        const auto y = ida::test::a3::http_istek(port, jeton, "POST", "/api/v1/istemciler", "{\"ad\":\"ardisik\"}");
+        const std::size_t k = y.govde.find("\"istemci_id\":");
+        if (y.durum != 200 && y.durum != 201) {
+            return false;
+        }
+        if (k == std::string::npos) {
+            return false;
+        }
+        istemci = "Ida-Istemci: " + std::to_string(std::atoi(y.govde.c_str() + k + 13)) + "\r\n";
+        return true;
+    }
+    // DISARM, DISARM, acil bas (kısıtlayanlar; run_id güncel ya da null).
+    std::array<ida::test::a3::HttpSonuc, 3> uclu(const std::optional<std::string>& run)
+    {
+        const std::string r = run ? "\"" + *run + "\"" : std::string("null");
+        std::array<ida::test::a3::HttpSonuc, 3> s;
+        s[0] = post("/yer_istasyonu/komut", "{\"beklenen_run_id\":" + r + ",\"komut\":\"disarm\",\"parametreler\":{}}");
+        s[1] = post("/yer_istasyonu/komut", "{\"beklenen_run_id\":" + r + ",\"komut\":\"disarm\",\"parametreler\":{}}");
+        s[2] = post("/emniyet/degistir",
+                    "{\"beklenen_run_id\":" + r + ",\"girdi\":\"acil_durdurma\",\"hedef_durum\":\"basili\"}");
+        return s;
+    }
+};
+
+int test_a3_kisitlayan_ardisik()
+{
+    // (1) SIL, koşarken (b = 4000, 5 s) ve (2) SIL hazırlıkta; (3) HIL hazırlıkta.
+    struct Durum {
+        const char* ad;
+        bool hil;
+        bool hazirlik;
+    };
+    for (const Durum& dz : {Durum{"SIL koşarken", false, false}, Durum{"SIL hazırlıkta", false, true},
+                            Durum{"HIL hazırlıkta", true, true}}) {
+        const std::string ad = dz.ad;
+        ida::sunucu::Ayar a = z1_yerlesik(dz.hil ? 2.0 : 6.0);
+        if (dz.hil) {
+            a.kip = ida::sunucu::Kip::hil;
+            a.karsi = ida::sunucu::Karsi::pty;
+            a.karsi_verildi = true;
+        }
+        A3Uc uc;
+        a.a3_hazir = [&uc](std::uint16_t p, const std::string& j) {
+            uc.port = p;
+            uc.jeton = j;
+        };
+        bool verildi = false, kayit = false, hiz = false;
+        std::array<ida::test::a3::HttpSonuc, 3> y{};
+        const std::uint64_t kB = dz.hazirlik ? 0u : 4000u;
+        const Kosu k = kos(a, true, nullptr, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            if (!kayit) {
+                kayit = uc.kaydol();
+            }
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (!dz.hil && !hiz && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
+                // SIL'i duvar saatine bağla (hız 4): mandaldaki ikinci DISARM'ın G/Ç döngüsünde
+                // yuvaya geçmesine koşu bitmeden zaman kalsın (yalnız bekleme; çıktı değişmez).
+                hiz = true;
+                Komut h = calistirma(d, KomutTuru::calistirma_hiz);
+                h.carpan = 4.0;
+                (void)al.al(h);
+            }
+            const bool zaman = dz.hazirlik ? d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor
+                                           : (b == kB && d.durum == ida::a3::CalistirmaDurumu::kosuyor);
+            if (zaman && !verildi && kayit) {
+                verildi = true;
+                y = uc.uclu(d.run_id);
+            }
+        });
+        dogrula_a3(k.s.tamam && verildi, ad + ": koşu tamam, istekler verildi " + k.s.hata);
+        bool kuyrukta = true;
+        for (const auto& r : y) {
+            kuyrukta = kuyrukta && r.durum == 202 && r.komut_no() != 0u;
+        }
+        dogrula_a3(kuyrukta, ad + ": üç istek 202 kuyrukta (" + std::to_string(y[0].durum) + "," + std::to_string(y[1].durum) +
+                                 "," + std::to_string(y[2].durum) + (kuyrukta ? std::string() : "; " + y[0].govde) + ")");
+        const auto* d1 = a3_sonucu(k.s, y[0].komut_no());
+        const auto* d2 = a3_sonucu(k.s, y[1].komut_no());
+        const auto* ac = a3_sonucu(k.s, y[2].komut_no());
+        const std::int64_t t = static_cast<std::int64_t>(kB) * 1'250'000;
+        dogrula_a3(d1 != nullptr && d1->sonuc == "uygulandi" && d1->t_ns == t, ad + ": ilk DISARM ilk sınırda uygulandı");
+        dogrula_a3(d2 != nullptr && d2->sonuc == "uygulandi",
+                   ad + ": ikinci DISARM (mandaldan) uygulandı (" +
+                       (d2 != nullptr ? d2->sonuc + " " + d2->neden + " " + std::to_string(d2->t_ns) : std::string("sonuç yok")) + ")");
+        dogrula_a3(ac != nullptr && ac->sonuc == "uygulandi" && ac->t_ns == t,
+                   ad + ": acil bas DISARM mandalının arkasında beklemedi, ilk sınırda uygulandı (" +
+                       (ac != nullptr ? std::to_string(ac->t_ns) : std::string("sonuç yok")) + " ns; beklenen " +
+                       std::to_string(t) + ")");
+        dogrula_a3(k.acil.size() > kB && k.acil[kB] == 1u, ad + ": fiziğe giden ilk sınırda acil durdurma etkin");
+    }
+    // (4) `yuklendi` (--a3-bekle): canlı çalıştırma yok; üç istek beklemeden reddedilir (mandal yok).
+    {
+        ida::sunucu::Ayar a = z1_yerlesik(1.0);
+        a.a3_bekle = true;
+        A3Uc uc;
+        a.a3_hazir = [&uc](std::uint16_t p, const std::string& j) {
+            uc.port = p;
+            uc.jeton = j;
+        };
+        std::array<ida::test::a3::HttpSonuc, 3> y{};
+        bool verildi = false;
+        const Kosu k = kos(a, true, nullptr, [&](std::uint64_t, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (d.durum == ida::a3::CalistirmaDurumu::yuklendi && !verildi && uc.kaydol()) {
+                verildi = true;
+                y = uc.uclu(std::nullopt);
+                (void)al.al(calistirma(d, KomutTuru::calistirma_baslat));
+            }
+        });
+        bool ret = verildi;
+        for (const auto& r : y) {
+            ret = ret && r.durum >= 400 && r.kod() == "canli_calistirma_yok";
+        }
+        dogrula_a3(ret, "yuklendi: üç istek beklemeden canli_calistirma_yok (" + y[0].kod() + "," + y[1].kod() + "," +
+                            y[2].kod() + ")");
+        dogrula_a3(k.s.tamam && k.s.calistirma_sonu == "bitti", "yuklendi: sonra baslat ile koşu bitti " + k.s.hata);
+    }
+    return 0;
+}
+
 // W4-K28 (1) HIL: duraklatma kapalı. Hazırlıkta ve koşarken (onaylı duraklatma dahil) duraklat/sürdür/
 // adımla girişte reddedilir; durum `duraklatildi` olmaz; HIL duraklatma geçersizliği kurulmaz; TF'ler
 // boşluksuz ve çalıştırma `bitti`.
@@ -968,6 +1109,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_kisitlayan_ardisik") {
+        (void)test_a3_kisitlayan_ardisik();
     } else if (ad == "a3_hazirlik_kapanis") {
         (void)test_a3_hazirlik_kapanis();
     } else if (ad == "a3_hazirlik_son_durdur") {

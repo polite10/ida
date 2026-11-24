@@ -114,6 +114,9 @@ if(NOT WIN32)
   # Kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), A3 açık; zamanlamaya duyarlı.
   add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
   set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  # W4-K28 E EMNİYET: DISARM → DISARM → acil bas gerçek kitaplık yolundan (koşarken, hazırlıkta, yuklendi).
+  add_test(NAME butunleme.a3_kisitlayan_ardisik COMMAND ida_butunleme_test a3_kisitlayan_ardisik)
+  set_tests_properties(butunleme.a3_kisitlayan_ardisik PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
   # W4-K28 (3) EMNİYET: hazırlığın son el sıkışma pompasında kabul edilen durdur kazanır (SIL ve HIL).
   add_test(NAME butunleme.a3_hazirlik_son_durdur COMMAND ida_butunleme_test a3_hazirlik_son_durdur)
   set_tests_properties(butunleme.a3_hazirlik_son_durdur PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
