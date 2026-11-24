@@ -859,6 +859,21 @@ void Kopru::sil_gozetimi_doldu(std::int64_t duvar_ns)
     i.oturum_bitti(false, false);
 }
 
+void Kopru::protokol_hatasi(std::int64_t duvar_ns)
+{
+    Ic& i = *ic_;
+    i.duvar = duvar_ns;
+    if (i.durum != OturumDurumu::kosuyor && i.durum != OturumDurumu::hazir) {
+        return;
+    }
+    mavlink_ida_session_close_t kapanis{};
+    kapanis.sess = i.sess_;
+    kapanis.reason = static_cast<std::uint8_t>(IDAW_CLOSE_REASON_PROTOCOL);
+    i.giden.clear();
+    i.cerceve(MAVLINK_MSG_ID_IDA_SESSION_CLOSE, &kapanis, sizeof kapanis);
+    i.oturum_bitti(false, true);
+}
+
 void Kopru::kip_ayarla(CalistirmaKipi kip)
 {
     ic_->a.kip = kip;

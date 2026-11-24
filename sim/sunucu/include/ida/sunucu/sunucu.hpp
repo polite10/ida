@@ -114,6 +114,9 @@ struct Ayar {
         bool acil_durdurma = false;
     };
     std::function<void(const SinirGozlemi&)> sinir_kancasi;
+    // Yalnız sınama (W4-K26 (2)): sim'in karşı tarafa göndermeye karar verdiği baytlar (taşımaya
+    // verilmeden önce, yazım başarısız olsa da), sırayla.
+    std::function<void(const std::uint8_t*, std::size_t)> giden_kancasi;
     std::function<void(const sensor::Olcum& o)> olcum_kancasi;
     // Yalnız sınama: görev iletileri sonuç beklenmeden (sınır başına bir) gönderilir; köprünün ve
     // kartın dönüştürücüsünün alanları taşıdığını sınamak için (çekirdek görevi desteklemese de).
@@ -279,6 +282,8 @@ struct Sonuc {
     std::uint64_t port_acildi = 0;
     std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
     std::uint64_t kapanis_yazim_eksik = 0;     // W4-K28 (3): kapanış çıkışı süre sınırında yazılamadı
+    std::uint64_t sil_kuyruk_en_cok = 0;       // W4-K26 (3): SIL alım kuyruğunun en büyük boyu (B)
+    std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL alım kuyruğu/bekleme bayt sınırı aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;

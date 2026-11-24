@@ -750,6 +750,108 @@ void Kopru::hil_duraklatma_bildir() { ic_->say.calistirma_gecersiz |= kGecDurakl
 
 // ---------------------------------------------------------------- Fizik sınırı
 
+// Yanıtın ya da eşzamansız güvenli çıktının uygulanması (A1-K74–K78): üretim sırası, A1-K78
+// iptali, yürürlük. sinir_isle'nin (5). adımı ve SIL'in kısıtlayan erken uygulaması ortak yolu.
+// `muaf` (W4-K6, W4-K28 (3)): eşzamansız çıktı ilk parti öncesinde alındı (A1-K79'a sayılmaz).
+void Kopru::Ic::cikti_uygula(const mavlink_ida_actuator_t& m, bool esz, bool muaf, std::uint64_t adim_no, std::int64_t t,
+                             SinirSonucu& s)
+{
+    if (uygulanan_var && !yeni(m.out_seq, son_uygulanan_out_seq)) {
+        ++say.yanit_ret_eski_uretim;
+        return;
+    }
+    const std::uint32_t onceki_out_seq = uygulanan_var ? son_uygulanan_out_seq : 0u;
+    uygulanan_var = true;
+    uygulanan_boot = kart.boot_count;
+    son_uygulanan_out_seq = m.out_seq;
+    if (esz) {
+        ++say.esz_guvenli_uygulanan;
+        if (muaf) {
+            ++say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
+        } else {
+            say.calistirma_gecersiz |= kGecEszamansiz;
+            if (say.eszamansiz_kayit_n < say.eszamansiz_kayit.size()) {
+                Sayaclar::EszKaydi& e = say.eszamansiz_kayit[say.eszamansiz_kayit_n++];
+                e.adim = adim_no;
+                e.out_seq = m.out_seq;
+                e.act_flags = m.act_flags;
+                e.onceki_out_seq = onceki_out_seq;
+                e.ilk_yanit_alindi = ilk_yanit_alindi;
+            }
+        }
+        // Kendinden önce üretilmiş, henüz uygulanmamış olağan yanıtları iptal eder.
+        for (auto& [sq, y] : yuvalar) {
+            (void)sq;
+            if (!y.islendi && y.act_var && yeni(m.out_seq, y.act.out_seq)) {
+                y.iptal = true;
+                ++say.yanit_iptal_esz;
+            }
+        }
+    } else {
+        s.yuva_uygulandi = true;
+        if (PartiKumesi* pk = kume.bul(m.batch_seq)) {
+            if (pk->durum == KumeDurumu::dogrulandi) {
+                pk->durum = KumeDurumu::uygulandi;
+            }
+        }
+    }
+    if ((m.act_flags & F(IDAW_ACT_FLAGS_THR_VALID)) != 0u) {
+        yururluk = true;
+        for (std::size_t k = 0; k < 8; ++k) {
+            pwm[k] = static_cast<double>(m.pwm_us[k]);
+        }
+        yururluk_bitis = t + static_cast<std::int64_t>(m.valid_for_ns);
+    }
+}
+
+// W4-K26 (1) (EMNİYET, yalnız SIL): kilitli adımda ACTUATOR(n)'den sonraki çerçevelerin alım
+// anı, işlendikleri bekleme noktasıdır (yuva n + 1'in sınırı). Orada işlenen kısıtlayan
+// çerçevelerin etkisi fizik o sınırdan ilerlemeden yürürlüğe girer: oturum sonu (A1-K23: iki
+// tüpün izni kapanır, iticiler nötr) ve eşzamansız güvenli çıktı (A1-K78: kendinden önce
+// üretilmiş, uygulanmamış yanıtları iptal eder; nötr). Gevşeten hiçbir etki burada uygulanmaz.
+KisitSonucu Kopru::sil_kisitlayan_uygula(std::uint64_t adim_no)
+{
+    Ic& i = *ic_;
+    KisitSonucu k;
+    if (i.a.kip != CalistirmaKipi::sil) {
+        return k;
+    }
+    const std::int64_t t = static_cast<std::int64_t>(adim_no) * kH;
+    const bool yururluk_bas = i.yururluk;
+    const std::array<double, 8> pwm_bas = i.pwm;
+    if (i.oturum_sonu_bekliyor) {
+        i.izin_kapat(0);
+        i.izin_kapat(1);
+        i.rev_artir();
+        i.oturum_sonu_bekliyor = false;
+        k.degisti = true;
+    }
+    if (i.yururluk_sil) {
+        i.yururluk = false;
+        i.yururluk_sil = false;
+    }
+    if (!i.esz_bekleyen.empty()) {
+        std::vector<mavlink_ida_actuator_t> e;
+        e.swap(i.esz_bekleyen);
+        const bool muaf = i.esz_bekleyen_muaf;   // tutulan tek çıktının muafiyeti (W4-K28 (3))
+        i.esz_bekleyen_muaf = false;
+        std::sort(e.begin(), e.end(), [](const mavlink_ida_actuator_t& x, const mavlink_ida_actuator_t& y) {
+            return yeni(y.out_seq, x.out_seq);
+        });
+        SinirSonucu bos;
+        for (const auto& m : e) {
+            i.cikti_uygula(m, true, muaf, adim_no, t, bos);
+        }
+        ++i.say.sil_kisit_erken;
+    }
+    k.notr = !i.yururluk;
+    for (std::size_t c = 0; c < 8; ++c) {
+        k.pwm_us[c] = i.yururluk ? i.pwm[c] : static_cast<double>(i.a.esc_notr_us);
+    }
+    k.degisti = k.degisti || i.yururluk != yururluk_bas || (i.yururluk && i.pwm != pwm_bas);
+    return k;
+}
+
 SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
 {
     Ic& i = *ic_;
@@ -940,52 +1042,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     std::sort(adaylar.begin(), adaylar.end(),
               [](const Aday& x, const Aday& y) { return yeni(y.m.out_seq, x.m.out_seq); });
     for (const Aday& ad : adaylar) {
-        if (i.uygulanan_var && !yeni(ad.m.out_seq, i.son_uygulanan_out_seq)) {
-            ++i.say.yanit_ret_eski_uretim;
-            continue;
-        }
-        const std::uint32_t onceki_out_seq = i.uygulanan_var ? i.son_uygulanan_out_seq : 0u;
-        i.uygulanan_var = true;
-        i.uygulanan_boot = i.kart.boot_count;
-        i.son_uygulanan_out_seq = ad.m.out_seq;
-        if (ad.esz) {
-            ++i.say.esz_guvenli_uygulanan;
-            if (ad.muaf) {
-                ++i.say.eszamansiz_ilk_parti_oncesi;   // W4-K6: A1-K79 sayımına girmez
-            } else {
-                i.say.calistirma_gecersiz |= kGecEszamansiz;
-                if (i.say.eszamansiz_kayit_n < i.say.eszamansiz_kayit.size()) {
-                    Sayaclar::EszKaydi& e = i.say.eszamansiz_kayit[i.say.eszamansiz_kayit_n++];
-                    e.adim = adim_no;
-                    e.out_seq = ad.m.out_seq;
-                    e.act_flags = ad.m.act_flags;
-                    e.onceki_out_seq = onceki_out_seq;
-                    e.ilk_yanit_alindi = i.ilk_yanit_alindi;
-                }
-            }
-            // Kendinden önce üretilmiş, henüz uygulanmamış olağan yanıtları iptal eder.
-            for (auto& [sq, y] : i.yuvalar) {
-                (void)sq;
-                if (!y.islendi && y.act_var && yeni(ad.m.out_seq, y.act.out_seq)) {
-                    y.iptal = true;
-                    ++i.say.yanit_iptal_esz;
-                }
-            }
-        } else {
-            s.yuva_uygulandi = true;
-            if (PartiKumesi* pk = i.kume.bul(ad.m.batch_seq)) {
-                if (pk->durum == KumeDurumu::dogrulandi) {
-                    pk->durum = KumeDurumu::uygulandi;
-                }
-            }
-        }
-        if ((ad.m.act_flags & F(IDAW_ACT_FLAGS_THR_VALID)) != 0u) {
-            i.yururluk = true;
-            for (std::size_t k = 0; k < 8; ++k) {
-                i.pwm[k] = static_cast<double>(ad.m.pwm_us[k]);
-            }
-            i.yururluk_bitis = t + static_cast<std::int64_t>(ad.m.valid_for_ns);
-        }
+        i.cikti_uygula(ad.m, ad.esz, ad.muaf, adim_no, t, s);
     }
     if (i.yururluk && t >= i.yururluk_bitis) {
         i.yururluk = false;   // A1-K77

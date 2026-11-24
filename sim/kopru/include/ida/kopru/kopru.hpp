@@ -93,6 +93,7 @@ struct Sayaclar {
     std::uint64_t yanit_ret_eski_uretim = 0;
     std::uint64_t yanit_iptal_esz = 0;
     std::uint64_t esz_guvenli_uygulanan = 0;
+    std::uint64_t sil_kisit_erken = 0;          // W4-K26 (1): SIL bekleme noktasında erken uygulanan eşzamansız çıktı grubu
     std::uint64_t komut_suresi_doldu = 0;
     std::uint64_t olay_alinan = 0;
     std::uint64_t olay_gec = 0;
@@ -322,6 +323,13 @@ struct SinirSonucu {
     std::vector<OperatorSonucu> operator_sonuclari;
 };
 
+// W4-K26 (1): SIL'de bekleme noktasında işlenen kısıtlayan çerçevelerin erken uygulaması.
+struct KisitSonucu {
+    bool degisti = false;             // yürürlükteki komut ya da izinler değişti
+    bool notr = true;
+    std::array<double, 8> pwm_us{};   // yürürlükteki komut (nötrde ESC nötrü)
+};
+
 // Görev öğesi (A1 Tablo 3.6a; A5-K55): IDA_CMD_MISSION_ITEM alanları.
 struct GorevOgesi {
     std::uint16_t index = 0;
@@ -361,6 +369,9 @@ public:
     // Taşıma kapandı (SIL TCP, aygıt kalktı; A1-K23, K99) ya da SIL gözetimi doldu (A1-K76).
     void akis_kapandi(std::int64_t duvar_ns);
     void sil_gozetimi_doldu(std::int64_t duvar_ns);
+    // W4-K26 (3): karşı taraf kilitli adımı bozan sınırsız bir akış gönderdi (SIL alım sınırları):
+    // oturum varsa SESSION_CLOSE(PROTOCOL) ile biter ve yeni el sıkışma başlar (A1-K23).
+    void protokol_hatasi(std::int64_t duvar_ns);
     // Çalıştırma kipini değiştirir (hazırlık oturumundan sonra; A1-K19). Oturum yokken.
     void kip_ayarla(CalistirmaKipi kip);
 
@@ -394,6 +405,10 @@ public:
 
     // ---- Fizik sınırı (A1-K85) ----
     SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
+    // W4-K26 (1) (EMNİYET, yalnız SIL; HIL'de etkisiz): sınır adim_no'nun yuva beklemesinde
+    // işlenen kısıtlayan çerçevelerin (oturum sonu, eşzamansız güvenli çıktı) etkisini fizik o
+    // sınırdan ilerlemeden uygular; dönen komut aynı adımın itici girdisidir.
+    KisitSonucu sil_kisitlayan_uygula(std::uint64_t adim_no);
 
     // A1-K108 (sol #6): sim, a_n'de başlayan fizik adımını W(a_n)'den sonra hesapladı. Ortak
     // sayaç ve A1-K79 geçersizlik yolu.

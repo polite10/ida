@@ -111,6 +111,8 @@ set(_ida_kopru_testleri
   canlilik_bekleyen_yineleme  # W4-K15 ek (7) canlılık
   canlilik_dogrulanan_kume  # W4-K15 ek (7) canlılık
   canlilik_aninda  # W4-K15 ek (7) canlılık
+  tcp_kapat_duzgun_sinirli  # W4-K26 (3)
+  sil_kisit_erken  # W4-K26 (1) EMNİYET
   bellek_tasima
   tcp_tasima
   pty_tasima

@@ -20,6 +20,7 @@ int test_yeniden_yukleme(const TestBaglami&);
 int test_rapor_bicimi(const TestBaglami&);
 int test_dayaniklilik(const TestBaglami&);
 int test_cozumleme_suresi(const TestBaglami&);
+int test_unicode_belirtecler(const TestBaglami&);
 int test_fizik_yukleyici(const TestBaglami&);
 int test_ek_a_vektorleri(const TestBaglami&);
 int test_fizik_kurallari(const TestBaglami&);
@@ -63,6 +64,7 @@ int main(int argc, char** argv)
         {"rapor_bicimi", test_rapor_bicimi},
         {"dayaniklilik", test_dayaniklilik},
         {"cozumleme_suresi", test_cozumleme_suresi},
+        {"unicode_belirtecler", test_unicode_belirtecler},
         {"fizik_yukleyici", test_fizik_yukleyici},
         {"ek_a_vektorleri", test_ek_a_vektorleri},
         {"fizik_kurallari", test_fizik_kurallari},

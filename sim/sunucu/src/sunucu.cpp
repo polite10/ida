@@ -135,6 +135,9 @@ private:
     void yaz()
     {
         k_->giden_al(tampon_);
+        if (a_.giden_kancasi && !tampon_.empty()) {
+            a_.giden_kancasi(tampon_.data(), tampon_.size());   // sim'in göndermeye karar verdiği dizi
+        }
         if (!tas_) {
             cikis_.clear();
             cikis_k_ = 0;
@@ -156,6 +159,11 @@ private:
 
     void cikis_hizmet()
     {
+        if (sil_yazma_bitti_) {
+            cikis_.clear();   // W4-K26 (2): karşı uç artık okumuyor; dizi kancada kayıtlı
+            cikis_k_ = 0;
+            return;
+        }
         if (!tas_ || cikis_k_ >= cikis_.size()) {
             return;
         }
@@ -163,6 +171,14 @@ private:
         for (int j = 0; j < 8 && cikis_k_ < cikis_.size(); ++j) {
             const long long k = tas_->yaz_biraz(cikis_.data() + cikis_k_, cikis_.size() - cikis_k_);
             if (k < 0) {
+                if (a_.kip == Kip::sil) {
+                    // W4-K26 (2) (EMNİYET): SIL'de yazma hatası bağlantıyı burada bitirmez; alım
+                    // kuyruğu akış sırasıyla işlenmeye devam eder, akışın sonu kuyruk bitince.
+                    sil_yazma_bitti_ = true;
+                    cikis_.clear();
+                    cikis_k_ = 0;
+                    return;
+                }
                 baglanti_koptu("yazma hatası");
                 return;
             }
@@ -270,7 +286,11 @@ private:
         }
         alim_.resize(16384);   // yığında değil (MSVC C6262)
         const std::int64_t e0 = gercek();
+        std::size_t bu_tur = 0;
         for (;;) {
+            if (sil && bu_tur >= kSilOkumaTuru) {
+                break;   // W4-K26 (3): bir turun işi sınırlı; gözetim denetimine dönülür
+            }
             std::size_t n = 0;
             const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
             bekle_us = 0;
@@ -279,7 +299,18 @@ private:
                     a_.a1_bayt_kancasi(false, alim_.data(), n);
                 }
                 if (sil) {
+                    bu_tur += n;
+                    if (sil_gelen_.size() - sil_gelen_k_ + n > kSilGelenAzami) {
+                        // W4-K26 (3) (EMNİYET): bellek tavanı eklemeden önce; oturum protokol
+                        // hatasıyla biter, kuyruk (kilitli adımı bozan akış) atılır.
+                        ++s_.sil_kuyruk_tasma;
+                        k_->protokol_hatasi(duvar());
+                        sil_gelen_.clear();
+                        sil_gelen_k_ = 0;
+                        break;
+                    }
                     sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
+                    s_.sil_kuyruk_en_cok = std::max<std::uint64_t>(s_.sil_kuyruk_en_cok, sil_gelen_.size() - sil_gelen_k_);
                 } else {
                     k_->al(alim_.data(), n, duvar());
                 }
@@ -294,9 +325,6 @@ private:
             }
             break;
         }
-        if (sil && sil_gelen_.size() - sil_gelen_k_ > kSilGelenAzami) {
-            baglanti_koptu("SIL alım kuyruğu taştı");   // karşı taraf kilitli adımı bozuyor
-        }
         evre_[kEvreOkuma] += gercek() - e0;
     }
 
@@ -306,7 +334,9 @@ private:
     bool sil_besle(const std::function<bool()>& dur)
     {
         while (sil_gelen_k_ < sil_gelen_.size() && !dur()) {
-            sil_gelen_k_ += k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+            const std::size_t n = k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+            sil_gelen_k_ += n;
+            sil_beslenen_ += n;
         }
         if (sil_gelen_k_ >= sil_gelen_.size()) {
             sil_gelen_.clear();
@@ -327,6 +357,7 @@ private:
         sil_gelen_.clear();
         sil_gelen_k_ = 0;
         sil_akis_bitti_ = false;
+        sil_yazma_bitti_ = false;
     }
 
     // HIL: hedef duvar anına kadar okuyup bekler. Okuma engelsizdir; arada mutlak son tarihe
@@ -450,7 +481,14 @@ private:
     std::vector<std::uint8_t> sil_gelen_;   // SIL: alınmış, köprüye henüz verilmemiş baytlar
     std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
     bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
-    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
+    bool sil_yazma_bitti_ = false;          // SIL: yazım hata aldı (W4-K26 (2); bağlantı kuyrukta biter)
+    std::uint64_t sil_beslenen_ = 0;        // SIL: köprüye verilen toplam bayt
+    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB (W4-K26 (3))
+    static constexpr std::size_t kSilOkumaTuru = std::size_t{1} << 20U;    // pompa turu başına en çok 1 MiB
+    // W4-K26 (3): bir yuva beklemesinde, yuva tamamlanmadan işlenebilecek en çok bayt (kartın bir
+    // çağrısının meşru çıktısı birkaç KiB; W4-K14'ün 128 çerçevelik sınırının bayt karşılığından çok
+    // büyük). Aşılırsa oturum protokol hatasıyla biter (akış sırasına bağlı, belirlenimci).
+    static constexpr std::uint64_t kSilBeklemeAzami = std::uint64_t{1} << 22U;   // 4 MiB
     // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
     static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
     // W4-K28 (3): kapanışta bekleyen çıkışın tamamlanması için mutlak süre sınırı.
@@ -460,6 +498,7 @@ private:
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
     std::vector<sensor::Olcum> olcumler_;
     std::array<double, 8> pwm_yur_{};
+    Ayar::SinirGozlemi gozlem_;   // bu sınırın fiziğe verilen girdisi (kancaya adımdan önce)
     std::array<double, 8> son_pwm_yur_{};
     std::string pty_yol_;
     bool estop_bu_adim_ = false;
@@ -801,8 +840,17 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
     const auto dur = [this, seq] {
         return k_->yuva_tamam(seq) || k_->durum() != kopru::OturumDurumu::kosuyor;
     };
+    const std::uint64_t beslenen_bas = sil_beslenen_;
     for (;;) {
         (void)sil_besle(dur);
+        if (!k_->yuva_tamam(seq) && k_->durum() == kopru::OturumDurumu::kosuyor &&
+            sil_beslenen_ - beslenen_bas > kSilBeklemeAzami) {
+            // W4-K26 (3) (EMNİYET): yuvayı tamamlamayan sınırsız akış (ör. kesintisiz 0x00).
+            ++s_.sil_kuyruk_tasma;
+            k_->protokol_hatasi(duvar());
+            sil_gelen_.clear();
+            sil_gelen_k_ = 0;
+        }
         if (k_->yuva_tamam(seq)) {
             return true;
         }
@@ -1195,15 +1243,12 @@ bool Calistirici::sinir_on(std::uint64_t b)
         fizik_carpan_ = carpanlar;
     }
     (void)dn_.itici_komutu_ver(b, pwm);
-    if (a_.sinir_kancasi) {
-        Ayar::SinirGozlemi g;
-        g.b = b;
-        g.derinlik = dn_.durum().konum_n[2];
-        g.pwm = pwm;
-        g.itici_carpani = carpanlar;
-        g.acil_durdurma = estop_bu_adim_;
-        a_.sinir_kancasi(g);
-    }
+    // Gözlem fizik adımından hemen önce bildirilir (SIL'de W4-K26 (1) komutu değiştirebilir).
+    gozlem_.b = b;
+    gozlem_.derinlik = dn_.durum().konum_n[2];
+    gozlem_.pwm = pwm;
+    gozlem_.itici_carpani = carpanlar;
+    gozlem_.acil_durdurma = estop_bu_adim_;
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -3253,9 +3298,27 @@ Sonuc Calistirici::kos()
                 break;
             }
         }
+        if (a_.kip == Kip::sil) {
+            // W4-K26 (1) (EMNİYET): bu sınırın yuva beklemesinde işlenen kısıtlayan çerçeveler
+            // (oturum sonu, eşzamansız güvenli çıktı) fizik bu sınırdan ilerlemeden yürürlüğe girer.
+            const kopru::KisitSonucu kisit = k_->sil_kisitlayan_uygula(b);
+            if (kisit.degisti) {
+                pwm_yur_ = kisit.pwm_us;
+                std::array<double, 8> girdi = kisit.pwm_us;
+                if (estop_bu_adim_) {
+                    girdi.fill(static_cast<double>(arac_.esc.pwm_notr_us));
+                }
+                (void)dn_.itici_komutu_ver(b, girdi);
+                gozlem_.pwm = girdi;
+            }
+        }
+        if (a_.sinir_kancasi) {
+            a_.sinir_kancasi(gozlem_);
+        }
         if (yay_ != nullptr) {
-            // Yayın noktası: fizik sınırındaki sıranın sonu (köprü, sensörler, parti, yuva), fizik
-            // adımından önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
+            // Yayın noktası: fizik sınırındaki sıranın sonu (A3 emniyet istekleri sinir_isle'den
+            // önce, köprü, sensörler, parti, yuva, SIL'in kısıtlayan erken uygulaması), fizik
+            // adımından hemen önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
             a3_yayinla(b);
             s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
             // W4-K28 (1): duraklatma bu dilimde yoktur; sınırdan sonra her zaman fizik adımı gelir.
