@@ -736,6 +736,7 @@ int sil_belirlenim_testi(const std::string& ad, int argc, char** argv);   // tes
 int sil_alim_testi(const std::string& ad, int argc, char** argv);   // test_sil_alim.cpp
 int a3_testi(const std::string& ad, int argc, char** argv);   // test_a3.cpp (W4-bagla-a3)
 int sonar_testi(const std::string& ad, int argc, char** argv);   // test_sonar.cpp (W4-bagla-sonar)
+int duraklat_testi(const std::string& ad, int argc, char** argv);   // test_duraklat.cpp (W4-duraklat)
 
 int main(int argc, char** argv)
 {
@@ -761,6 +762,10 @@ int main(int argc, char** argv)
         return r == 0 ? 0 : 1;
     }
     if (const int r = sonar_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = duraklat_testi(ad, argc, argv); r >= 0) {
         std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
         return r == 0 ? 0 : 1;
     }

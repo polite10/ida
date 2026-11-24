@@ -13,6 +13,7 @@ endif()
 add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp test_sil_alim.cpp
   test_a3.cpp a3_istemci.cpp)   # W4-bagla-a3
 target_sources(ida_butunleme_test PRIVATE test_sonar.cpp)   # W4-bagla-sonar
+target_sources(ida_butunleme_test PRIVATE test_duraklat.cpp)   # W4-duraklat
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -134,9 +135,20 @@ if(NOT WIN32)
   # W4-K28 (3) EMNİYET: hazırlığın son el sıkışma pompasında kabul edilen durdur kazanır (SIL ve HIL).
   add_test(NAME butunleme.a3_hazirlik_son_durdur COMMAND ida_butunleme_test a3_hazirlik_son_durdur)
   set_tests_properties(butunleme.a3_hazirlik_son_durdur PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
-  # W4-K28 (1): HIL'de duraklatma (onaylı dahil) reddedilir; 4 s, sözde uçbirim.
-  add_test(NAME butunleme.a3_hil_duraklat_ret COMMAND ida_butunleme_test a3_hil_duraklat_ret)
-  set_tests_properties(butunleme.a3_hil_duraklat_ret PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+endif()
+# W4-duraklat (docs/gorevler/W4-duraklat.md kabul 2–5; sim/sunucu/BENIOKU.md "Duraklatma").
+foreach(_ad duraklat_sil_esitlik duraklat_senaryo_operator duraklat_ayni_tur_cikis duraklat_bas_birak duraklat_ayirma
+           duraklat_taban_ozet)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+if(NOT WIN32)
+  # HIL (sözde uçbirim, POSIX): kısıtlayan ardışık istekler (SIL de), kartın oturum kapanışı ve
+  # eşzamansız çıktıları, ilk TF öncesi duraklatma, tel (yalnız IDA_KEEPALIVE).
+  foreach(_ad duraklat_kisitlayan_ardisik duraklat_hil_oturum_sonu duraklat_hil_esz duraklat_hil_ilk_tf duraklat_hil_tel)
+    add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+    set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+  endforeach()
 endif()
 # Kabul 3: ida_sim + panelin A3 istemcisi (Node; web/src/a3, web/'e dosya eklenmez). Node yoksa
 # kaydedilmez; web/node_modules (esbuild) yoksa 77 döner ve atlanır.

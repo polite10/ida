@@ -10,10 +10,9 @@
 //                     kuyruğuyla, bayat run_id'li kısıtlayanla (W4-K19) aynı sonuç
 //   a3_emniyet_ret    kabul 4 (EMNİYET): revizyonsuz/bayat revizyonlu gevşetme reddi; aynı sınırda
 //                     senaryo ataması ile panel isteğinin karşılaşması (A1-K85): kısıtlayan önce
-//   a3_calistirma     SIL'de hız CSV ve A1 akışını değiştirmez; duraklat/sürdür/adımla (W4-K28 (1))
-//                     her durumda girişte reddedilir, durum ve çıktı değişmez; durdur çalıştırmayı bitirir
+//   a3_calistirma     SIL'de hız CSV ve A1 akışını değiştirmez; durumda geçersiz duraklat/sürdür/adımla
+//                     (Tablo 4.7a) girişte reddedilir, durum ve çıktı değişmez; durdur çalıştırmayı bitirir
 //   a3_hil_olcum      kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim, A3 açık ve 50 Hz abonelikli istemci
-//   a3_hil_duraklat_ret  W4-K28 (1): HIL'de duraklatma (onaylı dahil) reddedilir; geçersizlik kurulmaz
 //   a3_hazirlik_durdur  W4-K27 (4): hazırlanırken durdur → yuklendi, başlamaz
 //   a3_ayirma         W4-K27 (5): dünya tarafındaki A3 hizmetinde bellek ayırma yok (operator new kancası)
 #include "a3_istemci.hpp"
@@ -27,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -45,12 +45,22 @@
 namespace {
 std::atomic<std::uint64_t> g_a3_ayirma{0};
 std::atomic<std::uint64_t> g_sonar_ayirma{0};
+// W4-duraklat (kabul 2: ilk TF'den önce uzun HIL duraklatması, bellek sabit): dünya iş parçacığında
+// ayrılmış ve henüz serbest bırakılmamış baytlar. Her bloğun başında boyu ve sayılıp sayılmadığı
+// saklanır (blok başka iş parçacığında serbest bırakılsa da doğru düşülür).
+std::atomic<long long> g_dunya_canli{0};
+thread_local bool g_dunya_is = false;
 }  // namespace
 void a3_ayirma_sifirla() { g_a3_ayirma.store(0); }
 std::uint64_t a3_ayirma_sayisi() { return g_a3_ayirma.load(); }
 void sonar_ayirma_sifirla() { g_sonar_ayirma.store(0); }
 std::uint64_t sonar_ayirma_sayisi() { return g_sonar_ayirma.load(); }
+void dunya_isaretle() { g_dunya_is = true; }   // çağıran iş parçacığı dünya iş parçacığıdır
+long long dunya_canli_bayt() { return g_dunya_canli.load(); }
 #if !defined(_MSC_VER)
+namespace {
+constexpr std::size_t kBlokBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
+}  // namespace
 void* operator new(std::size_t n)
 {
     if (ida::sunucu::a3_ayirma_sayilir() > 0) {
@@ -59,16 +69,32 @@ void* operator new(std::size_t n)
     if (ida::sunucu::sonar_ayirma_sayilir() > 0) {
         g_sonar_ayirma.fetch_add(1, std::memory_order_relaxed);
     }
-    if (void* p = std::malloc(n == 0u ? 1u : n)) {
-        return p;
+    auto* p = static_cast<unsigned char*>(std::malloc(n + kBlokBaslik));
+    if (p == nullptr) {
+        throw std::bad_alloc();
     }
-    throw std::bad_alloc();
+    reinterpret_cast<std::size_t*>(p)[0] = n;
+    reinterpret_cast<std::size_t*>(p)[1] = g_dunya_is ? 1u : 0u;
+    if (g_dunya_is) {
+        g_dunya_canli.fetch_add(static_cast<long long>(n), std::memory_order_relaxed);
+    }
+    return p + kBlokBaslik;
 }
 void* operator new[](std::size_t n) { return ::operator new(n); }
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete[](void* p) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+void operator delete(void* q) noexcept
+{
+    if (q == nullptr) {
+        return;
+    }
+    auto* p = static_cast<unsigned char*>(q) - kBlokBaslik;
+    if (reinterpret_cast<std::size_t*>(p)[1] != 0u) {
+        g_dunya_canli.fetch_sub(static_cast<long long>(reinterpret_cast<std::size_t*>(p)[0]), std::memory_order_relaxed);
+    }
+    std::free(p);
+}
+void operator delete[](void* q) noexcept { ::operator delete(q); }
+void operator delete(void* q, std::size_t) noexcept { ::operator delete(q); }
+void operator delete[](void* q, std::size_t) noexcept { ::operator delete(q); }
 #endif
 
 namespace {
@@ -498,30 +524,26 @@ int test_a3_emniyet_ret()
     return 0;
 }
 
-// W4-K28 (1): duraklatma bu dilimde kapalı. `duraklat`, `surdur`, `adimla` girişte `gecersiz_durum`
-// ("bu sürümde desteklenmiyor") alır; durum, durum revizyonu ve çıktı (CSV, A1 akışı) değişmez.
-bool duraklatma_reddi(const ida::a3::AlimSonucu& r)
-{
-    return r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "gecersiz_durum" &&
-           r.ileti.find("bu sürümde desteklenmiyor") != std::string::npos;
-}
-
-// Her durumda (güncel ve bayat durum revizyonuyla; HIL'de onaylı duraklatma dahil) üç isteği verir;
-// hepsi reddedilmeli, anlık görüntünün durumu ve revizyonu değişmemeli.
-bool duraklatma_dene(ida::a3::KomutAlicisi& al)
+// W4-duraklat: o anki durumda Tablo 4.7a'ya göre geçersiz olan çalıştırma komutlarını verir (kosuyor:
+// surdur, adimla; hazirlaniyor: üçü de; güncel revizyonla `gecersiz_durum`), ayrıca bayat revizyonlu
+// duraklatmayı (`durum_rev_uyusmuyor`). Hiçbiri kuyruğa girmemeli; durum ve revizyon değişmemeli.
+bool gecersiz_dene(ida::a3::KomutAlicisi& al)
 {
     const ida::a3::AnlikDurum d = al.anlik();
     bool hepsi = true;
     for (const KomutTuru t : {KomutTuru::calistirma_duraklat, KomutTuru::calistirma_surdur, KomutTuru::calistirma_adimla}) {
-        for (int bayat = 0; bayat < 2; ++bayat) {
-            Komut k = calistirma(d, t);
-            k.gecersizligi_onayla = true;
-            k.periyot_sayisi = 3;
-            if (bayat != 0) {
-                k.beklenen_durum_rev = d.durum_rev + 7u;
-            }
-            hepsi = hepsi && duraklatma_reddi(al.al(k));
+        const bool gecerli = t == KomutTuru::calistirma_duraklat ? d.durum == ida::a3::CalistirmaDurumu::kosuyor
+                                                                  : d.durum == ida::a3::CalistirmaDurumu::duraklatildi;
+        Komut k = calistirma(d, t);
+        k.gecersizligi_onayla = true;
+        k.periyot_sayisi = 3;
+        if (!gecerli) {
+            const auto r = al.al(k);
+            hepsi = hepsi && r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "gecersiz_durum";
         }
+        k.beklenen_durum_rev = d.durum_rev + 7u;
+        const auto r2 = al.al(k);
+        hepsi = hepsi && r2.tur == ida::a3::AlimSonucu::Tur::ret && r2.hata_kodu == "durum_rev_uyusmuyor";
     }
     const ida::a3::AnlikDurum s = al.anlik();
     return hepsi && s.durum == d.durum && s.durum_rev == d.durum_rev;
@@ -530,7 +552,7 @@ bool duraklatma_dene(ida::a3::KomutAlicisi& al)
 int test_a3_calistirma()
 {
     const Kosu taban = kos(z1_yerlesik(12.0), false, nullptr);
-    // 2,5 s: duraklat/sürdür/adımla reddedilir; hız 20; 8 s'de hız 0. Görülen her durum kaydedilir.
+    // 2,5 s: geçersiz duraklat/sürdür/adımla reddedilir; hız 20; 8 s'de hız 0. Görülen her durum kaydedilir.
     std::vector<std::uint32_t> nolar;
     int red_tamam = 0, red_deneme = 0;
     bool duraklatildi_goruldu = false;
@@ -543,7 +565,7 @@ int test_a3_calistirma()
         duraklatildi_goruldu = duraklatildi_goruldu || d.durum == ida::a3::CalistirmaDurumu::duraklatildi;
         if (b == 0 || b == 2000 || b == 2004 || b == 6400) {
             ++red_deneme;
-            red_tamam += duraklatma_dene(al) ? 1 : 0;
+            red_tamam += gecersiz_dene(al) ? 1 : 0;
         }
         if (b == 2000 && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
             Komut h = calistirma(d, KomutTuru::calistirma_hiz);
@@ -557,9 +579,9 @@ int test_a3_calistirma()
     });
     esitlik(taban, k, "reddedilen duraklat/sürdür/adımla ve hız");
     dogrula_a3(red_deneme >= 4 && red_tamam == red_deneme,
-               "W4-K28 (1): duraklat/sürdür/adımla her denemede gecersiz_durum ('bu sürümde desteklenmiyor'); durum ve "
-               "durum_rev değişmedi (" + std::to_string(red_tamam) + "/" + std::to_string(red_deneme) + ")");
-    dogrula_a3(!duraklatildi_goruldu, "W4-K28 (1): duraklatildi durumu hiç görülmedi");
+               "Tablo 4.7a: geçersiz duraklat/sürdür/adımla girişte reddedildi; durum ve durum_rev değişmedi (" +
+                   std::to_string(red_tamam) + "/" + std::to_string(red_deneme) + ")");
+    dogrula_a3(!duraklatildi_goruldu, "duraklatma istenmedi: duraklatildi durumu görülmedi");
     dogrula_a3(nolar.size() == 2u, "iki hız komutu");
     bool hepsi = nolar.size() == 2u;
     for (std::uint32_t no : nolar) {
@@ -598,13 +620,14 @@ int test_a3_hil_olcum()
     a.a3_port = 0;
     a.csv_uret = false;
     a.a3_hazir = [&ist](std::uint16_t p, const std::string& j) { ist.baslat(p, j); };
-    // W4-K28 (1): duraklatma bu dilimde kapalı (girişte gecersiz_durum); HIL'de hız kipte geçersiz.
+    // Tablo 4.7b: HIL'de onaysız duraklatma `onay_gerekli` (çalıştırma duraklamaz); hız kipte geçersiz.
     bool denendi = false;
     a.a3_sinir_kancasi = [&denendi](std::uint64_t b, ida::a3::KomutAlicisi& al) {
         if (b == 800 && !denendi) {
             denendi = true;
             const auto r = al.al(calistirma(al.anlik(), KomutTuru::calistirma_duraklat));
-            dogrula_a3(duraklatma_reddi(r), "HIL'de duraklatma: gecersiz_durum (W4-K28 (1))");
+            dogrula_a3(r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "onay_gerekli",
+                       "HIL'de onaysız duraklatma: onay_gerekli (Tablo 4.7b)");
             Komut h = calistirma(al.anlik(), KomutTuru::calistirma_hiz);
             h.carpan = 2.0;
             const auto r2 = al.al(h);
@@ -672,7 +695,7 @@ int test_a3_hazirlik_durdur()
     const Kosu k = kos(a, true, nullptr, [&no, &red](std::uint64_t b, ida::a3::KomutAlicisi& al) {
         const ida::a3::AnlikDurum d = al.anlik();
         if (b == 0 && d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor && no == 0u) {
-            red = duraklatma_dene(al);   // W4-K28 (1): hazırlıkta da reddedilir
+            red = gecersiz_dene(al);   // Tablo 4.7a: hazırlanırken üçü de geçersiz
             const Komut k2 = calistirma(d, KomutTuru::calistirma_durdur);
             no = k2.komut_no;
             dogrula_a3(al.al(k2).tur == ida::a3::AlimSonucu::Tur::kuyrukta, "hazırlanırken durdur kuyrukta");
@@ -683,7 +706,7 @@ int test_a3_hazirlik_durdur()
                "durdur: çalıştırma yuklendi'ye döndü ve başlamadı (" + k.s.calistirma_sonu + ")");
     const auto* o = a3_sonucu(k.s, no);
     dogrula_a3(o != nullptr && o->sonuc == "uygulandi", "durdur uygulandı");
-    dogrula_a3(red, "hazırlıkta duraklat/sürdür/adımla gecersiz_durum (W4-K28 (1))");
+    dogrula_a3(red, "hazırlıkta duraklat/sürdür/adımla gecersiz_durum (Tablo 4.7a)");
     dogrula_a3(sure < 10.0, "hazırlık beklemesinde işlendi (" + std::to_string(sure) + " s; bağlantı bekleme 20 s)");
     // Hazırlık başarısız (koşucu yok, 0,5 s): yuklendi, başlamaz.
     ida::sunucu::Ayar f = z1_yerlesik(5.0);
@@ -1182,42 +1205,6 @@ int test_a3_kisitlayan_ardisik()
     return 0;
 }
 
-// W4-K28 (1) HIL: duraklatma kapalı. Hazırlıkta ve koşarken (onaylı duraklatma dahil) duraklat/sürdür/
-// adımla girişte reddedilir; durum `duraklatildi` olmaz; HIL duraklatma geçersizliği kurulmaz; TF'ler
-// boşluksuz ve çalıştırma `bitti`.
-int test_a3_hil_duraklat_ret()
-{
-    ida::sunucu::Ayar a;
-    a.gunluk = 1;
-    a.kip = ida::sunucu::Kip::hil;
-    a.karsi = ida::sunucu::Karsi::pty;
-    a.sure_s = 4.0;
-    a.a3_acik = true;
-    a.a3_port = 0;
-    a.a3_kapanis_bekleme_s = 0.0;
-    int deneme = 0, tamam = 0;
-    bool hazirlikta = false, duraklatildi = false;
-    a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
-        const ida::a3::AnlikDurum d = al.anlik();
-        duraklatildi = duraklatildi || d.durum == ida::a3::CalistirmaDurumu::duraklatildi;
-        const bool hz = d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor;
-        if ((hz && !hazirlikta) || b == 800 || b == 2400) {
-            hazirlikta = hazirlikta || hz;
-            ++deneme;
-            tamam += duraklatma_dene(al) ? 1 : 0;
-        }
-    };
-    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
-    dogrula_a3(s.tamam && s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + s.hata);
-    dogrula_a3(deneme >= 2 && tamam == deneme,
-               "HIL: duraklat/sürdür/adımla (onaylı dahil) gecersiz_durum; durum değişmedi (" + std::to_string(tamam) + "/" +
-                   std::to_string(deneme) + ")");
-    dogrula_a3(!duraklatildi, "HIL: duraklatildi durumu hiç görülmedi");
-    dogrula_a3((s.sayac.calistirma_gecersiz & ida::kopru::kGecDuraklatma) == 0u, "HIL duraklatma geçersizliği kurulmadı");
-    dogrula_a3(s.zaman.tf_sayisi >= 790u, "TF'ler sürdü (" + std::to_string(s.zaman.tf_sayisi) + ")");
-    return 0;
-}
-
 // W4-K27 (5): dünya tarafındaki A3 hizmeti bellek ayırmaz. Ayırmalar `operator new` kancasıyla, A3
 // hizmeti kapsamında (köprü ve fizik çağrıları hariç) sayılır. Kapsam: bağlı istemci, emniyet bas/
 // bırak, genişletici, nötr ve daraltıcı yer istasyonu komutları, hız ve senaryo arızası.
@@ -1281,8 +1268,6 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_hazirlik_kapanis();
     } else if (ad == "a3_hazirlik_son_durdur") {
         (void)test_a3_hazirlik_son_durdur();
-    } else if (ad == "a3_hil_duraklat_ret") {
-        (void)test_a3_hil_duraklat_ret();
     } else if (ad == "a3_hazirlik_durdur") {
         (void)test_a3_hazirlik_durdur();
     } else if (ad == "a3_ayirma") {

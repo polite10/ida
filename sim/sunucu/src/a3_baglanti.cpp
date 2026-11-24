@@ -49,13 +49,8 @@ namespace a3b {
 
 bool canli(CalistirmaDurumu d)
 {
-    return d == CalistirmaDurumu::hazirlaniyor || d == CalistirmaDurumu::kosuyor;
-}
-
-bool duraklatma_mi(KomutTuru t)
-{
-    return t == KomutTuru::calistirma_duraklat || t == KomutTuru::calistirma_surdur ||
-           t == KomutTuru::calistirma_adimla;
+    // A3-K91: canlı çalıştırma hazirlaniyor, kosuyor ve duraklatildi'dır (W4-duraklat).
+    return d == CalistirmaDurumu::hazirlaniyor || d == CalistirmaDurumu::kosuyor || d == CalistirmaDurumu::duraklatildi;
 }
 
 const char* durum_adi(CalistirmaDurumu d)
@@ -71,15 +66,15 @@ bool gecis_gecerli(CalistirmaDurumu d, KomutTuru t)
     using D = CalistirmaDurumu;
     switch (t) {
     case KomutTuru::calistirma_baslat: return d == D::yuklendi;
-    // W4-K28 (1): duraklat, surdur ve adimla bu dilimde hiçbir durumda geçerli değildir.
-    case KomutTuru::calistirma_duraklat:
+    // W4-duraklat (Tablo 4.7a): duraklat kosuyor'dan; surdur ve adimla duraklatildi'dan.
+    case KomutTuru::calistirma_duraklat: return d == D::kosuyor;
     case KomutTuru::calistirma_surdur:
-    case KomutTuru::calistirma_adimla: return false;
-    case KomutTuru::calistirma_hiz: return d == D::kosuyor;
-    case KomutTuru::calistirma_durdur: return d == D::hazirlaniyor || d == D::kosuyor;
+    case KomutTuru::calistirma_adimla: return d == D::duraklatildi;
+    case KomutTuru::calistirma_hiz: return d == D::kosuyor || d == D::duraklatildi;
+    case KomutTuru::calistirma_durdur: return d == D::hazirlaniyor || d == D::kosuyor || d == D::duraklatildi;
     case KomutTuru::calistirma_sifirla:
-        return d == D::yuklendi || d == D::hazirlaniyor || d == D::kosuyor || d == D::bitti || d == D::durduruldu ||
-               d == D::hata;
+        return d == D::yuklendi || d == D::hazirlaniyor || d == D::kosuyor || d == D::duraklatildi || d == D::bitti ||
+               d == D::durduruldu || d == D::hata;
     default: return false;
     }
 }
@@ -329,11 +324,6 @@ AlimSonucu A3Alici::al(const Komut& k)
         return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil (A3-K54, K124)", ay);
     };
     if (calistirma_mi(k.tur)) {
-        if (a3b::duraklatma_mi(k.tur)) {
-            // W4-K28 (1): duraklatma bu dilimde kapalı; istek komut girişinde, durum ve revizyon
-            // denetiminden önce reddedilir (kuyruğa girmez; durum ve çıktı değişmez).
-            return ret("gecersiz_durum", a3b::kDuraklatmaYokIleti, a3b::kDuraklatmaYokAyrinti);
-        }
         // A3-K123: eşzamanlı denetim; dünya uygulamada aynı atomik adımda yeniden denetler.
         if (k.beklenen_durum_rev != a.durum_rev) {
             return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil (A3-K123)",
@@ -345,8 +335,15 @@ AlimSonucu A3Alici::al(const Komut& k)
         if (!gecis_gecerli(a.durum, k.tur)) {
             return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
         }
-        if (hil_ && k.tur == KomutTuru::calistirma_hiz) {
+        if (hil_ && (k.tur == KomutTuru::calistirma_hiz || k.tur == KomutTuru::calistirma_adimla)) {
             return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
+        }
+        if (hil_ && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
+            // Tablo 4.7b: HIL'de duraklatma çalıştırmayı geçersiz kılar (A1-K41, K79); onay ister.
+            return ret("onay_gerekli", "HIL'de duraklatma çalıştırmayı geçersiz kılar: gecersizligi_onayla gerekli (Tablo 4.7b)");
+        }
+        if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
+            return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
         }
         if (k.tur == KomutTuru::calistirma_sifirla && a.durum != CalistirmaDurumu::yuklendi) {
             // Karşılığı olmayan istek (W4-bagla-a3 kapsam 3): ida_sim bu dilimde tek çalıştırma koşar;

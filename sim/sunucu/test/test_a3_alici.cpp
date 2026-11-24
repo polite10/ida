@@ -132,25 +132,28 @@ int test_a3_kesim()
     return g_hata_alici;
 }
 
-// W4-K28 (1): duraklatma bu dilimde kapalı. Her çalıştırma durumunda (anlık görüntüde
-// `duraklatildi` yazılmış olsa bile) `duraklat`, `surdur`, `adimla` güncel ve bayat revizyonla
-// girişte `gecersiz_durum` ("bu sürümde desteklenmiyor") alır ve kuyruğa girmez; Tablo 4.7a
-// denetimi bu üç türü hiçbir durumda geçerli saymaz.
-int test_a3_duraklatma_kapali()
+// W4-duraklat: Tablo 4.7a ve 4.7b'nin üç komutu girişte (eşzamanlı denetim). Her durum ve iki kip
+// için: duraklat yalnız kosuyor'dan, surdur ve adimla yalnız duraklatildi'dan geçerlidir; HIL'de
+// adimla `kipte_gecersiz`, duraklat `gecersizligi_onayla` olmadan `onay_gerekli`; adimla'nın
+// periyot_sayisi 1–10 000; bayat durum revizyonu `durum_rev_uyusmuyor` (her şeyden önce). Geçerli
+// istekler çalıştırma denetimi yolundan kuyruğa girer, ötekiler girmez.
+int test_a3_duraklatma_tablo()
 {
     using ida::a3::CalistirmaDurumu;
     using ida::a3::KomutTuru;
-    ida::sunucu::A3Alici al(false);
-    ida::sunucu::A3Alici al_hil(true);
-    std::vector<ida::sunucu::A3Giris> kisit;
-    std::vector<ida::sunucu::A3Giris> genel;
-    kisit.reserve(16);
-    genel.reserve(512);
     const std::string run = "20261124-000000-abcdef";
-    int ret = 0, toplam = 0;
-    bool gecerli_yok = true;
-    for (int d = 0; d <= 8; ++d) {
-        for (ida::sunucu::A3Alici* a : {&al, &al_hil}) {
+    int hata0 = g_hata_alici;
+    int toplam = 0;
+    int dogru = 0;
+    std::size_t beklenen_kuyruk = 0;
+    std::size_t kuyruk = 0;
+    for (const bool hil : {false, true}) {
+        for (int d = 0; d <= 8; ++d) {
+            ida::sunucu::A3Alici al(hil);
+            std::vector<ida::sunucu::A3Giris> kisit;
+            std::vector<ida::sunucu::A3Giris> genel;
+            kisit.reserve(16);
+            genel.reserve(512);
             ida::sunucu::AnlikPod p;
             p.durum = static_cast<std::uint8_t>(d);
             p.durum_rev = 11;
@@ -158,34 +161,54 @@ int test_a3_duraklatma_kapali()
             for (std::size_t i = 0; i < run.size(); ++i) {
                 p.run_id[i] = run[i];
             }
-            a->anlik_yaz(p);
+            al.anlik_yaz(p);
+            const auto durum = static_cast<CalistirmaDurumu>(d);
             for (const KomutTuru t : {KomutTuru::calistirma_duraklat, KomutTuru::calistirma_surdur, KomutTuru::calistirma_adimla}) {
-                gecerli_yok = gecerli_yok && !ida::sunucu::a3b::gecis_gecerli(static_cast<CalistirmaDurumu>(d), t);
-                for (const std::uint32_t rev : {11u, 3u}) {
+                const bool tablo = t == KomutTuru::calistirma_duraklat ? durum == CalistirmaDurumu::kosuyor
+                                                                        : durum == CalistirmaDurumu::duraklatildi;
+                dogrula_alici(ida::sunucu::a3b::gecis_gecerli(durum, t) == tablo,
+                              "Tablo 4.7a: durum " + std::to_string(d) + ", tür " + std::to_string(static_cast<int>(t)));
+                for (int varyant = 0; varyant < 4; ++varyant) {
+                    // 0: geçerli biçim (onaylı, n = 1); 1: bayat revizyon; 2: onaysız; 3: n = 0
                     Komut k;
                     k.komut_no = static_cast<std::uint32_t>(++toplam);
                     k.tur = t;
                     if (p.run_var) {
                         k.beklenen_run_id = run;
                     }
-                    k.beklenen_durum_rev = rev;
-                    k.gecersizligi_onayla = true;
-                    k.periyot_sayisi = 1;
-                    const ida::a3::AlimSonucu r = a->al(k);
-                    ret += r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "gecersiz_durum" &&
-                                   r.ileti.find("bu sürümde desteklenmiyor") != std::string::npos
-                               ? 1
-                               : 0;
+                    k.beklenen_durum_rev = varyant == 1 ? 3u : 11u;
+                    k.gecersizligi_onayla = varyant != 2;
+                    k.periyot_sayisi = varyant == 3 ? 0u : 1u;
+                    std::string beklenen;
+                    if (varyant == 1) {
+                        beklenen = "durum_rev_uyusmuyor";
+                    } else if (!tablo) {
+                        beklenen = "gecersiz_durum";
+                    } else if (hil && t == KomutTuru::calistirma_adimla) {
+                        beklenen = "kipte_gecersiz";
+                    } else if (hil && t == KomutTuru::calistirma_duraklat && varyant == 2) {
+                        beklenen = "onay_gerekli";
+                    } else if (t == KomutTuru::calistirma_adimla && varyant == 3) {
+                        beklenen = "gecersiz_deger";
+                    }
+                    const ida::a3::AlimSonucu r = al.al(k);
+                    const bool tamam = beklenen.empty() ? r.tur == ida::a3::AlimSonucu::Tur::kuyrukta
+                                                        : r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == beklenen;
+                    dogru += tamam ? 1 : 0;
+                    beklenen_kuyruk += beklenen.empty() ? 1u : 0u;
+                    if (!tamam) {
+                        std::printf("  hil=%d durum=%d tür=%d varyant=%d: beklenen '%s', alınan %d '%s'\n", hil ? 1 : 0, d,
+                                    static_cast<int>(t), varyant, beklenen.c_str(), static_cast<int>(r.tur), r.hata_kodu.c_str());
+                    }
                 }
             }
+            al.cek(kisit, genel);
+            kuyruk += genel.size() + kisit.size();
         }
     }
-    al.cek(kisit, genel);
-    al_hil.cek(kisit, genel);
-    dogrula_alici(ret == toplam && toplam == 9 * 2 * 3 * 2,
-                  "her durumda duraklat/sürdür/adımla girişte gecersiz_durum (" + std::to_string(ret) + "/" +
-                      std::to_string(toplam) + ")");
-    dogrula_alici(kisit.empty() && genel.empty(), "reddedilen istekler kuyruğa girmedi");
-    dogrula_alici(gecerli_yok, "Tablo 4.7a: üç tür hiçbir durumda geçerli değil");
-    return g_hata_alici;
+    dogrula_alici(dogru == toplam && toplam == 2 * 9 * 3 * 4,
+                  "girişte beklenen sonuç (" + std::to_string(dogru) + "/" + std::to_string(toplam) + ")");
+    dogrula_alici(kuyruk == beklenen_kuyruk && beklenen_kuyruk > 0u,
+                  "yalnız geçerli istekler kuyruğa girdi (" + std::to_string(kuyruk) + "/" + std::to_string(beklenen_kuyruk) + ")");
+    return g_hata_alici - hata0;
 }

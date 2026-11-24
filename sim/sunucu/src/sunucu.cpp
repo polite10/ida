@@ -504,7 +504,15 @@ private:
     void plan_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
     void gorev_hizmet(std::int64_t t);
     void olay_sonucu(std::size_t i, const char* sonuc, std::int64_t t, const char* neden = "");
-    bool sinir_on(std::uint64_t b);
+    // W4-duraklat (W4-K28 (2); EMNİYET): sınır b'nin bir turu. İlerleyen kipte (duran = false)
+    // olağan sınır işlemi; duran kipte AYNI işlev, aynı sıra; atlanan yalnız (1) senaryonun zaman
+    // çizelgesi, (2) fizik adımı ve sim zamanını ilerleten işler (sensör ve sonar adımı, parti),
+    // (3) üye gönderimi (köprünün duran kipi). Fizik adımı turdan sonra, çağıranda; yalnız
+    // çalıştırma duraklatılmış değilken. false: döngü biter (durdur ya da hata).
+    bool sinir_turu(std::uint64_t b, bool duran);
+    // Turun sonunda duraklatmanın girişi ve çıkışı. true: sınır b'nin sonraki turu duran kipte.
+    bool duraklatma_gecisi(std::uint64_t b, bool duran);
+    bool sinir_on(std::uint64_t b, bool duran);
     void adim_sonrasi(std::uint64_t b);
     void satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq);
     void satir_tamamla(Satir& r);
@@ -518,15 +526,15 @@ private:
     bool a3_run_uyar(const a3::Komut& k) const;
     bool a3_gevsetme_onu_acik(const A3Giris& g);
     void a3_calistirma_isle(std::uint64_t b);
-    bool a3_sinir_basi(std::uint64_t b);
+    bool a3_sinir_basi(std::uint64_t b, bool duran);
     bool a3_hazirlik_durdu(bool kanca = true);
     void a3_emniyet_ver(std::uint64_t b);
-    void a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
+    void a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss, bool duran);
     void a3_sonuclari_isle(std::uint64_t b, const kopru::OperatorSonucu* sonuc, std::size_t n,
                            const sensor::EmniyetDurumu& once);
     void a3_yi_uygula(std::uint64_t b, const A3Giris& g, const kopru::SinirSonucu* ss);
     void a3_yi_izle();
-    void a3_yayinla(std::uint64_t b);
+    void a3_yayinla(std::uint64_t b, bool duran);
     void a3_sensor_yayinla();
     void a3_durum_yayinla(std::int64_t t);
     void a3_gecerlilik(std::uint64_t b);
@@ -651,6 +659,17 @@ private:
     }
     std::int64_t son_tf_yazim_ = -1;
     std::int64_t w0_ = 0;
+    std::vector<std::int64_t> tf_yazim_;      // TF yazım başlangıçları (gercek)
+
+    // ---- W4-duraklat ----
+    std::optional<std::uint64_t> adimla_hedef_;   // adımlamanın yeniden duraklatacağı sınır (A3-K65)
+    std::int64_t duraklama_duvar_ = 0;            // duraklatmanın yürürlüğe girdiği an (gercek)
+    std::int64_t duran_yayin_duvar_ = 0;          // duran kipte son durum yayını (gercek)
+    std::uint64_t duran_tur_ = 0;                 // duran kip turları (çalıştırma boyunca; ölçüm)
+    static constexpr std::int64_t kDuranTurNs = 1'000'000;   // duran kip turunun bekleme payı (1 ms)
+    // Bir duraklatmada köprüye verilen (tele kip kalkınca çıkacak) emniyet dışı yer istasyonu komutu.
+    std::size_t duran_yi_verilen_ = 0;
+    static constexpr std::size_t kDuranYiAzami = 256;   // A3-K59'un kuyruk boyu (mimari seçimi)
 
     // ---- A3 (W4-bagla-a3) ----
     // W4-K27 (5): dünya tarafındaki A3 depoları A3 başlarken ayrılır; hizmet sırasında bellek
@@ -1468,10 +1487,16 @@ void Calistirici::plan_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& 
 
 // Sınır b: senaryo, köprünün emniyet ve sürekli çıktı işlemleri, acil durdurma engeli, arıza,
 // itici komutu, sensörler. false: sensör ya da fizik hatası.
-bool Calistirici::sinir_on(std::uint64_t b)
+// W4-duraklat: duran kipte aynı işlev, aynı sıra; senaryonun zaman çizelgesi (plan_sinir ve
+// sonuçları) ve zamanı ilerleten sensör/sonar adımı atlanır. Köprünün emniyet işlemleri (A1-K85),
+// acil durdurma engeli ve itici girdisinin yeniden değerlendirilmesi iki kipte aynı koddur: fizik
+// adımı b, sınırın son turunun (duraklatmadan çıkış turu dahil) girdisiyle koşar.
+bool Calistirici::sinir_on(std::uint64_t b, bool duran)
 {
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
-    plan_sinir(b);
+    if (!duran) {
+        plan_sinir(b);   // (1) zaman çizelgesi: aynı sınırın olayları yeniden girmez
+    }
     if (yay_ != nullptr) {
         // W4-bagla-a3 (EMNİYET): panelin emniyet istekleri ve daraltıcı komutları senaryonun
         // atamalarıyla aynı sınırda, aynı köprü yolundan (emniyet_ata, komut_*) girer; sırayı
@@ -1481,22 +1506,27 @@ bool Calistirici::sinir_on(std::uint64_t b)
     const std::int64_t e0 = gercek();
     const kopru::SinirSonucu ss = k_->sinir_isle(b, duvar());
     const std::int64_t e1 = gercek();
-    plan_sinir_sonrasi(b, ss);
+    if (!duran) {
+        plan_sinir_sonrasi(b, ss);
+    }
     if (yay_ != nullptr) {
-        a3_sinir_sonrasi(b, ss);
+        a3_sinir_sonrasi(b, ss, duran);
     }
     evre_[kEvreKopru] += e1 - e0;
-    son_pwm_yur_ = pwm_yur_;
+    if (!duran) {
+        son_pwm_yur_ = pwm_yur_;   // (t − h, t] adımının komutu: aynı sınırın yeni turunda değişmez
+    }
     pwm_yur_ = ss.pwm_us;
     std::array<double, 8> pwm = ss.pwm_us;
     const double notr = static_cast<double>(arac_.esc.pwm_notr_us);
     // EMNİYET (iskelet §5, W3-K1): acil durdurma iticilerin enerjisini keser; köprüden gelen
-    // komut ne olursa olsun itici girdisi nötrdür.
-    onceki_estop_ = estop_bu_adim_;
+    // komut ne olursa olsun itici girdisi nötrdür. (Sayaç `estop_adim` fizik adımında sayılır.)
+    if (!duran) {
+        onceki_estop_ = estop_bu_adim_;
+    }
     estop_bu_adim_ = k_->acil_durdurma();
     if (estop_bu_adim_) {
         pwm.fill(notr);
-        ++s_.estop_adim;
     }
     std::array<double, 8> carpanlar{};
     carpanlar.fill(1.0);
@@ -1526,6 +1556,9 @@ bool Calistirici::sinir_on(std::uint64_t b)
     gozlem_.acil_durdurma = estop_bu_adim_;
     gozlem_.konum = dn_.durum().konum_n;
     gozlem_.yonelim = dn_.durum().yonelim;
+    if (duran) {
+        return true;   // (2) sensör ve sonar adımı zamanı ilerletir: duran kipte yok
+    }
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -1835,6 +1868,9 @@ void Calistirici::adim_sonrasi(std::uint64_t b)
         hepsi_notr = hepsi_notr && d.pwm_us[i] == notr;
         en_buyuk_itki = std::max(en_buyuk_itki, std::abs(d.itki[i]));
         en_buyuk_istek = std::max(en_buyuk_istek, std::abs(d.itki_istegi[i]));
+    }
+    if (estop_bu_adim_) {
+        ++s_.estop_adim;   // acil durdurma etkin geçen fizik adımı (duraklatma turları sayılmaz)
     }
     if (estop_bu_adim_ && (!hepsi_notr || en_buyuk_istek != 0.0)) {
         ++s_.ihlal_estop;
@@ -2221,7 +2257,9 @@ void Calistirici::a3_olay(std::uint16_t tur, std::uint8_t onem, std::uint8_t kay
     o.tur = tur;
     o.onem = onem;
     o.kaynak = kaynak;
-    o.adim_no = a3d_.durum == a3::CalistirmaDurumu::kosuyor ? a3_b_ : kYok64;
+    o.adim_no = a3d_.durum == a3::CalistirmaDurumu::kosuyor || a3d_.durum == a3::CalistirmaDurumu::duraklatildi
+                    ? a3_b_
+                    : kYok64;
     o.komut_no = komut_no;
     o.istemci_id = istemci;
     o.ayrinti = ayrinti;
@@ -2435,10 +2473,6 @@ bool Calistirici::a3_baslat_bekle()
                 a3_sonuc(g, false, 0, basla ? "gecersiz_durum" : "canli_calistirma_yok");
                 continue;
             }
-            if (a3b::duraklatma_mi(k.tur)) {
-                a3_sonuc(g, false, 0, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);   // W4-K28 (1)
-                continue;
-            }
             if (k.beklenen_durum_rev != a3d_.durum_rev) {
                 a3_sonuc(g, false, 0, "durum_rev_uyusmuyor", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
                 continue;
@@ -2488,11 +2522,6 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             continue;
         }
         const bool hil = a_.kip == Kip::hil;
-        if (a3b::duraklatma_mi(k.tur)) {
-            // W4-K28 (1): alıcı girişte reddeder; buraya ulaşırsa da reddedilir (durum değişmez).
-            a3_sonuc(g, false, b, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);
-            continue;
-        }
         if (k.beklenen_durum_rev != a3d_.durum_rev) {
             a3_sonuc(g, false, b, "durum_rev_uyusmuyor", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
             continue;
@@ -2515,8 +2544,16 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             a3_sonuc(g, false, b, "gecersiz_durum", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
             continue;
         }
-        if (hil && k.tur == a3::KomutTuru::calistirma_hiz) {
+        if (hil && (k.tur == a3::KomutTuru::calistirma_hiz || k.tur == a3::KomutTuru::calistirma_adimla)) {
             a3_sonuc(g, false, b, "kipte_gecersiz", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+            continue;
+        }
+        if (hil && k.tur == a3::KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
+            a3_sonuc(g, false, b, "onay_gerekli");   // Tablo 4.7b (girişte de denetlenir)
+            continue;
+        }
+        if (k.tur == a3::KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
+            a3_sonuc(g, false, b, "gecersiz_deger");   // A3-K65
             continue;
         }
         ++a3d_.durum_rev;   // A3-K122
@@ -2529,8 +2566,30 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             break;
         case a3::KomutTuru::calistirma_durdur:
             a3_durdur_ = true;
-            // Tablo 4.7a: hazırlanırken durdur → yuklendi (W4-K27 (4)); koşarken → durduruldu.
+            adimla_hedef_.reset();
+            // Tablo 4.7a: hazırlanırken durdur → yuklendi (W4-K27 (4)); koşarken ya da duraklatılmışken
+            // → durduruldu.
             a3_gecis(hazirlikta ? a3::CalistirmaDurumu::yuklendi : a3::CalistirmaDurumu::durduruldu, nullptr, false);
+            break;
+        case a3::KomutTuru::calistirma_duraklat:
+            // W4-duraklat: duraklatma bu turun (sınır b'nin) işlemi bittikten sonra, fizik adımı
+            // b'den önce yürürlüğe girer (duraklatma_gecisi). HIL'de çalıştırma geçersiz (A1-K41, K79).
+            adimla_hedef_.reset();
+            if (hil) {
+                KopruCagrisi kc;
+                k_->hil_duraklatma_bildir();
+            }
+            a3_gecis(a3::CalistirmaDurumu::duraklatildi, nullptr, false);
+            break;
+        case a3::KomutTuru::calistirma_surdur:
+            // Çıkış bu turun emniyet kesimi ve A1-K85 adımları tamamlanınca (duraklatma_gecisi).
+            a3_gecis(a3::CalistirmaDurumu::kosuyor, nullptr, false);
+            break;
+        case a3::KomutTuru::calistirma_adimla:
+            // A3-K65: n kontrol periyodu (4n fizik adımı) ilerlenir; sınır b + 4n işlendikten sonra
+            // (yayın dahil) çalıştırma iç geçişle yeniden duraklatılır (a3_sinir_basi).
+            adimla_hedef_ = b + kopru::kPeriyotAdim * static_cast<std::uint64_t>(k.periyot_sayisi);
+            a3_gecis(a3::CalistirmaDurumu::kosuyor, nullptr, false);
             break;
         default:
             break;
@@ -2540,8 +2599,9 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
     a3_genel_.resize(yaz);   // küçültme: bellek ayırmaz
 }
 
-// Sınır başı: istek çekme ve çalıştırma denetimi; SIL hız çarpanı.
-bool Calistirici::a3_sinir_basi(std::uint64_t b)
+// Sınır başı (her turda; W4-duraklat): istek çekme ve çalıştırma denetimi; SIL hız çarpanı (yalnız
+// ilerleyen kipte: duran kipte sim zamanı ilerlemez).
+bool Calistirici::a3_sinir_basi(std::uint64_t b, bool duran)
 {
     a3_b_ = b;
     a3_sinir_ns_ = 0;
@@ -2550,13 +2610,28 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b)
     }
     {
         A3Hizmet h(a3_sinir_ns_);
-        a3_cek(0);
-        a3_calistirma_isle(b);
+        if (!duran && adimla_hedef_ && b >= *adimla_hedef_) {
+            // A3-K65 / Tablo 4.7a: adımlama bitti (4n fizik adımı); sınır b'nin bu turu ilerleyen
+            // kipte işlenir (yayın bir sınır geriden kalmaz), sonra duraklatma yeniden yürürlüğe
+            // girer. EMNİYET (W4-K28 (3) deseni): iç geçiş kabul edilmiş bir isteği bayatlatmaz:
+            // üretici kilidi altında son çekiş, kararlar, sonra iç geçiş ve yeni görüntü. Adımlama
+            // yalnız SIL'dedir (Tablo 4.7b): HIL döngüsünde kilit alınmaz (W4-K27 (5)).
+            std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
+            adimla_hedef_.reset();
+            a3_cek(0);
+            a3_calistirma_isle(b);
+            if (a3d_.durum == a3::CalistirmaDurumu::kosuyor && !a3_durdur_) {
+                a3_gecis(a3::CalistirmaDurumu::duraklatildi, "adimla_tamamlandi", true);
+            }
+        } else {
+            a3_cek(0);
+            a3_calistirma_isle(b);
+        }
     }
     if (a3_durdur_) {
         return false;
     }
-    if (a_.kip == Kip::sil && hiz_ > 0.0 && b % kopru::kPeriyotAdim == 0) {
+    if (!duran && a_.kip == Kip::sil && hiz_ > 0.0 && b % kopru::kPeriyotAdim == 0) {
         // A3-K66: SIL hız çarpanı (yalnız bekleme; bayt akışı ve CSV değişmez).
         const double ns = static_cast<double>(static_cast<std::int64_t>(b) * kH - hiz_t0_sim_) / hiz_;
         a3::hassas_bekle(hiz_t0_duvar_ + std::chrono::nanoseconds(static_cast<std::int64_t>(ns)));
@@ -2659,7 +2734,15 @@ void Calistirici::a3_emniyet_ver(std::uint64_t b)
 
 // Sınır işleminden sonra: operatör emniyet isteklerinin sonuçları, emniyet olayları, genişletici
 // ve nötr yer istasyonu komutları (A1-K85 adım 4'ün yerinde).
-void Calistirici::a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss)
+// W4-duraklat, duran kip: A3-K58'e göre duraklatılmışken gelen komut beklemeden uygulanır
+// (uygulama_adimi o anki adım; genişletici revizyon ve sıra denetimiyle) ve köprüye verilir; köprü
+// onu tele duraklatma kalkınca yazar (A1-K41: toplu üye yalnız TF'den sonra; W4-K27 (1), (3): komut
+// birikir, sürdürmedeki ilk sınırda/pencerede işlenir; gönderimde revizyon değiştiyse A1-K129 ile
+// atılır). Bekleyen bellek sınırlıdır: bir duraklatmada köprüye en çok kDuranYiAzami komut verilir;
+// fazlası a3_genel_'de (en çok kGenelAzami), sonra genel halkada bekler; o da doluysa kitaplık
+// `mesgul` döner. Kısıtlayanlar (daraltıcı) sınırsız beklemez: a3_emniyet_ver'de her turda köprüye
+// verilir (revizyon hemen; tür başına birleşir, düşmez).
+void Calistirici::a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss, bool duran)
 {
     A3Hizmet h(a3_sinir_ns_);
     a3_sonuclari_isle(b, ss.operator_sonuclari.data(), ss.operator_sonuclari.size(), a3_emn_once_);
@@ -2671,10 +2754,21 @@ void Calistirici::a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss
         a3_kacirma_son_ = ss.yuva_seq;
         ++a3_kacirma_adet_;
     }
-    for (A3Giris& g : a3_genel_) {
-        a3_yi_uygula(b, g, &ss);
+    std::size_t i = 0;
+    for (; i < a3_genel_.size(); ++i) {
+        if (duran) {
+            if (duran_yi_verilen_ >= kDuranYiAzami) {
+                break;   // sıra korunur: kalanlar a3_genel_'de bekler
+            }
+            ++duran_yi_verilen_;
+        }
+        a3_yi_uygula(b, a3_genel_[i], &ss);
     }
-    a3_genel_.clear();
+    if (i == a3_genel_.size()) {
+        a3_genel_.clear();
+    } else {
+        a3_genel_.erase(a3_genel_.begin(), a3_genel_.begin() + static_cast<std::ptrdiff_t>(i));   // bellek ayırmaz
+    }
 }
 
 void Calistirici::a3_yi_uygula(std::uint64_t b, const A3Giris& g, const kopru::SinirSonucu* ss)
@@ -3312,8 +3406,11 @@ void Calistirici::a3_sonar_yayinla()
     }
 }
 
-// Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu).
-void Calistirici::a3_yayinla(std::uint64_t b)
+// Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu). W4-duraklat: duran kipte
+// olaylar, sonuçlar, oturum ve geçerlilik her turda; sim zamanına bağlı yayınlar (sensör ve sonar
+// kayıtları, 50/10/2 Hz kanallar) yalnız ilerleyen kipte (yinelenmez); durum kanalları değişimde ve
+// duvar saatiyle 10 Hz.
+void Calistirici::a3_yayinla(std::uint64_t b, bool duran)
 {
     A3Hizmet hizmet(a3_sinir_ns_);
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
@@ -3321,6 +3418,16 @@ void Calistirici::a3_yayinla(std::uint64_t b)
     a3_yi_izle();
     a3_oturum_izle();
     a3_gecerlilik(b);
+    if (duran) {
+        if (a3_durum_kirli_ || gercek() - duran_yayin_duvar_ >= 100 * kMs) {
+            a3_durum_yayinla(t);
+            duran_yayin_duvar_ = gercek();
+        }
+        if (a3_anlik_kirli_) {
+            a3_anlik_guncelle();
+        }
+        return;
+    }
     a3_sensor_yayinla();
     if (sonar_) {
         a3_sonar_yayinla();
@@ -3528,6 +3635,170 @@ void Calistirici::a3_bitir()
     a3sv_->durdur();
     yay_ = nullptr;
     a3_kayitlari_aktar();
+}
+
+// ======================================================================== Sınır turu (W4-duraklat)
+//
+// Tek kod yolu (W4-K28 (2); EMNİYET): ilerleyen ve duran kip aynı işlevdir; duran kipte atlanan yalnız
+// (1) senaryonun zaman çizelgesi (sinir_on), (2) sim zamanını ilerleten işler: HIL'de duvar saatine
+// kilitli bekleme, SIL hız beklemesi, sensör/sonar adımı (sinir_on), parti ve yuva beklemesi (TF sim
+// zamanını taşır; burada `kontrol`), fizik adımı (çağıranda), (3) üye gönderimi (köprünün duran
+// kipi: dar_hizmet ve daraltıcının tele yazımı). Geri kalan her iş (istek çekme ve çalıştırma
+// denetimi, kart çıktılarının alımı, A1-K85'in beş adımı, kısıtlayan yuvaların boşaltılması, acil
+// durdurma engeli, itici girdisinin yeniden değerlendirilmesi, SIL'in kısıtlayan erken uygulaması,
+// yayın) iki kipte aynı sırayla aynı koddur.
+bool Calistirici::sinir_turu(std::uint64_t b, bool duran)
+{
+    const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
+    // W4-bagla-a3: istek çekme ve çalıştırma denetimi turun başında (her turda; duran kipte
+    // sürdür/adımla/durdur burada alınır). Duraklatma ve çıkış turun sonunda (duraklatma_gecisi).
+    if (yay_ != nullptr && !a3_sinir_basi(b, duran)) {
+        return false;
+    }
+    if (a_.kip == Kip::sil) {
+        if (duran) {
+            // SIL duran kip: sim zamanı ve kilitli adım donuk; alım kuyruğu köprüye yalnız sim'in
+            // bekleme noktalarında verilir (W4-K25 (2)), duran tur bekleme noktası değildir.
+            sure_uyu(kDuranTurNs);
+        }
+        sil_duvar_ = t_b;
+        pompa(0);
+        k_->zamanla(duvar());
+    } else if (duran) {
+        // HIL duran kip (A1-K41): duvar saatine kilitli bekleme yok; kart çıktıları her turda
+        // alınıp köprüde tüketilir, IDA_KEEPALIVE sürer (zamanla).
+        evre_.fill(0);
+        bekle_ve_oku(gercek() + kDuranTurNs);
+    } else {
+        evre_.fill(0);
+        bekle_ve_oku(w0_ + t_b - kCSim);
+        evre_[kEvreUyanma] = std::max<std::int64_t>(0, gercek() - (w0_ + t_b - kCSim));
+        // A1-K108: uygulama anları a_n kontrol sınırlarıdır (L_act = 2P).
+        if (b % kopru::kPeriyotAdim == 0 && gercek() > w0_ + t_b) {
+            ++s_.zaman.sim_gecikmesi;
+            k_->sim_gecikmesi_bildir();   // A1-K108, K79 ortak yol (sol #6)
+        }
+    }
+    if (duran) {
+        ++duran_tur_;
+    }
+    baglanti_bakim();
+    if (!sinir_on(b, duran)) {
+        return false;
+    }
+    // (2)/(3): parti (TF sim zamanını taşır) yalnız ilerleyen kipte; sınır b'nin partisi, varsa,
+    // duraklatmadan önceki ilerleyen turda gönderildi.
+    const bool kontrol = !duran && b > 0 && b % kopru::kPeriyotAdim == 0;
+    std::uint32_t seq = 0;
+    if (kontrol) {
+        if (a_.kip == Kip::hil) {
+            std::int64_t hedef = w0_ + t_b;
+            if (son_tf_yazim_ >= 0) {
+                hedef = std::max(hedef, son_tf_yazim_ + kP / 2);   // A1-K39
+            }
+            bekle_ve_oku(hedef);
+            evre_[kEvreTfUyanma] = std::max<std::int64_t>(0, gercek() - hedef);
+        }
+        if (id_disarm_ != 0u && s_.t_disarm_ns < 0) {
+            s_.t_disarm_ns = t_b;   // DISARM'ı taşıyan partinin kapanışı
+        }
+        const std::int64_t yazim = gercek();
+        const std::optional<std::uint32_t> gon = k_->parti_kapat(t_b, duvar(), a_.kip == Kip::hil ? w0_ + t_b : -1);
+        evre_[kEvreParti] += gercek() - yazim;
+        yaz();
+        if (gon) {
+            seq = *gon;
+            tf_yazim_.push_back(yazim);
+            son_tf_yazim_ = yazim;
+            if (a_.kip == Kip::hil) {
+                s_.zaman.gec_yazim_en_cok_ns = std::max(s_.zaman.gec_yazim_en_cok_ns, yazim - (w0_ + t_b));
+                tf_gec_.emplace_back(yazim - (w0_ + t_b), b);
+            }
+        }
+        const std::int64_t e_s = gercek();
+        satir_ekle(b, gon);
+        evre_[kEvreSatir] += gercek() - e_s;
+        if (a_.kip == Kip::sil) {
+            if (gon) {
+                const Bekleme r = yuva_bekle(seq);
+                if (r == Bekleme::hata || (r == Bekleme::oturum_bitti && !oturum_kur())) {
+                    return false;
+                }
+            }
+            satirlari_tamamla(gon ? 1u : 0u);   // W4-K14: önceki satır ACTUATOR(n)'den sonra
+        }
+    } else {
+        yaz();   // duran kipte HIL telinde yalnız IDA_KEEPALIVE (ve oturum kapanışı/el sıkışma)
+    }
+    if (a_.kip == Kip::sil && k_->durum() != kopru::OturumDurumu::kosuyor) {
+        // A1-K121 (iv): SIL'de sim zamanı el sıkışmada ilerlemez. Oturum yuva beklemesi
+        // dışında (sim tarafında; ör. A1-K111) bittiyse yeni oturum fizik ilerlemeden kurulur.
+        gunluk(1, "oturum bitti (sınır " + std::to_string(b) + "); yeniden kuruluyor");
+        ++s_.yeniden_baglanti;
+        if (!oturum_kur()) {
+            return false;
+        }
+    }
+    if (a_.kip == Kip::sil) {
+        // W4-K26 (1) (EMNİYET): bu sınırın yuva beklemesinde işlenen kısıtlayan çerçeveler
+        // (oturum sonu, eşzamansız güvenli çıktı) fizik bu sınırdan ilerlemeden yürürlüğe girer.
+        const kopru::KisitSonucu kisit = k_->sil_kisitlayan_uygula(b);
+        if (kisit.degisti) {
+            pwm_yur_ = kisit.pwm_us;
+            std::array<double, 8> girdi = kisit.pwm_us;
+            if (estop_bu_adim_) {
+                girdi.fill(static_cast<double>(arac_.esc.pwm_notr_us));
+            }
+            (void)dn_.itici_komutu_ver(b, girdi);
+            gozlem_.pwm = girdi;
+        }
+    }
+    // Sınama kancası fizik adımı b'nin girdisini görür: yalnız bu turdan sonra fizik koşacaksa
+    // (çalıştırma duraklatılmış değilse; durum yalnız turun başında değişir).
+    if (a_.sinir_kancasi && !(yay_ != nullptr && a3d_.durum == a3::CalistirmaDurumu::duraklatildi)) {
+        a_.sinir_kancasi(gozlem_);
+    }
+    if (yay_ != nullptr) {
+        // Yayın noktası: fizik sınırındaki sıranın sonu (A3 emniyet istekleri sinir_isle'den
+        // önce, köprü, sensörler, parti, yuva, SIL'in kısıtlayan erken uygulaması), fizik
+        // adımından hemen önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
+        a3_yayinla(b, duran);
+        s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
+    }
+    return true;
+}
+
+// W4-duraklat geçişleri, turun sonunda (A3 durumu yalnız turun başında, a3_sinir_basi'nde değişir):
+//   giriş  bu tur ilerleyen kipteydi ve çalıştırma duraklatıldı: sınır b'nin olağan işlemi tamam;
+//          fizik adımı b'den ÖNCE duran kipe geçilir (köprünün üye gönderimi durur).
+//   çıkış  bu tur duran kipteydi ve çalıştırma sürdürüldü (surdur, adimla): turun emniyet kesimi ve
+//          A1-K85 adımları tamamlandı, itici girdisi bu turda yeniden değerlendirildi; fizik adımı b
+//          bu girdiyle koşar. HIL'de W(t) duraklatma süresi kadar kaydırılır (yetişme koşusu yok);
+//          SIL hız çarpanının başvurusu yenilenir. A1-K29: TF'ler boşluksuz sürer (sim zamanı donuktu).
+bool Calistirici::duraklatma_gecisi(std::uint64_t b, bool duran)
+{
+    const bool durakli = yay_ != nullptr && a3d_.durum == a3::CalistirmaDurumu::duraklatildi;
+    if (durakli) {
+        if (!duran) {
+            k_->duraklatma_ayarla(true);
+            duraklama_duvar_ = gercek();
+            duran_yayin_duvar_ = duraklama_duvar_;
+            duran_yi_verilen_ = 0;
+            gunluk(2, "duraklatıldı (sınır " + std::to_string(b) + ")");
+        }
+        return true;
+    }
+    if (duran) {
+        k_->duraklatma_ayarla(false);
+        if (a_.kip == Kip::hil) {
+            w0_ += gercek() - duraklama_duvar_;
+        } else if (hiz_ > 0.0) {
+            hiz_t0_sim_ = static_cast<std::int64_t>(b) * kH;
+            hiz_t0_duvar_ = Saat::now();
+        }
+        gunluk(2, "sürdürüldü (sınır " + std::to_string(b) + ")");
+    }
+    return false;
 }
 
 Sonuc Calistirici::kos_ic()
@@ -3844,8 +4115,7 @@ Sonuc Calistirici::kos_ic()
     }
     s_.satirlar.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
     w0_ = gercek() + 50 * kMs;   // HIL: W(t) = W0 + t
-    std::vector<std::int64_t> tf_yazim;
-    tf_yazim.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
+    tf_yazim_.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
     if (a_.kip == Kip::hil) {
         profil_.reserve(static_cast<std::size_t>(n_sinir + 1U));
         tf_gec_.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
@@ -3854,105 +4124,23 @@ Sonuc Calistirici::kos_ic()
     // W4-bagla-sonar: sınır 0'ın sonar adımı (sonrakiler bir önceki fizik adımından hemen sonra).
     const bool sonar_bas = !sonar_ || sonar_onceden(0);
     for (std::uint64_t b = 0; sonar_bas && b <= n_sinir; ++b) {
-        const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
-        // W4-bagla-a3: istek çekme ve çalıştırma denetimi sınırın başında. Duraklatma sınırın
-        // olağan işlemi bittikten sonra, fizik adımından önce kurulur (W4-K27 (1)).
-        if (yay_ != nullptr && !a3_sinir_basi(b)) {
-            break;
-        }
-        if (a_.kip == Kip::sil) {
-            sil_duvar_ = t_b;
-            pompa(0);
-            k_->zamanla(duvar());
-        } else {
-            evre_.fill(0);
-            bekle_ve_oku(w0_ + t_b - kCSim);
-            evre_[kEvreUyanma] = std::max<std::int64_t>(0, gercek() - (w0_ + t_b - kCSim));
-            // A1-K108: uygulama anları a_n kontrol sınırlarıdır (L_act = 2P).
-            if (b % kopru::kPeriyotAdim == 0 && gercek() > w0_ + t_b) {
-                ++s_.zaman.sim_gecikmesi;
-                k_->sim_gecikmesi_bildir();   // A1-K108, K79 ortak yol (sol #6)
-            }
-        }
-        baglanti_bakim();
-        if (!sinir_on(b)) {
-            break;
-        }
-        const bool kontrol = b > 0 && b % kopru::kPeriyotAdim == 0;
-        std::uint32_t seq = 0;
-        if (kontrol) {
-            if (a_.kip == Kip::hil) {
-                std::int64_t hedef = w0_ + t_b;
-                if (son_tf_yazim_ >= 0) {
-                    hedef = std::max(hedef, son_tf_yazim_ + kP / 2);   // A1-K39
-                }
-                bekle_ve_oku(hedef);
-                evre_[kEvreTfUyanma] = std::max<std::int64_t>(0, gercek() - hedef);
-            }
-            if (id_disarm_ != 0u && s_.t_disarm_ns < 0) {
-                s_.t_disarm_ns = t_b;   // DISARM'ı taşıyan partinin kapanışı
-            }
-            const std::int64_t yazim = gercek();
-            const std::optional<std::uint32_t> gon = k_->parti_kapat(t_b, duvar(), a_.kip == Kip::hil ? w0_ + t_b : -1);
-            evre_[kEvreParti] += gercek() - yazim;
-            yaz();
-            if (gon) {
-                seq = *gon;
-                tf_yazim.push_back(yazim);
-                son_tf_yazim_ = yazim;
-                if (a_.kip == Kip::hil) {
-                    s_.zaman.gec_yazim_en_cok_ns = std::max(s_.zaman.gec_yazim_en_cok_ns, yazim - (w0_ + t_b));
-                    tf_gec_.emplace_back(yazim - (w0_ + t_b), b);
-                }
-            }
-            const std::int64_t e_s = gercek();
-            satir_ekle(b, gon);
-            evre_[kEvreSatir] += gercek() - e_s;
-            if (a_.kip == Kip::sil) {
-                if (gon) {
-                    const Bekleme r = yuva_bekle(seq);
-                    if (r == Bekleme::hata || (r == Bekleme::oturum_bitti && !oturum_kur())) {
-                        break;
-                    }
-                }
-                satirlari_tamamla(gon ? 1u : 0u);   // W4-K14: önceki satır ACTUATOR(n)'den sonra
-            }
-        } else {
-            yaz();
-        }
-        if (a_.kip == Kip::sil && k_->durum() != kopru::OturumDurumu::kosuyor) {
-            // A1-K121 (iv): SIL'de sim zamanı el sıkışmada ilerlemez. Oturum yuva beklemesi
-            // dışında (sim tarafında; ör. A1-K111) bittiyse yeni oturum fizik ilerlemeden kurulur.
-            gunluk(1, "oturum bitti (sınır " + std::to_string(b) + "); yeniden kuruluyor");
-            ++s_.yeniden_baglanti;
-            if (!oturum_kur()) {
+        // W4-duraklat (W4-K28 (2); EMNİYET): sınır b'nin turları. İlk tur ilerleyen kipte; tur
+        // sonunda çalıştırma duraklatılmışsa sınır b AYNI işlevle (sinir_turu) duran kipte yeniden
+        // işlenir; fizik adımı b yalnız duraklatma kalkınca, son turun girdisiyle koşar.
+        bool duran = false;
+        bool devam = true;
+        for (;;) {
+            if (!sinir_turu(b, duran)) {
+                devam = false;
                 break;
             }
-        }
-        if (a_.kip == Kip::sil) {
-            // W4-K26 (1) (EMNİYET): bu sınırın yuva beklemesinde işlenen kısıtlayan çerçeveler
-            // (oturum sonu, eşzamansız güvenli çıktı) fizik bu sınırdan ilerlemeden yürürlüğe girer.
-            const kopru::KisitSonucu kisit = k_->sil_kisitlayan_uygula(b);
-            if (kisit.degisti) {
-                pwm_yur_ = kisit.pwm_us;
-                std::array<double, 8> girdi = kisit.pwm_us;
-                if (estop_bu_adim_) {
-                    girdi.fill(static_cast<double>(arac_.esc.pwm_notr_us));
-                }
-                (void)dn_.itici_komutu_ver(b, girdi);
-                gozlem_.pwm = girdi;
+            if (!duraklatma_gecisi(b, duran)) {
+                break;
             }
+            duran = true;
         }
-        if (a_.sinir_kancasi) {
-            a_.sinir_kancasi(gozlem_);
-        }
-        if (yay_ != nullptr) {
-            // Yayın noktası: fizik sınırındaki sıranın sonu (A3 emniyet istekleri sinir_isle'den
-            // önce, köprü, sensörler, parti, yuva, SIL'in kısıtlayan erken uygulaması), fizik
-            // adımından hemen önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
-            a3_yayinla(b);
-            s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
-            // W4-K28 (1): duraklatma bu dilimde yoktur; sınırdan sonra her zaman fizik adımı gelir.
+        if (!devam) {
+            break;
         }
         const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {
@@ -4052,9 +4240,9 @@ Sonuc Calistirici::kos_ic()
         s_.karsi_gecerli_red = ic_->istatistik().gecerli_red;
     }
     ZamanOlcumu& z = s_.zaman;
-    z.tf_sayisi = tf_yazim.size();
-    for (std::size_t i = 1; i < tf_yazim.size(); ++i) {
-        z.periyotlar_ns.push_back(tf_yazim[i] - tf_yazim[i - 1]);
+    z.tf_sayisi = tf_yazim_.size();
+    for (std::size_t i = 1; i < tf_yazim_.size(); ++i) {
+        z.periyotlar_ns.push_back(tf_yazim_[i] - tf_yazim_[i - 1]);
     }
     if (!z.periyotlar_ns.empty()) {
         z.periyot_en_az_ns = *std::min_element(z.periyotlar_ns.begin(), z.periyotlar_ns.end());

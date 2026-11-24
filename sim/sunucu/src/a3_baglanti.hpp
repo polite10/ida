@@ -40,14 +40,10 @@ namespace ida::sunucu {
 namespace a3b {
 
 // Tablo 4.7a: komutun bu durumda geçerli olup olmadığı (izleme ve tekrar kipleri bu dilimde yok).
-// W4-K28 (1): duraklatma bu dilimde kapalıdır; `duraklat`, `surdur` ve `adimla` hiçbir durumda
-// geçerli değildir (komut girişinde `gecersiz_durum`), `duraklatildi` durumuna girilmez.
+// W4-duraklat: `duraklat` kosuyor'dan, `surdur` ve `adimla` duraklatildi'dan; kip kuralları (Tablo
+// 4.7b: HIL'de adimla ve hiz `kipte_gecersiz`, duraklat `gecersizligi_onayla` ister) ayrıca.
 bool gecis_gecerli(a3::CalistirmaDurumu d, a3::KomutTuru t);
-bool duraklatma_mi(a3::KomutTuru t);   // duraklat, surdur, adimla
-inline constexpr const char* kDuraklatmaYokIleti =
-    "bu sürümde desteklenmiyor (duraklatma sonraki dilimde: W4-duraklat)";
-inline constexpr const char* kDuraklatmaYokAyrinti = "{\"desteklenmiyor\":\"duraklatma\",\"dilim\":\"W4-duraklat\"}";
-bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor (duraklatildi bu dilimde erişilemez)
+bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor, duraklatildi (A3-K91)
 const char* durum_adi(a3::CalistirmaDurumu d);
 bool calistirma_mi(a3::KomutTuru t);
 
