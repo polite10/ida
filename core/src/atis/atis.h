@@ -12,12 +12,15 @@
  * SOLUTION_VALID iç durumları yoktur (03 §2.6; A4 §3.16'nın dış değerleri eşlemede kalır).
  *
  * Çağrı çerçevesindeki kanca sırası (cerceve/cerceve.c, cerceve/cikti.c; core/TASARIM.md §10):
- *   (b)  ida_fc_daralt          her çağrıda (reddedilen ve out NULL dahil): bütünlük onarımı,
- *                               emniyet örneği bayatlığı (W5-K4 ve eki), daraltıcı girdilere
- *                               tepki (güvenli duruma dönüş; W5-K8)
+ *   (b)  ida_fc_daralt          her çağrıda (reddedilen ve out NULL dahil): ham bütünlük
+ *                               denetimi ve onarım (çağrı bayraklarından önce), DET_STALE
+ *                               (A4-K118), emniyet örneği bayatlığı (W5-K4 ve eki), daraltıcı
+ *                               girdilere tepki (güvenli duruma dönüş; W5-K8)
  *   (b3) ida_fc_oturum_basi     SESSION_START
- *   (e)  ida_fc_emniyet_ornegi  kabul edilen her SAFETY örneği: gevşetme (A4-K116), bayatlık
- *                               izleri, geri okuma çelişkisi ve tekleme (W5-K4; G-Ç53)
+ *   (e)  ida_fc_emniyet_ornegi  kabul edilen her SAFETY örneği: bayatlık izleri ve izler
+ *                               güncellendikten sonra bayatlık (W5-K4 eki, W5-K20), gevşetme
+ *                               (A4-K116; bağlantı olayı çağrısında yok), geri okuma çelişkisi
+ *                               ve tekleme (W5-K4; G-Ç53)
  *        ida_fc_olay_sonucu / ida_fc_olay_bilinmiyor   olay sonuçları (W5-K2, K11)
  *        ida_fc_cagri           süreler ve evrensel geçişler (komutlardan önce)
  *        ida_fc_komut           FC komutları (A4 §3.17 satırları)
@@ -30,7 +33,7 @@
 /*
  * İZLENEBİLİRLİK (03 Ek, G-Ç maddeleri → uygulandığı yer; testler core/test/atis/):
  *   G-Ç01 ida_fc_kur; init (cerceve.c) her şeyi sıfırlar          G-Ç02 ida_fc_dis_durum, ida_fc_engel
- *   G-Ç03 ida_fc_engel (bitler emniyet.c ida_emn_fci ile)        G-Ç30 kapalı kodlar (günlük, neden)
+ *   G-Ç03 ida_fc_engel (emniyet.c ida_emn_fci; DET_STALE det_bayat)        G-Ç30 kapalı kodlar (günlük, neden)
  *   G-Ç31 cikti.c ida_cik_kurulmamis                             G-Ç04 komut.c fc_bicimi_gecerli + ida_fc_komut
  *   G-Ç05 komut.c ida_kom_isle (1)–(2) + ida_fc_komut (3)        G-Ç32 emniyet.c (b) + ida_fc_daralt
  *   G-Ç06 emniyet.c d.herhangi; olay.c kapı; ida_fc_daralt        G-Ç33 komut.c NARROWED, widen_blocked
@@ -55,7 +58,7 @@
  *   G-Ç25 ida_fc_evrensel (T_hb_fc)                              G-Ç26 ida_fc_tutarli, butunluk_onar; cerceve.c
  *   G-Ç27 cikti.c fc_yaz (durum yansıması ida_fc_cikti'de)        G-Ç52 olay.c son_id / son_sonuc
  *   G-Ç28 atis_param.def, cerceve_param.def (B sınıfı)            G-Ç29 ida_fc_emn_bayat, bayatlik
- *   G-Ç53 atis_emniyet.c izleri_degerlendir
+ *   G-Ç53 atis_emniyet.c izleri_degerlendir; süren neden kalici_neden (atis.c)
  */
 #ifndef IDA_CORE_ATIS_H
 #define IDA_CORE_ATIS_H
@@ -88,11 +91,6 @@
    A1 Tablo 3.6a). Uygulayıcının okuması; core/TASARIM.md §10.2. */
 #define IDA_FC_IZIN_KIPI IDA_MODE_GUIDED
 
-/* 03 §2.6 durum tablosunun iki zaman aşımı (TAHMİN, ölçülmedi). Parametre değil, derlemede
-   sabittir: hiçbir koşulda değişmez (atis_param.def başındaki gerekçe). */
-#define IDA_FC_T_ASSESS_MS  1000u /* ASSESS → SAFE                                          */
-#define IDA_FC_T_TUP_BOS_MS 500u  /* FIRING: tüp boşaldı geri okuması gelmezse FAULT_LATCHED */
-
 /* Tüp başına izin, olay ve geri okuma izleri. */
 typedef struct {
     /* SAFETY_OPEN (A4-K66, K107, K123) */
@@ -106,8 +104,15 @@ typedef struct {
     /* FIRE */
     bool fire_bekliyor;        /* sonucu beklenen FIRE var                                 */
     bool atis_izleme;          /* FIRE APPLIED/DUPLICATE: tüp boşaldı geri okuması bekleniyor */
-    int64_t atis_t_apply_ns;
+    int64_t atis_t_apply_ns;   /* o sonucun t_apply'ı; INT64_MIN: oturum sonundan sonra her
+                                  örnek değerlendirilir (ölçüm zamanı oturumlar arasında
+                                  sürekli sayılmaz; A4-K72)                                 */
     int64_t atis_izleme_bas_ns;/* duvar saati (T_tup_bos)                                  */
+    bool tekleme;              /* G-Ç53 (2) çelişkisi sürüyor: FIRE APPLIED olduktan sonra
+                                  t_meas'i t_apply'dan büyük son değerlendirilen örnekte
+                                  LOADED = 1 ya da tüp boşaldı geri okuması T_tup_bos içinde
+                                  gelmedi; t_meas > t_apply örnekte LOADED = 0 görülene dek
+                                  süren nedendir (W5-K1, G-Ç20)                            */
     /* SAFETY_CLOSE (G-Ç50, G-Ç53) */
     bool kapat_izleme;         /* son SAFETY_CLOSE APPLIED; araya yeni SAFETY_OPEN girmedi  */
     int64_t kapat_t_apply_ns;
@@ -137,6 +142,13 @@ typedef struct {
     uint8_t son_tup[IDA_PORT_N_TUBE]; /* o örneğin tüp bitleri (sonuç sonradan gelirse
                                          G-Ç53 izleri bununla da değerlendirilir)           */
     bool emn_gevsedi;          /* bu çağrıda etkin değer gevşedi (SAFETY_INPUT günlüğü)    */
+    bool baglanti_olayi;       /* bu çağrı plat.link_event taşıyor (SESSION_END ya da
+                                  SESSION_START): hiçbir emniyet alanı gevşemez (W5-K20 (2)) */
+    /* Kamera algılama akışının bayatlığı (A4-K118; W5-K21): bu sürümde başlık kabul edilmez
+       (algılama içeriği okunmaz, kapsam dışı); akış init'ten, oturum sonu çağrısından ya da
+       SESSION_START'tan T_det_stale sonra bayattır. */
+    int64_t det_taban_ns;      /* süre tabanı (duvar saati)                                 */
+    bool det_bayat;            /* bu çağrının (b) adımında hesaplanır; DET_STALE biti       */
     /* Kilitli arıza nedenleri (W5-K1) */
     bool butunluk_kilidi;      /* iç durum bozulması görüldü: init'e kadar sürer           */
     bool bu_cagri_kilit;       /* bu çağrıda kilitli arıza nedeni ortaya çıktı              */
@@ -173,13 +185,14 @@ typedef struct {
                                  modülünün izi; hiç gelmediyse ilk adımın now_w'si)  */
 } ida_fc_baglam_t;
 
-void ida_fc_kur(ida_fc_t *fc);
+void ida_fc_kur(ida_fc_t *fc, ida_wtime_t now);
 /* (b): her çağrıda (reddedilen ve out NULL dahil), ida_emn_daralt'tan hemen sonra. Kendi
    SAFETY_CLOSE isteklerini e->d.kapat'a, bayatlıktan doğan kapanmayı e->d'ye ve etkin
    değere yazar. */
 void ida_fc_daralt(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o);
-/* (b3) SESSION_START: emniyet örneğinin ölçüm zamanı tabanı silinir; durum değişmez (A4-K72). */
-void ida_fc_oturum_basi(ida_fc_t *fc);
+/* (b3) SESSION_START: emniyet örneğinin ölçüm zamanı tabanı silinir, algılama akışının süre
+   tabanı yeniden kurulur (A4-K118); durum değişmez (A4-K72). */
+void ida_fc_oturum_basi(ida_fc_t *fc, const ida_fc_ortam_t *o);
 /* (e): kabul edilen her SAFETY örneği (her inst; yalnız inst = 0 gevşetir; A4-K116, K34,
    K128). */
 void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s,

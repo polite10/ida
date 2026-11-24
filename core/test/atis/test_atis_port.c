@@ -196,10 +196,11 @@ static void test_gc03_engel_bitleri(void)
     hazirla();
     yeni(false);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(false));
-    /* G-Ç17, G-Ç43: ilk kabulden önce tüpler boş ve IMU bayat; algılama akışı bayat. */
+    /* G-Ç17, G-Ç43: ilk kabulden önce tüpler boş ve IMU bayat. A4-K118 (W5-K21): algılama
+       akışı init'ten T_det_stale (2 s) dolmadan bayat sayılmaz. */
     TEST_ASSERT_EQUAL_HEX32(EMN_BITLERI, OUT.fc.inhibit_mask & EMN_BITLERI);
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_IMU_STALE) != 0u);
-    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) != 0u);
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) == 0u);
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_MODE) != 0u); /* kip izin kümesinde değil */
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_NOT_ARMED) != 0u);
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_EST) != 0u);
@@ -523,6 +524,34 @@ static void test_gc18_gc44_gc45_oturum(void)
     TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
 }
 
+/* G-Ç18, G-Ç45; W5-K20 (2): bağlantı olayı taşıyan çağrıda gevşek inst 0 örneği kabul edilse
+   de hiçbir emniyet alanı gevşemez; SESSION_END çağrısının sonunda değerler kısıtlayandır ve
+   tüpler boştur. Sonraki olağan çağrıdaki örnek gevşetir. */
+static void test_gc18_gc45_baglanti_olayinda_gevsetme_yok(void)
+{
+    hazirla();
+    gevset();
+    yeni(true);
+    (void)emn(0u, 0u, HAZIR, HAZIR);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
+    IN.plat.link_state = (uint8_t)IDA_LINK_NONE;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_HEX32(EMN_BITLERI, OUT.fc.inhibit_mask & EMN_BITLERI);
+    TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
+    /* SESSION_START çağrısı: gevşek örnek gevşetmez. */
+    yeni(true);
+    (void)emn(0u, 0u, HAZIR, HAZIR);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_HEX32(EMN_BITLERI & ~(IDA_FCI_EMPTY_T0 | IDA_FCI_EMPTY_T1),
+                            OUT.fc.inhibit_mask & EMN_BITLERI & ~(IDA_FCI_EMPTY_T0 | IDA_FCI_EMPTY_T1));
+    TEST_ASSERT_EQUAL_UINT8(0u, OUT.n_events);
+    yeni(true);
+    (void)emn(0u, 0u, HAZIR, HAZIR);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_HEX32(0u, OUT.fc.inhibit_mask & EMN_BITLERI);
+}
+
 /* ---- G-Ç19, G-Ç50, G-Ç42, G-Ç13, G-Ç52 ---------------------------------------------------- */
 
 static void test_gc50_gc42_kapatma_sonucu(void)
@@ -686,7 +715,10 @@ static void test_gc53_gc20_celiski_ve_reset(void)
 
 static void test_gc26_butunluk(void)
 {
-    for (uint32_t k = 0u; k < 4u; k++) {
+    /* k = 4, 5 (sol bulgu 3): çağrı bayraklarının (reset_kabul, bu_cagri_kilit) ham baytı
+       bozuk; FC'nin bütünlük denetimi onları sıfırlamadan önce yapılır, bozulma onarım,
+       FAULT_LATCHED ve SAFETY_CLOSE(ALL)'a taşınır. */
+    for (uint32_t k = 0u; k < 6u; k++) {
         hazirla();
         yeni(true);
         TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
@@ -697,15 +729,19 @@ static void test_gc26_butunluk(void)
         } else if (k == 2u) {
             uint8_t bozuk = 3u;
             (void)memcpy(&C.fc.istek_var, &bozuk, 1u);
-        } else {
+        } else if (k == 3u) {
             C.fc.tup = 0u; /* SAFE'te silahlı tüp tutarsız */
             C.fc.tup_tumleyen = 0xFFu;
+        } else {
+            uint8_t bozuk = 3u;
+            (void)memcpy((k == 4u) ? &C.fc.reset_kabul : &C.fc.bu_cagri_kilit, &bozuk, 1u);
         }
         yeni(true);
         TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
         TEST_ASSERT_FALSE(OUT.health.core_ok);
         TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_CORE_INTEGRITY));
         TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
+        TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
         /* core_ok mandallı, günlük bir kez; FC_RESET kabul edilir ama neden sürer. */
         yeni(true);
         const uint32_t id = fc((uint8_t)IDA_FC_RESET, 0u);
@@ -865,11 +901,27 @@ static void test_gc29_bayatlik(void)
             TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_SAFETY_INPUT));
         }
     }
-    /* Bayatlığın saptandığı çağrıda acil durdurma gevşemez (kısıtlama hâkimdir); sonraki
-       çağrıdaki taze örnek gevşetir. */
+    /* Acil durdurma zaten bayatlıktan kısıtlayanken gelen taze gevşek örnek izleri tazeler ve
+       aynı çağrıda gevşetir (A4-K116: gevşetme kabul edilen örnekle; bayatlık örnek içeriği
+       değildir). */
     yeni(true);
     (void)emn(0u, 0u, HAZIR, HAZIR);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_ESTOP);
+    /* Bayatlığın kısıtlayana döndürdüğü çağrıda gelen taze örnek gevşetmez (kısıtlama
+       hâkimdir: kapanma ve daraltma bu çağrıdadır); sonraki çağrıdaki taze örnek gevşetir. */
+    const int64_t son2 = T;
+    while (((T + (5 * DS_MS)) - son2) <= (250 * DS_MS)) { /* 250 ms'ye dek taze */
+        yeni(true);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+        TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_ESTOP);
+    }
+    yeni(true);
+    (void)emn(0u, 0u, HAZIR, HAZIR);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+    TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
+    TEST_ASSERT_TRUE(OUT.health.narrowed);
     yeni(true);
     (void)emn(0u, 0u, HAZIR, HAZIR);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
@@ -913,6 +965,96 @@ static void test_gc29_bayatlik(void)
         TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
         TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_ESTOP);
     }
+}
+
+/* G-Ç29, W5-K4 eki (sol bulgu 1): kabul edilen örnek izleri bayatlatırsa (geri giden t_rx)
+   acil durdurma AYNI çağrıda kısıtlayana döner: ESTOP, SAFETY_CLOSE(ALL), daraltma, günlük.
+   Dizi sol'unkidir: now_w 2000 ms'de t_rx 2000 ms, t_meas 100 ms gevşek örnek; now_w 2015
+   ms'de t_meas 101 ms, t_rx 1700 ms. */
+static void test_gc29_bayatlik_ayni_cagri(void)
+{
+    hazirla();
+    T = 1995 * DS_MS;
+    yeni(true); /* now_w 2000 ms */
+    ida_sample_t *s = emn(0u, 0u, HAZIR, HAZIR);
+    s->hdr.t_meas.ns = 100 * DS_MS;
+    s->hdr.t_rx.ns = 2000 * DS_MS;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_HEX32(0u, OUT.fc.inhibit_mask & EMN_BITLERI);
+    for (uint32_t i = 0u; i < 2u; i++) {
+        yeni(true); /* 2005, 2010 ms: örnek yok, iz 10 ms yaşında */
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+        TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_ESTOP);
+        TEST_ASSERT_EQUAL_UINT8(0u, OUT.n_events);
+    }
+    yeni(true); /* 2015 ms */
+    TEST_ASSERT_EQUAL_INT64(2015 * DS_MS, T);
+    s = emn(0u, 0u, HAZIR, HAZIR);
+    s->hdr.t_meas.ns = 101 * DS_MS;
+    s->hdr.t_rx.ns = 1700 * DS_MS;
+    const uint32_t red = OUT.status.cnt.sample_rejected;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_UINT32(red, OUT.status.cnt.sample_rejected); /* örnek kabul edildi */
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+    TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
+    TEST_ASSERT_TRUE(OUT.health.narrowed);
+    TEST_ASSERT_EQUAL_UINT32(1u, ds_gunluk_say(&OUT, (uint16_t)IDA_LOG_SAFETY_INPUT));
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state);
+    /* Donuk t_meas'li akıştan sonra (ölçüt (ii) dolmadan) ölçüm zamanı ilerleyen ama t_rx'i
+       eski örnek: çağrı başında iz taze, örnekten sonra iki ölçüt de bayat. */
+    hazirla();
+    gevset();
+    const int64_t t0 = T;
+    s = NULL;
+    while ((T - t0) < (240 * DS_MS)) {
+        yeni(true);
+        s = emn(0u, 0u, HAZIR, HAZIR);
+        s->hdr.t_meas.ns = t0; /* donuk (A4-K34 ile kabul; (i)'yi yeniler) */
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+        TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_ESTOP);
+    }
+    yeni(true);
+    s = emn(0u, 0u, HAZIR, HAZIR);
+    s->hdr.t_meas.ns = T;
+    s->hdr.t_rx.ns = T - (260 * DS_MS);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+    TEST_ASSERT_EQUAL_UINT32(1u, kapanma((uint8_t)IDA_TUBE_ALL));
+}
+
+/* G-Ç03, A4-K118 (W5-K21): DET_STALE init'ten, oturum sonu çağrısından ve SESSION_START'tan
+   T_det_stale (varsayılan 2000 ms) dolmadan kurulmaz; dolduğu çağrıda kurulur. */
+static void test_gc03_det_stale(void)
+{
+    hazirla(); /* init now_w = 1000 ms; T = 2000 ms */
+    bool kuruldu = false;
+    while (!kuruldu) {
+        yeni(true);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+        kuruldu = (OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) != 0u;
+        TEST_ASSERT_TRUE(kuruldu == ((T - (1000 * DS_MS)) > (2000 * DS_MS)));
+    }
+    /* SESSION_START: taban yenilenir, bit aynı çağrıda kalkar. */
+    yeni(true);
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_DET_STALE);
+    const int64_t bas = T;
+    while ((T - bas) < (2000 * DS_MS)) {
+        yeni(true);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+        TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_DET_STALE);
+    }
+    yeni(true);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(true));
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) != 0u);
+    /* Oturum sonu çağrısı da tabanı sıfırlar (A4-K122). */
+    yeni(false);
+    IN.tf.present = false;
+    IN.plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
+    IN.plat.link_state = (uint8_t)IDA_LINK_NONE;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir(false));
+    TEST_ASSERT_EQUAL_UINT32(0u, OUT.fc.inhibit_mask & IDA_FCI_DET_STALE);
 }
 
 /* ---- G-Ç36, G-Ç37: olay kimliği ------------------------------------------------------------- */
@@ -1038,6 +1180,7 @@ int main(void)
     RUN_TEST(test_gc06_gc15_kapanma);
     RUN_TEST(test_gc14_gevsetme);
     RUN_TEST(test_gc18_gc44_gc45_oturum);
+    RUN_TEST(test_gc18_gc45_baglanti_olayinda_gevsetme_yok);
     RUN_TEST(test_gc50_gc42_kapatma_sonucu);
     RUN_TEST(test_gc19_port_kilit_korunur);
     RUN_TEST(test_gc53_gc20_celiski_ve_reset);
@@ -1045,6 +1188,8 @@ int main(void)
     RUN_TEST(test_gc27_gunlukler);
     RUN_TEST(test_gc28_gc39_parametreler);
     RUN_TEST(test_gc29_bayatlik);
+    RUN_TEST(test_gc29_bayatlik_ayni_cagri);
+    RUN_TEST(test_gc03_det_stale);
     RUN_TEST(test_gc36_gc37_olay_kimligi);
     RUN_TEST(test_gc38_gc41_olay_kumesi);
     return UNITY_END();

@@ -189,7 +189,7 @@ ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)
     ida_gud_kur(&c->gud);
     ida_gor_kur(&c->gor);
     ida_kon_kur(&c->kon);
-    ida_fc_kur(&c->fc);
+    ida_fc_kur(&c->fc, in->now_w);
     ida_son_kur(&c->son);
 
     /* İlk yazılabilir step/tick'te çıkacak açılış kayıtları (3.15; A4-K77). */
@@ -580,14 +580,14 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
        NULL olsa da; geri alınmaz. Sıfırlananlar: her (type, inst) için son kabul edilen
        örneğin izi (IMU ve Ping360 dahil), IMU izi (IMU bayat sayılır, taze idiyse
        IMU_STALE = 1; IMU_LAG'ın çözülme sayacı; mandal çözülmez), zaman çerçevesi izi.
-       A4-K118'in süre başlangıcı atış kontrol işinindir (yer tutucuda DET_STALE hep kurulu).
+       A4-K118'in süre başlangıcı atış kontrolündedir (ida_fc_oturum_basi; W5-K21).
        Başka hiçbir durum sıfırlanmaz; modüllerin yeniden başlaması bir sonraki kabul edilen
        çağrının (e) adımındadır. */
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
         ida_orn_kur(&c->orn);
         ida_imz_oturum_basi(&c->imz, &c->gun, cg.now);
         ida_emn_oturum_basi(&c->emn);
-        ida_fc_oturum_basi(&c->fc);
+        ida_fc_oturum_basi(&c->fc, &fo);
         k->tf_var = false;
         k->yeniden_baslat = true;
         const ida_log_t g = {.t_w = cg.now,

@@ -9,14 +9,20 @@
  * out NULL çağrılar karışır. Değişmezler (a)–(f) her çağrıda denetlenir. (g) port yolunda
  * (parametre commit'i çerçevenin çağrı sonundadır).
  *
- *   (a) acil durdurma basılı ya da bayatken genişletici olay yok
+ *   (a) acil durdurma basılı ya da bayatken genişletici olay yok; bayatlık testin kendi
+ *       izlerinden (girdiden) bağımsız hesaplanır ve bayatken ESTOP biti kurulu olmalıdır
  *   (b) FIRE yalnız ARMED'de kabul edilmiş FC_FIRE'dan, o tüpün izni APPLIED olduktan sonra,
  *       izin penceresi içinde
- *   (c) FAULT_LATCHED yalnız kabul edilen FC_RESET ile terk edilir
+ *   (c) FAULT_LATCHED yalnız kabul edilen FC_RESET ile ve neden sürmüyorsa terk edilir; süren
+ *       neden (G-Ç53'ün iki çelişkisi, T_tup_bos, W5-K11 (a)) testin bağımsız izlediği geri
+ *       okuma ve olay sonucu durumundan hesaplanır (uygulamanın neden bayrakları okunmaz)
  *   (d) TEST'te genişletici olay yok
- *   (e) daraltıcı komut hiçbir durumda ve biçimde reddedilmez
- *   (f) sonucu bilinmeyen genişletici olay uygulanmış sayılmaz (PERMIT_OPEN yalnız APPLIED
- *       izinle)
+ *   (e) daraltıcı komut hiçbir durumda ve biçimde reddedilmez ve etkisi aynı çağrıda
+ *       uygulanır: genişletici olay yok, health.narrowed = 1, FC_DISARM'da silahlı ya da izin
+ *       açık durum kalmaz, FC_ABORT'ta izin açık kalmaz, silahlı/izinli/TEST/kilitli durumdan
+ *       SAFETY_CLOSE(ALL)
+ *   (f) sonucu bilinmeyen genişletici olay uygulanmış sayılmaz (PERMIT_OPEN yalnız çekirdeğe
+ *       ulaşmış APPLIED izinle)
  *   (g) silahlıyken emniyet parametresi değişmez
  */
 #include <stdio.h>
@@ -36,6 +42,9 @@ void tearDown(void) {}
 #define OZ_ADIM 200000u
 #define HOLD_NS 200000000LL
 #define PENCERE_NS 300000000LL
+#define BAYAT_NS 250000000LL     /* T_emn_bayat varsayılanı (W5-K4)                    */
+#define TUP_BOS_NS 500000000LL   /* T_tup_bos varsayılanı (03 §2.6)                    */
+#define APPLY_BY_NS 20000000LL   /* FC_APPLY_BY_NS varsayılanı                         */
 
 static ida_core_t C;
 static ida_in_t IN;
@@ -79,6 +88,241 @@ static bool UYG_ACIK[2];       /* istekten sonra çıkmış, APPLIED verilmiş S
 static int64_t UYG_ACIK_CIKIS[2];
 static uint64_t SON_ACIK_ID[2];
 
+/* ---- Testin bağımsız modeli: emniyet örneği izleri, bekleyen olaylar, süren nedenler ----- */
+/* Sözleşmeden (A4-K33, K34, K36, K69, K70, K128, K129; W5-K1, K4 eki, K11 a; G-Ç53) kurulur;
+   çekirdeğin iç alanları okunmaz. */
+
+typedef struct {
+    uint64_t id;
+    uint8_t kind;
+    uint8_t tube;
+    int64_t cikis;
+} md_olay_t;
+
+static struct {
+    /* emniyet örneği (inst 0) */
+    bool inst0_var;
+    bool tmeas_var;
+    int64_t rx;
+    int64_t ilerleme;
+    int64_t tmeas;
+    uint8_t bit[2];
+    /* çekirdeğin bekleyen olay kümesi (8 yuva; A4-K129) */
+    md_olay_t bek[8];
+    uint32_t n_bek;
+    /* oturum sınırı (W5-K19 a) */
+    uint64_t son_id;
+    uint64_t sinir;
+    bool sinir_bekliyor;
+    /* tüp başına izler */
+    uint64_t son_acik[2];
+    bool kapat_iz[2];
+    int64_t kapat_tapply[2];
+    bool atis_iz[2];
+    int64_t atis_tapply[2];
+    int64_t atis_bas[2];
+    /* süren nedenler */
+    bool celiski[2];
+    bool tekleme[2];
+    bool kapanis[2];
+    /* çekirdeğe ulaşmış APPLIED SAFETY_OPEN'lar (izin penceresi, f) */
+    int64_t izin_bitis[2];
+} M;
+
+static void md_kur(void)
+{
+    (void)memset(&M, 0, sizeof(M));
+}
+
+static bool md_bayat(int64_t now)
+{
+    return M.inst0_var && (((now - M.rx) > BAYAT_NS) || ((now - M.ilerleme) > BAYAT_NS));
+}
+
+static void md_izler(int64_t tm)
+{
+    for (uint8_t t = 0u; t < 2u; t++) {
+        const uint8_t b = M.bit[t];
+        if (M.kapat_iz[t] && (tm > M.kapat_tapply[t])) {
+            M.celiski[t] = (b & IDA_TUBE_PERMIT_OPEN) != 0u;
+        }
+        if (M.atis_iz[t] && (tm > M.atis_tapply[t])) {
+            M.atis_iz[t] = false;
+            if ((b & IDA_TUBE_LOADED) != 0u) {
+                M.tekleme[t] = true;
+            }
+        } else if (M.tekleme[t] && (tm > M.atis_tapply[t])) {
+            M.tekleme[t] = (b & IDA_TUBE_LOADED) != 0u;
+        } else {
+            /* izlenecek yok */
+        }
+    }
+}
+
+static void md_son_ornekle(void)
+{
+    if (M.tmeas_var) {
+        md_izler(M.tmeas);
+    }
+}
+
+/* Kabul edilen inst 0 örneği (A4-K33, K34; W5-K4 eki). */
+static void md_ornek(const ida_sample_t *s, int64_t now)
+{
+    const int64_t tm = s->hdr.t_meas.ns;
+    const bool ilk = !M.inst0_var || !M.tmeas_var;
+    M.rx = s->hdr.t_rx.ns;
+    if (ilk || (tm > M.tmeas)) {
+        M.ilerleme = s->hdr.t_rx.ns;
+    }
+    (void)now;
+    M.tmeas = tm;
+    M.tmeas_var = true;
+    M.inst0_var = true;
+    M.bit[0] = (uint8_t)(s->u.safety.tube[0] & 0x0Fu);
+    M.bit[1] = (uint8_t)(s->u.safety.tube[1] & 0x0Fu);
+    md_izler(tm);
+}
+
+static void md_oturum_sonu(void)
+{
+    M.inst0_var = false;
+    M.tmeas_var = false;
+    M.bit[0] = 0u;
+    M.bit[1] = 0u;
+    M.sinir_bekliyor = true;
+    for (uint8_t t = 0u; t < 2u; t++) {
+        M.kapat_iz[t] = false;
+        M.celiski[t] = false;
+        M.kapanis[t] = false;
+        M.atis_iz[t] = false;
+        M.atis_tapply[t] = INT64_MIN; /* tekleme sürer; sonraki her örnek değerlendirilir */
+        M.izin_bitis[t] = 0;
+    }
+}
+
+static bool md_bek_bul(uint64_t id, md_olay_t *o)
+{
+    for (uint32_t i = 0u; i < M.n_bek; i++) {
+        if (M.bek[i].id == id) {
+            *o = M.bek[i];
+            M.bek[i] = M.bek[M.n_bek - 1u];
+            M.n_bek--;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Olayın sonucu (bilinmiyor: A4-K70) çekirdeğe ulaştı. */
+static void md_sonuc(const md_olay_t *o, uint8_t kod, int64_t t_apply, bool bilinmiyor,
+                     int64_t now)
+{
+    if (o->kind == (uint8_t)IDA_EVT_SAFETY_CLOSE) {
+        const bool belirsiz = bilinmiyor || (kod == (uint8_t)IDA_EVR_EXPIRED_NO_ACK);
+        const bool eski = o->id <= M.sinir;
+        for (uint8_t t = 0u; t < 2u; t++) {
+            if ((o->tube != t) && (o->tube != (uint8_t)IDA_TUBE_ALL)) {
+                continue;
+            }
+            if (!bilinmiyor &&
+                ((kod == (uint8_t)IDA_EVR_APPLIED) || (kod == (uint8_t)IDA_EVR_DUPLICATE))) {
+                M.kapanis[t] = false;
+                if (M.son_acik[t] < o->id) {
+                    M.kapat_iz[t] = true;
+                    M.kapat_tapply[t] = t_apply;
+                }
+            } else if (belirsiz) {
+                M.kapanis[t] = !eski;
+            } else if (kod == (uint8_t)IDA_EVR_SESSION_END) {
+                M.kapanis[t] = false;
+            } else {
+                /* öteki retler */
+            }
+        }
+        md_son_ornekle();
+        return;
+    }
+    if (o->tube >= 2u) {
+        return;
+    }
+    const uint8_t t = o->tube;
+    if (o->kind == (uint8_t)IDA_EVT_SAFETY_OPEN) {
+        if (!bilinmiyor && (kod == (uint8_t)IDA_EVR_APPLIED)) {
+            M.izin_bitis[t] = o->cikis + HOLD_NS;
+        }
+        return;
+    }
+    if (!bilinmiyor && ((kod == (uint8_t)IDA_EVR_APPLIED) || (kod == (uint8_t)IDA_EVR_DUPLICATE))) {
+        M.atis_iz[t] = true;
+        M.atis_tapply[t] = t_apply;
+        M.atis_bas[t] = now;
+        md_son_ornekle();
+    }
+}
+
+/* Çıkan olaylar (yuva varsa izlenir; A4-K129). */
+static void md_cikti(const ida_out_t *o, int64_t now)
+{
+    for (uint32_t i = 0u; i < (uint32_t)o->n_events; i++) {
+        const ida_event_t *e = &o->events[i];
+        if (e->event_id > M.son_id) {
+            M.son_id = e->event_id;
+        }
+        if (M.n_bek < 8u) {
+            md_olay_t *b = &M.bek[M.n_bek];
+            M.n_bek++;
+            b->id = e->event_id;
+            b->kind = e->kind;
+            b->tube = e->tube;
+            b->cikis = now;
+        }
+        if ((e->kind == (uint8_t)IDA_EVT_SAFETY_OPEN) && (e->tube < 2u)) {
+            M.son_acik[e->tube] = e->event_id;
+            M.kapat_iz[e->tube] = false;
+            M.celiski[e->tube] = false;
+        }
+    }
+    if (M.sinir_bekliyor) {
+        M.sinir_bekliyor = false;
+        M.sinir = M.son_id;
+    }
+}
+
+/* Kabul edilen çağrının olay sonuçları ve zaman aşımları (çerçevenin sırası). */
+static void md_sonuclar(const ida_in_t *in, int64_t now)
+{
+    for (uint32_t i = 0u; i < (uint32_t)in->n_evres; i++) {
+        md_olay_t o;
+        if (md_bek_bul(in->evres[i].event_id, &o)) {
+            md_sonuc(&o, in->evres[i].result, in->evres[i].t_apply.ns, false, now);
+        }
+    }
+    for (uint32_t i = 0u; i < M.n_bek;) {
+        if ((now - M.bek[i].cikis) > (APPLY_BY_NS + (int64_t)IDA_EVT_RESULT_MARGIN_NS)) {
+            const md_olay_t o = M.bek[i];
+            M.bek[i] = M.bek[M.n_bek - 1u];
+            M.n_bek--;
+            md_sonuc(&o, 0u, 0, true, now);
+        } else {
+            i++;
+        }
+    }
+    /* 03 §2.6 FIRING: tüp boşaldı geri okuması T_tup_bos içinde gelmedi. */
+    for (uint8_t t = 0u; t < 2u; t++) {
+        if (M.atis_iz[t] && ((now - M.atis_bas[t]) > TUP_BOS_NS)) {
+            M.atis_iz[t] = false;
+            M.tekleme[t] = true;
+        }
+    }
+}
+
+static bool md_neden(void)
+{
+    return M.celiski[0] || M.celiski[1] || M.tekleme[0] || M.tekleme[1] || M.kapanis[0] ||
+           M.kapanis[1];
+}
+
 static void bekleyene_ekle(const ida_event_t *e, int64_t now)
 {
     for (uint32_t i = 0u; i < OZ_N; i++) {
@@ -111,7 +355,7 @@ static void bekleyene_ekle(const ida_event_t *e, int64_t now)
     }
 }
 
-static void sonuclari_ver(int64_t now)
+static void sonuclari_ver(int64_t now, bool kabul)
 {
     for (uint32_t i = 0u; i < OZ_N; i++) {
         oz_olay_t *b = &BEK[i];
@@ -136,7 +380,7 @@ static void sonuclari_ver(int64_t now)
             if (b->kind == (uint8_t)IDA_EVT_SAFETY_OPEN) {
                 if (b->sonuc == (uint8_t)IDA_EVR_APPLIED) {
                     SIM_IZIN[b->tube] = t_apply + HOLD_NS;
-                    if (ISTEK[b->tube] && (b->cikis >= ISTEK_T[b->tube])) {
+                    if (kabul && ISTEK[b->tube] && (b->cikis >= ISTEK_T[b->tube])) {
                         UYG_ACIK[b->tube] = true;
                         UYG_ACIK_CIKIS[b->tube] = b->cikis;
                     }
@@ -196,6 +440,7 @@ static void oz_kur(void)
     G_ESTOP = 0u;
     C.emn.armed = true;
     C.emn.mode = (uint8_t)IDA_MODE_GUIDED;
+    md_kur();
 }
 
 static bool daraltici_mi(const ida_cmd_t *k)
@@ -223,6 +468,56 @@ static uint32_t S_TEST;
 static uint32_t S_DARALT;
 static uint32_t S_ESTOP;
 static uint32_t S_PERMIT;
+static uint32_t S_BAYAT;
+static uint32_t S_DARALT_ETKI;
+static uint32_t S_RESET_KILIT;
+static bool ONCEKI_YAZILABILIR;
+static uint8_t ONCEKI_DIS;
+
+/* cmds[]'te (ilk 8) bu işlemli FC komutu var mı. */
+static bool cmds_op_var(uint8_t op)
+{
+    const uint32_t n = (IN.n_cmds < IDA_PORT_MAX_CMDS) ? (uint32_t)IN.n_cmds : IDA_PORT_MAX_CMDS;
+    for (uint32_t i = 0u; i < n; i++) {
+        if ((IN.cmds[i].type == (uint8_t)IDA_CMD_FC) && (IN.cmds[i].u.fc.op == op)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Mandal sonuçlarının sayısı (results[]'in başında). */
+static uint32_t n_mandal_bit_on(void)
+{
+    return (uint32_t)((IN.narrow.mask & 1u) + ((IN.narrow.mask >> 1) & 1u) +
+                      ((IN.narrow.mask >> 2) & 1u) + ((IN.narrow.mask >> 3) & 1u));
+}
+
+/* Bu çağrıda kabul edilen FC_TEST_EXIT var mı. */
+static bool test_cikisi(uint32_t n_mandal_bit)
+{
+    for (uint32_t i = n_mandal_bit; i < (uint32_t)OUT.n_results; i++) {
+        const ida_cmd_t *k = &IN.cmds[i - n_mandal_bit];
+        if ((k->type == (uint8_t)IDA_CMD_FC) && (k->u.fc.op == (uint8_t)IDA_FC_TEST_EXIT) &&
+            (OUT.results[i].ack == (uint8_t)IDA_ACK_ACCEPTED)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Bu çağrıda kabul edilen FC_RESET var mı. */
+static bool fc_reset_kabul(uint32_t n_mandal_bit)
+{
+    for (uint32_t i = n_mandal_bit; i < (uint32_t)OUT.n_results; i++) {
+        const ida_cmd_t *k = &IN.cmds[i - n_mandal_bit];
+        if ((k->type == (uint8_t)IDA_CMD_FC) && (k->u.fc.op == (uint8_t)IDA_FC_RESET) &&
+            (OUT.results[i].ack == (uint8_t)IDA_ACK_ACCEPTED)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static void test_ozellik_degismezler_a_f(void)
 {
@@ -238,6 +533,9 @@ static void test_ozellik_degismezler_a_f(void)
     dz_kosul_t K;
     dz_kosul_olagan(&K, T);
     S_FIRE = S_ACIK = S_FAULT_CIKIS = S_TEST = S_DARALT = S_ESTOP = S_PERMIT = 0u;
+    S_BAYAT = S_DARALT_ETKI = S_RESET_KILIT = 0u;
+    ONCEKI_YAZILABILIR = false;
+    ONCEKI_DIS = (uint8_t)IDA_FCS_SAFE;
 
     for (uint32_t adim = 0u; adim < OZ_ADIM; adim++) {
         seq++;
@@ -287,7 +585,13 @@ static void test_ozellik_degismezler_a_f(void)
             SIM_IZIN[0] = 0;
             SIM_IZIN[1] = 0;
         }
-        sonuclari_ver(T);
+        int ret = DZ_KABUL;
+        if (olasi(10u)) {
+            ret = DZ_RET_DUP_SEQ;
+        }
+        const bool out_null = olasi(5u);
+        const bool kabul = (ret == DZ_KABUL) && !out_null;
+        sonuclari_ver(T, kabul);
         bool estop_icerik = false;
         if (olasi(400u)) {
             eseq++;
@@ -302,6 +606,11 @@ static void test_ozellik_degismezler_a_f(void)
             ida_sample_t *s = dz_emniyet(&IN, 0u, eseq, tm, T, G_ESTOP, tup_bitleri(0u, T),
                                          tup_bitleri(1u, T));
             estop_icerik = G_ESTOP != 0u;
+            if (olasi(20u)) {
+                /* geri giden alım zamanı (A4-K33 t_rx'in monotonluğunu istemez): kabul edilen
+                   örnek izleri bayatlatabilir (sol bulgu 1) */
+                s->hdr.t_rx.ns = T - ((int64_t)zar(400u) * DZ_MS);
+            }
             if (olasi(20u)) {
                 s->u.safety.tube[zar(2u)] = (uint8_t)zar(16u); /* bozuk geri okuma */
             }
@@ -363,15 +672,37 @@ static void test_ozellik_degismezler_a_f(void)
                 }
             }
         }
-        int ret = DZ_KABUL;
-        if (olasi(10u)) {
-            ret = DZ_RET_DUP_SEQ;
-        }
-        const bool out_null = olasi(5u);
 
         const uint32_t onceki_ic = C.fc.ic;
         const uint8_t onceki_tup = C.fc.tup;
         const ida_rc_t rc = dz_cagri(&C, &IN, out_null ? NULL : &OUT, step, ret, &K);
+        /* Bağımsız model: çerçevenin sırasıyla (b), (b3), (e) örnekler, sonuçlar, çıktı. */
+        const bool oturum_sonu = IN.plat.link_event == (uint8_t)IDA_LINKEV_SESSION_END;
+        if (oturum_sonu) {
+            md_oturum_sonu();
+        }
+        if (IN.plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
+            M.tmeas_var = false;
+        }
+        if (kabul) {
+            for (uint32_t i = 0u; i < (uint32_t)IN.n_samples; i++) {
+                const ida_sample_t *sm = &IN.samples[i];
+                if ((sm->hdr.inst == 0u) && ((sm->hdr.flags & IDA_HF_VALID) != 0u) && !oturum_sonu) {
+                    md_ornek(sm, T);
+                }
+            }
+            md_sonuclar(&IN, T);
+        }
+        if (!out_null) {
+            md_cikti(&OUT, T);
+        }
+        const bool fc_disarm =
+            ((IN.narrow.mask & IDA_NARROW_FC_DISARM) != 0u) || cmds_op_var(IDA_FC_DISARM);
+        const bool fc_abort =
+            ((IN.narrow.mask & IDA_NARROW_FC_ABORT) != 0u) || cmds_op_var(IDA_FC_ABORT);
+        const bool onceki_yazilabilir = ONCEKI_YAZILABILIR;
+        const uint8_t onceki_dis = ONCEKI_DIS;
+        ONCEKI_YAZILABILIR = !out_null;
         if (out_null) {
             /* (c): out NULL çağrıda kilit terk edilmez */
             if (onceki_ic == IDA_FC_IC_FAULT) {
@@ -404,13 +735,21 @@ static void test_ozellik_degismezler_a_f(void)
             }
         }
         TEST_ASSERT_TRUE(kapanma <= 2u);
-        /* (a) */
+        ONCEKI_DIS = OUT.fc.state;
+        /* (a): bayatlık testin izlerinden (W5-K4 eki iki ölçüt); bayatken ESTOP biti kurulu. */
+        if (md_bayat(T)) {
+            TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+            TEST_ASSERT_EQUAL_UINT32(0u, genis);
+            S_BAYAT++;
+        }
         if (((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u) || estop_icerik) {
             TEST_ASSERT_EQUAL_UINT32(0u, genis);
             S_ESTOP++;
         }
-        /* (d) */
-        if ((onceki_ic == IDA_FC_IC_TEST) || (C.fc.ic == IDA_FC_IC_TEST)) {
+        /* (d): çağrı TEST'te başladıysa (aynı çağrıda kabul edilen FC_TEST_EXIT ile SAFE'e
+           dönüp FC_ARM ve FC_FIRE kabul edilmemişse) ya da TEST'te bittiyse. */
+        if (((onceki_ic == IDA_FC_IC_TEST) && !test_cikisi(n_mandal_bit_on())) ||
+            (C.fc.ic == IDA_FC_IC_TEST)) {
             TEST_ASSERT_EQUAL_UINT32(0u, genis);
             S_TEST++;
         }
@@ -429,6 +768,27 @@ static void test_ozellik_degismezler_a_f(void)
                 S_DARALT++;
             }
         }
+        /* (e) etki: daraltıcı aynı çağrıda uygulanır (dönüş kodundan bağımsız; G-Ç06, G-Ç32). */
+        if (fc_disarm || fc_abort) {
+            TEST_ASSERT_EQUAL_UINT32(0u, genis);
+            TEST_ASSERT_TRUE(OUT.health.narrowed);
+            TEST_ASSERT_TRUE(OUT.fc.state != (uint8_t)IDA_FCS_PERMIT_OPEN);
+            if (fc_disarm) {
+                TEST_ASSERT_TRUE((OUT.fc.state != (uint8_t)IDA_FCS_ARMED) &&
+                                 (OUT.fc.state != (uint8_t)IDA_FCS_TEST));
+            }
+            if (onceki_yazilabilir &&
+                ((onceki_dis == (uint8_t)IDA_FCS_ARMED) || (onceki_dis == (uint8_t)IDA_FCS_PERMIT_OPEN) ||
+                 (onceki_dis == (uint8_t)IDA_FCS_TEST) || (onceki_dis == (uint8_t)IDA_FCS_FAULT_LATCHED))) {
+                bool hepsi = false;
+                for (uint32_t i = 0u; i < (uint32_t)OUT.n_events; i++) {
+                    hepsi = hepsi || ((OUT.events[i].kind == (uint8_t)IDA_EVT_SAFETY_CLOSE) &&
+                                      (OUT.events[i].tube == (uint8_t)IDA_TUBE_ALL));
+                }
+                TEST_ASSERT_TRUE(hepsi);
+                S_DARALT_ETKI++;
+            }
+        }
         /* (c) */
         if ((onceki_ic == IDA_FC_IC_FAULT) && (C.fc.ic != IDA_FC_IC_FAULT)) {
             bool reset = false;
@@ -440,9 +800,12 @@ static void test_ozellik_degismezler_a_f(void)
                 }
             }
             TEST_ASSERT_TRUE(reset);
-            TEST_ASSERT_FALSE(C.fc.butunluk_kilidi || C.fc.t[0].celiski || C.fc.t[1].celiski ||
-                              C.fc.t[0].kapanis_dogrulanmadi || C.fc.t[1].kapanis_dogrulanmadi);
+            TEST_ASSERT_FALSE(md_neden()); /* testin izlediği neden sürmüyor (W5-K1) */
             S_FAULT_CIKIS++;
+        }
+        if ((onceki_ic == IDA_FC_IC_FAULT) && md_neden() && fc_reset_kabul(n_mandal_bit)) {
+            TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
+            S_RESET_KILIT++;
         }
         /* Kabul edilen FC_FIRE: yalnız ARMED iç durumunda (aynı çağrıda önce FC_ARM olabilir). */
         bool arm_bu_cagri = false;
@@ -484,10 +847,9 @@ static void test_ozellik_degismezler_a_f(void)
             }
             bekleyene_ekle(ev, T);
         }
+        /* (f): PERMIT_OPEN yalnız çekirdeğe ulaşmış APPLIED SAFETY_OPEN'ın hold_ns'i içinde. */
         if (OUT.fc.state == (uint8_t)IDA_FCS_PERMIT_OPEN) {
-            const uint8_t t = C.fc.tup;
-            TEST_ASSERT_TRUE(t < 2u);
-            TEST_ASSERT_TRUE(UYG_ACIK[t] && (T < (UYG_ACIK_CIKIS[t] + HOLD_NS)));
+            TEST_ASSERT_TRUE((T < M.izin_bitis[0]) || (T < M.izin_bitis[1]));
             S_PERMIT++;
         }
         /* İstek, FC iç durumu pencereden çıkınca düşer. */
@@ -497,17 +859,14 @@ static void test_ozellik_degismezler_a_f(void)
                 UYG_ACIK[t] = false;
             }
         }
-        /* Uzun süren kilit: arada sıfırla (FC_RESET'in rastgele gelmesine ek). */
-        if ((C.fc.ic == IDA_FC_IC_FAULT) && C.fc.butunluk_kilidi) {
-            oz_kur();
-        }
     }
-    char ileti[256];
+    char ileti[384];
     (void)snprintf(ileti, sizeof(ileti),
                    "tohum 0x%08X, %u adım: FIRE %u, SAFETY_OPEN %u, PERMIT_OPEN çağrısı %u, kilitten "
-                   "çıkış %u, TEST çağrısı %u, daraltıcı sonucu %u, acil durdurmalı çağrı %u",
-                   OZ_TOHUM, OZ_ADIM, S_FIRE, S_ACIK, S_PERMIT, S_FAULT_CIKIS, S_TEST, S_DARALT,
-                   S_ESTOP);
+                   "çıkış %u, neden sürerken FC_RESET %u, TEST çağrısı %u, daraltıcı sonucu %u, "
+                   "daraltıcı kapanması %u, acil durdurmalı çağrı %u, bayat çağrı %u",
+                   OZ_TOHUM, OZ_ADIM, S_FIRE, S_ACIK, S_PERMIT, S_FAULT_CIKIS, S_RESET_KILIT,
+                   S_TEST, S_DARALT, S_DARALT_ETKI, S_ESTOP, S_BAYAT);
     TEST_MESSAGE(ileti);
     /* Değişmezler boş geçmedi. */
     TEST_ASSERT_TRUE(S_FIRE > 10u);
@@ -516,6 +875,9 @@ static void test_ozellik_degismezler_a_f(void)
     TEST_ASSERT_TRUE(S_TEST > 100u);
     TEST_ASSERT_TRUE(S_DARALT > 100u);
     TEST_ASSERT_TRUE(S_PERMIT > 10u);
+    TEST_ASSERT_TRUE(S_BAYAT > 100u);
+    TEST_ASSERT_TRUE(S_DARALT_ETKI > 100u);
+    TEST_ASSERT_TRUE(S_RESET_KILIT > 0u);
 }
 
 /* ---- (g): silahlıyken emniyet parametresi değişmez (port yolu) ---------------------------- */
@@ -523,14 +885,16 @@ static void test_ozellik_degismezler_a_f(void)
 static void test_ozellik_degismez_g(void)
 {
     static const char *const ad[] = {"T_emn_bayat", "T_pencere", "T_hb_fc", "FC_APPLY_BY_NS",
-                                     "FC_HOLD_NS"};
-    static const uint32_t deger[5][2] = {{200u, 400u},
+                                     "FC_HOLD_NS", "T_assess", "T_tup_bos"};
+    static const uint32_t deger[7][2] = {{200u, 400u},
                                          {150u, 500u},
                                          {500u, 2000u},
                                          {16000000u, 50000000u},
-                                         {60000000u, 300000000u}};
-    uint16_t id[5];
-    for (uint32_t i = 0u; i < 5u; i++) {
+                                         {60000000u, 300000000u},
+                                         {500u, 2000u},
+                                         {200u, 1000u}};
+    uint16_t id[7];
+    for (uint32_t i = 0u; i < 7u; i++) {
         TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_find(ad[i], &id[i]));
     }
     R.s = OZ_TOHUM ^ 0x0000A5A5u;
@@ -555,7 +919,7 @@ static void test_ozellik_degismez_g(void)
             k->cmd_id = cid++;
             const uint32_t s = zar(10u);
             if (s < 6u) {
-                const uint32_t p = zar(5u);
+                const uint32_t p = zar(7u);
                 k->type = (uint8_t)IDA_CMD_PARAM_SET;
                 k->u.param.id = id[p];
                 k->u.param.type = (uint8_t)IDA_PT_U32;
@@ -566,15 +930,15 @@ static void test_ozellik_degismez_g(void)
                 k->type = (uint8_t)IDA_CMD_ARM;
             }
         }
-        ida_param_value_t once[5];
-        for (uint32_t i = 0u; i < 5u; i++) {
+        ida_param_value_t once[7];
+        for (uint32_t i = 0u; i < 7u; i++) {
             TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, id[i], &once[i]));
         }
         const bool silahli = C.emn.armed;
         const ida_rc_t rc = ida_core_step(&C, &IN, &OUT);
         TEST_ASSERT_TRUE((rc == IDA_RC_OK) || (rc == IDA_RC_IMU_REJECTED));
         bool degisti = false;
-        for (uint32_t i = 0u; i < 5u; i++) {
+        for (uint32_t i = 0u; i < 7u; i++) {
             ida_param_value_t sonra;
             TEST_ASSERT_EQUAL(IDA_RC_OK, ida_core_param_get(&C, id[i], &sonra));
             degisti = degisti || (sonra.v.u32 != once[i].v.u32);

@@ -13,14 +13,16 @@
  *     uzun emniyet örneği aralığı ölçülerek doğrulanacak, ölçüm çıkmadan kesinleşmiş sayılmaz.
  *     Alt sınır 150 ms: T_emniyet'e eşit ya da yakın bir değer olağan teslim titremesinde
  *     yanlış tetikler (03 §2.6.1 md. 7 gözlemi); uygulayıcının seçimi.
- *   T_pencere 300 ms, T_hb_fc 1000 ms: 03 §2.6 durum tablosunun değerleri (tahmin). Aralıklar
- *     uygulayıcının seçimidir.
- *
- * ASSESS süresi (1 s) ve tüp boşaldı geri okumasının süresi (500 ms) parametre değil, derlemede
- * sabittir (atis/atis.h IDA_FC_T_ASSESS_MS, IDA_FC_T_TUP_BOS_MS; tahmin): hiçbir koşulda
- * değişmez. Gerekçe: parametre sayısı 162'yi aşınca butunleme.sil_oturum_dusme_belirlenim'in
- * hazırlık oturumu ilk ihlal noktasından önce bitmiyor (W5-atis-emniyet raporu).
+ *   T_pencere 300 ms: 03 §2.6 durum tablosunun değeri (tahmin). Aralıklar uygulayıcının
+ *     seçimidir.
+ *   T_hb_fc 2500 ms: W5-K16 (A1-K70'in 1 Hz HEARTBEAT aralığının 2,5 katı; W5-K4 ekindeki
+ *     ölçütle aynı; 1000 ms olağan titreşimde güvenli duruma düşürürdü); kartta ölçülünce
+ *     kesinleşir.
+ *   T_assess 1000 ms ve T_tup_bos 500 ms: 03 §2.6 durum tablosunun ASSESS ve FIRING zaman
+ *     aşımları (W5-K13; G-Ç28). Aralıklar uygulayıcının seçimidir.
  */
 IDA_PARAM(0x0601u, T_emn_bayat, U32, B, 150u, 2000u,  250u,  fc_emn_bayat_ms) /* W5-K4; G-Ç29 */
 IDA_PARAM(0x0602u, T_pencere,   U32, B, 100u, 2000u,  300u,  fc_pencere_ms)   /* W5-K3; G-Ç48 */
-IDA_PARAM(0x0603u, T_hb_fc,     U32, B, 200u, 10000u, 1000u, fc_hb_ms)        /* A4-K52; G-Ç25 */
+IDA_PARAM(0x0603u, T_hb_fc,     U32, B, 200u, 10000u, 2500u, fc_hb_ms)        /* A4-K52; G-Ç25; W5-K16 */
+IDA_PARAM(0x0604u, T_assess,    U32, B, 200u, 5000u,  1000u, fc_assess_ms)    /* 03 §2.6 ASSESS; G-Ç48 */
+IDA_PARAM(0x0605u, T_tup_bos,   U32, B, 100u, 2000u,  500u,  fc_tup_bos_ms)   /* 03 §2.6 FIRING; G-Ç53 */

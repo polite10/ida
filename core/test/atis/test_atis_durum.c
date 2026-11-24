@@ -232,15 +232,27 @@ static void test_gc21_gc47_tam_zincir(void)
     silahla(0u);
     const uint64_t acik = ates_iste(0u);
     const uint64_t ates = izin_ve_ates(0u, acik);
-    /* FIRE APPLIED ve tüp boşaldı → ASSESS (dış ARMED) → T_assess sonra SAFETY_CLOSE + SAFE. */
+    /* FIRE APPLIED ve tüp boşaldı → ASSESS → T_assess sonra SAFETY_CLOSE + SAFE. Dış durum
+       A4 §3.16'ya göre: FIRE'ın sonucu alındı (FIRE_PENDING değil); izin hâlâ açık sayılıyor
+       (PERMIT_OPEN); izin hold_ns ile kapanınca ARMED. */
+    const int64_t izin_cikis = T - (5 * DZ_MS); /* SAFETY_OPEN'ın çıktığı çağrı */
     yeni();
     dz_sonuc(&IN, ates, (uint8_t)IDA_EVR_APPLIED, T - DZ_MS);
     G_TUP[0] = (uint8_t)(IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT);
     emn();
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_ARMED, OUT.fc.state);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FC_IC_ASSESS, C.fc.ic);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_PERMIT_OPEN, OUT.fc.state);
     TEST_ASSERT_EQUAL_UINT32(0u, genis_say());
-    bekle(990);
+    while (T < (izin_cikis + HOLD_NS - (5 * DZ_MS))) {
+        adim();
+        TEST_ASSERT_EQUAL_UINT8(IDA_FCS_PERMIT_OPEN, OUT.fc.state);
+    }
+    while (T < (izin_cikis + HOLD_NS)) {
+        adim();
+    }
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_ARMED, OUT.fc.state); /* açık izin yok */
+    bekle(990 - ((HOLD_NS / DZ_MS) - 10)); /* ASSESS girişinden 990 ms sonrasına */
     TEST_ASSERT_EQUAL_UINT8(IDA_FCS_ARMED, OUT.fc.state);
     bekle(20);
     TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state);
@@ -605,7 +617,8 @@ static void test_gc53_tekleme(void)
 {
     silahla(0u);
     const uint64_t ates = izin_ve_ates(0u, ates_iste(0u));
-    /* t_meas ≤ t_apply olan dolu örnek tekleme değildir. */
+    /* t_meas ≤ t_apply olan dolu örnek tekleme değildir. Dış durum (A4 §3.16): FIRE'ın sonucu
+       alındı, izin hâlâ açık sayılıyor → PERMIT_OPEN (FIRE_PENDING değil; sol bulgu 4). */
     yeni();
     const int64_t t_apply = T + DZ_MS;
     dz_sonuc(&IN, ates, (uint8_t)IDA_EVR_APPLIED, t_apply);
@@ -613,7 +626,8 @@ static void test_gc53_tekleme(void)
     (void)dz_emniyet(&IN, 0u, ESEQ, T, T, 0u, (uint8_t)(DZ_TUP_HAZIR | IDA_TUBE_PERMIT_OPEN),
                      DZ_TUP_HAZIR);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FIRE_PENDING, OUT.fc.state);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FC_IC_FIRING, C.fc.ic);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_PERMIT_OPEN, OUT.fc.state);
     /* t_meas > t_apply ve LOADED = 1 → FAULT_LATCHED + SAFETY_CLOSE(tüp). */
     yeni();
     emn();
@@ -627,22 +641,100 @@ static void test_gc53_tekleme(void)
     dz_sonuc(&IN, a2, (uint8_t)IDA_EVR_APPLIED, T);
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     const int64_t bas = T;
-    while (OUT.fc.state == (uint8_t)IDA_FCS_FIRE_PENDING) {
-        yeni();
-        /* örnek gelir ama ölçüm zamanı t_apply'ı geçmez */
-        ESEQ++;
-        (void)dz_emniyet(&IN, 0u, ESEQ, bas, T, 0u, DZ_TUP_HAZIR, DZ_TUP_HAZIR);
-        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-        TEST_ASSERT_TRUE((T - bas) < (600 * DZ_MS));
-    }
-    /* ölçüm zamanı ilerlemediği için T_emn_bayat (250 ms) önce SAFE yapar; izleme sürer ve
-       T_tup_bos dolunca kilitlenir */
+    /* örnek gelir ama ölçüm zamanı t_apply'ı geçmez; ölçüm zamanı ilerlemediği için
+       T_emn_bayat (250 ms) önce FC'yi SAFE yapar; izleme sürer ve T_tup_bos dolunca kilitlenir */
     while (OUT.fc.state != (uint8_t)IDA_FCS_FAULT_LATCHED) {
         yeni();
+        ESEQ++;
+        (void)dz_emniyet(&IN, 0u, ESEQ, bas, T, 0u, DZ_TUP_HAZIR, DZ_TUP_HAZIR);
         TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
         TEST_ASSERT_TRUE((T - bas) <= (510 * DZ_MS));
     }
     TEST_ASSERT_TRUE((T - bas) > (500 * DZ_MS));
+}
+
+/* G-Ç20, W5-K1 (sol bulgu 2): tekleme geri okuma çelişkisi sürdükçe süren nedendir. FC_RESET
+   kabul edilir ama aynı çağrıda yeniden kilitlenir; çelişki kalkınca (LOADED = 0) FC_RESET
+   SAFE yapar. */
+static void test_gc20_tekleme_suren_neden(void)
+{
+    silahla(0u);
+    const uint64_t ates = izin_ve_ates(0u, ates_iste(0u));
+    yeni();
+    dz_sonuc(&IN, ates, (uint8_t)IDA_EVR_APPLIED, T - DZ_MS);
+    emn(); /* t_meas > t_apply, LOADED = 1 */
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
+    /* Kapanma APPLIED (alıcı taklidi), izin geri okuması kapalı; tüp dolu görünmeye devam
+       ediyor. Yeni kimlikli FC_RESET: kabul, aynı çağrıda yeniden FAULT_LATCHED. */
+    G_TUP[0] = DZ_TUP_HAZIR;
+    for (uint32_t k = 0u; k < 3u; k++) {
+        adim();
+        yeni();
+        emn();
+        const uint32_t id = komut((uint8_t)IDA_FC_RESET, 0u);
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+        kabul_bekle(id);
+        TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
+        TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_FAULT_LATCHED) != 0u);
+        TEST_ASSERT_EQUAL_UINT32(0u, genis_say());
+    }
+    /* Geri okuma tüpü boş gösterince neden kalkar; aynı çağrıdaki FC_RESET SAFE yapar. */
+    G_TUP[0] = (uint8_t)(IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT);
+    yeni();
+    emn();
+    const uint32_t id = komut((uint8_t)IDA_FC_RESET, 0u);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    kabul_bekle(id);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state);
+    /* T_tup_bos zaman aşımı da süren nedendir: t_meas > t_apply örneği gelene dek. */
+    silahla(1u);
+    const uint64_t a2 = izin_ve_ates(1u, ates_iste(1u));
+    yeni();
+    dz_sonuc(&IN, a2, (uint8_t)IDA_EVR_APPLIED, T);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    const int64_t t_apply = T;
+    while (OUT.fc.state != (uint8_t)IDA_FCS_FAULT_LATCHED) {
+        yeni(); /* örnek yok: geri okuma gelmez */
+        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+        TEST_ASSERT_TRUE((T - t_apply) <= (510 * DZ_MS));
+    }
+    yeni();
+    const uint32_t r1 = komut((uint8_t)IDA_FC_RESET, 0u);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    kabul_bekle(r1);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
+    G_TUP[1] = (uint8_t)(IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT); /* tüp boş */
+    yeni();
+    emn();
+    const uint32_t r2 = komut((uint8_t)IDA_FC_RESET, 0u);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    kabul_bekle(r2);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state);
+}
+
+/* G-Ç29, W5-K4 eki (sol bulgu 1), silahlı düzenek: izin açan SAFETY_OPEN'ın APPLIED sonucu
+   ve PERMIT_OPEN geri okuması aynı çağrıda gelse de, kabul edilen örnek izleri bayatlattıysa
+   (geri giden t_rx) FIRE üretilmez; ESTOP, SAFETY_CLOSE(ALL), FC SAFE aynı çağrıda. */
+static void test_gc29_bayatlik_ayni_cagri_silahli(void)
+{
+    silahla(0u);
+    const uint64_t acik = ates_iste(0u);
+    yeni();
+    dz_sonuc(&IN, acik, (uint8_t)IDA_EVR_APPLIED, T - DZ_MS);
+    G_TUP[0] = (uint8_t)(G_TUP[0] | IDA_TUBE_PERMIT_OPEN);
+    ESEQ++;
+    (void)dz_emniyet(&IN, 0u, ESEQ, T, T - (300 * DZ_MS), 0u, G_TUP[0], G_TUP[1]);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT32(0u, genis_say());
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_ESTOP) != 0u);
+    TEST_ASSERT_TRUE(kapanma_var(0u) && kapanma_var(1u));
+    TEST_ASSERT_TRUE(OUT.health.narrowed);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FCS_SAFE, OUT.fc.state);
+    /* Aynı dizi taze t_rx ile: FIRE (karşı sınama). */
+    silahla(0u);
+    const uint64_t acik2 = ates_iste(0u);
+    (void)izin_ve_ates(0u, acik2);
 }
 
 /* ---- G-Ç24, G-Ç51: TEST ------------------------------------------------------------------ */
@@ -694,12 +786,12 @@ static void test_gc25_kalp_atisi(void)
     G_HB = false;
     const int64_t son = K.gcs_son_ns;
     bool kapandi = false;
-    for (uint32_t i = 0u; (i < 400u) && !kapandi; i++) {
+    for (uint32_t i = 0u; (i < 700u) && !kapandi; i++) {
         adim();
         if (OUT.fc.state == (uint8_t)IDA_FCS_SAFE) {
             kapandi = true;
-            TEST_ASSERT_TRUE((T - son) > (1000 * DZ_MS));
-            TEST_ASSERT_TRUE((T - son) <= (1005 * DZ_MS));
+            TEST_ASSERT_TRUE((T - son) > (2500 * DZ_MS)); /* T_hb_fc (W5-K16) */
+            TEST_ASSERT_TRUE((T - son) <= (2505 * DZ_MS));
             TEST_ASSERT_TRUE(kapanma_var(1u));
         }
     }
@@ -713,7 +805,7 @@ static void test_gc25_kalp_atisi(void)
     TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
     TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
     G_HB = false;
-    bekle(1500);
+    bekle(3000);
     TEST_ASSERT_EQUAL_UINT8(IDA_FCS_FAULT_LATCHED, OUT.fc.state);
 }
 
@@ -965,6 +1057,8 @@ int main(void)
     RUN_TEST(test_gc23_acma_sonuclari);
     RUN_TEST(test_gc49_fire_sonuclari);
     RUN_TEST(test_gc53_tekleme);
+    RUN_TEST(test_gc20_tekleme_suren_neden);
+    RUN_TEST(test_gc29_bayatlik_ayni_cagri_silahli);
     RUN_TEST(test_gc24_gc51_test);
     RUN_TEST(test_gc25_kalp_atisi);
     RUN_TEST(test_gc16_tupe_ozgu);

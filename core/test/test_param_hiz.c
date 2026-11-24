@@ -358,10 +358,14 @@ static void test_sema_ozeti_tablodan_turer(void)
    sabitlenmez (W3-K6); ama şemadaki her değişiklik özeti de değiştirir.
    W5-atis-emniyet (2026-11-24): atış kontrolün üç emniyet zinciri parametresi eklendi
    (0x0601–0x0603; 162 parametre); değerler kanonik metnin SHA-256'sıyla çekirdekten bağımsız
-   hesaplandı (aynı hesap eski şemada 0x34065414A77F8846 / 2426 B'yi verir). */
-#define ALTIN_OZET UINT64_C(0x18BE798234EDD38D)
-#define ALTIN_METIN 2477u
-#define ALTIN_BLOK 1320u
+   hesaplandı (aynı hesap eski şemada 0x34065414A77F8846 / 2426 B'yi verir).
+   W5-atis-emniyet düzeltme turu (2026-11-24; W5-K13): T_assess ve T_tup_bos parametre oldu
+   (0x0604, 0x0605; 164 parametre); değerler .def dosyalarının çekirdekten bağımsız
+   ayrıştırılmasıyla kurulan kanonik metnin SHA-256'sından (aynı hesap 162 parametrede
+   0x18BE798234EDD38D / 2477 B'yi verir). */
+#define ALTIN_OZET UINT64_C(0xE0ED504FB6AEA22D)
+#define ALTIN_METIN 2510u
+#define ALTIN_BLOK 1336u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \

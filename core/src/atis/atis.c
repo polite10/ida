@@ -13,6 +13,8 @@
 
 /* ---- İç yardımcılar ---------------------------------------------------------------------- */
 
+static bool ic_tanimli(uint32_t ic);
+
 void ida_fc_ic_yaz(ida_fc_t *fc, uint32_t ic, int64_t now_ns)
 {
     fc->ic = ic;
@@ -97,24 +99,37 @@ bool ida_fc_izin_acik(const ida_fc_t *fc, uint8_t tup, int64_t now_ns)
     return t->izin_var && (now_ns < t->izin_bitis_ns);
 }
 
-/* 03 §2.6.1 md. 1 (W5-K3): iç durumların A4 §3.16'ya eşlemesi; G-Ç02. */
+/* G-Ç02; A4 §3.16 (W5-atis-emniyet düzeltme turu, sol bulgu 4): dış durum iç durumdan ve
+   tüplerin izlerinden türetilir. FAULT_LATCHED ← FAULT (ve tanımsız desen); FIRE_PENDING ←
+   sonucu beklenen bir FIRE var (A4 §3.16 satır 3); PERMIT_OPEN ← en az bir tüpün izni
+   çekirdeğin saatinde açık sayılıyor (A4-K107); öteki durumlarda SAFE ← SAFE, TEST ← TEST,
+   ARMED ← ARMED, FIRE_AUTHORIZED, FIRING, ASSESS ("silahlı; açık izin yok"). Sözleşme 03
+   §2.6.1 md. 1'in iç duruma dayalı eşlemesinden önceliklidir (FIRING'de sonuç geldikten
+   sonra FIRE_PENDING değil; ASSESS'te izin hâlâ açıksa ARMED değil). */
 uint8_t ida_fc_dis_durum(const ida_fc_t *fc, int64_t now_ns)
 {
+    if (!ic_tanimli(fc->ic) || (fc->ic == IDA_FC_IC_FAULT)) {
+        return (uint8_t)IDA_FCS_FAULT_LATCHED;
+    }
+    bool fire = false;
+    bool izin = false;
+    for (uint8_t i = 0u; i < IDA_PORT_N_TUBE; i++) {
+        fire = fire || fc->t[i].fire_bekliyor;
+        izin = izin || ida_fc_izin_acik(fc, i, now_ns);
+    }
+    if (fire) {
+        return (uint8_t)IDA_FCS_FIRE_PENDING;
+    }
+    if (izin) {
+        return (uint8_t)IDA_FCS_PERMIT_OPEN;
+    }
     switch (fc->ic) {
     case IDA_FC_IC_SAFE:
         return (uint8_t)IDA_FCS_SAFE;
-    case IDA_FC_IC_ARMED:
-    case IDA_FC_IC_ASSESS:
-        return (uint8_t)IDA_FCS_ARMED;
-    case IDA_FC_IC_FIRE_AUTH:
-        return ida_fc_izin_acik(fc, fc->tup, now_ns) ? (uint8_t)IDA_FCS_PERMIT_OPEN
-                                                     : (uint8_t)IDA_FCS_ARMED;
-    case IDA_FC_IC_FIRING:
-        return (uint8_t)IDA_FCS_FIRE_PENDING;
     case IDA_FC_IC_TEST:
         return (uint8_t)IDA_FCS_TEST;
     default:
-        return (uint8_t)IDA_FCS_FAULT_LATCHED; /* FAULT ve tanımsız desen */
+        return (uint8_t)IDA_FCS_ARMED; /* ARMED, FIRE_AUTH, FIRING, ASSESS */
     }
 }
 
@@ -126,9 +141,10 @@ uint32_t ida_fc_tup_bitleri(uint8_t tup)
 
 /* ---- Kurulum ve bütünlük (G-Ç01, G-Ç26) ------------------------------------------------- */
 
-void ida_fc_kur(ida_fc_t *fc)
+void ida_fc_kur(ida_fc_t *fc, ida_wtime_t now)
 {
     (void)memset(fc, 0, sizeof(*fc));
+    fc->det_taban_ns = now.ns; /* A4-K118: init'ten T_det_stale dolmadan DET_STALE yok */
     ida_fc_ic_yaz(fc, IDA_FC_IC_SAFE, 0);
     ida_fc_tup_yaz(fc, IDA_FC_TUP_YOK);
     fc->durum = (uint8_t)IDA_FCS_SAFE; /* G-Ç01: silahlandırma init'ler arasında taşınmaz */
@@ -166,13 +182,14 @@ bool ida_fc_ic_tutarli(const ida_fc_t *fc)
     bool b = bayt_bool(&fc->istek_var) && bayt_bool(&fc->kip_izni_dusuk) &&
              bayt_bool(&fc->emn_tmeas_var) && bayt_bool(&fc->emn_gevsedi) &&
              bayt_bool(&fc->butunluk_kilidi) && bayt_bool(&fc->bu_cagri_kilit) &&
-             bayt_bool(&fc->reset_kabul) && bayt_bool(&fc->oturum_sonu_bekliyor);
+             bayt_bool(&fc->reset_kabul) && bayt_bool(&fc->oturum_sonu_bekliyor) &&
+             bayt_bool(&fc->baglanti_olayi) && bayt_bool(&fc->det_bayat);
     for (uint32_t i = 0u; i < IDA_PORT_N_TUBE; i++) {
         const ida_fc_tup_t *t = &fc->t[i];
         b = b && bayt_bool(&t->acik_bekliyor) && bayt_bool(&t->izin_var) &&
             bayt_bool(&t->fire_bekliyor) && bayt_bool(&t->atis_izleme) &&
             bayt_bool(&t->kapat_izleme) && bayt_bool(&t->celiski) &&
-            bayt_bool(&t->kapanis_dogrulanmadi);
+            bayt_bool(&t->kapanis_dogrulanmadi) && bayt_bool(&t->tekleme);
     }
     const uint32_t tup_tanimli = IDA_TUBE_LOADED | IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT |
                                  IDA_TUBE_PERMIT_OPEN;
@@ -223,9 +240,12 @@ uint32_t ida_fc_engel(const ida_fc_t *fc, const ida_fc_baglam_t *b)
     if (fc->ic == IDA_FC_IC_FAULT) {
         m |= IDA_FCI_FAULT_LATCHED;
     }
-    /* A4-K118: algılama girdisi bu sürümde okunmaz (kapsam dışı); kamera akışından hiç başlık
-       kabul edilmediği için akış her zaman bayattır. */
-    m |= IDA_FCI_DET_STALE;
+    /* A4-K118 (W5-K21): algılama girdisi bu sürümde okunmaz (kapsam dışı); kamera akışından hiç
+       başlık kabul edilmediği için akış init'ten, oturum sonu çağrısından ya da SESSION_START'tan
+       T_det_stale sonra bayattır (ida_fc_daralt'ta hesaplanır). */
+    if (fc->det_bayat) {
+        m |= IDA_FCI_DET_STALE;
+    }
     return m & IDA_FCI_DEFINED; /* G-Ç02: bit 18–31 her zaman 0 */
 }
 
@@ -295,9 +315,13 @@ void ida_fc_cagri(ida_fc_t *fc, const ida_emn_t *e, const ida_fc_baglam_t *b,
     }
     for (uint8_t i = 0u; i < IDA_PORT_N_TUBE; i++) {
         ida_fc_tup_t *t = &fc->t[i];
-        /* 03 §2.6 FIRING: tüp boşaldı geri okuması T_tup_bos içinde gelmedi → FAULT_LATCHED. */
-        if (t->atis_izleme && ((now - t->atis_izleme_bas_ns) > ida_ms_ns(IDA_FC_T_TUP_BOS_MS))) {
+        /* 03 §2.6 FIRING: tüp boşaldı geri okuması T_tup_bos içinde gelmedi → FAULT_LATCHED.
+           Fırlatıcının durumu doğrulanamadı: t_meas'i t_apply'dan büyük bir örnek LOADED = 0
+           gösterene dek süren nedendir (tekleme izi; W5-K1). */
+        if (t->atis_izleme &&
+            ((now - t->atis_izleme_bas_ns) > ms_param(o, IDA_PRM_fc_tup_bos_ms))) {
             t->atis_izleme = false;
+            t->tekleme = true;
             ida_fc_kilitle(fc, (i == 0u) ? (uint8_t)IDA_KAPAT_T0 : (uint8_t)IDA_KAPAT_T1, now);
         }
         /* Çekirdeğin saatinde süresi dolan izin kendiliğinden kapanır (A4-K107). */
@@ -310,7 +334,8 @@ void ida_fc_cagri(ida_fc_t *fc, const ida_emn_t *e, const ida_fc_baglam_t *b,
         ((now - fc->giris_ns) >= ms_param(o, IDA_PRM_fc_pencere_ms))) {
         ida_fc_guvenli(fc, now);
     }
-    if ((fc->ic == IDA_FC_IC_ASSESS) && ((now - fc->giris_ns) >= ida_ms_ns(IDA_FC_T_ASSESS_MS))) {
+    if ((fc->ic == IDA_FC_IC_ASSESS) &&
+        ((now - fc->giris_ns) >= ms_param(o, IDA_PRM_fc_assess_ms))) {
         ida_fc_guvenli(fc, now);
     }
     ida_fc_evrensel(fc, b, o);
@@ -419,12 +444,13 @@ void ida_fc_komut(ida_fc_t *fc, const ida_komut_baglam_t *b, const ida_fc_cmd_t 
 
 /* ---- Adım: yeniden kilitlenme ve genişletici adaylar (G-Ç20, G-Ç21, G-Ç47, G-Ç12) -------- */
 
-/* W5-K1: çağrı sonunda süren kilitli arıza nedenleri. */
+/* W5-K1: çağrı sonunda süren kilitli arıza nedenleri: iç durum bozulması (init'e kadar),
+   G-Ç53'ün iki çelişkisi (sürdükçe), W5-K11 (a)'nın doğrulanamamış kapatması. */
 static bool kalici_neden(const ida_fc_t *fc)
 {
     bool n = fc->butunluk_kilidi;
     for (uint32_t i = 0u; i < IDA_PORT_N_TUBE; i++) {
-        n = n || fc->t[i].celiski || fc->t[i].kapanis_dogrulanmadi;
+        n = n || fc->t[i].celiski || fc->t[i].tekleme || fc->t[i].kapanis_dogrulanmadi;
     }
     return n;
 }

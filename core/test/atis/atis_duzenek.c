@@ -128,6 +128,72 @@ static ida_fc_baglam_t baglam(const ida_core_t *c, const ida_in_t *in, const dz_
     return b;
 }
 
+static bool bool_bayti_gecerli(const bool *b)
+{
+    uint8_t v = 0u;
+    (void)memcpy(&v, b, sizeof(v));
+    return v <= 1u;
+}
+
+/* cerceve.c ustune_yazilacak_bozuk ile aynı (o işlev static'tir; değişirse burası da
+   değişir): (b) ve (b3)'ün üzerine yazacağı alanların yazımdan önceki denetimi. */
+static int32_t on_bozuk(const ida_core_t *c)
+{
+    const uint32_t tup_tanimli = IDA_TUBE_LOADED | IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT |
+                                 IDA_TUBE_PERMIT_OPEN;
+    const bool gecerli = (c->emn.mode <= (uint8_t)IDA_MODE_AUTO) &&
+                         (((uint32_t)c->emn.kisitli & ~(uint32_t)IDA_EMN_TUMU) == 0u) &&
+                         bool_bayti_gecerli(&c->emn.armed) &&
+                         bool_bayti_gecerli(&c->emn.inst0_var) &&
+                         (((uint32_t)c->emn.inst0_tube[0] & ~tup_tanimli) == 0u) &&
+                         (((uint32_t)c->emn.inst0_tube[1] & ~tup_tanimli) == 0u) &&
+                         (c->emn.kusak_tumleyen == (0xFFFFFFFFu ^ c->emn.kusak)) &&
+                         (((uint32_t)c->emn.hedef_iptal & ~(uint32_t)IDA_EMN_IPTAL_TUMU) == 0u) &&
+                         ida_fc_tutarli(&c->fc);
+    return gecerli ? 0 : 3;
+}
+
+/* cerceve.c butunluk ile aynı. */
+static int32_t butunluk(const ida_core_t *c)
+{
+    if ((c->koruma_bas != IDA_KORUMA_BAS) || (c->koruma_son != IDA_KORUMA_SON)) {
+        return 1;
+    }
+    if ((c->kurulu_tumleyen != (uint32_t)~c->kurulu) || !ida_prm_tutarli(&c->prm)) {
+        return 2;
+    }
+    const bool durum = (on_bozuk(c) == 0) && ida_kes_tutarli(&c->kes) &&
+                       ida_gud_tutarli(&c->gud) && ida_gor_tutarli(&c->gor) &&
+                       ida_kon_tutarli(&c->kon) && ida_son_tutarli(&c->son);
+    return durum ? 0 : 3;
+}
+
+/* cerceve.c butunluk_bildir ile aynı: core_ok mandallı; CORE_INTEGRITY bir kez. */
+static bool butunluk_bildir(ida_core_t *c, ida_wtime_t now, int32_t bozuk)
+{
+    if ((bozuk != 0) && c->cer.core_ok) {
+        const ida_log_t g = {.t_w = now,
+                             .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
+                             .arg0 = bozuk,
+                             .arg1 = 0};
+        ida_gun_ekle(&c->gun, &g);
+    }
+    c->cer.core_ok = (bozuk == 0) && c->cer.core_ok;
+    return c->cer.core_ok;
+}
+
+/* cerceve.c cagrida_arm ile aynı. */
+static bool cagrida_arm(const ida_in_t *in)
+{
+    const uint32_t n = (in->n_cmds < IDA_PORT_MAX_CMDS) ? (uint32_t)in->n_cmds : IDA_PORT_MAX_CMDS;
+    for (uint32_t i = 0u; i < n; i++) {
+        if (in->cmds[i].type == (uint8_t)IDA_CMD_ARM) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* cerceve.c olay_sonuclari ile aynı. */
 static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_fc_ortam_t *fo)
 {
@@ -158,33 +224,108 @@ static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_fc_ortam
     }
 }
 
+/* cikti.c fc_yaz ile aynı (FC_STATE ve FC_INHIBIT geçiş günlükleri, A4-K90). */
+static void fc_yaz(ida_core_t *c, ida_wtime_t now, const ida_fc_baglam_t *b, ida_out_t *out)
+{
+    ida_cerceve_t *k = &c->cer;
+    const uint8_t durum = ida_fc_durum(&c->fc);
+    const uint32_t engel = ida_fc_engel(&c->fc, b) & IDA_FCI_DEFINED;
+    if (k->fc_onceki_var) {
+        if (durum != k->fc_onceki_durum) {
+            const ida_log_t g = {.t_w = now,
+                                 .code = (uint16_t)IDA_LOG_FC_STATE,
+                                 .arg0 = (int32_t)durum,
+                                 .arg1 = (int32_t)k->fc_onceki_durum};
+            ida_gun_ekle(&c->gun, &g);
+        }
+        if (engel != k->fc_onceki_engel) {
+            const ida_log_t g = {.t_w = now,
+                                 .code = (uint16_t)IDA_LOG_FC_INHIBIT,
+                                 .arg0 = (int32_t)engel,
+                                 .arg1 = (int32_t)k->fc_onceki_engel};
+            ida_gun_ekle(&c->gun, &g);
+        }
+    }
+    k->fc_onceki_var = true;
+    k->fc_onceki_durum = durum;
+    k->fc_onceki_engel = engel;
+    out->fc.state = (durum <= (uint8_t)IDA_FCS_FAULT_LATCHED) ? durum : (uint8_t)IDA_FCS_SAFE;
+    out->fc.inhibit_mask = engel;
+    out->fc.last_event_id = c->olay.son_id;
+    out->fc.last_event_result = c->olay.son_sonuc;
+}
+
 ida_rc_t dz_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, bool step, int ret,
                   const dz_kosul_t *k)
 {
-    const ida_wtime_t now = in->now_w;
+    /* now_w (cerceve.c now_guncelle): geri giden zaman izi değiştirmez. */
+    ida_wtime_t now = in->now_w;
+    if (now.ns < c->cer.now_izi_ns) {
+        now.ns = c->cer.now_izi_ns;
+    } else {
+        c->cer.now_izi_ns = now.ns;
+    }
     const ida_fc_ortam_t fo = {.now = now, .prm = &c->prm, .gun = &c->gun};
+    /* Yazımdan önceki bütünlük denetimi (cerceve.c: (b)'den önce). */
+    const int32_t onb = on_bozuk(c);
+    if ((onb != 0) && (c->cer.bozuk_izi == 0)) {
+        c->cer.bozuk_izi = onb;
+    }
     /* (b) */
     const ida_emn_baglam_t eb = {.gun = &c->gun, .now = now};
     ida_emn_daralt(&c->emn, in, &eb);
     ida_fc_daralt(&c->fc, &c->emn, &fo);
     ida_olay_kapat_iste(&c->olay, c->emn.d.kapat);
+    if (c->emn.d.oturum_sonu) {
+        const ida_log_t g = {.t_w = now,
+                             .code = (uint16_t)IDA_LOG_SESSION,
+                             .arg0 = (int32_t)IDA_LINKEV_SESSION_END,
+                             .arg1 = 0};
+        ida_gun_ekle(&c->gun, &g);
+    }
     /* (b3) */
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
         ida_orn_kur(&c->orn);
         ida_emn_oturum_basi(&c->emn);
-        ida_fc_oturum_basi(&c->fc);
+        ida_fc_oturum_basi(&c->fc, &fo);
+        c->cer.tf_var = false;
+        const ida_log_t g = {.t_w = now,
+                             .code = (uint16_t)IDA_LOG_SESSION,
+                             .arg0 = (int32_t)IDA_LINKEV_SESSION_START,
+                             .arg1 = 0};
+        ida_gun_ekle(&c->gun, &g);
     }
     /* (b2) */
     if (out == NULL) {
+        if (ida_emn_cagri_sonu(&c->emn)) {
+            c->cer.cnt.narrow_from_rejected++;
+        }
         return IDA_RC_BAD_INPUT;
     }
     (void)memset(out, 0, sizeof(*out));
+    /* İç tutarlılık (A4-K89): kaydedilmiş bozulma önce. */
+    int32_t bozuk = c->cer.bozuk_izi;
+    c->cer.bozuk_izi = 0;
+    if (bozuk == 0) {
+        bozuk = butunluk(c);
+    }
+    const bool core_ok = butunluk_bildir(c, now, bozuk);
     ida_rc_t rc = IDA_RC_OK;
     bool step_ok = false;
     if (ret != DZ_KABUL) {
         rc = (ret == DZ_RET_DUP_SEQ) ? IDA_RC_DUP_SEQ : IDA_RC_BAD_INPUT;
+        if (rc == IDA_RC_DUP_SEQ) {
+            c->cer.cnt.dup_seq++;
+        } else {
+            c->cer.cnt.bad_input++;
+        }
         ida_kom_reddet(in, &c->cer.cnt, out);
+        if (ida_emn_cagri_sonu(&c->emn)) {
+            c->cer.cnt.narrow_from_rejected++;
+        }
     } else {
+        ida_prm_cagri_basi(&c->prm);
+        ida_prm_depo_izle(&c->prm, &in->plat, &c->gun, now);
         /* (e): örnek kapısı ve kabul edilen emniyet örnekleri */
         const ida_orn_baglam_t ob = {.now = now, .tf = &in->tf, .cnt = &c->cer.cnt, .gun = &c->gun};
         ida_orn_sonuc_t os;
@@ -195,6 +336,12 @@ ida_rc_t dz_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, bool step, 
                 ida_emn_kabul_kisit(&c->emn, &s->u.safety);
                 ida_fc_emniyet_ornegi(&c->fc, &c->emn, s, &fo);
             }
+        }
+        ida_fc_algilama(&c->fc, in, now);
+        if (in->tf.present) {
+            c->cer.tf_var = true;
+            c->cer.tf_seq = in->tf.seq;
+            c->cer.tf_t_ns = in->tf.t.ns;
         }
         olay_sonuclari(c, in, &fo);
         ida_fc_baglam_t fb = baglam(c, in, k);
@@ -207,7 +354,7 @@ ida_rc_t dz_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, bool step, 
             .armed = c->emn.armed,
             .param_ok = c->prm.param_ok,
             .events_ok = ida_olay_kullanilabilir(&c->olay),
-            .cagrida_arm = false,
+            .cagrida_arm = cagrida_arm(in),
             .oturum_var = fb.oturum_var,
             .mode = c->emn.mode,
             .est_level = k->est,
@@ -219,6 +366,21 @@ ida_rc_t dz_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, bool step, 
         step_ok = step && !k->imu_red;
         fb = baglam(c, in, k);
         ida_fc_adim(&c->fc, &c->emn, &fb, &c->olay, step_ok, &fo);
+        /* PARAM_COMMIT ve PARAM_SAVE çağrı sonunda (cerceve.c). */
+        ida_prm_komut_baglam_t pb = {
+            .k = NULL,
+            .plat_param_gen = in->plat.param_gen,
+            .gun = &c->gun,
+            .sonuc_indisi = 0u,
+            .armed = c->emn.armed};
+        pb.k = &kb;
+        const int32_t save_bozuk = ida_prm_cagri_sonu(&c->prm, &pb, out, &c->cer.cnt);
+        if (save_bozuk != 0) {
+            (void)butunluk_bildir(c, now, save_bozuk);
+        }
+        if (ida_emn_cagri_sonu(&c->emn)) {
+            c->cer.cnt.narrow_from_rejected++;
+        }
         rc = (step && k->imu_red) ? IDA_RC_IMU_REJECTED : IDA_RC_OK;
     }
     /* Çıktı (cikti.c): sürekli komut alanlarından yalnız olay kapısının okudukları. */
@@ -250,14 +412,16 @@ ida_rc_t dz_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, bool step, 
     ida_olay_yaz(&c->olay, &kapi, out);
     ida_fc_cikti(&c->fc, out, now);
     const ida_fc_baglam_t fb = baglam(c, in, k);
-    out->fc.state = ida_fc_durum(&c->fc);
-    out->fc.inhibit_mask = ida_fc_engel(&c->fc, &fb);
-    out->fc.last_event_id = c->olay.son_id;
-    out->fc.last_event_result = c->olay.son_sonuc;
-    out->health.narrowed = c->emn.d.herhangi;
-    out->status.armed = armed;
-    out->status.events_ok = ida_olay_kullanilabilir(&c->olay);
+    fc_yaz(c, now, &fb, out);
     ida_gun_bosalt(&c->gun, out, &c->cer.cnt);
+    out->health.core_ok = core_ok && c->cer.core_ok;
+    out->health.narrowed = c->emn.d.herhangi;
+    out->health.imu_rejected = step && k->imu_red && (ret == DZ_KABUL);
+    out->health.imu_lag = k->imu_lag;
+    out->status.armed = armed;
+    out->status.mode = c->emn.mode;
+    out->status.events_ok = ida_olay_kullanilabilir(&c->olay);
+    out->status.param_ok = c->prm.param_ok;
     out->status.cnt = c->cer.cnt;
     return rc;
 }

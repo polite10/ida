@@ -58,16 +58,23 @@ static void izleri_degerlendir(ida_fc_t *fc, const uint8_t bitler[IDA_PORT_N_TUB
             }
         }
         /* G-Ç53 (2) tekleme ve 03 §2.6 FIRING → ASSESS: FIRE APPLIED olduktan sonra t_meas'i
-           t_apply'dan büyük örnekte LOADED. */
+           t_apply'dan büyük örnekte LOADED. Tekleme çelişki sürdükçe süren nedendir (W5-K1,
+           G-Ç20; sol bulgu 2): sonraki her t_meas > t_apply örneği izi yeniler; LOADED = 0
+           görülünce kalkar. */
         if (t->atis_izleme && (t_meas > t->atis_t_apply_ns)) {
             t->atis_izleme = false;
             if ((bit & IDA_TUBE_LOADED) != 0u) {
+                t->tekleme = true;
                 ida_fc_kilitle(fc, kapat_biti(i), now);
             } else if ((fc->ic == IDA_FC_IC_FIRING) && (fc->tup == i)) {
                 ida_fc_ic_yaz(fc, IDA_FC_IC_ASSESS, now);
             } else {
                 /* fırlatma görüldü; FC başka nedenle güvenli duruma dönmüştü */
             }
+        } else if (t->tekleme && (t_meas > t->atis_t_apply_ns)) {
+            t->tekleme = (bit & IDA_TUBE_LOADED) != 0u;
+        } else {
+            /* izlenecek atış yok ya da örnek t_apply'dan önce ölçülmüş */
         }
     }
 }
@@ -99,12 +106,13 @@ bool ida_fc_emn_bayat(const ida_fc_t *fc, const ida_emn_t *e, const ida_fc_ortam
 /* A4-K89, G-Ç26: iç durum bozuksa FAULT_LATCHED (03 §2.6 "geçersiz desen"); yalnız dış durum
    yansıması bozuksa iç durumdan yeniden kurulur. Bozulma çerçevece (b)'den önce saptanır
    ve core_ok = 0 olur (cerceve.c ustune_yazilacak_bozuk). */
-static void butunluk_onar(ida_fc_t *fc, const ida_fc_ortam_t *o)
+static bool butunluk_onar(ida_fc_t *fc, const ida_fc_ortam_t *o)
 {
     if (ida_fc_tutarli(fc)) {
-        return;
+        return false;
     }
-    if (!ida_fc_ic_tutarli(fc)) {
+    const bool ic_bozuk = !ida_fc_ic_tutarli(fc);
+    if (ic_bozuk) {
         /* İç durum ya da bayraklar bozuk: izler güvenilmez, kısıtlayan değerlerle yeniden. */
         const uint8_t onceki_kip = fc->onceki_kip;
         (void)memset(fc->t, 0, sizeof(fc->t));
@@ -118,28 +126,21 @@ static void butunluk_onar(ida_fc_t *fc, const ida_fc_ortam_t *o)
         ida_fc_tup_yaz(fc, IDA_FC_TUP_YOK);
         ida_fc_ic_yaz(fc, IDA_FC_IC_FAULT, o->now.ns);
         fc->butunluk_kilidi = true;
-        fc->bu_cagri_kilit = true;
         ida_fc_kapat(fc, (uint8_t)IDA_KAPAT_ALL);
     }
     fc->durum = ida_fc_dis_durum(fc, o->now.ns);
+    return ic_bozuk;
 }
 
 /* G-Ç29: bayatlık acil durdurmanın etkin değerini kısıtlayana döndürür; bu dönüş bir daraltıcı
    girdidir (A4-K44, K111: SAFETY_CLOSE(IDA_TUBE_ALL), health.narrowed, genişleticiler
-   NARROWED) ve aynı çağrıda acil durdurma gevşetilemez. */
-static void bayatlik(const ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
+   NARROWED). Gevşek değerden dönüşte SAFETY_INPUT günlüğü yazılır. */
+static void bayat_kisitla(ida_emn_t *e, const ida_fc_ortam_t *o)
 {
-    if (!ida_fc_emn_bayat(fc, e, o)) {
-        return;
-    }
-    e->cagri_kisit = (uint8_t)(e->cagri_kisit | IDA_EMN_ESTOP);
-    if ((e->kisitli & IDA_EMN_ESTOP) != 0u) {
-        return; /* zaten kısıtlayan: yeni olay yok (A4-K111) */
-    }
     e->kisitli = (uint8_t)(e->kisitli | IDA_EMN_ESTOP);
+    e->cagri_kisit = (uint8_t)(e->cagri_kisit | IDA_EMN_ESTOP); /* bu çağrıda gevşemez */
     e->d.kapanan = (uint8_t)(e->d.kapanan | IDA_EMN_ESTOP);
     e->d.herhangi = true;
-    e->d.kapat = (uint8_t)(e->d.kapat | IDA_KAPAT_ALL);
     const ida_log_t k = {.t_w = o->now,
                          .code = (uint16_t)IDA_LOG_SAFETY_INPUT,
                          .arg0 = 1,
@@ -147,13 +148,35 @@ static void bayatlik(const ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
     ida_gun_ekle(o->gun, &k);
 }
 
+/* (b): çağrı başındaki izlerle (reddedilen ve out NULL çağrıda da). Acil durdurma zaten
+   kısıtlayansa yeni olay yoktur (A4-K111) ve bu çağrının örnekleri izleri tazelerse
+   gevşetebilir (A4-K116: gevşetme yalnız kabul edilen örnekle; bayatlık örnek içeriği
+   değildir). Kısıtlayana dönüş bu çağrıda olduysa kısıtlama çağrıya hâkimdir. */
+static void bayatlik_b(const ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
+{
+    if (!ida_fc_emn_bayat(fc, e, o) || ((e->kisitli & IDA_EMN_ESTOP) != 0u)) {
+        return;
+    }
+    bayat_kisitla(e, o);
+    e->d.kapat = (uint8_t)(e->d.kapat | IDA_KAPAT_ALL);
+}
+
 void ida_fc_daralt(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
 {
     const int64_t now = o->now.ns;
-    fc->bu_cagri_kilit = false;
+    /* Bütünlük denetimi çağrı bayrakları sıfırlanmadan önce, ham baytlarıyla (A4-K89, G-Ç26;
+       sol bulgu 3): bozuk bir bayrak sıfırlanırsa bozulmanın kanıtı silinir. Onarım bütün
+       bayrakları yeniden kurar ve kilitler; bu çağrının kilit izi onarımın sonucudur. */
+    const bool onarildi = butunluk_onar(fc, o);
     fc->reset_kabul = false;
-    butunluk_onar(fc, o);
-    bayatlik(fc, e, o);
+    fc->bu_cagri_kilit = onarildi;
+    fc->baglanti_olayi = e->d.oturum_sonu; /* SESSION_START (b3)'te eklenir */
+    /* A4-K118 (W5-K21): oturum sonu çağrısı akışın süre tabanını sıfırlar. */
+    if (e->d.oturum_sonu) {
+        fc->det_taban_ns = now;
+    }
+    fc->det_bayat = (now - fc->det_taban_ns) > ida_ms_ns(ida_prm_u32(o->prm, IDA_PRM_det_stale_ms));
+    bayatlik_b(fc, e, o);
 
     const ida_daralt_t *d = &e->d;
     /* W5-K7, G-Ç32: FC_DISARM ve FC_ABORT bütün tüplere (alanları okunmaz): kapatılacak bir
@@ -189,6 +212,10 @@ void ida_fc_daralt(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
             t->kapat_izleme = false;
             t->celiski = false;
             t->kapanis_dogrulanmadi = false;
+            /* Tekleme izi korunur: tüp alıcının oturum sonunda düşürdüğü bir izin değil,
+               fırlatıcının durumudur. Ölçüm zamanı oturumlar arasında sürekli sayılmadığı
+               için sonraki her örnek değerlendirilir. */
+            t->atis_t_apply_ns = INT64_MIN;
             fc->son_tup[i] = 0u;
         }
         fc->emn_tmeas_var = false;
@@ -221,9 +248,12 @@ void ida_fc_daralt(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
     fc->durum = ida_fc_dis_durum(fc, now);
 }
 
-void ida_fc_oturum_basi(ida_fc_t *fc)
+void ida_fc_oturum_basi(ida_fc_t *fc, const ida_fc_ortam_t *o)
 {
     fc->emn_tmeas_var = false; /* yeni oturumun ilk örneği ölçüm zamanı tabanını kurar */
+    fc->baglanti_olayi = true; /* W5-K20 (2): bu çağrıda gevşetme yok */
+    fc->det_taban_ns = o->now.ns; /* A4-K118 */
+    fc->det_bayat = false;
 }
 
 /* ---- (e): kabul edilen emniyet örneği (G-Ç14, G-Ç17, G-Ç29, G-Ç53) ---------------------- */
@@ -233,6 +263,13 @@ void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s,
 {
     if (s->hdr.inst != 0u) {
         return; /* emniyet girdisinin tek kaynağı inst = 0 (A4-K116); kısıtlama (b)'de */
+    }
+    if (e->d.oturum_sonu) {
+        /* SESSION_END çağrısı (G-Ç18; A4-K73, K116, K128; W5-K20 (1), (2)): etkin değerler bu
+           çağrıda kısıtlayana döner ve çağrı sonunda kısıtlayan kalır; aynı çağrıda kabul
+           edilen örnek gevşetmez, tüp ve izin değerlerini, bayatlık ve geri okuma izlerini
+           kurmaz (oturum sonundan sonra kabul edilmiş sayılmaz). */
+        return;
     }
     const int64_t now = o->now.ns;
     const int64_t t_meas = s->hdr.t_meas.ns;
@@ -250,13 +287,25 @@ void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s,
         e->inst0_tube[i] = (uint8_t)(s->u.safety.tube[i] & TUP_TANIMLI);
         fc->son_tup[i] = e->inst0_tube[i];
     }
+    /* G-Ç29 (W5-K4 eki; sol bulgu 1): izler bu örnekle güncellendikten sonra bayatlık yeniden
+       değerlendirilir. Kabul edilen örnek izleri bayatlatabilir (ör. geri giden t_rx ya da
+       ilerlemeyen t_meas); o zaman acil durdurma aynı çağrıda kısıtlayana döner, kapanma
+       istenir ve FC güvenli duruma alınır (genişletici yasağı d.herhangi ve ESTOP ile). */
+    const bool bayat = ida_fc_emn_bayat(fc, e, o);
+    if (bayat && ((e->kisitli & IDA_EMN_ESTOP) == 0u)) {
+        bayat_kisitla(e, o);
+        ida_fc_kapat(fc, (uint8_t)IDA_KAPAT_ALL); /* ida_fc_adim olay modülüne verir */
+        ida_fc_guvenli(fc, now);
+    }
     /* G-Ç14 (A4-K116): gevşeten değer yalnız bu kabul edilen inst = 0 örneğiyle ve bu çağrıda
-       hiçbir örnek o alanı kısıtlamıyorsa etkin olur; bayatlık sürerken acil durdurma
-       gevşemez (G-Ç29). */
+       hiçbir örnek o alanı kısıtlamıyorsa etkin olur; bayatken acil durdurma gevşemez (G-Ç29). */
     uint8_t gevsek = (uint8_t)((0xFFu ^ (uint32_t)ida_emn_kisit_icerigi(&s->u.safety)) & IDA_EMN_TUMU);
     gevsek = (uint8_t)(gevsek & (0xFFu ^ (uint32_t)e->cagri_kisit));
-    if (ida_fc_emn_bayat(fc, e, o)) {
+    if (bayat) {
         gevsek = (uint8_t)(gevsek & (0xFFu ^ IDA_EMN_ESTOP));
+    }
+    if (fc->baglanti_olayi) {
+        gevsek = 0u; /* W5-K20 (2): SESSION_START çağrısında hiçbir alan gevşemez */
     }
     const uint8_t once = e->kisitli;
     e->kisitli = (uint8_t)(e->kisitli & (0xFFu ^ (uint32_t)gevsek));

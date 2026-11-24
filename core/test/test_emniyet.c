@@ -76,7 +76,8 @@ static void test_ilk_degerler_kisitlayan(void)
     TEST_ASSERT_EQUAL_HEX32(emn, OUT.fc.inhibit_mask & emn); /* A4-K116, K128 */
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_NOT_ARMED) != 0u);
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_MODE) != 0u);
-    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) != 0u);
+    /* A4-K118 (W5-K21): init'ten T_det_stale (2 s) dolmadan algılama akışı bayat sayılmaz. */
+    TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) == 0u);
     TEST_ASSERT_FALSE(OUT.health.narrowed);
     /* Kabul edilen gevşeten inst = 0 örneği etkin değerleri gevşetir (A4-K116; gevşetme
        W5-atis-emniyet'te atis/atis_emniyet.c'dedir; W2'de burada "gevşetmez" sınanıyordu). */
