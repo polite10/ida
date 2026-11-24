@@ -232,6 +232,14 @@ static void t_f13_kilit_korunur(void)
     }
     gevsek();
     ka_adimlar(3);
+    /* IMU bayatlığı adımı (zaman çerçeveli tick'ler) IMU_LAG mandalını kurar (A4-K37); mandal
+       kuruluyken FC_RESET 3.17 (2) gereği IMU_LAG alır (FC_RESET genişleticidir; A4-K104,
+       K108). Mandalın çözülmesi beklenir (N_lag_clear ardışık çağrı). */
+    for (int k = 0; k < 400 && ka_out()->health.imu_lag; ++k) {
+        (void)ka_adim();
+        KA_DOGRULA(kilitli(), "F13: IMU_LAG çözülürken fc.state %s", ka_durum_adi(ka_out()->fc.state));
+    }
+    KA_DOGRULA(!ka_out()->health.imu_lag, "F13: IMU_LAG mandalı 2 s'de çözülmedi (A4-K37)");
     /* Neden (PERMIT_OPEN = 1 geri okuması) sürüyor: FC_RESET kabul edilir, aynı çağrıda yeniden kilit. */
     ida_in_t *in = ka_girdi();
     uint32_t r = ka_fc(in, (uint8_t)IDA_FC_RESET, 0u);

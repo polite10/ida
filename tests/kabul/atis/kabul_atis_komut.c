@@ -2,6 +2,7 @@
  * tests/kabul/atis — komutlar: FC komutlarının sonuç kodları ve önceliği, daraltıcı girdi,
  * reddedilen çağrı, IMU_LAG; F1 ve F10'un FC silahlanmadan sınanabilen kısmı.
  */
+#include <stdio.h>
 #include <string.h>
 
 #include "kabul_atis.h"
@@ -630,12 +631,56 @@ static void t_gc33_emniyet_girdisi(void)
 }
 
 
+/* W5-K22: çekirdeğin bu çağrıda KENDİ uyguladığı daraltmanın çıktıdaki izi (kip komutu
+   içermeyen çağrı için): kip düşmesi (status.mode değişti ya da MODE_CHANGE kaydı), arıza
+   eylemi düzeyinin artması (fs_level ya da FAILSAFE_CHANGE kaydı), bütünlük bozulması kaydı. */
+static bool kendi_daraltma(uint8_t kip0, uint8_t fs0, const ida_out_t *o)
+{
+    if (o->status.mode != kip0 || o->fs_level > fs0) {
+        return true;
+    }
+    unsigned n = o->n_logs <= IDA_PORT_MAX_LOGS ? o->n_logs : IDA_PORT_MAX_LOGS;
+    for (unsigned i = 0; i < n; ++i) {
+        const ida_log_t *g = &o->logs[i];
+        if (g->code == IDA_LOG_MODE_CHANGE || g->code == IDA_LOG_CORE_INTEGRITY ||
+            (g->code == IDA_LOG_FAILSAFE_CHANGE && g->arg0 > (int32_t)fs0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* W5-K22: çekirdeğin kendi daraltmasını uyguladığı çağrıda her genişletici REJECTED/NARROWED
+   alır (çağrı IMU_REJECTED ise de: A4 §3.17 (2) sırasıyla NARROWED > IMU_REJECTED), hiçbiri
+   kabul edilmez; health.narrowed (b) girdisi olmadığı için 0'dır (A4-K45, K113); çıktıda
+   genişletici olay yoktur. */
+static void kendi_daraltma_red(const uint32_t *id, const char *const *ad, int n, const char *ne)
+{
+    const ida_out_t *o = ka_out();
+    for (int i = 0; i < n; ++i) {
+        const ida_cmd_result_t *r = ka_sonuc(id[i]);
+        KA_DOGRULA(r != NULL && r->ack != IDA_ACK_ACCEPTED,
+                   "%s: genişletici %s KABUL EDİLDİ (%u/%u; gevşetme; W5-K22)", ne, ad[i],
+                   r != NULL ? (unsigned)r->ack : 0u, r != NULL ? (unsigned)r->reason : 0u);
+        KA_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == IDA_REASON_NARROWED,
+                   "%s: genişletici %s %u/%u, REJECTED/NARROWED bekleniyordu (W5-K22; A4 §3.17 (2): NARROWED > "
+                   "IMU_REJECTED)",
+                   ne, ad[i], (unsigned)r->ack, (unsigned)r->reason);
+    }
+    KA_DOGRULA(!o->health.narrowed, "%s: health.narrowed = 1; (b) girdisi yok (W5-K22; A4-K45, K113)", ne);
+    KA_DOGRULA(!ka_genisletici_olay_var(o), "%s: çekirdeğin kendi daraltmasının çağrısında genişletici olay (W5-K22)", ne);
+}
+
 static void t_gc33_daraltmasiz_cagri(void)
 {
-    /* NARROWED yalnız daraltıcı girdisi olan kabul edilen çağrıda verilir (G-Ç33, G-Ç05 (2);
-       A4-K45). Önceki çağrı reddedilmiş ve kip mandalı taşımış olsa da, daraltıcı girdisi
-       olmayan sonraki çağrıdaki genişleticiler NARROWED almaz. */
+    /* (b) girdisi olmayan çağrı (G-Ç33, G-Ç05 (2); A4-K45, W5-K22): önceki çağrı reddedilmiş ve
+       kip mandalı taşımış olsa da health.narrowed = 0'dır. Çekirdek o çağrıda kendi kip
+       düşmesini (ör. reddedilen çağrıdaki STATION_KEEP hedefinden konum yokken DEPTH_HOLD'a)
+       uyguluyorsa genişleticiler REJECTED/NARROWED alır ve kabul edilmez; uygulamıyorsa
+       NARROWED almaz. */
     static const uint8_t hedefler[] = {IDA_MODE_STABILIZE, IDA_MODE_STATION_KEEP, IDA_MODE_MANUAL, IDA_MODE_DEPTH_HOLD};
+    static const char *const AD[] = {"ARM", "FAILSAFE_RESET", "FC_ARM"};
+    char ne[200];
     for (size_t h = 0; h < sizeof hedefler; ++h) {
         for (int red = 0; red < 2; ++red) {
             ka_kur(2);
@@ -651,19 +696,42 @@ static void t_gc33_daraltmasiz_cagri(void)
             (void)ka_komut(in, (uint8_t)IDA_CMD_ARM);
             (void)ka_cagir();
             for (int k = 0; k < 3; ++k) {
+                const ida_out_t *o = ka_out();
+                uint8_t kip0 = o->status.mode;
+                uint8_t fs0 = o->fs_level;
+                bool armed0 = o->status.armed;
+                uint8_t fcs0 = o->fc.state;
                 in = ka_girdi();
-                uint32_t a = ka_komut(in, (uint8_t)IDA_CMD_ARM);
-                uint32_t f = ka_fc(in, (uint8_t)IDA_FC_ARM, 0u);
-                (void)ka_cagir();
-                const ida_cmd_result_t *ra = ka_sonuc(a);
-                const ida_cmd_result_t *rf = ka_sonuc(f);
-                KA_DOGRULA(ra != NULL && ra->reason != IDA_REASON_NARROWED && rf != NULL && rf->reason != IDA_REASON_NARROWED,
-                           "%s kip mandalı (hedef %u) sonrasındaki daraltıcı girdisiz %d. çağrıda ARM %u/%u, FC_ARM %u/%u: "
-                           "NARROWED yalnız daraltmalı çağrıda (A4-K45; G-Ç33), health.narrowed = %d",
-                           red != 0 ? "DUP_SEQ çağrısındaki" : "kabul edilen çağrıdaki", (unsigned)hedefler[h], k + 1,
-                           ra != NULL ? (unsigned)ra->ack : 0u, ra != NULL ? (unsigned)ra->reason : 0u,
-                           rf != NULL ? (unsigned)rf->ack : 0u, rf != NULL ? (unsigned)rf->reason : 0u,
-                           (int)ka_out()->health.narrowed);
+                uint32_t id[3];
+                id[0] = ka_komut(in, (uint8_t)IDA_CMD_ARM);
+                id[1] = ka_komut(in, (uint8_t)IDA_CMD_FAILSAFE_RESET);
+                id[2] = ka_fc(in, (uint8_t)IDA_FC_ARM, 0u);
+                ida_rc_t rc = ka_cagir();
+                o = ka_out();
+                bool kendi = kendi_daraltma(kip0, fs0, o);
+                (void)snprintf(ne, sizeof ne,
+                               "%s kip mandalı (hedef %u) sonrasındaki (b) girdisiz %d. çağrı (dönüş %d, kip %u → %u, "
+                               "fs %u → %u, kendi daraltma %d)",
+                               red != 0 ? "DUP_SEQ çağrısındaki" : "kabul edilen çağrıdaki", (unsigned)hedefler[h], k + 1,
+                               (int)rc, (unsigned)kip0, (unsigned)o->status.mode, (unsigned)fs0, (unsigned)o->fs_level,
+                               (int)kendi);
+                KA_DOGRULA(kabul_rc_mi(rc), "%s: kabul edilen çağrı bekleniyordu", ne);
+                KA_DOGRULA(!o->health.narrowed, "%s: health.narrowed = 1; (b) girdisi yok (W5-K22; A4-K45, K113)", ne);
+                if (kendi) {
+                    kendi_daraltma_red(id, AD, 3, ne);
+                    /* Genişleticinin etkisi oluşmaz. */
+                    KA_DOGRULA(armed0 || !o->status.armed, "%s: ARM'ın etkisi oluştu (armed 0 → 1; W5-K22)", ne);
+                    KA_DOGRULA(fcs0 == IDA_FCS_ARMED || o->fc.state != IDA_FCS_ARMED,
+                               "%s: FC_ARM'ın etkisi oluştu (fc.state %s → ARMED; W5-K22)", ne, ka_durum_adi(fcs0));
+                } else {
+                    for (int i = 0; i < 3; ++i) {
+                        const ida_cmd_result_t *r = ka_sonuc(id[i]);
+                        KA_DOGRULA(r != NULL && r->reason != IDA_REASON_NARROWED,
+                                   "%s: %s %u/%u; NARROWED yalnız (b) girdili ya da çekirdeğin kendi daraltmasını "
+                                   "uyguladığı çağrıda (A4-K45; G-Ç33; W5-K22)",
+                                   ne, AD[i], r != NULL ? (unsigned)r->ack : 0u, r != NULL ? (unsigned)r->reason : 0u);
+                    }
+                }
                 in = ka_girdi();
                 (void)ka_mandal(in, (uint8_t)IDA_NARROW_DISARM);
                 (void)ka_cagir();
@@ -884,11 +952,14 @@ static void t_f1_daraltma(void)
 
 static void t_f1_ariza_kenari(void)
 {
-    /* §7 F1'in "arıza eylemi kenarı + FC_FIRE" enjeksiyonu. Bölüm 03 bu durumda NARROWED
-       bekler; A4-K44'ün daraltıcı girdi listesi kapalıdır ve arıza eylemi kenarını içermez,
-       A4-K45 NARROWED'ı yalnız daraltıcı girdili çağrıya verir: sözleşme geçerlidir (rapor).
-       Beklenen: FC_FIRE ve ARM reddedilir ama NARROWED almaz, genişletici olay yok. Arıza
+    /* §7 F1'in "arıza eylemi kenarı + FC_FIRE" enjeksiyonu (W5-K22; W5-K17 geri alındı).
+       Arıza eylemi çekirdeğin o çağrıda KENDİ uyguladığı daraltmadır: aynı çağrıdaki
+       genişleticiler REJECTED/NARROWED alır (çağrı IMU_REJECTED ise de: A4 §3.17 (2) sırasıyla
+       NARROWED > IMU_REJECTED), hiçbiri kabul edilmez, etkisi oluşmaz, genişletici olay yoktur;
+       arıza eylemi kenarı A4-K113 (b) girdisi olmadığından health.narrowed = 0'dır. Arıza
        eylemi kenarı: DEPTH_HOLD'da IMU'nun kesilmesi (IMU bayatlığı → arıza eylemi). */
+    static const char *const AD[] = {"ARM", "FAILSAFE_RESET", "FC_ARM(1)", "FC_FIRE(0)"};
+    char ne[160];
     ka_kur(2);
     ka_oturum_ac();
     ka_arac_silahla();
@@ -901,18 +972,23 @@ static void t_f1_ariza_kenari(void)
     bool kenar = false;
     ka_ayar.imu_bozuk = true;
     for (int k = 0; k < 20 && !kenar; ++k) {
+        uint8_t fcs0 = ka_out()->fc.state;
         in = ka_girdi();
-        uint32_t f = ka_fc(in, (uint8_t)IDA_FC_FIRE, 0u);
-        (void)ka_cagir();
+        uint32_t id[4];
+        id[0] = ka_komut(in, (uint8_t)IDA_CMD_ARM);
+        id[1] = ka_komut(in, (uint8_t)IDA_CMD_FAILSAFE_RESET);
+        id[2] = ka_fc(in, (uint8_t)IDA_FC_ARM, 1u);
+        id[3] = ka_fc(in, (uint8_t)IDA_FC_FIRE, 0u);
+        ida_rc_t rc = ka_cagir();
         if (ka_out()->fs_level != fs0) {
             kenar = true;
-            const ida_cmd_result_t *r = ka_sonuc(f);
-            KA_DOGRULA(r != NULL && r->ack == IDA_ACK_REJECTED && r->reason != IDA_REASON_NARROWED,
-                       "arıza eylemi kenarı (fs %u → %u) + FC_FIRE: %u/%u; NARROWED yalnız daraltıcı girdili çağrıda "
-                       "(A4-K44 kapalı liste, A4-K45; health.narrowed = %d)",
-                       (unsigned)fs0, (unsigned)ka_out()->fs_level, r != NULL ? (unsigned)r->ack : 0u,
-                       r != NULL ? (unsigned)r->reason : 0u, (int)ka_out()->health.narrowed);
-            KA_DOGRULA(!ka_genisletici_olay_var(ka_out()), "arıza eylemi kenarında genişletici olay (F1)");
+            (void)snprintf(ne, sizeof ne, "arıza eylemi kenarı (fs %u → %u, dönüş %d) (F1)", (unsigned)fs0,
+                           (unsigned)ka_out()->fs_level, (int)rc);
+            KA_DOGRULA(ka_out()->fs_level > fs0, "%s: arıza eylemi düzeyi düştü; kenar ağırlaşma bekleniyordu", ne);
+            kendi_daraltma_red(id, AD, 4, ne);
+            KA_DOGRULA(fcs0 == IDA_FCS_ARMED || ka_out()->fc.state != IDA_FCS_ARMED,
+                       "%s: FC_ARM'ın etkisi oluştu (fc.state %s → ARMED; W5-K22)", ne, ka_durum_adi(fcs0));
+            KA_DOGRULA(ka_out()->fc.state != IDA_FCS_PERMIT_OPEN, "%s: FC_FIRE'ın etkisi oluştu (PERMIT_OPEN; W5-K22)", ne);
         }
     }
     ka_ayar.imu_bozuk = false;

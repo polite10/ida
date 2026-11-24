@@ -293,6 +293,95 @@ static void t_gc45_oturum_baslangici(void)
     KA_DOGRULA(!ka_out()->armed, "yeni oturumda ARM olmadan armed = 1 (G-Ç45)");
 }
 
+/* ---- G-Ç18, G-Ç44, G-Ç45: A4-K122 oturum sonu çağrısıyla -------------------------------------------
+ * Yukarıdaki üç test SESSION_END'i aynı çağrıda gevşek bir inst 0 emniyet örneği de taşıyan bir
+ * step'le verir; o çağrıda örneğin gevşetip gevşetmeyeceğini sözleşme açıkça sıralamaz (mimar
+ * kararı bekleniyor). Aşağıdakiler aynı maddeleri platformun gerçekte yaptığı oturum sonu
+ * çağrısıyla (A4-K122, G-K08: tick, tf yok, örnek ve komut yok) sınar. */
+
+static void oturum_sonu_k122(void)
+{
+    (void)ka_girdi_oturum_sonu();
+    (void)ka_cagir();
+}
+
+static void t_gc18_oturum_sonu_k122(void)
+{
+    ka_kur(2);
+    ka_oturum_ac();
+    ka_arac_silahla();
+    gevsek();
+    ka_adimlar(2);
+    KA_DOGRULA((ka_out()->fc.inhibit_mask & KA_EMNIYET_BITLERI) == 0u, "hazırlık: emniyet alanları gevşemedi (inhibit 0x%05lx)",
+               (unsigned long)ka_out()->fc.inhibit_mask);
+    oturum_sonu_k122();
+    oturum_sonu_denetle("A4-K122 çağrısı, silahlı ve gevşek");
+    /* Dönüş kalıcıdır: örneksiz sonraki çağrıda da kısıtlayan. */
+    ka_ayar.link_state = (uint8_t)IDA_LINK_NONE;
+    ka_ayar.emniyet = false;
+    (void)ka_adim();
+    KA_DOGRULA((ka_out()->fc.inhibit_mask & KA_EMNIYET_BITLERI) == KA_EMNIYET_BITLERI,
+               "SESSION_END'den sonraki örneksiz çağrıda etkin değerler gevşek (inhibit 0x%05lx; G-Ç18, A4-K116)",
+               (unsigned long)ka_out()->fc.inhibit_mask);
+    /* Değerler zaten kısıtlayanken de ilk SESSION_END tek ALL üretir. */
+    ka_ayar.link_state = (uint8_t)IDA_LINK_RUNNING;
+    ka_ayar.emniyet = true;
+    ka_oturum_baslat();
+    ka_ayar.estop = 1u;
+    ka_ayar.tup[0] = tup_eksik(IDA_TUBE_PLUG_IN);
+    ka_ayar.tup[1] = tup_eksik(IDA_TUBE_PIN_OUT);
+    ka_adimlar(3);
+    oturum_sonu_k122();
+    oturum_sonu_denetle("A4-K122 çağrısı, değerler zaten kısıtlayan");
+}
+
+static void t_gc44_ikinci_oturum_sonu_k122(void)
+{
+    ka_kur(2);
+    ka_oturum_baslat();
+    gevsek();
+    ka_adimlar(2);
+    oturum_sonu_k122();
+    KA_DOGRULA(ka_out()->n_events == 1u && ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_CLOSE, IDA_TUBE_ALL) == 1,
+               "ilk SESSION_END'de tek SAFETY_CLOSE(ALL) bekleniyordu, %u olay (G-Ç18)", (unsigned)ka_out()->n_events);
+    ka_ayar.link_state = (uint8_t)IDA_LINK_NONE;
+    ka_ayar.emniyet = false;
+    ka_adimlar(2);
+    oturum_sonu_k122();
+    KA_DOGRULA(ka_out()->n_events == 0u, "arada SESSION_START olmadan ikinci SESSION_END %u olay üretti (G-Ç44)",
+               (unsigned)ka_out()->n_events);
+    /* Arada gevşetilen alan: sonraki SESSION_END tek ALL üretir. */
+    ka_ayar.emniyet = true;
+    gevsek();
+    ka_adimlar(2);
+    KA_DOGRULA(!engel(IDA_FCI_ESTOP), "oturumsuz çağrıda kabul edilen gevşek örnek gevşetmedi (A4-K116)");
+    oturum_sonu_k122();
+    KA_DOGRULA(ka_out()->n_events == 1u && ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_CLOSE, IDA_TUBE_ALL) == 1,
+               "arada gevşetilen alanla sonraki SESSION_END: tek SAFETY_CLOSE(ALL) bekleniyordu, %u olay (G-Ç44)",
+               (unsigned)ka_out()->n_events);
+}
+
+static void t_gc45_oturum_baslangici_k122(void)
+{
+    ka_kur(2);
+    ka_oturum_ac();
+    ka_arac_silahla();
+    gevsek();
+    ka_adimlar(2);
+    oturum_sonu_k122();
+    ka_ayar.emniyet = false;
+    ida_in_t *in = ka_girdi();
+    in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_START;
+    (void)ka_cagir();
+    KA_DOGRULA((ka_out()->fc.inhibit_mask & KA_EMNIYET_BITLERI) == KA_EMNIYET_BITLERI,
+               "SESSION_START kısıtlayan etkin değerleri gevşetti (inhibit 0x%05lx; G-Ç45)", (unsigned long)ka_out()->fc.inhibit_mask);
+    KA_DOGRULA(ka_out()->n_events == 0u && !ka_out()->armed, "SESSION_START olay üretti ya da silahlandırdı (G-Ç45)");
+    ka_adimlar(50);
+    KA_DOGRULA(!ka_out()->armed, "yeni oturumda ARM olmadan armed = 1 (G-Ç45)");
+    KA_DOGRULA((ka_out()->fc.inhibit_mask & KA_EMNIYET_BITLERI) == KA_EMNIYET_BITLERI,
+               "örneksiz yeni oturumda etkin değerler gevşedi (G-Ç45, A4-K116)");
+}
+
 /* ---- G-Ç29, F14: bayatlık ----------------------------------------------------------------------- */
 
 static void bayatlik(bool olcum, const char *ne)
@@ -381,6 +470,48 @@ static void t_f14_olcum_donmasi(void)
     bayatlik(true, "F14 t_meas donması");
 }
 
+/* G-Ç29 ölçüt (i), W5-K4 eki: kabul edildiği çağrıda izleri bayatlatan örnek. Alım zamanı geri
+   giden (t_rx < önceki örneğinki) ama seq'i büyük, t_meas'i ilerlemiş gevşek örnek A4-K33'e göre
+   kabul edilir (alım zamanının artması koşul değildir); kabulden sonra "son kabul edilen inst 0
+   örneğinin t_rx'i" bu örneğinkidir ve now − t_rx > T_emn_bayat: acil durdurma AYNI çağrıda
+   basılı sayılır. Örnek: now 2000 ms'de taze örnek, now 2015 ms'de t_rx = 1700 ms'lik örnek
+   (T_emn_bayat 250 ms). */
+static void t_gc29_geri_alim_zamani(void)
+{
+    int64_t T = ka_t_emn_bayat();
+    ka_kur(2);
+    ka_oturum_baslat();
+    gevsek();
+    int64_t hedef = KC_T0 + 1000 * KA_MS; /* 2000 ms */
+    while (ka_simdi() + KA_P < hedef) {
+        (void)ka_adim();
+    }
+    (void)ka_adim();
+    KA_DOGRULA(ka_simdi() == hedef, "zamanlama: now %lld ms, 2000 ms bekleniyordu", (long long)(ka_simdi() / KA_MS));
+    KA_DOGRULA(!engel(IDA_FCI_ESTOP), "taze gevşek örnekle ESTOP kurulu (G-Ç14)");
+    ka_ayar.emniyet = false;
+    ka_adimlar(2); /* 2005, 2010 ms: örnek yok, son alım 10 ms önce */
+    KA_DOGRULA(!engel(IDA_FCI_ESTOP), "son örnekten 10 ms sonra ESTOP (G-Ç29: T_emn_bayat dolmadı)");
+    uint32_t red0 = ka_out()->status.cnt.sample_rejected;
+    uint32_t fut0 = ka_out()->status.cnt.sample_future;
+    ida_in_t *in = ka_girdi(); /* 2015 ms */
+    ida_sample_t *s = ka_emniyet_ekle(in, 0u, 0u, KC_TUP_ACIK, KC_TUP_ACIK); /* seq büyük, t_meas = 2015 ms */
+    s->hdr.t_rx.ns = in->now_w.ns - (T + 65 * KA_MS);                          /* 1700 ms (T = 250 ms) */
+    (void)ka_cagir();
+    const ida_out_t *o = ka_out();
+    KA_DOGRULA(o->status.cnt.sample_rejected == red0 && o->status.cnt.sample_future == fut0,
+               "geri giden t_rx'li örnek reddedildi (A4-K33'te alım zamanının artması koşul değil; sample_rejected %lu → %lu)",
+               (unsigned long)red0, (unsigned long)o->status.cnt.sample_rejected);
+    KA_DOGRULA((o->fc.inhibit_mask & IDA_FCI_ESTOP) != 0u,
+               "kabul edilen örneğin t_rx'inden %lld ms geçmişken (T_emn_bayat %lld ms) aynı çağrıda ESTOP yok "
+               "(G-Ç29 ölçüt (i); W5-K4 eki)",
+               (long long)((T + 65 * KA_MS) / KA_MS), (long long)(T / KA_MS));
+    KA_DOGRULA(!ka_genisletici_olay_var(o), "bayatlatan örneğin çağrısında genişletici olay (G-Ç29, değişmez (a))");
+    KA_DOGRULA(ka_olay_say(o, (uint8_t)IDA_EVT_SAFETY_CLOSE, IDA_TUBE_ALL) == 1,
+               "bayatlatan örneğin çağrısında SAFETY_CLOSE(ALL) yok (G-Ç29; A4-K111)");
+    KA_DOGRULA(o->fc.state == IDA_FCS_SAFE, "bayatlıkta fc.state %s (G-Ç29)", ka_durum_adi(o->fc.state));
+}
+
 /* ---- G-Ç53, F7: geri okuma -------------------------------------------------------------------------- */
 
 static void t_gc53_izin_celiskisi(void)
@@ -465,10 +596,14 @@ static const ka_test_t TESTLER[] = {
     {"oturum_sonu", t_gc18_oturum_sonu},
     {"ikinci_oturum_sonu", t_gc44_ikinci_oturum_sonu},
     {"oturum_baslangici", t_gc45_oturum_baslangici},
+    {"oturum_sonu_k122", t_gc18_oturum_sonu_k122},
+    {"ikinci_oturum_sonu_k122", t_gc44_ikinci_oturum_sonu_k122},
+    {"oturum_baslangici_k122", t_gc45_oturum_baslangici_k122},
     {"bayatlik_alim", t_gc29_bayatlik_alim},
     {"bayatlik_olcum", t_gc29_bayatlik_olcum},
     {"f14_akis_kesilmesi", t_f14_akis_kesilmesi},
     {"f14_olcum_donmasi", t_f14_olcum_donmasi},
+    {"geri_alim_zamani", t_gc29_geri_alim_zamani},
     {"izin_celiskisi", t_gc53_izin_celiskisi},
     {"f7_geri_okuma", t_f7_geri_okuma_bozulmasi},
 };

@@ -3,7 +3,7 @@
 #
 # Testler yalnız şunlardan türetildi: mimari Bölüm 03 sürüm 0.3'ün "Ek: uygulama gereksinimleri
 # (emniyet zinciri)" (G-Ç01–G-Ç53) ve §7 arıza tablosu (F1, F3, F7, F8, F10–F15),
-# docs/gorevler/W5-ortak.md (W5-K1…K11), A4 sözleşmesi (docs/sozlesmeler/A4-port.md 1.0.1,
+# docs/gorevler/W5-ortak.md (W5-K1…K19), A4 sözleşmesi (docs/sozlesmeler/A4-port.md 1.0.1,
 # core/include/ida/port.h) ve tests/kabul/cekirdek düzeneği. Çekirdeğin uygulama kaynağı (core/src)
 # ve birim testleri (core/test) kullanılmadı. Çekirdeğe yalnız A4 portu üzerinden erişilir.
 #
@@ -12,18 +12,27 @@
 #
 # CTest adları: kabul.atis.<madde>.<kısa ad> (madde: G-Çnn, Fnn ya da "ozellik").
 #
-# "Bekleniyor" testleri: bugünkü yer tutucu atış kontrol modülüne (durum hep SAFE) karşı düşen
-# testler LABELS kabul_atis ile işaretlidir. IDA_KABUL_ATIS_BEKLENEN kapalıyken (bu dalın
-# varsayılanı; CI'ı kırmamak için) bu testler DISABLED olarak kaydedilir ve varsayılan test
-# turunda koşmaz; uygulama dalı (W5-atis-emniyet) birleşince seçenek açılır (varsayılanı ON
-# yapılır) ve hepsi varsayılan tura girer. Tek komutla koşturma:
-#   cmake --preset host-debug -DIDA_KABUL_ATIS_BEKLENEN=ON
-#   cmake --build build/host-debug
-#   ctest --preset host-debug -R '^kabul\.atis\.'
-# Yalnız bekleniyor listesi: ctest --preset host-debug -L kabul_atis
+# Etiketler ve seçenekler (W5-K12):
+#   - kabul_atis_silahli: FC'nin silahlı duruma geçmesini (ya da onun ön koşulu olan kestirim
+#     düzeyi OK'yi) gerektiren testler: hazırlıkta FC_ARM / GUIDED isteyenler ve kapsam koşullu
+#     özellik testleri. IDA_KABUL_ATIS_SILAHLI kapalıyken (varsayılan) DISABLED kaydedilir.
+#     Silahlı durumu erişilir kılan dilim (W5-kestirim-yatay) birleşince açılır; W5-K12 (4)
+#     gereği o dilim bu testlerin TAMAMI varsayılan turda geçmeden main'e girmez.
+#   - kabul_atis: yer tutucu atış kontrole karşı düşen ("bekleniyor") ama silahlanma
+#     gerektirmeyen testler. IDA_KABUL_ATIS_BEKLENEN varsayılanı ON'dur: bu testler uygulama
+#     dalıyla (W5-atis-emniyet) birlikte varsayılan turda koşar. Bu dal tek başına main'e
+#     girmez, uygulama dalına birleştirilir; yer tutucuya karşı koşturmak için seçenek OFF
+#     verilir.
+# Koşturma:
+#   ctest --preset host-debug -R '^kabul\.atis\.'                                   (varsayılan)
+#   cmake --preset host-debug -DIDA_KABUL_ATIS_SILAHLI=ON && cmake --build build/host-debug
+#   ctest --preset host-debug -L kabul_atis_silahli                                    (silahlı)
+#   cmake --preset host-debug -DIDA_KABUL_ATIS_BEKLENEN=OFF                            (yer tutucu)
 
 option(IDA_KABUL_ATIS_BEKLENEN
-  "Yer tutucu atış kontrole karşı düşen (bekleniyor) atış kabul testlerini varsayılan turda koştur" OFF)
+  "Yer tutucu atış kontrole karşı düşen (bekleniyor) atış kabul testlerini varsayılan turda koştur" ON)
+option(IDA_KABUL_ATIS_SILAHLI
+  "FC'nin silahlanmasını (kestirim OK) gerektiren atış kabul testlerini varsayılan turda koştur" OFF)
 
 ida_unity_kur()
 
@@ -41,16 +50,25 @@ foreach(_dosya temel komut emniyet kilit izin ozellik)
   ida_ayar_uygula(kabul_atis_${_dosya} CEKIRDEK)
 endforeach()
 
-# kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR])
+# kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR] [SILAHLI])
 function(kabul_atis_testi dosya madde kisa)
-  cmake_parse_arguments(PARSE_ARGV 3 A "BEKLENIYOR" "" "")
+  cmake_parse_arguments(PARSE_ARGV 3 A "BEKLENIYOR;SILAHLI" "" "")
   set(_ad "kabul.atis.${madde}.${kisa}")
   add_test(NAME "${_ad}" COMMAND kabul_atis_${dosya} "${kisa}")
-  if(A_BEKLENIYOR)
-    set_tests_properties("${_ad}" PROPERTIES LABELS kabul_atis)
+  set(_etiket "")
+  if(A_SILAHLI)
+    list(APPEND _etiket kabul_atis_silahli)
+    if(NOT IDA_KABUL_ATIS_SILAHLI)
+      set_tests_properties("${_ad}" PROPERTIES DISABLED TRUE)
+    endif()
+  elseif(A_BEKLENIYOR)
+    list(APPEND _etiket kabul_atis)
     if(NOT IDA_KABUL_ATIS_BEKLENEN)
       set_tests_properties("${_ad}" PROPERTIES DISABLED TRUE)
     endif()
+  endif()
+  if(_etiket)
+    set_tests_properties("${_ad}" PROPERTIES LABELS "${_etiket}")
   endif()
 endfunction()
 

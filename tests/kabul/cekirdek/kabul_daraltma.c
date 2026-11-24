@@ -755,11 +755,16 @@ static void test_A4_K116_reddedilen_cagride_kapanma(void)
                 kapanma_tum(kc_out(), seq0, t0, ret_ad(r));
                 TEST_ASSERT_TRUE(kc_out()->health.narrowed);
                 TEST_ASSERT_EQUAL_UINT32(1u, KC_FARK(narrow_from_rejected));
-                /* Reddedilen çağrının gevşetici içeriği geri açmaz. */
+                /* Reddedilen çağrının gevşetici içeriği geri açmaz. Yalnız acil durdurma
+                   kısıtlayana döndü; fiş ve pim alanları gevşetme çağrısından beri gevşek
+                   kalır: A4 §3.16 her biti kendi alanının koşuluna bağlar, A4-K116'da
+                   kısıtlayıcı içerik alan alandır (W5-K14). */
                 kc_in_step(&g_in, kc_son_seq(), kc_sonraki_t());
                 (void)emniyet(&g_in, 0u, 0u, KC_TUP_ACIK, KC_TUP_ACIK);
                 TEST_ASSERT_EQUAL_INT(IDA_RC_DUP_SEQ, kc_step(&g_in));
-                emniyet_kisitli(kc_out(), "reddedilen çağrı gevşetmemeli");
+                TEST_ASSERT_EQUAL_HEX32_MESSAGE(IDA_FCI_ESTOP, kc_out()->fc.inhibit_mask & FCI_EMNIYET,
+                                                "reddedilen çağrı acil durdurmayı gevşetmemeli; fiş/pim gevşek "
+                                                "kalmalı (A4 §3.16, A4-K116; W5-K14)");
             }
         }
     }

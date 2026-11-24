@@ -279,6 +279,8 @@ static void t_gc03_mod(void)
                 }
                 KA_DOGRULA(bit_kip[m] == b, "kip %u'da MODE biti %d, aynı kipte önce %d (G-Ç03: bit kip koşulunun işlevi)",
                            (unsigned)m, b, bit_kip[m]);
+                /* W5-K15: küme bu sürümde {GUIDED}. */
+                KA_DOGRULA(b == (m != IDA_MODE_GUIDED ? 1 : 0), "kip %u'da MODE biti %d (W5-K15: küme {GUIDED})", (unsigned)m, b);
             }
             (void)ka_adim();
         }
@@ -820,6 +822,7 @@ static void t_gc42_sonuc_bilinmeyen(void)
     ka_ayar.politika[IDA_EVT_SAFETY_CLOSE].kod = KA_SONUC_YOK;
     ka_degismez_ac(false); /* bilinmeyen kapanmanın FAULT_LATCHED sonucu G-Ç50'nin testindedir */
     const ka_olay_t *e = kapanma_uret();
+    uint64_t kimlik = e->e.event_id;
     int64_t t0 = e->now_w;
     uint32_t apply_by = e->e.apply_by_ns;
     uint32_t unk0 = ka_out()->status.cnt.event_unknown;
@@ -827,7 +830,16 @@ static void t_gc42_sonuc_bilinmeyen(void)
     bool goruldu = false;
     bool log = false;
     for (int k = 0; k < 60; ++k) {
+        size_t n_once = ka_olay_sayisi();
         (void)ka_adim();
+        /* W5-K11 (a): sonucu bilinmeyen kapatma yinelenir; yinelenen kapatma ayrı bir olaydır.
+           Onun sonucu verilir ki sayaç yalnız sınanan olayı saysın. */
+        for (size_t i = n_once; i < ka_olay_sayisi(); ++i) {
+            const ka_olay_t *y = ka_olay_no(i);
+            if (y != NULL && y->e.event_id != kimlik && y->e.kind == IDA_EVT_SAFETY_CLOSE) {
+                ka_sonuc_planla(y->e.event_id, (uint8_t)IDA_EVR_APPLIED, 1u);
+            }
+        }
         int64_t now = ka_simdi();
         uint32_t unk = ka_out()->status.cnt.event_unknown;
         if (now < sinir - KA_P) {
@@ -842,7 +854,8 @@ static void t_gc42_sonuc_bilinmeyen(void)
             KA_DOGRULA(goruldu, "apply_by + 100 ms (%lld ms) geçtiği halde event_unknown artmadı (G-Ç42; A4-K70)",
                        (long long)((sinir - t0) / KA_MS));
         }
-        KA_DOGRULA(unk <= unk0 + 1u, "tek olay için event_unknown birden çok arttı (G-Ç42)");
+        KA_DOGRULA(unk <= unk0 + 1u,
+                   "tek olay için event_unknown birden çok arttı (G-Ç42; W5-K11 (a)'nın yinelediği kapatmalar APPLIED aldı)");
     }
     KA_DOGRULA(goruldu && log, "bilinmeyen olay için EVENT_UNKNOWN günlüğü yok (3.15; A4-K70)");
     ka_degismez_ac(true);
