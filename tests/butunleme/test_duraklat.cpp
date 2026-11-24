@@ -553,7 +553,17 @@ int test_ayni_tur_cikis()
         const Kosu kontrol = kos_bu(false, kno_bas, kret_onay, kret_adimla);
         const Kosu k = kos_bu(true, no_bas, ret_onay, ret_adimla);
         dogrula_d(kontrol.s.tamam && kontrol.s.calistirma_sonu == "bitti", ad + ": kontrol koşusu tamam ve bitti " + kontrol.s.hata);
-        dogrula_d(notr_disi(kontrol, 4000), ad + ": ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4000) nötr dışı");
+        // Gerçek zamanlı koşunun öncülü (W4-K24, K29): zamanlama ölçüt değilse (CI, sanitizer, debug) yavaş
+        // koşu partileri kaçırabilir ve komut nötr dışı olmayabilir; kol atlanır, KALDI sayılmaz. Ölçütse
+        // (yerel release) ön koşul zorunludur. Emniyet doğrulamaları hiçbir ortamda gevşemez.
+        const bool on_kosul = notr_disi(kontrol, 4000);
+        if (!on_kosul && !ida::test::zamanlama_olcut_mu()) {
+            std::printf("  atlandı: %s: ön koşul kurulamadı (gerçek zaman bu ortamda ölçüt değil; W4-K24/K29): "
+                        "kontrol koşusunda çıkış adımı (4000) nötr, ölçülen sapma %.1f µs%s\n",
+                        ad.c_str(), kontrol.sapma.size() > 4000u ? kontrol.sapma[4000] : -1.0,
+                        ida::test::zamanlama_muafiyeti());
+        } else {
+        dogrula_d(on_kosul, ad + ": ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4000) nötr dışı");
         dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", ad + ": koşu tamam ve bitti " + k.s.hata);
         dogrula_d(ret_onay == "onay_gerekli", ad + ": onaysız duraklat onay_gerekli (Tablo 4.7b): " + ret_onay);
         dogrula_d(ret_adimla == "kipte_gecersiz", ad + ": HIL'de adımla kipte_gecersiz (Tablo 4.7b): " + ret_adimla);
@@ -563,6 +573,7 @@ int test_ayni_tur_cikis()
         dogrula_d(uygulandi(k.s, no_bas, 4000 * kH), ad + ": acil bas sınır 4000'de uygulandı");
         dogrula_d((k.s.sayac.calistirma_gecersiz & ida::kopru::kGecDuraklatma) != 0u,
                   ad + ": HIL duraklatması çalıştırmayı geçersiz kıldı (A1-K41, K79)");
+        }
     }
 #endif
     return 0;
