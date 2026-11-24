@@ -882,6 +882,101 @@ int test_a3_hazirlik_kapanis()
     return 0;
 }
 
+// W4-K28 sol-3 #1 (EMNİYET): kabul edilmiş `durdur` hiçbir kuyruk durumu yüzünden bayatlamaz.
+// (a) Hazırlıkta dünyanın genel deposu 512 nötr istekle dolu, halka da dolu: durdur yine alınır,
+//     koşu başlamaz, fizik adımı 0 yürümez. (b) Koşarken dolu halkayla durdur: aynı sınırda durur.
+// (c) Koşunun son sınırından sonra (fiziğin son adımından önce) kabul edilen durdur: `bitti`
+//     iç geçişi onu bayatlatamaz, çalıştırma `durduruldu` biter.
+int test_a3_durdur_dolu_depo()
+{
+    auto manual = [](ida::a3::KomutAlicisi& al, const ida::a3::AnlikDurum& d, int n) {
+        int kuyrukta = 0;
+        for (int i = 0; i < n; ++i) {
+            kuyrukta += al.al(yi(d, "manual", ida::a3::KomutSinifi::notr, "{\"axes\":[0,0,0,0,0,0]}")).tur ==
+                                ida::a3::AlimSonucu::Tur::kuyrukta
+                            ? 1
+                            : 0;
+        }
+        return kuyrukta;
+    };
+    {
+        int dolum = 0, kuyrukta = 0;
+        std::uint32_t no = 0;
+        ida::a3::AlimSonucu::Tur tur = ida::a3::AlimSonucu::Tur::ret;
+        const Kosu k = kos(z1_yerlesik(5.0), true, nullptr, [&](std::uint64_t, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (d.durum != ida::a3::CalistirmaDurumu::hazirlaniyor || no != 0u) {
+                return;
+            }
+            if (dolum < 2) {
+                kuyrukta += manual(al, d, 256);   // her yoklamada halka dünyaya (depoya) aktarılır
+                ++dolum;
+                return;
+            }
+            const Komut kd = calistirma(d, KomutTuru::calistirma_durdur);
+            no = kd.komut_no;
+            tur = al.al(kd).tur;
+        });
+        dogrula_a3(kuyrukta >= 512 && no != 0u && tur == ida::a3::AlimSonucu::Tur::kuyrukta,
+                   "(a) ön koşul: hazırlıkta ≥ 512 nötr istek bekliyor (" + std::to_string(kuyrukta) +
+                       "), durdur kabul edildi");
+        const auto* o = a3_sonucu(k.s, no);
+        dogrula_a3(o != nullptr && o->sonuc == "uygulandi",
+                   "(a) dolu depoda durdur uygulandı (" + (o != nullptr ? o->sonuc + " " + o->neden : std::string("yok")) + ")");
+        dogrula_a3(k.s.tamam && k.s.calistirma_sonu == "yuklendi" && k.s.satirlar.empty() && k.pwm_notr_degil.empty(),
+                   "(a) koşu başlamadı, fizik adımı 0 yürümedi (" + k.s.calistirma_sonu + ")");
+    }
+    {
+        std::uint32_t no = 0;
+        int dolu = 0;
+        const Kosu k = kos(z1_yerlesik(8.0), true, nullptr, [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (b == 4000 && no == 0u && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
+                (void)manual(al, d, 256);
+                dolu = al.al(yi(d, "manual", ida::a3::KomutSinifi::notr, "{\"axes\":[0,0,0,0,0,0]}")).tur ==
+                               ida::a3::AlimSonucu::Tur::dolu
+                           ? 1
+                           : 0;
+                const Komut kd = calistirma(d, KomutTuru::calistirma_durdur);
+                no = kd.komut_no;
+                (void)al.al(kd);
+            }
+        });
+        const auto* o = a3_sonucu(k.s, no);
+        dogrula_a3(dolu == 1 && o != nullptr && o->sonuc == "uygulandi" && o->t_ns == 5'000'000'000,
+                   "(b) halka doluyken durdur aynı sınırda (5 s) uygulandı");
+        dogrula_a3(k.s.calistirma_sonu == "durduruldu" && !k.s.satirlar.empty() && k.s.satirlar.back().t_s <= 5.0 + 1e-9,
+                   "(b) çalıştırma 5 s'de durdu (" + k.s.calistirma_sonu + ")");
+    }
+    {
+        ida::sunucu::Ayar a = z1_yerlesik(2.0);
+        ida::a3::KomutAlicisi* alici = nullptr;
+        std::uint32_t no = 0;
+        Kosu k;
+        gozlem_kur(a, k);
+        auto gozlem = a.sinir_kancasi;
+        a.sinir_kancasi = [&, gozlem](const ida::sunucu::Ayar::SinirGozlemi& g) {
+            gozlem(g);
+            if (g.b == 1600u && alici != nullptr && no == 0u) {   // son sınır (2 s), fizik adımından önce
+                const Komut kd = calistirma(alici->anlik(), KomutTuru::calistirma_durdur);
+                no = kd.komut_no;
+                (void)alici->al(kd);
+            }
+        };
+        a.csv_uret = true;
+        a.a3_acik = true;
+        a.a3_port = 0;
+        a.a3_kapanis_bekleme_s = 0.0;
+        a.a3_sinir_kancasi = [&alici](std::uint64_t, ida::a3::KomutAlicisi& al) { alici = &al; };
+        k.s = ida::sunucu::kos(a);
+        const auto* o = a3_sonucu(k.s, no);
+        dogrula_a3(no != 0u && o != nullptr && o->sonuc == "uygulandi",
+                   "(c) son sınırda kabul edilen durdur uygulandı (" + (o != nullptr ? o->sonuc + " " + o->neden : std::string("yok")) + ")");
+        dogrula_a3(k.s.calistirma_sonu == "durduruldu", "(c) bitti iç geçişi durdurmayı bayatlatmadı (" + k.s.calistirma_sonu + ")");
+    }
+    return 0;
+}
+
 // ---- W4-K28 E (EMNİYET; sol-2 #2 olağan işletimde): aynı etkiye iki ardışık daraltıcı istek ve
 // ardından farklı etkide kısıtlayan (DISARM → DISARM → acil bas), gerçek kitaplık yolundan (HTTP →
 // A3 çekirdeği → alıcı → dünya). İkinci DISARM kitaplığın mandalına düşer; acil bas onun arkasında
@@ -1110,6 +1205,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_durdur_dolu_depo") {
+        (void)test_a3_durdur_dolu_depo();
     } else if (ad == "a3_kisitlayan_ardisik") {
         (void)test_a3_kisitlayan_ardisik();
     } else if (ad == "a3_hazirlik_kapanis") {

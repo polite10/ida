@@ -1810,7 +1810,7 @@ bool Calistirici::a3_baslat()
     yay_ = &a3sv_->yayinci();
     // W4-K27 (5): dünya tarafının kalıcı depoları burada ayrılır; değişmeyen içerik önceden üretilir.
     a3_kisit_.reserve(A3Alici::kKisitYuva + 4u);
-    a3_genel_.reserve(kGenelAzami + A3Alici::kGenelKuyruk);
+    a3_genel_.reserve(kGenelAzami + A3Alici::kGenelKuyruk + 2u * A3Alici::kDenetimYolu);
     a3_emniyet_bekleyen_.reserve(kGenelAzami + A3Alici::kKisitYuva);
     a3_atama_.reserve(kGenelAzami + A3Alici::kKisitYuva);
     a3_op_sonuc_.resize(kGenelAzami + A3Alici::kKisitYuva);
@@ -3350,12 +3350,22 @@ Sonuc Calistirici::kos()
         }
     }
     if (yay_ != nullptr) {
+        // EMNİYET (W4-K28 sol-3 #1): koşunun son sınırından sonra kabul edilmiş bir `durdur`,
+        // `bitti` iç geçişiyle bayatlamaz: üretici kilidi altında son çekiş (kısıtlayan yuvalar
+        // a3_bitir'de), durdurma kazanır; kilit bırakılmadan son görüntü yazılır.
+        std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
+        if (!a3_durdur_ && s_.hata.empty()) {
+            a3_cek(A3Alici::kButunYuvalar);
+            a3_calistirma_isle(a3_b_);
+        }
         // Tablo 4.7a iç geçişleri: süre doldu → bitti; çalıştırmayı durduran hata → hata
         // (durdur komutu durumu zaten `durduruldu` yaptı).
         if (!a3_durdur_) {
             a3_gecis(s_.hata.empty() ? a3::CalistirmaDurumu::bitti : a3::CalistirmaDurumu::hata,
                      s_.hata.empty() ? "sure_doldu" : "calistirma_hatasi", true);
         }
+        a3_anlik_guncelle();
+        kilit.unlock();
         s_.calistirma_sonu = a3d_.durum == a3::CalistirmaDurumu::bitti        ? "bitti"
                              : a3d_.durum == a3::CalistirmaDurumu::durduruldu ? "durduruldu"
                                                                                : "hata";

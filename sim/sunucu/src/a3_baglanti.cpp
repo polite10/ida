@@ -182,9 +182,43 @@ int A3Alici::etki_yuvasi(const Komut& k)
     return -1;
 }
 
+bool A3Alici::yola_koy(DenetimYolu& y, A3Giris&& g)
+{
+    const std::size_t s = y.son.load(std::memory_order_relaxed);
+    const std::size_t n = (s + 1u) % y.g.size();
+    if (n == y.bas.load(std::memory_order_acquire)) {
+        return false;
+    }
+    y.g[s] = std::move(g);
+    y.son.store(n, std::memory_order_release);
+    return true;
+}
+
+void A3Alici::yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti)
+{
+    const std::size_t son = y.son.load(std::memory_order_acquire);
+    std::size_t b = y.bas.load(std::memory_order_relaxed);
+    while (b != son) {
+        cikti.push_back(std::move(y.g[b]));
+        b = (b + 1u) % y.g.size();
+    }
+    y.bas.store(b, std::memory_order_release);
+}
+
 AlimSonucu A3Alici::kuyruga(const Komut& k, const a3b::YiKarsilik& yi)
 {
     // uretici_m_ çağıranda (al) tutulur.
+    if (calistirma_mi(k.tur)) {
+        // EMNİYET (W4-K28 sol-3 #1): çalıştırma denetimi genel halkadan bağımsız yoldan.
+        A3Giris g;
+        g.sira = ++sira_;
+        g.k = k;
+        AlimSonucu a;
+        a.tur = yola_koy(k.tur == KomutTuru::calistirma_durdur ? durdur_ : denetim_, std::move(g))
+                    ? AlimSonucu::Tur::kuyrukta
+                    : AlimSonucu::Tur::dolu;
+        return a;
+    }
     const int y = k.kisitlayan ? etki_yuvasi(k) : -1;
     if (y >= 0) {
         // EMNİYET (W4-K22 (a)): etki başına sabit boylu yuva; doluysa kitaplığın mandalı bekletir
@@ -253,6 +287,9 @@ void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel,
         b = (b + 1u) % halka_.size();
     }
     bas_.store(b, std::memory_order_release);
+    // Çalıştırma denetimi: depo doluluğundan bağımsız, bütünüyle; önce durdur (W4-K28 sol-3 #1).
+    yoldan_al(durdur_, genel);
+    yoldan_al(denetim_, genel);
 }
 
 std::uint64_t A3Alici::bekleyen_kisit_en_kucuk(std::uint16_t maske) const

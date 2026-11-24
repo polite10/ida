@@ -152,6 +152,12 @@ public:
     static constexpr std::size_t kKisitYuva = 9;
     static constexpr std::uint16_t kYiYuvalari = 0x1E0u;    // 5–8
     static constexpr std::uint16_t kButunYuvalar = 0x1FFu;
+    // EMNİYET (W4-K28 sol-3 #1): çalıştırma denetimi istekleri genel halkadan ve dünyanın genel
+    // deposundan bağımsız, sabit boylu iki yoldan geçer: `durdur` ve öteki denetimler (baslat,
+    // hiz, sifirla). Her `cek` ikisini de bütünüyle alır (depo doluluğu sınırlamaz); `durdur`lar
+    // önce eklenir (öteki denetimlere baskın). Yol doluysa `dolu` (kitaplık 503 `mesgul`):
+    // kabul edilmiş bir istek hiçbir kuyruk durumu yüzünden alınmadan kalmaz.
+    static constexpr std::size_t kDenetimYolu = 8;
 
     explicit A3Alici(bool hil);
     ~A3Alici() override;
@@ -165,7 +171,8 @@ public:
     // ---- Dünya iş parçacığı (kilitsiz, bellek ayırmaz; vektörler çağıranın ayırdığı kapasitede) ----
     void anlik_yaz(const AnlikPod& p);
     // Tutarlı kesimle alır (W4-K27 (2)): kesim, kısıtlayan yuvalar (`atla` maskesindekiler hariç;
-    // sıra numarasıyla), sonra genel halka kesime kadar (en çok `genel_azami` istek).
+    // sıra numarasıyla), sonra genel halka kesime kadar (en çok `genel_azami` istek); ardından
+    // çalıştırma denetimi yollarının tamamı `genel`e eklenir (önce durdur; en çok 2 · kDenetimYolu).
     void cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla = 0,
              std::size_t genel_azami = kGenelKuyruk);
     // `maske`deki dolu kısıtlayan yuvalardaki isteklerin en küçük sıra numarası (yoksa 0).
@@ -202,6 +209,15 @@ private:
     std::vector<A3Giris> halka_;
     std::atomic<std::size_t> bas_{0};   // tüketici
     std::atomic<std::size_t> son_{0};   // üretici
+    // Çalıştırma denetimi yolları (tek üretici kilit altında, tek tüketici kilitsiz).
+    struct DenetimYolu {
+        std::array<A3Giris, kDenetimYolu + 1u> g{};
+        std::atomic<std::size_t> bas{0};
+        std::atomic<std::size_t> son{0};
+    };
+    DenetimYolu durdur_, denetim_;
+    static bool yola_koy(DenetimYolu& y, A3Giris&& g);
+    static void yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti);
 };
 
 }  // namespace ida::sunucu

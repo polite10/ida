@@ -114,7 +114,7 @@ if(NOT WIN32)
 endif()
 
 # W4-bagla-a3: A3 sunucusunun ida_sim'e bağlanması (kabul 2, 4, 5; sim/sunucu/BENIOKU.md "A3").
-foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_hazirlik_durdur a3_hazirlik_kapanis a3_ayirma)
+foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_hazirlik_durdur a3_hazirlik_kapanis a3_ayirma a3_durdur_dolu_depo)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
