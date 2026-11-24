@@ -3457,6 +3457,11 @@ Sonuc Calistirici::kos_ic()
         s_.hata_turu = HataTuru::kullanim;
         return s_;
     }
+    if (!(a_.ping360_bekleme_ms >= 0.0 && a_.ping360_bekleme_ms <= 10000.0)) {
+        s_.hata = "--ping360-bekleme-ms 0–10000 olmalı";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
     if (!a_.senaryo_dosyasi.empty()) {
         if (!dosya_plani()) {
             return s_;

@@ -694,8 +694,10 @@ int test_hil_olcum(int ornek)
         std::vector<std::int64_t> per = r.zaman.periyotlar_ns;
         std::sort(per.begin(), per.end());
         const double p999 = per.empty() ? 0.0 : 1e-6 * static_cast<double>(per[std::min(per.size() - 1u, per.size() * 999u / 1000u)]);
-        std::printf("  ÖLÇÜM: TF geç yazım en çok %.3f ms; periyot p99,9 %.3f ms, en çok %.3f ms; eşzamansız güvenli çıktı %llu "
-                    "(ilk parti öncesi %llu); uçtan uca yanıt p50/p99/en çok %.3f/%.3f/%.3f ms\n",
+        std::printf("  ÖLÇÜM: sınır içinde sonar boşaltma + köprü en uzun %.1f µs; TF geç yazım en çok %.3f ms; periyot p99,9 "
+                    "%.3f ms, en çok %.3f ms; eşzamansız güvenli çıktı %llu (ilk parti öncesi %llu); uçtan uca yanıt "
+                    "p50/p99/en çok %.3f/%.3f/%.3f ms\n",
+                    1e-3 * static_cast<double>(r.sonar_bosaltma_en_uzun_ns),
                     1e-6 * static_cast<double>(r.zaman.gec_yazim_en_cok_ns), p999,
                     1e-6 * static_cast<double>(r.zaman.periyot_en_cok_ns), static_cast<unsigned long long>(c.esz_guvenli_uygulanan),
                     static_cast<unsigned long long>(c.eszamansiz_ilk_parti_oncesi), 1e-6 * static_cast<double>(r.zaman.yanit_p50_ns),
