@@ -586,6 +586,133 @@ static void test_olu_hesap_kipten_cikis(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
 }
 
+/* ---- W5-kontrol-acil düzeltme turu (inceleme bulgu 1): engel sırasında operatör duraklaması --
+   Görev çekirdeğin kendi koşuluyla (acil durdurma, konum geçersizliği ve onun HOLD arıza eylemi,
+   ölü hesap beklemesi) PAUSED iken gelen MISSION_CTL PAUSE kabul edilir ve operatör duraklaması
+   kurulur: koşul kalkınca görev kendiliğinden sürmez, açık RESUME ya da SET_MODE(AUTO) bekler.
+   Zaten operatör duraklamasındayken gelen PAUSE var olan kuraldaki gibi BAD_MODE alır. */
+
+static void pause_bekle(gd_t *o, uint16_t neden)
+{
+    const ida_cmd_result_t r =
+        gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_PAUSE);
+    if (neden == (uint16_t)IDA_REASON_NONE) {
+        gd_kabul_bekle(r);
+    } else {
+        gd_ret_bekle(r, neden);
+    }
+}
+
+static void test_acil_sirasinda_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_BAD_MODE); /* zaten operatör duraklaması */
+    gd_ilerle(o, 1000);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 5000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay); /* operatör duraklaması tutar */
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+
+    /* Aynı dizi, sürdürme SET_MODE(AUTO) ile. */
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 100);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 2000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* Konum geçersizliği: görev hem konum engeliyle hem HOLD arıza eylemiyle duraklar. */
+static void test_konum_kaybinda_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    o->gi.gecerlilik = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_HOLD, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 5000); /* EST_OK_MS (2 s) sonra arıza kalkar */
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+
+    /* Aynı dizi, sürdürme RESUME ile. */
+    o->gi.gecerlilik = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 5000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* Ölü hesap beklemesi: taze GNSS beklemeyi bitirir, ama görev operatör duraklamasında kalır. */
+static void test_olu_hesap_beklemesinde_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 1.0f, 3.0f, 500.0f, 0.0f, 3.0f);
+    baslat(o, g, 1u);
+    o->gi.gnss_taze = false;
+    o->gi.nav_derinlik = 3.0f;
+    for (float n = 5.0f; n <= 210.0f; n += 5.0f) {
+        konum(o, n, 0.0f);
+        gd_ilerle(o, 100);
+    }
+    TEST_ASSERT_TRUE(o->g.gv.dr_bekliyor);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    o->gi.gnss_taze = true;
+    o->gi.nav_derinlik = 0.1f;
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_FALSE(o->g.gv.dr_bekliyor);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* AUTO dışında (kip çıkışıyla duraklamış görev) PAUSE var olan kuraldaki gibi BAD_MODE alır. */
+static void test_auto_disinda_pause_reddedilir(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_GUIDED));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_BAD_MODE);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+}
+
 static void test_cografi_sinir(void)
 {
     gd_t *o = &O;
@@ -775,6 +902,10 @@ int main(void)
     RUN_TEST(test_ariza_konum_kaybi);
     RUN_TEST(test_olu_hesap_yol_siniri);
     RUN_TEST(test_olu_hesap_kipten_cikis);
+    RUN_TEST(test_acil_sirasinda_pause_kendiliginden_surmez);
+    RUN_TEST(test_konum_kaybinda_pause_kendiliginden_surmez);
+    RUN_TEST(test_olu_hesap_beklemesinde_pause_kendiliginden_surmez);
+    RUN_TEST(test_auto_disinda_pause_reddedilir);
     RUN_TEST(test_cografi_sinir);
     RUN_TEST(test_en_az_irtifa);
     RUN_TEST(test_gorev_genisletmez);

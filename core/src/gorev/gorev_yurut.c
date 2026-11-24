@@ -414,7 +414,8 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
     const bool konum_engel = !g->nav_konum_var;
     /* W5-kontrol-acil (mimar kararı; EMNİYET): etkin acil durdurma kısıtlayanken (basılı, bayat
        ya da init'ten beri hiç gevşememiş) görev çekirdeğin kendi koşuluyla duraklar: öğe süresi
-       ve bitiş ölçütleri ilerlemez, hedef yoktur; değer gevşeyince kendiliğinden sürer. Değer bu
+       ve bitiş ölçütleri ilerlemez, hedef yoktur; değer gevşeyince kendiliğinden sürer (engel
+       sırasında MISSION_CTL PAUSE geldiyse sürmez: operator_durdu, gorev_yukle.c). Değer bu
        noktada çağrı için kesindir ((b) ve kabul edilen örnekler bu adımdan önce işlenir). */
     const bool acil_engel = ida_kon_acil_kisitli(yetki);
     if (kip_engel || ariza_engel || konum_engel || acil_engel || v->operator_durdu ||
