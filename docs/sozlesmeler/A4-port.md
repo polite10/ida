@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Sürüm | 1.0 (donduruldu, 2026-11-21) |
+| Sürüm | 1.0.1 (2026-11-24; küçük sürüm notları, belgenin sonundaki "Sürüm geçmişi"); 1.0 2026-11-21'de donduruldu; `IDA_PORT_VERSION_MAJOR`.`MINOR` ve `core/include/ida/port.h` değişmedi |
 | Görev belgesi | `docs/gorevler/W1-A4.md`; ortak kurallar `docs/gorevler/W1-ortak.md` |
 | Makinece okunur tanım | `core/include/ida/port.h` (bu belgenin parçasıdır; ikisi çelişemez) |
 | Dayanak | `docs/mimari/00-iskelet.md` sürüm 0.10 (§2, §3, §3.1, §3.2, §4, §5, §6, §8, §10); `docs/olcumler/MP4-dongu-yuku.md`, `MP1-arac-zinciri.md`, `MP3-vcp.md` (iskelet üzerinden); bölümler 01, 02, 03, 06 (taslak; iskeletle çeliştikleri yerde iskelet geçerlidir) |
@@ -157,6 +157,10 @@ Bütün değerler `float` (IEEE-754 binary32), SI, sensör çerçevesinde (iskel
 | `estop` | `uint8_t` | — | 0, 1 | Sanal acil durdurma etkin |
 | `tube[2]` | `uint8_t` | bit | `IDA_TUBE_*` | Tüp başına: `LOADED` (0x01) tüp dolu; `PLUG_IN` (0x02) sanal silahlandırma fişi takılı; `PIN_OUT` (0x04) sanal emniyet pimi çıkarılmış; `PERMIT_OPEN` (0x08) fırlatıcının süreli izni şu an açık |
 
+**1.0.1 notu (W4-K7) — `ida_gnss_t.alt_mm`.** `alt_mm` ortalama deniz seviyesine göredir (tablo; O11). Sim dünyasında elipsoit yüksekliğinden bu değere jeoit yüksekliği `N` ile geçilir: `alt = h_elipsoit − N`. `N`, sim'in sensör kümesinin ortam ayarında adlandırılmış bir ayardır; varsayılanı 0 m'dir ve bu değer bir **kabuldür** (ölçüm ya da model çıktısı değildir): sıfır, sessiz bir varsayım olarak değil bu ayarın değeri olarak uygulanır. `N` 1.0'da A5 anahtarı değildir (A5 §3.9'un 1.0.1 notu).
+
+**1.0.1 notu (W4-K8) — `ida_dvl_t.altitude`.** `altitude` tablodaki gibi dibe **dik** mesafedir; ışın menzillerinin `cos(ışın açısı)` ortalaması değildir. Taslak 05 §2.3.5'teki formül bu tanımla çelişir; bu sözleşme geçerlidir.
+
 **Kaplar.** IMU dışındaki ve Ping360 dışındaki örnekler `ida_sample_t` içinde taşınır: `hdr` ve `hdr.type`'ın seçtiği birlik alanı `u` (`u.mag`, `u.baro`, `u.gnss`, `u.dvl`, `u.ping1d`, `u.batt`, `u.leak`, `u.safety`). IMU örneği `ida_imu_sample_t` (`hdr` + `imu`) ile ayrı alanda gelir.
 
 **Ping360 tarama satırı `ida_ping360_t`** (`IDA_SENS_PING360`; `t_meas` = darbenin gönderim anı, `window_ns` = 0; iskelet §3.1). Alanlar cihaz birimlerindedir (gerçek sürücünün alan anlamı korunur):
@@ -281,6 +285,8 @@ Sayaçlar kart sayımıyla birikir ve 2³²'de sarar; çekirdek farkı mod 2³²
 | `cnt_grid_missed` | `uint32_t` | — | sayaç | Kaçırılan ızgara anı | Günlük |
 | `cnt_rx_error` | `uint32_t` | — | sayaç | Alım hataları: CRC, çerçeveleme, boy, bilinmeyen kimlik ve alım taşması (kartta bileşimi A1 §3.11: `rx_crc_err` + `rx_iflag` + `rx_bad_len` + `rx_overflow` + `rx_unknown_msgid`; her çerçeve en çok birine girer) | Günlük |
 | `cnt_out_fixed` | `uint32_t` | — | sayaç | Platformun nötrle değiştirdiği çıktı (A4-K59) | Günlük |
+
+**1.0.1 notu (W4-K10) — SIL'de `param_gen` ve platform saati.** SIL koşucusu tablodaki `param_gen` satırına uyar: init'ten sonra `param_gen` = 0'dır; koşucuda saklı bir parametre bloğu bulunsa da onun kuşağı `plat.param_gen`'e taşınmaz, yalnız koşucunun saklı blok bilgisinde durur. Bu, "SIL'de saklı blok varken hangi kuşak bildirilir" sorusunu (bu satır ile A4-K82 arasında) kapatır; A4-K82'nin `gen` formülü değişmez. SIL'de her çekirdek ömrü (ilk kuruluş ve `REBOOT` sonrasındaki yeniden kuruluş; A1-K17) platform saatini 0'dan başlatır (A4-K11'in 1.0.1 notu).
 
 ### 3.7 Çağrı girdisi `ida_in_t`
 
@@ -634,6 +640,10 @@ Tabloda olmayan kod üretilmez; yeni kod sözleşme revizyonu ister. Hiçbir kod
 | `FC` `FC_RESET` | engel biti `SESSION` → `SESSION`; atış kontrol durumu `FAULT_LATCHED` değil → `BAD_MODE` |
 | `FC` `FC_TEST_EXIT` | atış kontrol durumu `TEST` değilse `ACCEPTED` (etkisiz) |
 
+**1.0.1 notu (W4-K13; W3-K3'ün netleştirilmesi; EMNİYET) — `ARM` satırı, veri yokken silahlandırma.** 1.0 metni `ARM` satırındaki "arm reddi gerektiren arıza kaydı" kümesini saymıyordu. Sızıntı algılayıcısından ya da batarya ölçerinden hiç örnek gelmemişse ya da son örnek bayatsa `ARM` reddedilir (`REJECTED` / `NOT_ARMABLE`): ölçülmemiş bir koşul sağlanmış sayılmaz (kısıtlayan okuma). Silahlıyken bayatlama silahsızlandırmaz; arıza eylemi düzeyi değişmez (uyarı ve dalış reddi). Ret, ilk taze örnekle kendiliğinden kalkar. Bu sürümde yeni neden biti eklenmedi: "veri yok ya da bayat" durumu `fs_reasons`'ta gerçek sızıntı ve düşük batarya ile aynı bitleri (`IDA_FSR_LEAK`, `IDA_FSR_BATT_LOW`) paylaşır; ayrı bit `port.h` değişikliğidir.
+
+**1.0.1 notu (W4-K21) — `PARAM_SAVE` satırı, çekirdek bütünlük hatası.** `PARAM_SAVE` işlenirken çekirdek, parametre şema özetinin (3.10 `schema_hash`) saklı kopyasını tutarsız bulursa blok üretilmez, kuşak (`gen`) tüketilmez ve aynı çağrıda `core_ok = 0` ile `IDA_LOG_CORE_INTEGRITY` bildirilir (çağrı başında saptanan bütünlük hatasıyla aynı yol; A4-K89). Komutun sonucu `REJECTED` / `PARAM_INVALID`'dir: satırın kendi nedenlerinden anlamca en yakını (kaydedilecek parametre durumu güvenilir değildir). 1.0 metni bu çağrıdaki komut sonucunu tanımlamıyordu: sonuç yazmamak A4-K43'e, `ACCEPTED` A4-K82'ye (blok ister), tabloda olmayan neden A4-K124'e aykırıdır; bu not `PARAM_SAVE` satırına "çekirdek bütünlük hatası → `PARAM_INVALID`" koşulunu ekler (koşulun satırdaki sıra yeri bu sürümde sabitlenmedi). Özeti yeniden hesaplayıp bloğu yine üretmek seçeneği reddedilmiştir: bütünlüğü bozulmuş bir çekirdek kalıcı belleğe yazı başlatmaz. Yeni neden kodu yoktur; `port.h` değişmez.
+
 `UNSUPPORTED` / `NONE`: komut türü bu çekirdek sürümünce uygulanmıyor; komutun hiçbir etkisi yoktur ve kabul değildir. Bu, tablodaki bilinen bir tür bu sürümde uygulanmıyorsa da geçerlidir (örnek: yer tutucu çekirdekte `HEARTBEAT` ve `FAILSAFE_RESET`): o tür (3)'te kendi satırının yerine `UNSUPPORTED` / `NONE` alır, (1) ve (2) ondan önce gelir (A4-K124). Tablodaki nedenler A4-K120'nin 0–15 aralığındadır; tabloda olmayan neden üretilmez.
 
 ---
@@ -658,6 +668,7 @@ Bu bölümde 130 kural vardır (A4-K01–K130; kaldırılan kural yok). Her kura
 - **A4-K09.** Platformun verdiği duvar saati bir çekirdek örneğinin ömrü boyunca (init, step, tick ve background çağrılarında) azalmaz, sarmaz ve 1 µs ya da daha ince çözünürlüklüdür.
 - **A4-K10.** Çekirdek bir çağrıda önceki çağrınınkinden küçük `now_w` görürse o çağrıda önceki değeri kullanır ve `status.cnt.wall_backstep`'i bir artırır; "kullanılan `now_w`" her yerde bu düzeltilmiş değerdir (`max(önceki, verilen)`; A4-K14, K33, K41 ve 3.11 (c) karşılaştırmaları dahil); aralık içi `now_w` taşıyan her çağrı (reddedilen, (b2) ve arka plan çağrıları dahil) önceki değer izini günceller; izin tabanı init'in `now_w`'sidir; aralık dışı `now_w` geri adım sayılmaz: o çağrıda "kullanılan `now_w`" izin değeridir (son geçerli duvar zamanı) ve o çağrıda üretilen günlüklerin `t_w`'si budur; izi değiştirmez, `status.cnt.wall_backstep`'i artırmaz, `WALL_BACKSTEP` günlüğü üretmez ve çağrının dönüşü o girdinin kendi kuralındaki koddur (step ve tick'te `BAD_INPUT`, arka planda `IDA_BG_BAD_INPUT`).
 - **A4-K11.** Kartta duvar saati açılıştan beri geçen süredir; SIL'de her parti çağrısının `now_w`'si o çağrının partisini kapatan zaman çerçevesinin sim zamanına eşittir (`now_w.ns = tf.t.ns`); SIL'de ızgara tick'i yapılmaz, bunun tek istisnası oturum sonu çağrısıdır (A4-K122; A1-K107) ve onun `now_w`'si son kabul edilen zaman çerçevesinin sim zamanıdır; init'in `now_w`'si ilk zaman çerçevesinin sim zamanını aşmaz ve sim zamanı geri başlarsa SIL koşucusu çekirdeği yeni `boot_count` ile yeniden kurar.
+  - **1.0.1 notu (W4-K10):** SIL koşucusunda her çekirdek ömrü (ilk kuruluş ve `REBOOT` sonrasındaki yeniden kuruluş; A1-K17) platform saatini 0'dan başlatır; bu, kartın yeniden açılışının karşılığıdır ve bu maddenin "init'in `now_w`'si ilk zaman çerçevesinin sim zamanını aşmaz" koşuluyla uyumludur. Böylece ilk zaman çerçevesinden önceki kapanışta da saat geri gitmez.
 - **A4-K12.** Çekirdek hiçbir saati, sayacı ya da rastgele sayı kaynağını okumaz; zamanı yalnız `now_w`, `tf` ve örnek damgalarından alır.
 - **A4-K13.** Örneğin `t_meas`'ı iskelet §3.1'deki ölçüm zamanıdır: anlık ölçümde örnekleme anı; aralık ölçümünde (IMU, basınç, batarya) aralığın sonu, aralığın süresi `window_ns`'tedir; tek menzilli akustik ölçümde (Ping1D, DVL) yansıma anı; menzil profilinde (Ping360) darbenin gönderim anı; platform ve dönüştürücü bu değeri değiştirmeden aktarır.
 - **A4-K14.** Örneğin, zaman çerçevesinin, algılama kaydının ve parti başlığının alım zamanı platformun damgasıdır: kartta A1-K48'in damgalama kuralıyla konan duvar saati (çerçevenin son baytından sonraki ilk alım olayının damgası; bağlanamazsa önceki en son olayınki), SIL'de çağrının `now_w`'si; damganın gerçek alım anından en büyük sapması A1'in tanımıdır (Bölüm 10, A1'den beklenen); bu sözleşmede alım zamanından sayılan bütün süreler (A4-K36, A4-K39, A4-K118) bu damgadan sayılır; her iki platformda alım zamanı ≤ çağrının `now_w`'si, aksi halde çekirdek örneği reddeder ve `status.cnt.sample_future`'ı artırır.
@@ -765,6 +776,7 @@ Bu bölümde 130 kural vardır (A4-K01–K130; kaldırılan kural yok). Her kura
 - **A4-K80.** Çekirdek bir bloğu ancak şu numaralı denetimlerin hepsi tutarsa geçerli sayar: (1) `magic`, `fmt_ver = 1` ve başlık `rsv = 0`; (2) `schema_hash` kendi şemasınınkine eşit; (3) `24 + payload_len` = blok boyu ≤ 8000 ve `payload_len` 8'in katı; (4) `payload_crc` doğru; (5) kayıtlar `param_id`'ye göre kesin artan ve her kaydın `rsv`'si 0; (6) kayıt kümesi şemayla bire bir: şemadaki her parametre tam bir kez ve doğru `type` ile var ve şemada olmayan `param_id`'li kayıt yok; (7) her değer kendi `min`–`max` aralığında; (8) çekirdeğin ilişkili grup denetimleri geçiyor; `IDA_LOG_PARAM_LOAD`'ın `arg1`'i ilk başarısız denetimin numarasıdır (3.15); 24 bayttan kısa blokta denetim (1) başarısız sayılır; `param_blob` NULL ise ya da `param_blob` NULL değilken `param_len` = 0 ise blok yok sayılır (numara 0, A4-K78'in "blok yok" durumu).
 - **A4-K81.** `PARAM_SET` değeri bekletir ve hemen uygulamaz; her parametre için tek bekleyen yuva vardır ve aynı parametreye sonraki `PARAM_SET` bekleyen değeri değiştirir (son yazan kazanır), önceki `PARAM_SET`'in yazılmış sonucu değişmez; `IDA_PCLS_B` parametresine silahlıyken `PARAM_SET` `IDA_REASON_ARMED` ile reddedilir; `PARAM_COMMIT` bekleyen değerleri ilişkili gruplarıyla doğrular ve geçerse adım sınırında birlikte uygular, geçmezse hepsini reddeder; bekleyen değerler arasında `IDA_PCLS_B` parametresi varken araç `PARAM_COMMIT` anında (komutun `cmds[]` sırasında işlendiği andaki `armed`) silahlıysa ya da aynı çağrıda (girdideki sırasından bağımsız) bir `IDA_CMD_ARM` varsa (girdideki her `ARM` sayılır, yinelenen ya da `NARROWED` alan dahil) çekirdek commit'i `IDA_REASON_ARMED` ile reddeder ve bütün bekleyen değerleri atar. Commit'in doğrulanması ve uygulanması çağrının sonunda (adım sınırında) yapılır ve aynı çağrıdaki komutların girdideki sırası sonucu değiştirmez: doğrulama o anda bekleyen bütün değerleri (aynı çağrıda kabul edilen `PARAM_SET`'ler dahil) kapsar; aynı çağrıdaki `PARAM_GET` commit öncesi uygulanmış değeri okur; aynı çağrıdaki `PARAM_SAVE` commit sonrası kümeyi kaydeder (A4-K82); aynı çağrıda birden çok `PARAM_COMMIT` varsa hepsi tek commit gibi değerlendirilir ve aynı sonucu alır; bekleyen değer yokken `ACCEPTED` olan commit de uygulanmış commit sayılır (A4-K78).
 - **A4-K82.** `PARAM_SAVE` yalnız silahsızken (komutun `cmds[]` sırasında işlendiği andaki `armed`), `plat.param_store` `BUSY` değilken ve aynı çağrıda (sırasından bağımsız) `IDA_CMD_ARM` yokken (girdideki her `ARM` sayılır, yinelenen ya da `NARROWED` alan dahil) kabul edilir (aksi halde `IDA_REASON_ARMED` ya da `IDA_REASON_PARAM_BUSY`); kabul edilince çekirdek o komutun sonucunu `IDA_RES_PARAM_SAVE` / `IDA_ACK_ACCEPTED` olarak, `gen` = max(çekirdeğin init'ten beri ürettiği son `gen`, `plat.param_gen`) + 1 (init'ten beri üretilmemişse ilk terim 0; kabul edilip sonra platformun `FAIL` bildirdiği `PARAM_SAVE`'in `gen`'i de üretilmiş sayılır, taban yükselir ve bir `gen` yeniden kullanılmaz), `blob` ve `len` ile verir; `gen` doyar ve hiçbir zaman sarmaz: max(…) terimi 0xFFFFFFFF ise `PARAM_SAVE` `IDA_ACK_REJECTED` / `IDA_REASON_OUT_OF_RANGE` ile reddedilir ve blok üretilmez (3.17); kaydedilen küme, girdideki sırasından bağımsız, çağrı sonundaki kümedir: aynı çağrıda `ACCEPTED` olan bir `PARAM_COMMIT` varsa commit sonrası küme (A4-K81); `blob` aynı örnekte bir sonraki çekirdek çağrısına kadar geçerlidir ve platform kaydetmek için içeriği bu süre içinde kendi tamponuna kopyalar.
+  - **1.0.1 notu (W4-K10, W4-K21):** SIL'de `plat.param_gen` init'ten sonra 0'dır (3.6'nın 1.0.1 notu). `PARAM_SAVE` işlenirken saptanan çekirdek bütünlük hatasında blok üretilmez ve `gen` tüketilmez; sonuç 3.17'nin 1.0.1 notundadır.
 - **A4-K112.** Bir çağrıda en çok bir `PARAM_SAVE` kabul edilir ve aynı çağrıdaki diğer `PARAM_SAVE` komutları `IDA_REASON_ONE_PER_CALL` ile reddedilir; aynı çağrıda `IDA_CMD_ARM` ile `PARAM_SAVE` birlikte bulunursa `PARAM_SAVE` reddedilir (A4-K82) ve `IDA_CMD_ARM` kendi kurallarıyla değerlendirilir.
 - **A4-K83.** Platform `plat.param_store`'u kayıt sürerken `BUSY`, bitince `OK` ya da `FAIL` olarak bildirir ve her iki bitişte `plat.param_gen`'i o denemenin `gen`'i yapar (3.6; `FAIL`'de kalıcı blok değişmemiştir); çekirdek bekleyen bir `PARAM_SAVE`'in başarılı ya da başarısız tamamlandığını durum kodunun geçişinden bağımsız olarak `param_store` ∈ {`OK`, `FAIL`} ve `param_gen` = o `SAVE`'in `gen`'i eşleşmesiyle saptar (arada `BUSY` görülmese de; örnek: `OK`/41 → `OK`/42, `FAIL`/41 → `FAIL`/42; art arda iki `FAIL` ayrı ayrı saptanır) ve tamamlanma saptandığında `IDA_LOG_PARAM_SAVE`'i o `SAVE` için tam bir kez üretir; `BUSY` iken çekirdek `IDA_CMD_ARM`'ı `IDA_REASON_PARAM_BUSY` ile reddeder; oturum sonunda ya da platformun güvenli durumuna girişte platform süren kaydı iptal eder ve `FAIL` / `IDA_PSFAIL_ABORTED`'u iptal edilen denemenin `gen`'iyle bildirir.
 - **A4-K84.** Platform bloğu yorumlamadan, bayt bayt aynı saklar ve açılışta aynen geri verir; kaydın kesintiye dayanıklılığı (eski geçerli bloğun yeni blok tamamlanana kadar korunması) platformun sorumluluğudur.
@@ -1147,3 +1159,26 @@ A1 sözleşmesi bu adları kullanır. Tip ve anlamlar Bölüm 3'tedir. Düzeltme
 | `ida_core_info_t` (el sıkışma için) | `port_major`, `port_minor`, `param_schema_hash`, `core_version` |
 | Dönüş kodları | `IDA_RC_OK`, `IDA_RC_IMU_REJECTED`, `IDA_RC_DUP_SEQ`, `IDA_RC_OLD_SEQ`, `IDA_RC_BAD_INPUT`, `IDA_RC_NOT_INIT`; arka plan: `IDA_BG_IDLE`, `IDA_BG_MORE`, `IDA_BG_BAD_INPUT` (yalnız ilk ikisi `bg_slices`'a sayılır) |
 | İşlevler | `ida_core_step`, `ida_core_tick`, `ida_core_background`, `ida_core_param_count`, `ida_core_param_desc`, `ida_core_param_find`, `ida_core_param_get` |
+
+---
+
+## Sürüm geçmişi
+
+`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Port sürümü (`IDA_PORT_VERSION_MAJOR`, `IDA_PORT_VERSION_MINOR`; A4-K02) ayrıdır ve yalnız `port.h` değişirse artar.
+
+| Sürüm | Tarih | Değişiklik |
+|---|---|---|
+| 1.0 | 2026-11-21 | Donduruldu (kullanıcı kararı K20). |
+| 1.0.1 | 2026-11-24 | Uygulama sırasında (W4) verilen mimar kararlarının notları. `core/include/ida/port.h`, yapı düzenleri, sabitler, neden kodları ve kapalı tabloların satırları değişmedi; yeni kural numarası yok. |
+
+**1.0.1 notları:**
+
+| Kaynak | Not düşülen yer | Konu |
+|---|---|---|
+| W4-K7 | 3.3 (`alt_mm`) | GNSS yüksekliği ve jeoit yüksekliği `N` |
+| W4-K8 | 3.3 (`altitude`) | DVL irtifası dibe dik mesafedir |
+| W4-K10 | 3.6 (`param_gen`); A4-K11; çapraz: A4-K82 | SIL koşucusunda `param_gen` ve platform saati |
+| W4-K13 (EMNİYET) | 3.17 (`ARM` satırı) | Sızıntı ya da batarya verisi yokken ya da bayatken `ARM` reddi |
+| W4-K21 | 3.17 (`PARAM_SAVE` satırı); çapraz: A4-K82 | `PARAM_SAVE` sırasında saptanan bütünlük hatasının komut sonucu |
+
+**Bu sürümde yapılmayanlar** (`port.h` değişikliği gerektirir; mimar kararıyla (2026-11-24) sonraki sürümün (1.1) listesindedir): "veri yok ya da bayat" için ayrı `fs_reasons` biti (W4-K13). **Sabitlenmeyen:** W4-K21 koşulunun `PARAM_SAVE` satırındaki sıra yeri.
