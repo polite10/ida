@@ -26,9 +26,22 @@
 #     birleştirmeden önce etiketi bir kez ekler. Gerekçe: her iş Mac'te yerelde derlenip test
 #     edilir; macOS dakikası Windows'unkinin yaklaşık altı katıdır.
 #
+# İş yapısı (2026-11-24 ölçümü: tek iş 60 dakikayı aştı; host-asan tek başına 30-40 dk):
+# Windows iki paralel işe bölünmüştür; ikisi de aynı iş tanımının matris kollarıdır, kurulum
+# adımları (Python, MSVC ortamı, önbellek yolları, vcpkg ikili önbelleğini geri yükleme, vcpkg
+# hazırlığı, sürümler) tek yerde durur.
+#   - `Windows x64` (asan=false): host-debug (+ MSVC /analyze), vcpkg ikili önbelleğini kaydet,
+#     fw-debug, fw-release, statik analiz ve kendi testi, rapor. Arm GNU, cppcheck ve clang-tidy
+#     yalnız bu kolda kurulur. host-debug testleri sırayla koşar (zamanlama ölçütleri burada).
+#   - `Windows x64 (ASan)` (asan=true): yalnız host-asan (yapılandırma, derleme, test). Testler
+#     `ctest -j 2` ile koşar (koşucu 4 sanal çekirdek). vcpkg ikili önbelleğini yalnız geri
+#     yükler, kaydetmez: aynı anahtarı iki iş birden kaydetmeye çalışıp çakışmasın.
+# Her işin süre sınırı ayrı ayrı 60 dakikadır; eşzamanlılık grubu iş akışı düzeyindedir.
+# Matris: https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
+#
 # Kota: depo özeldir ve GitHub Free planındadır (aylık 12 USD dahil kullanım; dakika ücreti
-# Linux 0,006, Windows 0,010, macOS 0,062 USD). İşletim sistemi başına tek iş vardır (iş
-# başına dakika yukarı yuvarlanır) ve araçlar önbelleklenir. Koşucu etiketleri açık
+# Linux 0,006, Windows 0,010, macOS 0,062 USD). Windows iki paralel iştir (iş
+# başına dakika yukarı yuvarlanır; toplam dakika tek işe göre biraz artar) ve araçlar önbelleklenir. Koşucu etiketleri açık
 # sürümlüdür; eylemler commit SHA ile sabittir.
 
 name: derleme
@@ -50,9 +63,17 @@ permissions:
 
 jobs:
   windows:
-    name: Windows x64
+    name: ${{ matrix.ad }}
     runs-on: windows-2025
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ad: Windows x64
+            asan: false
+          - ad: Windows x64 (ASan)
+            asan: true
     defaults:
       run:
         shell: bash
@@ -86,6 +107,7 @@ jobs:
       # kurulan araçlar önbelleğe girer (her CI denemesi kotadan yer).
       - name: Araç önbelleğini geri yükle (Arm GNU 14.3.rel1, cppcheck)
         id: araclar_onbellek
+        if: ${{ !matrix.asan }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.IDA_ARACLAR }}
@@ -100,15 +122,16 @@ jobs:
 
       - name: Arm GNU Toolchain 14.3.rel1
         id: arm
+        if: ${{ !matrix.asan }}
         run: tools/ci/arm-gnu-kur.sh "$IDA_ARACLAR"
 
       - name: cppcheck 2.22.0
         id: cppcheck
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !matrix.asan }}
         run: tools/ci/cppcheck-kur.sh "$IDA_ARACLAR"
 
       - name: Araç önbelleğini kaydet
-        if: ${{ !cancelled() && steps.arm.outcome == 'success' && steps.cppcheck.outcome == 'success' && steps.araclar_onbellek.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.arm.outcome == 'success' && steps.cppcheck.outcome == 'success' && steps.araclar_onbellek.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.IDA_ARACLAR }}
@@ -116,7 +139,7 @@ jobs:
 
       - name: clang-tidy 21.1.6 (pip, özet sabit)
         id: clangtidy
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !matrix.asan }}
         run: |
           python -m pip install --disable-pip-version-check --require-hashes \
             --only-binary=:all: -r tools/ci/gereksinimler-analiz.txt
@@ -134,56 +157,56 @@ jobs:
       # Derleme adımları birbirinden bağımsız koşar: biri başarısız olsa da ötekiler sonuç verir.
       - name: host-debug (derleme, birim testi, sözleşme başlıkları, sınır denetimi; MSVC /analyze)
         id: host_debug
-        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-debug -DIDA_BAGIMLILIK_ZORUNLU=ON -DIDA_MSVC_ANALYZE=ON
           cmake --build --preset host-debug
           ctest --preset host-debug
 
       - name: vcpkg ikili önbelleğini kaydet
-        if: ${{ !cancelled() && steps.host_debug.outcome == 'success' && steps.vcpkg_onbellek.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.host_debug.outcome == 'success' && steps.vcpkg_onbellek.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.vcpkg_onbellek.outputs.cache-primary-key }}
 
       - name: host-asan (ASan)
-        if: ${{ !cancelled() && steps.vcpkg.outcome == 'success' }}
+        if: ${{ !cancelled() && matrix.asan && steps.vcpkg.outcome == 'success' }}
         run: |
           cmake --preset host-asan -DIDA_BAGIMLILIK_ZORUNLU=ON
           cmake --build --preset host-asan
-          ctest --preset host-asan
+          ctest --preset host-asan -j 2
 
       - name: fw-debug (kartsız; GCC -fanalyzer)
-        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-debug
           cmake --build --preset fw-debug
           ctest --preset fw-debug
 
       - name: fw-release (kartsız)
-        if: ${{ !cancelled() && steps.arm.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.arm.outcome == 'success' }}
         run: |
           cmake --preset fw-release
           cmake --build --preset fw-release
           ctest --preset fw-release
 
       - name: Statik analiz (clang-tidy, cppcheck; core/, protocol/ida_link/)
-        if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: |
           mkdir -p build/rapor
           tools/denetim/statik-analiz.sh build/rapor/statik-analiz.txt
 
       - name: Statik analiz denetiminin kendi testi (araç hatası 70, karşı örnek kimlikleri)
-        if: ${{ !cancelled() && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.cppcheck.outcome == 'success' && steps.clangtidy.outcome == 'success' }}
         run: tools/denetim/test/statik_analiz_test.sh
 
       - name: Raporları topla
-        if: always()
+        if: ${{ always() && !matrix.asan }}
         run: tools/ci/rapor-topla.sh build/rapor
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: ${{ always() && !matrix.asan }}
         with:
           name: rapor-windows-x64
           path: build/rapor
