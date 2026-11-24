@@ -845,8 +845,12 @@ int test_baski_altinda_emniyet()
     return d.hata;
 }
 
-// #2 (b), gerçek soketler: hiç okumayan istemci 5 MiB'lık dosya ister, ardından aynı bağlantıdan
-// acil durdurma gönderir; yetkili durum basılı olur.
+// #2 (b), gerçek soketler: hiç okumayan istemci 15 MiB'lık dosya ister, ardından aynı bağlantıdan
+// acil durdurma gönderir; yetkili durum basılı olur ve yanıtlar sırayla gelir. Çıkış baskısının
+// oluşması işletim sisteminin gönderim tamponlamasına bağlıdır (Windows'ta döngü arabiriminde
+// yanıtın tamamı çekirdeğe yazılabildiği görüldü): baskı oluştuysa istek öne alınmış, oluşmadıysa
+// olağan sırada işlenmiş olmalıdır; ikisi de geçerlidir ve tanı satırında yazılır. Baskı yolu
+// platformdan bağımsız olarak soketsiz `baski_altinda_emniyet` testinde belirleyici sınanır.
 int test_baski_altinda_emniyet_soket()
 {
     namespace fs = std::filesystem;
@@ -857,7 +861,7 @@ int test_baski_altinda_emniyet_soket()
     fs::create_directories(kok / "panel");
     {
         std::ofstream f(kok / "panel" / "buyuk.js", std::ios::binary);
-        f << std::string(std::size_t{5} << 20u, 'b');
+        f << std::string(std::size_t{15} << 20u, 'b');  // statik sınır 16 MiB
     }
     SunucuAyari sa;
     sa.statik_kok = kok.string();
@@ -897,7 +901,20 @@ int test_baski_altinda_emniyet_soket()
         basili = y != nullptr && y->bul("acil_durdurma") != nullptr && y->bul("acil_durdurma")->metin == "basili";
     }
     DOGRULA(d, basili, "okumayan bağlantıdaki acil durdurma uygulandı");
-    DOGRULA(d, s.sunucu->sayaclar().baskida_one_alinan >= 1, "baskıda öne alındı");
+    const SunucuSayaclari say = s.sunucu->sayaclar();
+    // Yanıt sırası: önce 15 MiB'lık dosya (200), sonra acil durdurma (202).
+    HttpYanit a;
+    HttpYanit b;
+    const bool a_tamam = yavas.yanit_bekle(a, 20000);
+    const bool b_tamam = yavas.yanit_bekle(b, 5000);
+    const bool baski = say.http_baski_bekleme > 0;
+    std::printf("  TANI: çıkış baskısı %s (http_baski_bekleme %llu, baskida_one_alinan %llu); yanıtlar: %d (%zu B), %d\n",
+                baski ? "oluştu: istek öne alınmış olmalı" : "oluşmadı: işletim sistemi yanıtı tamponladı, istek olağan sırada işlendi",
+                static_cast<unsigned long long>(say.http_baski_bekleme), static_cast<unsigned long long>(say.baskida_one_alinan),
+                a_tamam ? a.durum : -1, a.govde.size(), b_tamam ? b.durum : -1);
+    DOGRULA(d, a_tamam && a.durum == 200 && a.govde.size() == (std::size_t{15} << 20u), "1. yanıt: büyük dosya");
+    DOGRULA(d, b_tamam && b.durum == 202, "2. yanıt: acil durdurma 202");
+    DOGRULA(d, !baski || say.baskida_one_alinan >= 1, "baskı oluştuysa istek öne alındı");
     yavas.kapat();
     fs::remove_all(kok, ec);
     return d.hata;
@@ -1101,8 +1118,21 @@ int test_baglanti_siniri_503()
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     SoketIstemci c(s.sunucu->port());
     HttpYanit y;
-    DOGRULA(d, c.yanit_bekle(y, 2000) && y.durum == 503, "üçüncü bağlantıya 503: " + std::to_string(y.durum));
-    DOGRULA(d, s.sunucu->sayaclar().baglanti_reddi >= 1, "red sayacı");
+    const bool geldi = c.yanit_bekle(y, 2000);
+    // Sayaçlar G/Ç döngüsünün sonunda yayımlanır: 503 istemciye o yayından önce ulaşabilir
+    // (zamanlama yarışı); sayaç koşul beklemesiyle okunur.
+    std::uint64_t red = 0;
+    for (int i = 0; i < 100 && red == 0; ++i) {
+        red = s.sunucu->sayaclar().baglanti_reddi;
+        if (red == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+    std::printf("  TANI: yanıt %s, durum %d, alınan %zu B, kalan tampon %zu B, red sayacı %llu, yer açmak için kapatılan %llu\n",
+                geldi ? "geldi" : "gelmedi", y.durum, y.govde.size(), c.tampon.size(), static_cast<unsigned long long>(red),
+                static_cast<unsigned long long>(s.sunucu->sayaclar().yer_acmak_icin_kapatilan));
+    DOGRULA(d, geldi && y.durum == 503, "üçüncü bağlantıya 503: " + std::to_string(y.durum));
+    DOGRULA(d, red >= 1, "red sayacı");
     return d.hata;
 }
 

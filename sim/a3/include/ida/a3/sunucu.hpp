@@ -57,6 +57,7 @@ struct SunucuSayaclari {
     std::uint64_t baglanti_reddi = 0;            // sınır dolu ve kapatılabilecek bağlantı yok: reddedilen
     std::uint64_t http_sira_tasmasi = 0;         // sıra sınırı aşıldığı için kapanan bağlantı
     std::uint64_t jeton_toplu_gecersiz = 0;      // jeton okunamadığı için istemci jetonları geçersizleşti
+    std::uint64_t http_baski_bekleme = 0;        // HTTP sırası çıkış baskısı yüzünden bekletildi (geçiş sayısı)
 };
 
 class Sunucu {

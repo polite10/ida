@@ -852,6 +852,7 @@ struct Cekirdek::Ic {
                 continue;
             }
             if (b.bekleyen_cikis() > sinir::okuma_esigi) {
+                ++say.http_baski_bekleme;
                 break;
             }
             Baglanti::Bekleyen e = std::move(b.sira.front());
