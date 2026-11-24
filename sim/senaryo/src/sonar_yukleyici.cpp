@@ -2,8 +2,10 @@
 #include "ida/senaryo/sonar_yukleyici.hpp"
 
 #include "ic.hpp"
+#include "ida/senaryo/a7_varlik.hpp"
 
 #include <cmath>
+#include <map>
 
 namespace ida::senaryo {
 
@@ -95,26 +97,20 @@ void akustik_oku(const Deger* ak, sonar::AkustikMalzeme& m, const std::string& y
     }
 }
 
-// `ortam.sahne` statik varlığının sonar sahnesine ilişkin bilgisi (A7 manifestinden).
-struct StatikVarlik {
-    std::string dosya;                 // glTF dosyası (depoda olmayabilir; A7-K06)
-    std::size_t carpisma_agi = 0;      // çarpışma kaynak ağı sayısı (taban + duvarlar + yapılar)
-};
-
-// Taban malzemesi: `ortam.sahne` statik varlığının ilk malzeme ataması (A7), kalibrasyonla.
-// A7 manifesti yeniden okunur; baytların SHA-256'sı doğrulama raporundaki kaynak özetine KOŞULSUZ
-// eşit olmalıdır (A5-K115; W4-bagla-sonar sol #3: doğrulanan manifest ile sonarın okuduğu aynı)
-// ve senaryonun beyan ettiği `kume_surumu` manifestteki değerle aynı kalmalıdır.
-bool taban_malzemesi(const Deger& c, const DosyaKaynagi& kaynak, const DogrulamaRaporu& rapor,
-                     sonar::AkustikMalzeme& m, StatikVarlik& sv, std::string& hata)
+// A7 manifesti (A5-K115): senaryonun `varliklar.kume`sinden yeniden okunur; baytların SHA-256'sı
+// doğrulama raporundaki kaynak özetine KOŞULSUZ eşit olmalıdır (W4-bagla-sonar sol #3: doğrulanan
+// manifest ile sonarın okuduğu aynı), verilmişse `varliklar.manifest_ozeti`'ne eşittir ve beyan
+// edilmişse `varliklar.kume_surumu` manifestteki değerle aynı kalır.
+bool manifest_oku(const Deger& c, const DosyaKaynagi& kaynak, const DogrulamaRaporu& rapor, Deger& manifest,
+                  std::string& kume, std::string& hata)
 {
-    const Deger* kume = c.yol_bul("varliklar.kume");
-    const Deger* sahne = c.yol_bul("ortam.sahne");
-    if (kume == nullptr || !kume->dizgi_mi() || sahne == nullptr || !sahne->dizgi_mi()) {
-        hata = "varliklar.kume ya da ortam.sahne yok";
+    const Deger* k = c.yol_bul("varliklar.kume");
+    if (k == nullptr || !k->dizgi_mi()) {
+        hata = "varliklar.kume yok";
         return false;
     }
-    const std::string yol = "assets/" + kume->dizgi + "/manifest.json";
+    kume = k->dizgi;
+    const std::string yol = "assets/" + kume + "/manifest.json";
     const std::optional<std::string> baytlar = kaynak.oku(yol);
     if (!baytlar) {
         hata = "A7 manifesti okunamadı: " + yol;
@@ -140,7 +136,7 @@ bool taban_malzemesi(const Deger& c, const DosyaKaynagi& kaynak, const Dogrulama
                "uyuşmuyor (A5-K115): " + yol;
         return false;
     }
-    const ic::JsonOkuma j = ic::json_oku(*baytlar, 0);
+    ic::JsonOkuma j = ic::json_oku(*baytlar, 0);
     if (!j.kok) {
         hata = "A7 manifesti ayrıştırılamadı: " + j.hata;
         return false;
@@ -152,59 +148,168 @@ bool taban_malzemesi(const Deger& c, const DosyaKaynagi& kaynak, const Dogrulama
             return false;
         }
     }
-    const Deger* varliklar = j.kok->bul("varliklar");
-    const Deger* statik = nullptr;
-    if (varliklar != nullptr && varliklar->dizi_mi()) {
-        for (const Deger& v : varliklar->dizi) {
-            const Deger* k = v.bul("kimlik");
-            const Deger* t = v.bul("tur");
-            if (k != nullptr && k->dizgi_mi() && k->dizgi == sahne->dizgi && t != nullptr && t->dizgi_mi() &&
-                t->dizgi == "statik") {
-                statik = &v;
-            }
-        }
-    }
-    if (statik != nullptr) {
-        if (const Deger* d = statik->bul("dosya"); d != nullptr && d->dizgi_mi()) {
-            sv.dosya = d->dizgi;
-        }
-        if (const Deger* ca = statik->bul("carpisma"); ca != nullptr && ca->dizi_mi()) {
-            sv.carpisma_agi = ca->dizi.size();
-        }
-    }
-    const Deger* atama = statik != nullptr ? statik->bul("malzeme_atamasi") : nullptr;
-    if (atama == nullptr || !atama->dizi_mi() || atama->dizi.empty()) {
-        hata = "A7 statik varlığının malzeme ataması yok: " + sahne->dizgi;
-        return false;
-    }
-    const Deger* mk = atama->dizi.front().bul("malzeme");
-    if (mk == nullptr || !mk->dizgi_mi()) {
-        hata = "A7 malzeme ataması geçersiz: " + sahne->dizgi;
-        return false;
-    }
-    m.kimlik = mk->dizgi;
-    const Deger* malzemeler = j.kok->bul("malzemeler");
+    manifest = std::move(*j.kok);
+    return true;
+}
+
+// A7 malzemesinin akustik alanları (A7 §3.4); `kalibrasyon.malzeme.<kimlik>.akustik` geçersiz kılar
+// (A5-K13). Bilinmeyen malzemeye varsayılan verilmez (A7-K28; 05 §4).
+bool akustik_malzeme(const Deger& c, const Deger& manifest, const std::string& kimlik, sonar::AkustikMalzeme& m,
+                     std::string& hata)
+{
+    m = sonar::AkustikMalzeme{};
+    m.kimlik = kimlik;
     bool bulundu = false;
-    if (malzemeler != nullptr && malzemeler->dizi_mi()) {
-        for (const Deger& x : malzemeler->dizi) {
+    if (const Deger* ml = manifest.bul("malzemeler"); ml != nullptr && ml->dizi_mi()) {
+        for (const Deger& x : ml->dizi) {
             const Deger* k = x.bul("kimlik");
-            if (k != nullptr && k->dizgi_mi() && k->dizgi == m.kimlik) {
-                akustik_oku(x.bul("akustik"), m, yol + ": malzemeler." + m.kimlik + ".akustik", hata);
+            if (k != nullptr && k->dizgi_mi() && k->dizgi == kimlik) {
+                akustik_oku(x.bul("akustik"), m, "A7 malzemeler." + kimlik + ".akustik", hata);
                 bulundu = true;
             }
         }
     }
     if (!bulundu) {
-        hata = "A7 manifestinde malzeme yok: " + m.kimlik;
+        hata = "A7 manifestinde malzeme yok: " + kimlik;
         return false;
     }
-    // A5-K13: kalibrasyon.malzeme.<kimlik>.akustik A7 değerini geçersiz kılar.
     if (const Deger* km = c.yol_bul("kalibrasyon.malzeme"); km != nullptr) {
-        if (const Deger* x = km->bul(m.kimlik); x != nullptr) {
-            akustik_oku(x->bul("akustik"), m, "kalibrasyon.malzeme." + m.kimlik + ".akustik", hata);
+        if (const Deger* x = km->bul(kimlik); x != nullptr) {
+            akustik_oku(x->bul("akustik"), m, "kalibrasyon.malzeme." + kimlik + ".akustik", hata);
         }
     }
     return hata.empty();
+}
+
+// Sonar sahnesi (W4-sonar-sahne): su yüzeyi + `ortam.sahne` statik varlığı + `hedefler`; ağlar A7
+// varlıklarından (A7-K27: akustik[] doluysa SON_*, boşsa COL_* kaynak ağları), malzeme üçgen başına
+// (A7-K28). Yüklenemeyen varlık A7'nin hata koduyla açık hatadır (A7-K51; sessiz atlama yok).
+bool sahne_kur(const Deger& c, const DosyaKaynagi& kaynak, const DogrulamaRaporu& rapor, SonarKurulumu& k,
+               std::string& hata)
+{
+    using namespace sonar;
+    Deger manifest;
+    std::string kume;
+    if (!manifest_oku(c, kaynak, rapor, manifest, kume, hata)) {
+        return false;
+    }
+    AgSahnesi& s = *k.sahne;
+    if (!s.su_yuzeyi_ekle(kSuYuzeyiGovdesi, s.malzeme_ekle(HavuzTanimi::su_yuzeyi_malzemesi()), &hata)) {
+        return false;
+    }
+    std::map<std::string, std::uint16_t> malzeme_indisi;   // A7 kimliği → sahne malzemesi
+    std::map<std::string, A7Varlik> yuklu;                  // varlık kimliği → tek yükleme
+    auto yukle = [&](const std::string& kimlik) -> const A7Varlik* {
+        if (const auto it = yuklu.find(kimlik); it != yuklu.end()) {
+            return &it->second;
+        }
+        A7Hata h;
+        std::optional<A7Varlik> v = a7_varlik_yukle(manifest, kume, kimlik, kaynak, h);
+        if (!v) {
+            hata = h.metin();
+            return nullptr;
+        }
+        return &yuklu.emplace(kimlik, std::move(*v)).first->second;
+    };
+    auto ag = [&](const A7Varlik& v, UcgenAgi& u) {
+        for (const A7Ag& a : v.akustik) {
+            const auto taban = static_cast<std::uint32_t>(u.koseler.size());
+            u.koseler.insert(u.koseler.end(), a.koseler.begin(), a.koseler.end());
+            for (std::size_t i = 0; i < a.ucgenler.size(); ++i) {
+                u.ucgenler.push_back({taban + a.ucgenler[i][0], taban + a.ucgenler[i][1], taban + a.ucgenler[i][2]});
+                const std::string& mk = v.malzemeler[a.ucgen_malzeme[i]];
+                auto it = malzeme_indisi.find(mk);
+                if (it == malzeme_indisi.end()) {
+                    AkustikMalzeme m;
+                    if (!akustik_malzeme(c, manifest, mk, m, hata)) {
+                        return false;
+                    }
+                    it = malzeme_indisi.emplace(mk, s.malzeme_ekle(m)).first;
+                }
+                u.malzeme.push_back(it->second);
+            }
+        }
+        return true;
+    };
+    // Statik sahne varlığı (`ortam.sahne`) `ortam.sahne_poz` pozunda (A5 §3.9; A2 `statik_p_n`).
+    {
+        const Deger* sa = c.yol_bul("ortam.sahne");
+        if (sa == nullptr || !sa->dizgi_mi()) {
+            hata = "ortam.sahne yok";
+            return false;
+        }
+        const A7Varlik* v = yukle(sa->dizgi);
+        if (v == nullptr) {
+            return false;
+        }
+        AgGovdesi g;
+        g.kimlik = kStatikGovde;
+        const Okur poz(c.yol_bul("ortam.sahne_poz"), "ortam.sahne_poz", hata);
+        poz.vek("konum", g.konum);
+        poz.vek("yonelim", g.yonelim);
+        if (!hata.empty() || !ag(*v, g.ag) || !s.govde_ekle(g, &hata)) {
+            return false;
+        }
+    }
+    // Hedefler (A5 §3.10): yalnız akustik yansıtıcı cisim. Kinematik hareketin belirlenimci türleri
+    // (sabit, sabit_hiz, sinus) sahnede uygulanır; rastgele yürüyüş ve rastgele başlangıç yaw'ı A5
+    // Ek D akışı ister ve bu dilimde yürütülmez (açık hata).
+    if (const Deger* hl = c.bul("hedefler"); hl != nullptr && hl->tablo_mu()) {
+        for (const auto& [ad, h] : hl->tablo) {
+            const std::string yol = "hedefler." + ad;
+            const Okur o(&h, yol, hata);
+            const std::string varlik = o.dizgi("varlik");
+            std::int64_t kimlik = -1;
+            o.tam("kimlik", kimlik);
+            bool rastgele = false;
+            o.mantik("yonelim_rastgele", rastgele);
+            if (!hata.empty()) {
+                return false;
+            }
+            if (rastgele) {
+                hata = yol + ".yonelim_rastgele = true: rastgele başlangıç yaw'ı (A5 Ek D.4) bu dilimde sonar sahnesinde "
+                             "yürütülmez";
+                return false;
+            }
+            if (kimlik < 0 || kimlik > 65535) {
+                hata = yol + ".kimlik geçersiz";
+                return false;
+            }
+            AgGovdesi g;
+            g.kimlik = hedef_govde_kimligi(static_cast<std::uint16_t>(kimlik));
+            o.vek("konum", g.konum);
+            o.vek("yonelim", g.yonelim);
+            const Okur hr(h.bul("hareket"), yol + ".hareket", hata);
+            const std::string tur = hr.dizgi("tur");
+            if (tur.empty() || tur == "sabit") {
+                g.hareket.tur = HareketTuru::sabit;
+            } else if (tur == "sabit_hiz") {
+                g.hareket.tur = HareketTuru::sabit_hiz;
+                hr.vek("hiz_ned", g.hareket.hiz_ned);
+            } else if (tur == "sinus") {
+                g.hareket.tur = HareketTuru::sinus;
+                hr.vek("genlik_ned", g.hareket.genlik_ned);
+                hr.tam("periyot_ns", g.hareket.periyot_ns);
+                hr.sayi("faz", g.hareket.faz);
+            } else {
+                hata = yol + ".hareket.tur = " + tur + ": rastgele yürüyüş (A5 Ek D akışı) bu dilimde sonar sahnesinde "
+                             "yürütülmez";
+                return false;
+            }
+            if (!hata.empty()) {
+                return false;
+            }
+            const A7Varlik* v = yukle(varlik);
+            if (v == nullptr) {
+                return false;
+            }
+            if (!ag(*v, g.ag) || !s.govde_ekle(g, &hata)) {
+                return false;
+            }
+            k.hedef_govdeleri.emplace_back(ad, g.kimlik);
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -302,52 +407,15 @@ std::optional<SonarKurulumu> sonar_kur(const DogrulanmisSenaryo& dogrulanmis, co
     if (const Deger* t = c.yol_bul("rastgelelik.ana_tohum"); t != nullptr && t->tur == Tur::tamsayi) {
         a.ana_tohum = static_cast<std::uint64_t>(t->tam);
     }
-    // Sahne: su yüzeyi ve düz taban (`ortam.derinlik`).
-    double derinlik = 0.0;
-    ortam.sayi("derinlik", derinlik);
-    AkustikMalzeme taban;
-    StatikVarlik sv;
-    if (hata.empty() && k.etkin_sayisi > 0) {
-        (void)taban_malzemesi(c, kaynak, rapor, taban, sv, hata);
-    }
     if (!hata.empty()) {
         if (hata_cikti != nullptr) *hata_cikti = hata;
         return std::nullopt;
     }
-    k.sahne = std::make_shared<CozumselSahne>();
-    if (k.etkin_sayisi > 0) {
-        if (!(derinlik > 0.0) || !std::isfinite(derinlik)) {
-            if (hata_cikti != nullptr) *hata_cikti = "ortam.derinlik > 0 olmalı (sonar sahnesi)";
-            return std::nullopt;
-        }
-        // W4-bagla-sonar sol #4 (b): sahnenin sonar modelinin izleyemediği geometrisi (A7 glTF ağları;
-        // depoda yok, A7-K06) atlanmaz; senaryo sonar açıkken yürütülemez. Senaryo ve manifest havuz
-        // duvarlarını analitik olarak vermez (A7 `sinir_kutusu_govde_m` ağların dış sınır kutusudur,
-        // duvarın iç yüzü değil; uydurulmaz). İzlenebilen yalnız su yüzeyi ve `ortam.derinlik`'teki düz
-        // tabandır (A5-K36 ile `taban_derinligi_m`'ye bağlı).
-        const Deger* h = c.bul("hedefler");
-        const bool hedef_var = h != nullptr && h->tablo_mu() && !h->tablo.empty();
-        const Deger* tur = c.yol_bul("ortam.tur");
-        const bool havuz = tur != nullptr && tur->dizgi_mi() && tur->dizgi == "havuz";
-        const std::string sahne_adi = c.yol_bul("ortam.sahne") != nullptr ? c.yol_bul("ortam.sahne")->dizgi : "";
-        std::string neden;
-        if (havuz) {
-            neden = "ortam.tur = havuz: havuz duvarları yalnız A7 ağında (" + sv.dosya + ") tanımlı";
-        } else if (sv.carpisma_agi > 1u) {
-            neden = "ortam.sahne " + sahne_adi + " tabandan başka " + std::to_string(sv.carpisma_agi - 1u) +
-                    " çarpışma ağı taşıyor (" + sv.dosya + ")";
-        } else if (hedef_var) {
-            neden = "hedef gövdeleri yalnız A7 ağlarında tanımlı";
-        }
-        if (!neden.empty()) {
-            if (hata_cikti != nullptr) {
-                *hata_cikti = "sonar sahnesi kurulamaz: " + neden +
-                              "; sonar modeli bu geometriyi izleyemez (yalnız su yüzeyi ve düz taban), atlanmaz "
-                              "(W4-bagla-sonar sol #4)";
-            }
-            return std::nullopt;
-        }
-        acik_su_ekle(*k.sahne, derinlik, taban);
+    // Sahne yalnız etkin sonar varken kurulur (manifest ve varlıklar o zaman okunur).
+    k.sahne = std::make_shared<AgSahnesi>();
+    if (k.etkin_sayisi > 0 && !sahne_kur(c, kaynak, rapor, k, hata)) {
+        if (hata_cikti != nullptr) *hata_cikti = "sonar sahnesi kurulamaz: " + hata;
+        return std::nullopt;
     }
     return k;
 }

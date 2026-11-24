@@ -1,7 +1,13 @@
-// W4-bagla-sonar: sonar yükleyici (çözümlenmiş senaryo → sonar kümesi ayarı ve sahne).
+// W4-bagla-sonar, W4-sonar-sahne: sonar yükleyici (çözümlenmiş senaryo → sonar kümesi ayarı ve sahne).
 // Yalnız sim/sonar depoda varken derlenir.
 //
 //   ida_senaryo_sonar_test sonar_yukleyici <depo kökü>
+//   ida_senaryo_sonar_test sonar_sahne_havuz_duvari | sonar_sahne_hedef | sonar_sahne_k27 <depo kökü>
+//                                                      (test_sonar_sahne.cpp; W4-sonar-sahne kabul 1–3)
+//
+// Senaryo: scenarios/sonar-havuz.toml ve A7 kümesi `havuz` (assets/havuz; gerçek dosyalar bellekte).
+// Uygunluk örneği `ornek`i gösteren ornek-havuz.toml sonar açıkken A7 hatasıyla reddedilir.
+#include "glb_yazici.hpp"
 #include "ida/senaryo/sonar_yukleyici.hpp"
 #include "ida/sonar/sonar_kumesi.hpp"
 #include "test_destek.hpp"
@@ -9,35 +15,32 @@
 #include <cstring>
 #include <variant>
 
+namespace ida::sonar::test {
+int test_sonar_sahne_havuz_duvari(const std::string& kok);
+int test_sonar_sahne_hedef(const std::string& kok);
+int test_sonar_sahne_k27(const std::string& kok);
+}  // namespace ida::sonar::test
+
 namespace ida::senaryo::test {
 
 namespace {
 
-// `sonar_kaynagi`: sonarın manifesti yeniden okuduğu kaynak (verilmezse çözümleyicininki; farklıysa
-// iki okuma arasında değişen kaynağın benzetimi).
-std::optional<SonarKurulumu> kur(const BellekKaynagi& kaynak, std::string* hata,
+constexpr const char* kSonarSenaryo = "scenarios/sonar-havuz.toml";
+constexpr const char* kHavuzManifest = "assets/havuz/manifest.json";
+
+// `sonar_kaynagi`: sonarın manifesti ve varlıkları yeniden okuduğu kaynak (verilmezse çözümleyicininki;
+// farklıysa iki okuma arasında değişen kaynağın benzetimi).
+std::optional<SonarKurulumu> kur(const BellekKaynagi& kaynak, const char* yol, std::string* hata,
                                  const DosyaKaynagi* sonar_kaynagi = nullptr)
 {
-    const CozumSonucu s = senaryo_coz(kaynak, kSenaryo);
+    const CozumSonucu s = senaryo_coz(kaynak, yol);
     if (!s.cozumlenmis) {
         std::printf("%s", bulgu_ozeti(s.rapor).c_str());
+        if (hata != nullptr) *hata = "senaryo geçersiz";
         return std::nullopt;
     }
     return sonar_kur(*s.cozumlenmis, sonar_kaynagi != nullptr ? *sonar_kaynagi : kaynak, s.rapor, hata);
 }
-
-// W4-bagla-sonar sol #4 (b): sonarın izleyebildiği sahne yalnız su yüzeyi ve düz tabandır. Kabul yolu
-// için ornek-havuz açık suya çevrilir ve A7 manifestinin bellekteki kopyasına tek tabanlı (yalnız
-// `COL_taban`) bir statik varlık eklenir; hedef çıkarılır; su değerleri havuzdakiyle aynı.
-const char* const kDenizVarligi =
-    R"({ "kimlik": "deniz_ornek", "tur": "statik", "dosya": "deniz_ornek.glb", )"
-    R"("sha256": "0000000000000000000000000000000000000000000000000000000000000000", "bayt": 20, )"
-    R"("taban_derinligi_m": 3.0, "referans": { "dugum": 0, "ad": "REF" }, )"
-    R"("sinir_kutusu_govde_m": { "en_kucuk": [-50.0, -50.0, -0.5], "en_buyuk": [50.0, 50.0, 3.2] }, )"
-    R"("malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "havuz_beton" } ], )"
-    R"("gorsel": [ { "dugum": 1, "ad": "taban", "kosul": "her_zaman" } ], )"
-    R"("carpisma": [ { "dugum": 2, "ad": "COL_taban", "ayristirma": "yok" } ] },)"
-    "\n    ";
 
 std::string degistir1(Denetci& d, const std::string& metin, const std::string& eski, const std::string& yeni)
 {
@@ -46,53 +49,45 @@ std::string degistir1(Denetci& d, const std::string& metin, const std::string& e
     return o.value_or(metin);
 }
 
-BellekKaynagi deniz_kaynagi(Denetci& d, const BellekKaynagi& temel, bool hedef_kalsin = false)
+BellekKaynagi havuz_kaynagi(const TestBaglami& b)
 {
-    BellekKaynagi b = temel;
-    b.dosyalar[kManifest] = degistir1(d, b.dosyalar[kManifest], "\"varliklar\": [\n    ",
-                                      std::string("\"varliklar\": [\n    ") + kDenizVarligi);
-    std::string m = degistir1(d, b.dosyalar[kSenaryo], "tur = \"havuz\"\nsahne = \"havuz_ornek\"",
-                              "tur = \"acik_su\"\nsahne = \"deniz_ornek\"");
-    if (const std::size_t i = m.find("manifest_ozeti = \""); i != std::string::npos) {
-        m.erase(i, m.find('\n', i) + 1u - i);
+    BellekKaynagi k;
+    for (const char* y : {kSonarSenaryo, kArac, kHavuzManifest, "assets/havuz/ida0.glb", "assets/havuz/torpido_ida0.glb",
+                          "assets/havuz/hedef_ornek.glb", "assets/havuz/havuz_ornek.glb"}) {
+        k.dosyalar[y] = dosya_oku(b.kok + "/" + y);
     }
-    m = degistir1(d, m, "[ortam.su]\n", "[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n");
-    if (!hedef_kalsin) {
-        const std::size_t h = m.find("[hedefler.h1]");
-        const std::size_t g = m.find("[gorev]");
-        DOGRULA(d, h != std::string::npos && g != std::string::npos && h < g, "ornek-havuz hedef bloğu");
-        if (h != std::string::npos && g != std::string::npos && h < g) {
-            m.erase(h, g - h);
-        }
+    return k;
+}
+
+std::string ozetsiz(Denetci& d, const std::string& m)
+{
+    const std::size_t i = m.find("manifest_ozeti = \"");
+    DOGRULA(d, i != std::string::npos, "senaryoda manifest_ozeti");
+    return i == std::string::npos ? m : m.substr(0, i) + m.substr(m.find('\n', i) + 1u);
+}
+
+const sonar::AkustikMalzeme* malzeme_bul(const sonar::AgSahnesi& s, const std::string& kimlik)
+{
+    for (std::size_t i = 0; i < s.malzeme_sayisi(); ++i) {
+        if (s.malzeme(static_cast<std::uint16_t>(i)).kimlik == kimlik) return &s.malzeme(static_cast<std::uint16_t>(i));
     }
-    b.dosyalar[kSenaryo] = m;
-    return b;
+    return nullptr;
 }
 
 int test_sonar_yukleyici(const TestBaglami& tb)
 {
     Denetci d;
-    const BellekKaynagi havuz = temel_kaynak(tb);
     std::string hata;
-    // Sol #4 (b): havuz duvarları, havuz sahnesinin duvar ağları ve hedef gövdeleri atlanmaz: ret.
+    // Uygunluk örneği (ikili dosyası yok): A7'nin kendi nedeniyle açık hata (A7-K06/K51).
     {
-        const auto x = kur(havuz, &hata);
-        DOGRULA(d, !x && hata.find("havuz duvarları") != std::string::npos && hata.find("sol #4") != std::string::npos,
-                "ortam.tur = havuz reddedilir: " + hata);
-        BellekKaynagi b = havuz;
-        b.dosyalar[kSenaryo] = degistir1(d, b.dosyalar[kSenaryo], "tur = \"havuz\"\n", "tur = \"acik_su\"\n");
-        hata.clear();
-        const auto y = kur(b, &hata);
-        DOGRULA(d, !y && hata.find("4 çarpışma ağı") != std::string::npos,
-                "açık su + havuz_ornek (duvar ağları) reddedilir: " + hata);
-        hata.clear();
-        const auto z = kur(deniz_kaynagi(d, havuz, true), &hata);
-        DOGRULA(d, !z && hata.find("hedef gövdeleri") != std::string::npos, "hedef gövdesi reddedilir: " + hata);
+        const auto x = kur(temel_kaynak(tb), kSenaryo, &hata);
+        DOGRULA(d, !x && hata.find("EKSIK_VARLIK") != std::string::npos && hata.find("havuz_ornek") != std::string::npos,
+                "ornek-havuz (yer tutucu küme) reddedilir: " + hata);
     }
-    const BellekKaynagi temel = deniz_kaynagi(d, havuz);
+    const BellekKaynagi temel = havuz_kaynagi(tb);
     hata.clear();
-    const auto k = kur(temel, &hata);
-    DOGRULA(d, k.has_value(), "açık su (deniz_ornek) sonar kurulumu: " + hata);
+    const auto k = kur(temel, kSonarSenaryo, &hata);
+    DOGRULA(d, k.has_value(), "sonar-havuz (havuz kümesi) sonar kurulumu: " + hata);
     if (!k) {
         return d.hata;
     }
@@ -124,19 +119,26 @@ int test_sonar_yukleyici(const TestBaglami& tb)
                     "ping360 profili A5 Ek E ile");
         }
     }
-    DOGRULA(d, k->ayar.kademe == sonar::SonarKademesi::sade && k->ayar.ana_tohum == 1u, "kademe sade, tohum 1");
+    DOGRULA(d, k->ayar.kademe == sonar::SonarKademesi::sade && k->ayar.ana_tohum == 7u, "kademe sade, tohum 7");
     DOGRULA(d, k->ayar.ortam.su.sicaklik_c == 20.0 && k->ayar.ortam.su.tuzluluk == 0.0 && !k->ayar.ortam.su.ses_hizi,
             "ortam.su (ses hızı verilmemiş: W4-K1 formülü)");
-    // Sahne: taban 3 m, A7 havuz_beton malzemesi; atlanan öğe yok (uyarı yok).
-    bool taban = false;
-    for (const auto& g : k->sahne->govdeler()) {
-        if (g.sekil.tur == sonar::SekilTuru::duzlem && g.konum[2] == 3.0) {
-            const auto& m = k->sahne->malzeme(g.malzemeler.front());
-            taban = m.kimlik == "havuz_beton" && m.geri_sacilim_mu == 0.02 && m.gelis_yasasi == sonar::GelisYasasi::cos1;
-        }
+    // Sahne: su yüzeyi + havuz_ornek ağları (taban ve dört duvar, 60 üçgen), A7 havuz_beton malzemesi; hedef yok.
+    {
+        const sonar::AkustikMalzeme* m = malzeme_bul(*k->sahne, "havuz_beton");
+        DOGRULA(d, k->sahne->su_yuzeyi_var() && k->sahne->govde_sayisi() == 1u &&
+                       k->sahne->ucgen_sayisi(kStatikGovde) == 60u && k->hedef_govdeleri.empty(),
+                "sahne: su yüzeyi + havuz (60 üçgen)");
+        DOGRULA(d, m != nullptr && m->geri_sacilim_mu == 0.02 && m->gelis_yasasi == sonar::GelisYasasi::cos1,
+                "havuz_beton A7 değerleriyle");
+        // Taban 3 m'de (geometriden; A7-K56): aşağı bakan ışın.
+        sonar::Vurus v;
+        DOGRULA(d, k->sahne->kesis({0.0, 0.0, 1.0}, {0.0, 0.0, 1.0}, 1e-9, 10.0, 0, 0.01, v) && std::abs(v.t - 2.0) < 1e-6 &&
+                       v.govde == kStatikGovde,
+                "taban z = 3 m (ağdan)");
+        DOGRULA(d, k->sahne->kesis({0.0, 0.0, 1.0}, {0.0, 1.0, 0.0}, 1e-9, 10.0, 0, 0.01, v) && std::abs(v.t - 6.25) < 1e-6,
+                "doğu duvarı y = 6,25 m (ağdan)");
+        DOGRULA(d, k->uyarilar.empty(), "uyarı yok");
     }
-    DOGRULA(d, taban, "taban düzlemi ortam.derinlik'te, A7 malzemesiyle");
-    DOGRULA(d, k->uyarilar.empty(), "sahne eksiksiz (atlama uyarısı yok)");
     {
         sonar::SonarKumesi s;
         const auto r = s.kur(k->ayar, k->sahne);
@@ -146,59 +148,101 @@ int test_sonar_yukleyici(const TestBaglami& tb)
     // Kalibrasyon geçersiz kılması (A5-K13).
     {
         BellekKaynagi b = temel;
-        b.dosyalar[kSenaryo] = *degistir(b.dosyalar[kSenaryo], "[rastgelelik]",
-                                         "[kalibrasyon.malzeme.havuz_beton.akustik]\ngeri_sacilim_mu = 0.05\n"
-                                         "gelis_yasasi = \"lambert_cos2\"\n\n[rastgelelik]");
-        const auto x = kur(b, &hata);
-        bool ok = false;
-        if (x) {
-            for (const auto& g : x->sahne->govdeler()) {
-                const auto& m = x->sahne->malzeme(g.malzemeler.front());
-                ok = ok || (m.kimlik == "havuz_beton" && m.geri_sacilim_mu == 0.05 &&
-                            m.gelis_yasasi == sonar::GelisYasasi::lambert_cos2);
-            }
-        }
-        DOGRULA(d, ok, "kalibrasyon.malzeme A7 değerini geçersiz kılar: " + hata);
+        b.dosyalar[kSonarSenaryo] = degistir1(d, b.dosyalar[kSonarSenaryo], "[rastgelelik]",
+                                              "[kalibrasyon.malzeme.havuz_beton.akustik]\ngeri_sacilim_mu = 0.05\n"
+                                              "gelis_yasasi = \"lambert_cos2\"\n\n[rastgelelik]");
+        hata.clear();
+        const auto x = kur(b, kSonarSenaryo, &hata);
+        const sonar::AkustikMalzeme* m = x ? malzeme_bul(*x->sahne, "havuz_beton") : nullptr;
+        DOGRULA(d, m != nullptr && m->geri_sacilim_mu == 0.05 && m->gelis_yasasi == sonar::GelisYasasi::lambert_cos2,
+                "kalibrasyon.malzeme A7 değerini geçersiz kılar: " + hata);
     }
     // Tam kademe: bu dilimde yürütülemez.
     {
         BellekKaynagi b = temel;
-        b.dosyalar[kSenaryo] = *degistir(b.dosyalar[kSenaryo], "sonar = \"sade\"", "sonar = \"tam\"\nsonar_tam = { isin_sayisi = 20000 }");
+        b.dosyalar[kSonarSenaryo] = degistir1(d, b.dosyalar[kSonarSenaryo], "sonar = \"sade\"",
+                                              "sonar = \"tam\"\nsonar_tam = { isin_sayisi = 20000 }");
         hata.clear();
-        const auto x = kur(b, &hata);
+        const auto x = kur(b, kSonarSenaryo, &hata);
         DOGRULA(d, !x && hata.find("kalite.sonar = tam") != std::string::npos, "tam kademe reddedilir: " + hata);
     }
     // Manifest özeti uyuşmazlığı (sonarın okuduğu manifest senaryonun beyanından farklı).
     {
-        BellekKaynagi farkli = havuz;
-        farkli.dosyalar[kManifest] += "\n";
+        BellekKaynagi farkli = temel;
+        farkli.dosyalar[kHavuzManifest] += "\n";
         hata.clear();
-        const auto x = kur(havuz, &hata, &farkli);
+        const auto x = kur(temel, kSonarSenaryo, &hata, &farkli);
         DOGRULA(d, !x && hata.find("A5-K115") != std::string::npos, "manifest özeti uyuşmazlığı reddedilir: " + hata);
     }
-    // Sol #3: senaryo manifest_ozeti beyan etmese de (temel: açık su biçimi, özet yok) iki okuma arasında
-    // değişen manifest (kume_surumu 1 → 2) doğrulama raporundaki kaynak özetiyle karşılaştırılıp reddedilir.
+    // Sol #3: senaryo manifest_ozeti beyan etmese de iki okuma arasında değişen manifest (kume_surumu
+    // 1 → 2) doğrulama raporundaki kaynak özetiyle karşılaştırılıp reddedilir.
     {
-        DOGRULA(d, temel.dosyalar.at(kSenaryo).find("manifest_ozeti") == std::string::npos, "temel senaryoda özet beyanı yok");
-        BellekKaynagi farkli = temel;
-        farkli.dosyalar[kManifest] =
-            degistir1(d, farkli.dosyalar[kManifest], "\"kume_surumu\": 1,", "\"kume_surumu\": 2,");
+        BellekKaynagi b = temel;
+        b.dosyalar[kSonarSenaryo] = ozetsiz(d, b.dosyalar[kSonarSenaryo]);
+        BellekKaynagi farkli = b;
+        farkli.dosyalar[kHavuzManifest] =
+            degistir1(d, farkli.dosyalar[kHavuzManifest], "\"kume_surumu\": 1,", "\"kume_surumu\": 2,");
         hata.clear();
-        const auto x = kur(temel, &hata, &farkli);
+        const auto x = kur(b, kSonarSenaryo, &hata, &farkli);
         DOGRULA(d, !x && hata.find("doğrulamadan sonra değişti") != std::string::npos && hata.find("A5-K115") != std::string::npos,
                 "iki okuma arasında değişen manifest reddedilir (özet beyansız): " + hata);
     }
-    // Sonarlar kapalıysa sahne kurulmaz, manifest okunmaz.
+    // A7-K06: varlık dosyasının tek baytı değişmiş (manifest aynı) → OZET_UYUSMAZ; dosya yok → EKSIK_VARLIK.
     {
         BellekKaynagi b = temel;
-        b.dosyalar[kSenaryo] = *degistir(b.dosyalar[kSenaryo], "[arac.sensorler.kamera0]",
-                                         "[arac.sensorler.ping1d0]\netkin = false\n\n[arac.sensorler.ping360_0]\n"
-                                         "etkin = false\n\n[arac.sensorler.kamera0]");
+        std::string& g = b.dosyalar["assets/havuz/havuz_ornek.glb"];
+        g[g.size() / 2] = static_cast<char>(g[g.size() / 2] ^ 0x01);
+        hata.clear();
+        const auto x = kur(b, kSonarSenaryo, &hata);
+        DOGRULA(d, !x && hata.find("OZET_UYUSMAZ") != std::string::npos && hata.find("havuz_ornek") != std::string::npos,
+                "değişmiş havuz_ornek.glb reddedilir: " + hata);
+        b.dosyalar.erase("assets/havuz/havuz_ornek.glb");
+        hata.clear();
+        const auto y = kur(b, kSonarSenaryo, &hata);
+        DOGRULA(d, !y && hata.find("EKSIK_VARLIK") != std::string::npos, "eksik havuz_ornek.glb reddedilir: " + hata);
+    }
+    // Sonarlar kapalıysa sahne kurulmaz, manifest ve varlıklar okunmaz.
+    {
+        BellekKaynagi b = temel;
+        b.dosyalar[kSonarSenaryo] = degistir1(d, b.dosyalar[kSonarSenaryo], "[arac.sensorler.kamera0]",
+                                              "[arac.sensorler.ping1d0]\netkin = false\n\n[arac.sensorler.ping360_0]\n"
+                                              "etkin = false\n\n[arac.sensorler.kamera0]");
+        b.dosyalar[kSonarSenaryo] = ozetsiz(d, b.dosyalar[kSonarSenaryo]);
         BellekKaynagi bos;
         hata.clear();
-        const CozumSonucu s = senaryo_coz(b, kSenaryo);
+        const CozumSonucu s = senaryo_coz(b, kSonarSenaryo);
         const auto x = s.cozumlenmis ? sonar_kur(*s.cozumlenmis, bos, s.rapor, &hata) : std::nullopt;
-        DOGRULA(d, x && x->etkin_sayisi == 0u && x->sahne->govdeler().empty(), "etkin sonar yok: sahne boş " + hata);
+        DOGRULA(d, x && x->etkin_sayisi == 0u && x->sahne->govde_sayisi() == 0u && !x->sahne->su_yuzeyi_var(),
+                "etkin sonar yok: sahne boş " + hata);
+    }
+    // Açık su: bellekte kutu tabanlı bir statik varlık (gerçek GLB baytları, özetli; taban 3 m).
+    {
+        GlbAyar ga;
+        ga.dugumler = {{"taban", true, {-50.0, -50.0, 3.0}, {50.0, 50.0, 3.5}},
+                       {"COL_taban", true, {-50.0, -50.0, 3.0}, {50.0, 50.0, 3.5}}};
+        const std::string glb = glb_yaz(ga);
+        BellekKaynagi b = temel;
+        b.dosyalar["assets/havuz/deniz_ornek.glb"] = glb;
+        b.dosyalar[kHavuzManifest] = degistir1(
+            d, b.dosyalar[kHavuzManifest], "\"varliklar\": [\n    ",
+            std::string("\"varliklar\": [\n    ") + R"({"kimlik":"deniz_ornek","tur":"statik","dosya":"deniz_ornek.glb",)" +
+                R"("sha256":")" + sha256_hex(glb) + R"(","bayt":)" + std::to_string(glb.size()) +
+                R"(,"taban_derinligi_m":3.0,"referans":{"dugum":0,"ad":"REF"},)"
+                R"("sinir_kutusu_govde_m":{"en_kucuk":[-50,-50,3],"en_buyuk":[50,50,3.5]},)"
+                R"("malzeme_atamasi":[{"gltf_malzeme":0,"malzeme":"havuz_beton"}],)"
+                R"("gorsel":[{"dugum":1,"ad":"taban","kosul":"her_zaman"}],)"
+                R"("carpisma":[{"dugum":2,"ad":"COL_taban","ayristirma":"yok"}]},)"
+                "\n    ");
+        std::string m = ozetsiz(d, b.dosyalar[kSonarSenaryo]);
+        m = degistir1(d, m, "tur = \"havuz\"\nsahne = \"havuz_ornek\"", "tur = \"acik_su\"\nsahne = \"deniz_ornek\"");
+        m = degistir1(d, m, "[ortam.su]\n", "[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n");
+        b.dosyalar[kSonarSenaryo] = m;
+        hata.clear();
+        const auto x = kur(b, kSonarSenaryo, &hata);
+        sonar::Vurus v;
+        DOGRULA(d, x && x->sahne->ucgen_sayisi(kStatikGovde) == 12u &&
+                       x->sahne->kesis({0.0, 0.0, 1.0}, {0.0, 0.0, 1.0}, 1e-9, 10.0, 0, 0.01, v) && std::abs(v.t - 2.0) < 1e-6,
+                "açık su (deniz_ornek, bellekte) kurulur, taban 3 m: " + hata);
     }
     return d.hata;
 }
@@ -219,6 +263,12 @@ int main(int argc, char** argv)
     int r = 2;
     if (std::strcmp(argv[1], "sonar_yukleyici") == 0) {
         r = test_sonar_yukleyici(b);
+    } else if (std::strcmp(argv[1], "sonar_sahne_havuz_duvari") == 0) {
+        r = ida::sonar::test::test_sonar_sahne_havuz_duvari(b.kok);
+    } else if (std::strcmp(argv[1], "sonar_sahne_hedef") == 0) {
+        r = ida::sonar::test::test_sonar_sahne_hedef(b.kok);
+    } else if (std::strcmp(argv[1], "sonar_sahne_k27") == 0) {
+        r = ida::sonar::test::test_sonar_sahne_k27(b.kok);
     } else {
         std::printf("bilinmeyen test: %s\n", argv[1]);
         return 2;

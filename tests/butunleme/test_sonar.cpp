@@ -1,18 +1,17 @@
 // W4-bagla-sonar bütünleme testleri: sonar modelinin `ida_sim`'e bağlanması (görev belgesi
-// docs/gorevler/W4-bagla-sonar.md, kabul 1–6). Senaryolar depodaki scenarios/z1.toml ve
-// scenarios/sonar-havuz.toml'dan bellekte türetilir (BellekKaynagi).
+// docs/gorevler/W4-bagla-sonar.md, kabul 1–6) ve W4-sonar-sahne (docs/gorevler/W4-sonar-sahne.md,
+// kabul 4–7). Senaryolar depodaki scenarios/z1.toml ve scenarios/sonar-havuz.toml'dan bellekte türetilir
+// (BellekKaynagi; A7 kümeleri `ornek` ve `havuz` diskten).
 //
-// Sonarlı testlerin sahnesi (W4-bagla-sonar sol #4 (b)): havuz duvarları yalnız A7 ağlarında
-// tanımlı olduğundan `ortam.tur = havuz` sonar açıkken reddedilir. Sonarlı koşular bu yüzden
-// sonar-havuz.toml'un açık su biçiminde yürür: A7 manifestinin bellekteki kopyasına tek tabanlı
-// (yalnız `COL_taban`) bir statik varlık (`deniz_ornek`, taban 3 m, havuz_beton) eklenir; su
-// yoğunluğu ve tuzluluk havuzdakiyle aynı tutulur (depodaki dosyalar değişmez).
+// Sonarlı testlerin sahnesi (W4-sonar-sahne): scenarios/sonar-havuz.toml olduğu gibi, A7 kümesi
+// `havuz`; sonar havuz_ornek'in taban ve dört duvar ağlarını izler. Açık su biçimi ayrıca sınanır
+// (sonar_kurulum): bellekte kutu tabanlı bir statik varlık (gerçek GLB baytları, özetli).
 //
 //   sonar_kapali_tutarlilik kabul 1'in bu ikilideki parçası: --sonar verilmeyen koşu ile sonarları
 //                          kapalı (etkin = false) senaryonun --sonar'lı ve --sonar'sız koşuları aynı
 //                          ikilide CSV ve iki yönlü A1 bayt akışında bayt bayt aynı (sonar yolu
-//                          sonarsız koşuya hiçbir şey eklemez). Bu iş öncesiyle (0fbe30f) eşitlik bu
-//                          testte SINANMAZ: özetler yazdırılır, önceki sürümün ikilisiyle ayrıca
+//                          sonarsız koşuya hiçbir şey eklemez). Bu iş öncesiyle eşitlik bu testte
+//                          SINANMAZ: özetler yazdırılır, önceki sürümün ikilisiyle ayrıca
 //                          karşılaştırılır (düzeltme turu raporu; platformlar arası sabit özet yok)
 //   sonar_belirlenim       kabul 2: aynı senaryo ve tohumla iki koşu bayt bayt aynı; A3 açık/kapalı
 //                          aynı; öteki sensörlerin kayıtları ve kontrol çıktısı sonardan bağımsız
@@ -22,18 +21,22 @@
 //                          dizisine bayt bayt eşit; her partide bayt ve üye bütçesi, en çok bir
 //                          HEAD, IMU ve emniyet örneği gecikmez; `--ping360-ornek 600` ile de
 //   sonar_red              kapsam 6: desteklenmeyen sonar arızası, tam kademe, yerleşik senaryo
-//   sonar_kurulum          sol #1, #2, #4: A1 A_sensör ön denetimi (sığmayan ret, sınırdaki kabul),
-//                          `--ping360-ornek 200` ile gerçekleşen darbe ≤ 1000 µs, havuz duvarlı sahne ret
+//   sonar_kurulum          sol #1, #2: A1 A_sensör ön denetimi (sığmayan ret, sınırdaki kabul),
+//                          `--ping360-ornek 200` ile gerçekleşen darbe ≤ 1000 µs; W4-sonar-sahne kabul 4:
+//                          sonar-havuz kurulur, z1.toml ve ornek-havuz.toml (yer tutucu küme) A7 koduyla
+//                          reddedilir, değişmiş .glb OZET_UYUSMAZ, açık su biçimi kurulur
 //   sonar_a3               kabul 5: sonar kanalları yayınlanır, dünya tarafındaki A3 hizmetinde
 //                          ve sonar hesabında bellek ayırma 0
 //   sonar_ayirma           sol #5 (W4-K27 (5)): A3 kapalıyken sonar hesabı ve boşaltmada ayırma 0
-//   sonar_hil_olcum <n>    kabul 6 (ölçüm): HIL 1x 60 s, sözde uçbirim, Ping360 n örnek
+//                          (W4-sonar-sahne: ağlı havuz sahnesiyle)
+//   sonar_hil_olcum <n>    kabul 6 (ölçüm): HIL 1x 60 s, sözde uçbirim, Ping360 n örnek (havuz sahnesi)
 #include "a3_istemci.hpp"
 #include "ida/port.h"
 #include "ida/senaryo/senaryo.hpp"
 #include "ida/sunucu/sunucu.hpp"
 #include "ida_link/tel.h"
 #include "../../sim/kopru/test/zamanlama_olcutu.hpp"   // W4-K24
+#include "../../sim/senaryo/test/glb_yazici.hpp"        // W4-sonar-sahne: açık su statik varlığı
 
 #define MAVLINK_EXTERNAL_RX_STATUS 1
 #define MAVLINK_EXTERNAL_RX_BUFFER 1
@@ -98,44 +101,48 @@ void degistir(std::string& m, const std::string& a, const std::string& b)
     m.replace(i, a.size(), b);
 }
 
-// Sol #4 (b): sonarın izleyebildiği tek tabanlı statik varlık (yalnız bellekteki manifestte).
-const char* const kDenizVarligi =
-    R"({ "kimlik": "deniz_ornek", "tur": "statik", "dosya": "deniz_ornek.glb", )"
-    R"("sha256": "0000000000000000000000000000000000000000000000000000000000000000", "bayt": 20, )"
-    R"("taban_derinligi_m": 3.0, "referans": { "dugum": 0, "ad": "REF" }, )"
-    R"("sinir_kutusu_govde_m": { "en_kucuk": [-50.0, -50.0, -0.5], "en_buyuk": [50.0, 50.0, 3.2] }, )"
-    R"("malzeme_atamasi": [ { "gltf_malzeme": 0, "malzeme": "havuz_beton" } ], )"
-    R"("gorsel": [ { "dugum": 1, "ad": "taban", "kosul": "her_zaman" } ], )"
-    R"("carpisma": [ { "dugum": 2, "ad": "COL_taban", "ayristirma": "yok" } ] },)"
-    "\n    ";
-
-std::string deniz_manifesti()
-{
-    std::string m = dosya("assets/ornek/manifest.json");
-    degistir(m, "\"varliklar\": [\n    ", std::string("\"varliklar\": [\n    ") + kDenizVarligi);
-    return m;
-}
-
-// Senaryo metnini açık suya çevirir: sahne deniz_ornek; manifest özeti (değişen manifestte) çıkarılır;
-// su yoğunluğu ve tuzluluk havuz değerlerinde (açık suyun koşullu varsayılanları yerine).
-std::string acik_suya(std::string m)
-{
-    degistir(m, "tur = \"havuz\"\nsahne = \"havuz_ornek\"", "tur = \"acik_su\"\nsahne = \"deniz_ornek\"");
-    if (const std::size_t i = m.find("manifest_ozeti = \""); i != std::string::npos) {
-        m.erase(i, m.find('\n', i) + 1u - i);
-    }
-    degistir(m, "[ortam.su]\n", "[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n");
-    return m;
-}
+// Depodaki A7 dosyaları (ornek: yalnız manifest; havuz: manifest ve .glb'ler).
+const char* const kDiskDosyalari[] = {"scenarios/ida0.toml",       "assets/ornek/manifest.json",
+                                      "assets/havuz/manifest.json", "assets/havuz/ida0.glb",
+                                      "assets/havuz/torpido_ida0.glb", "assets/havuz/hedef_ornek.glb",
+                                      "assets/havuz/havuz_ornek.glb"};
 
 std::shared_ptr<senaryo::BellekKaynagi> kaynak(const std::string& metin)
 {
     senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
     auto b = std::make_shared<senaryo::BellekKaynagi>();
-    b->dosyalar["scenarios/ida0.toml"] = d.oku("scenarios/ida0.toml").value_or("");
-    b->dosyalar["assets/ornek/manifest.json"] = metin.find("sahne = \"deniz_ornek\"") != std::string::npos
-                                                    ? deniz_manifesti()
-                                                    : d.oku("assets/ornek/manifest.json").value_or("");
+    for (const char* y : kDiskDosyalari) {
+        b->dosyalar[y] = d.oku(y).value_or("");
+    }
+    b->dosyalar["scenarios/t.toml"] = metin;
+    return b;
+}
+
+// Açık su biçimi (W4-sonar-sahne; W4-bagla-sonar'ın açık su sınaması): havuz kümesinin bellekteki
+// kopyasına kutu tabanlı (taban 3 m, 100 × 100 m) bir statik varlık `deniz_ornek` eklenir; senaryo
+// açık suya çevrilir, manifest özeti çıkarılır, su yoğunluğu ve tuzluluk havuzdakiyle aynı tutulur.
+std::shared_ptr<senaryo::BellekKaynagi> acik_su_kaynagi(std::string metin)
+{
+    auto b = kaynak("");
+    senaryo::test::GlbAyar ga;
+    ga.dugumler = {{"taban", true, {-50.0, -50.0, 3.0}, {50.0, 50.0, 3.5}},
+                   {"COL_taban", true, {-50.0, -50.0, 3.0}, {50.0, 50.0, 3.5}}};
+    const std::string glb = senaryo::test::glb_yaz(ga);
+    b->dosyalar["assets/havuz/deniz_ornek.glb"] = glb;
+    degistir(b->dosyalar["assets/havuz/manifest.json"], "\"varliklar\": [\n    ",
+             std::string("\"varliklar\": [\n    ") + R"({"kimlik":"deniz_ornek","tur":"statik","dosya":"deniz_ornek.glb",)" +
+                 R"("sha256":")" + senaryo::sha256_hex(glb) + R"(","bayt":)" + std::to_string(glb.size()) +
+                 R"(,"taban_derinligi_m":3.0,"referans":{"dugum":0,"ad":"REF"},)"
+                 R"("sinir_kutusu_govde_m":{"en_kucuk":[-50,-50,3],"en_buyuk":[50,50,3.5]},)"
+                 R"("malzeme_atamasi":[{"gltf_malzeme":0,"malzeme":"havuz_beton"}],)"
+                 R"("gorsel":[{"dugum":1,"ad":"taban","kosul":"her_zaman"}],)"
+                 R"("carpisma":[{"dugum":2,"ad":"COL_taban","ayristirma":"yok"}]},)"
+                 "\n    ");
+    degistir(metin, "tur = \"havuz\"\nsahne = \"havuz_ornek\"", "tur = \"acik_su\"\nsahne = \"deniz_ornek\"");
+    if (const std::size_t i = metin.find("manifest_ozeti = \""); i != std::string::npos) {
+        metin.erase(i, metin.find('\n', i) + 1u - i);
+    }
+    degistir(metin, "[ortam.su]\n", "[ortam.su]\nyogunluk = 1000.0\ntuzluluk = 0.0\n");
     b->dosyalar["scenarios/t.toml"] = metin;
     return b;
 }
@@ -151,10 +158,10 @@ sunucu::Ayar ayar(const std::string& metin, bool sonar)
     return a;
 }
 
-// Sonar-havuz senaryosunun açık su biçimi (sol #4 (b); üst açıklama), süresi kısaltılmış.
+// Sonar-havuz senaryosu (A7 kümesi `havuz`), süresi kısaltılmış.
 std::string sonar_metni(const char* sure = "30_000_000_000")
 {
-    std::string m = acik_suya(dosya("scenarios/sonar-havuz.toml"));
+    std::string m = dosya("scenarios/sonar-havuz.toml");
     degistir(m, "sure_ns = 30_000_000_000", std::string("sure_ns = ") + sure);
     return m;
 }
@@ -641,23 +648,46 @@ int test_red()
 
 int test_kurulum()
 {
-    // Sol #4 (b): havuz duvarları yalnız A7 ağında; sonar açıkken havuz senaryosu açık hatayla reddedilir
-    // (depodaki sonar-havuz.toml ve z1.toml; z1.toml --sonar artık yürütülemez).
-    for (const char* yol : {"scenarios/sonar-havuz.toml", "scenarios/z1.toml"}) {
+    // W4-sonar-sahne kabul 4: sonar-havuz.toml (A7 kümesi `havuz`) --sonar ile kurulur ve yürür; uygunluk
+    // örneğini (`ornek`: ikili dosyaları yok) gösteren z1.toml ve ornek-havuz.toml A7'nin kendi koduyla
+    // (EKSIK_VARLIK; A7-K06, K51) reddedilir; değişmiş .glb OZET_UYUSMAZ; açık su biçimi kurulur.
+    {
+        const sunucu::Sonuc r = sunucu::kos(ayar(sonar_metni("2_000_000_000"), true));
+        dogrula(r.tamam && r.sonar_acik && r.sonar_ping360 > 0u && r.sonar_ping1d > 0u,
+                "sonar-havuz.toml --sonar (havuz duvarlı sahne) yürür: Ping360 " + s(r.sonar_ping360) + ", Ping1D " +
+                    s(r.sonar_ping1d) + " " + r.hata);
+    }
+    for (const char* yol : {"scenarios/z1.toml", "scenarios/ornek-havuz.toml"}) {
         const sunucu::Sonuc r = sunucu::kos(ayar(dosya(yol), true));
         dogrula(!r.tamam && r.hata_turu == sunucu::HataTuru::senaryo_yurutulemez &&
-                    r.hata.find("havuz duvarları") != std::string::npos && r.hata.find("sol #4") != std::string::npos,
-                std::string(yol) + " --sonar: havuz duvarları atlanmaz, reddedilir: " + r.hata);
+                    r.hata.find("A7 EKSIK_VARLIK") != std::string::npos && r.hata.find("ornek") != std::string::npos,
+                std::string(yol) + " --sonar: yer tutucu küme A7 koduyla reddedilir: " + r.hata);
+        const sunucu::Sonuc r2 = sunucu::kos(ayar(dosya(yol), false));
+        dogrula(r2.tamam, std::string(yol) + " --sonar olmadan yürür " + r2.hata);
     }
     {
-        // Açık su ama sahne havuz_ornek (tabandan başka 4 çarpışma ağı): yine ret.
-        std::string m = dosya("scenarios/sonar-havuz.toml");
-        degistir(m, "tur = \"havuz\"\n", "tur = \"acik_su\"\n");
-        const sunucu::Sonuc r = sunucu::kos(ayar(m, true));
-        dogrula(!r.tamam && r.hata.find("4 çarpışma ağı") != std::string::npos,
-                "açık su + havuz_ornek sahnesi (duvar ağları) reddedilir: " + r.hata);
-        const sunucu::Sonuc r2 = sunucu::kos(ayar(sonar_metni("200_000_000"), true));
-        dogrula(r2.tamam && r2.sonar_acik, "tek tabanlı sahne (deniz_ornek) kurulur " + r2.hata);
+        sunucu::Ayar a = ayar(sonar_metni("200_000_000"), true);
+        auto b = kaynak(sonar_metni("200_000_000"));
+        std::string& g = b->dosyalar["assets/havuz/havuz_ornek.glb"];
+        g[g.size() / 2] = static_cast<char>(g[g.size() / 2] ^ 0x01);
+        a.senaryo_kaynagi = b;
+        const sunucu::Sonuc r = sunucu::kos(a);
+        dogrula(!r.tamam && r.hata.find("A7 OZET_UYUSMAZ") != std::string::npos, "değişmiş havuz_ornek.glb reddedilir: " + r.hata);
+    }
+    {
+        sunucu::Ayar a = ayar("", true);
+        a.senaryo_kaynagi = acik_su_kaynagi(sonar_metni("1_000_000_000"));
+        const Gozlem g = gozle(a);
+        std::size_t gecerli = 0, tutarli = 0;
+        for (const KartPing1d& k : g.kart_p1d) {
+            if ((k.hdr.flags & IDA_HF_VALID) == 0u) continue;
+            ++gecerli;
+            // Araç (0, 0, 2) civarında, ping1d0 montajı z +0,14: irtifa ≈ 0,86 m (≤ 3 kutu).
+            tutarli += std::abs(static_cast<double>(k.p.distance) - 0.86) <= 0.1 ? 1u : 0u;
+        }
+        dogrula(g.s.tamam && g.s.sonar_acik && gecerli > 5u && tutarli == gecerli,
+                "açık su biçimi (bellekte deniz_ornek) kurulur, Ping1D tabanı görür (" + s(tutarli) + " / " + s(gecerli) + ") " +
+                    g.s.hata);
     }
     // Sol #1: A1 §3.9 A_sensör ön denetimi. Yalnız Ping1D açık (öteki kritik sensörler kapalı):
     // A_sensör = 48 B · 5 ms / ping aralığı; 1,6 ms'de tam 150 B (sınırda: kabul).
