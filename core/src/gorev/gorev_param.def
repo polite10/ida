@@ -25,3 +25,12 @@ IDA_PARAM(0x040Du, EST_OK_MS,        U32, B, 100u,   10000u,   2000u,   gor_est_
 IDA_PARAM(0x040Eu, IMU_TAZE_MS,      U32, B, 100u,   10000u,   1000u,   gor_imu_taze_ms)    /* 02 §4.3 (1 s) */
 IDA_PARAM(0x040Fu, YUZEY_D,          F32, B, 0.0f,   2.0f,     0.3f,    gor_yuzey_d)        /* m; yüzey eşiği */
 IDA_PARAM(0x0410u, YUKSELME_HIZI,    F32, B, 0.05f,  1.0f,     0.25f,   gor_yukselme_hizi)  /* m/s; 02 §2.4 v_asc */
+/* W5-gorev-yurutucu (02 §2.6, §4.3; W5-K24). Varsayılanlar TAHMİNDİR, ölçülmedi. */
+IDA_PARAM(0x0411u, GEO_YARICAP,      F32, B, 5.0f,   20000.0f, 1000.0f, gor_geo_yaricap)    /* m; orijinden yatay yarıçap */
+IDA_PARAM(0x0412u, GOREV_AZAMI_S,    U32, B, 60u,    86400u,   7200u,   gor_gorev_azami_s)  /* s; toplam görev süresi (duvar) */
+IDA_PARAM(0x0413u, ALT_MIN,          F32, B, 0.0f,   20.0f,    0.3f,    gor_alt_min)        /* m; en az irtifa (0: kapalı) */
+IDA_PARAM(0x0414u, DR_YOL_MAX,       F32, B, 10.0f,  5000.0f,  200.0f,  gor_dr_yol_max)     /* m; GNSS'siz yol (W5-K24) */
+IDA_PARAM(0x0415u, DR_BEKLE_S,       U32, B, 10u,    3600u,    300u,    gor_dr_bekle_s)     /* s; yüzeyde GNSS beklemesi */
+IDA_PARAM(0x0416u, ASIM_KAT,         F32, B, 1.0f,   10.0f,    2.0f,    gor_asim_kat)       /* öğe zaman aşımı katsayısı */
+IDA_PARAM(0x0417u, ASIM_PAY_S,       U32, B, 0u,     3600u,    60u,     gor_asim_pay_s)     /* s; öğe zaman aşımı payı */
+IDA_PARAM(0x0418u, BANT_MS,          U32, B, 0u,     60000u,   1000u,   gor_bant_ms)        /* ms; DIVE_TO bantta kalma (ölçüm zamanı) */

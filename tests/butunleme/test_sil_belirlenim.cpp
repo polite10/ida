@@ -2,7 +2,9 @@
 // ortasında protokol ihlali katan belirlenimci bir "kart" (ida_sil koşucusu + araya giren
 // aktarıcı) ile aynı tohumda N koşunun iki yöndeki bayt akışı bayt bayt aynı olmalıdır.
 //
-// Aktarıcı, kartın belirli (k.) IDA_ACTUATOR'ından hemen sonra 150 geçerli IDA_LOG çerçevesi katar
+// Aktarıcı, kartın çalıştırma oturumundaki belirli (k.) IDA_ACTUATOR'ından hemen sonra 150 geçerli
+// IDA_LOG çerçevesi katar (W5-K13: sayım hazırlık oturumu bittikten sonra, sim'in ilk çalıştırma
+// kipli SESSION_ACCEPT'iyle başlar; hazırlık oturumunun süresi parametre sayısıyla değişir)
 // (W4-K14 tamponu 128'i aşar: sim oturumu SESSION_CLOSE(PROTOCOL) ile bitirir ve yeniden el
 // sıkışır). Katılan çerçeveler ve kartın ACTUATOR sonrası bütün çıktıları rastgele (gerçek
 // rastgelelik) gecikmeyle teslim edilir (partiye göre 0–1,5 ms pencereden); sıra korunur. Geliş zamanı her koşuda farklı
@@ -44,6 +46,8 @@ void dogrula_sb(bool kosul, const std::string& ileti)
 
 constexpr std::uint32_t kMsgSimHello = 46000;
 constexpr std::uint32_t kMsgBoardHello = 46001;
+constexpr std::uint32_t kMsgSessionAccept = 46002;
+constexpr std::uint8_t kRunModeHazirlik = 4;   // ida::kopru::CalistirmaKipi::hazirlik (A1-K19)
 constexpr std::uint32_t kMsgSessionClose = 46004;
 constexpr std::uint32_t kMsgTimeFrame = 46010;
 constexpr std::uint32_t kMsgActuator = 46060;
@@ -126,6 +130,13 @@ private:
             if (c.msgid == kMsgSessionClose && c.yuk[2] == kCloseShutdown) {
                 log_kat(200, false);
             }
+            // SESSION_ACCEPT: result (yük 14) OK = 0, run_mode (yük 15). İlk çalıştırma kipli
+            // kabul hazırlık oturumunun bittiği andır; ihlal noktaları buradan sayılır.
+            if (c.msgid == kMsgSessionAccept && !calistirma_ && c.yuk[14] == 0u &&
+                c.yuk[15] != kRunModeHazirlik) {
+                calistirma_ = true;
+                act_taban_ = act_;
+            }
         }
     }
 
@@ -207,7 +218,8 @@ private:
                         // ve yuva beklemesiyle (bir sonraki ACTUATOR'a dek) çakışır.
                         static constexpr std::uint32_t kPencere[] = {1u, 15u, 30u, 60u, 120u, 250u, 1500u};
                         gecikme_us_ = kPencere[rng_() % (sizeof kPencere / sizeof kPencere[0])];
-                        if (std::find(enjekte_.begin(), enjekte_.end(), act_) != enjekte_.end()) {
+                        if (calistirma_ &&
+                            std::find(enjekte_.begin(), enjekte_.end(), act_ - act_taban_) != enjekte_.end()) {
                             enjekte_et();
                         }
                     }
@@ -252,6 +264,8 @@ private:
     std::vector<std::uint8_t> sim_kart_;
     std::vector<std::uint8_t> kart_sim_;
     std::uint64_t act_ = 0;
+    bool calistirma_ = false;          // hazırlık oturumu bitti, çalıştırma oturumu kabul edildi
+    std::uint64_t act_taban_ = 0;      // o andaki ACTUATOR sayısı
     std::uint64_t enjekte_edilen_ = 0;
     std::uint64_t sim_yazma_hatasi_ = 0;
     bool sim_eof_ = false;

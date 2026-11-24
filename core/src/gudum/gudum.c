@@ -10,6 +10,7 @@
 #include "cekirdek.h"
 #include "kestirim/kestirim.h"
 #include "mat/ida_math.h"
+#include "zaman/zaman.h"
 
 /* π'nin altındaki en büyük float: 3,14159250f (bit deseni 0x40490FDA; ondalık yazımın en
    yakın float'ı budur). 3.4: yaw −π < yaw ≤ π, karşılaştırma double'da; float değerler için
@@ -33,12 +34,32 @@ static bool sakli_hedef_var(const ida_gud_t *g)
            (g->yatay != (uint8_t)IDA_GUD_YATAY_YOK);
 }
 
+/* GUIDED_SP'nin saklı kanallarını siler (AUTO güdümünün durumu korunur). */
+static void sp_sil(ida_gud_t *g)
+{
+    g->dikey = (uint8_t)IDA_GUD_DIKEY_YOK;
+    g->yon_turu = (uint8_t)IDA_GUD_YON_YOK;
+    g->yatay = (uint8_t)IDA_GUD_YATAY_YOK;
+    g->kusak = 0u;
+    g->derinlik = 0.0f;
+    g->irtifa = 0.0f;
+    g->dikey_hiz = 0.0f;
+    g->yon = 0.0f;
+    g->yon_hizi = 0.0f;
+    g->konum_ne[0] = 0.0f;
+    g->konum_ne[1] = 0.0f;
+    g->hiz_ne[0] = 0.0f;
+    g->hiz_ne[1] = 0.0f;
+    g->sp_var = false;
+    g->sp_son_ns = 0;
+}
+
 /* Saklı hedefi siler; bir hedef varsa kontrolün belleği de eski hedefe aittir: kontrolün
    iptal biti kurulur (emn NULL ise kurulmaz: SESSION_START'ta (b3) zaten kurmuştur). */
 static void hedef_sil(ida_gud_t *g, ida_emn_t *emn)
 {
     if (sakli_hedef_var(g)) {
-        ida_gud_kur(g);
+        sp_sil(g);
         if (emn != NULL) {
             emn->hedef_iptal = (uint8_t)(emn->hedef_iptal | IDA_EMN_IPTAL_KON);
         }
@@ -47,8 +68,11 @@ static void hedef_sil(ida_gud_t *g, ida_emn_t *emn)
 
 void ida_gud_oturum_basi(ida_gud_t *g)
 {
-    /* A4-K72: hedef bir önceki oturumun ölçüm zamanına ve kestirimine bağlıdır (EMNİYET). */
+    /* A4-K72: hedef bir önceki oturumun ölçüm zamanına ve kestirimine bağlıdır (EMNİYET). AUTO
+       güdümünün referansı ve ILOS integrali de ölçüm zamanına bağlıdır: yeniden kurulur. */
     hedef_sil(g, NULL);
+    g->oto_var = false;
+    g->t_var = false;
 }
 
 /* ---- GUIDED_SP ---------------------------------------------------------------------------- */
@@ -127,7 +151,6 @@ static void hedefi_sakla(ida_gud_t *g, const ida_guided_sp_t *sp)
 void ida_gud_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *cmd,
                    ida_cmd_result_t *r)
 {
-    (void)b;
     if (cmd->type != (uint8_t)IDA_CMD_GUIDED_SP) {
         r->ack = (uint8_t)IDA_ACK_UNSUPPORTED; /* başka tür buraya gelmez (A4-K124) */
         r->reason = (uint16_t)IDA_REASON_NONE;
@@ -154,13 +177,56 @@ void ida_gud_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *
     }
     hedefi_sakla(&c->gud, &cmd->u.guided);
     c->gud.kusak = c->emn.kusak; /* tanı */
+    /* 02 §2.6: GUD_SP_ASIM_MS içinde yeni hedef gelmezse son hedefte kalınır; süre son kabul
+       edilen GUIDED_SP'den (duvar saati) sayılır. */
+    c->gud.sp_var = true;
+    c->gud.sp_son_ns = b->now_w.ns;
     r->ack = (uint8_t)IDA_ACK_ACCEPTED;
     r->reason = (uint16_t)IDA_REASON_NONE;
 }
 
+/* 02 §2.6 "GUD_SP_ASIM_MS yeni hedef yoksa son hedefte kalır": süre dolunca hız türü kanallar
+   (VEL_D, YAW_RATE, VEL_NE) bulunulan derinliği, yönü ve konumu tutmaya çevrilir; konum türü
+   kanallar (DEPTH, YAW, POS_NE) zaten son hedeftir. Bileşen geçersizse kanal görev modülünün
+   tutmasına bırakılır. */
+static void sp_zaman_asimi(ida_gud_t *g, ida_core_t *c)
+{
+    if (!g->sp_var || (c->emn.mode != (uint8_t)IDA_MODE_GUIDED)) {
+        return;
+    }
+    const int64_t now = c->cer.now_izi_ns;
+    if ((now - g->sp_son_ns) < ida_ms_ns(ida_prm_u32(&c->prm, IDA_PRM_gud_sp_asim_ms))) {
+        return;
+    }
+    const ida_gor_t *gor = &c->gor;
+    bool degisti = false;
+    if (g->dikey == (uint8_t)IDA_GUD_DIKEY_HIZ) {
+        g->dikey = gor->nav_derinlik_var ? (uint8_t)IDA_GUD_DIKEY_DERINLIK : (uint8_t)IDA_GUD_DIKEY_YOK;
+        g->derinlik = gor->nav_derinlik;
+        degisti = true;
+    }
+    if (g->yon_turu == (uint8_t)IDA_GUD_YON_HIZ) {
+        g->yon_turu = gor->nav_yon_var ? (uint8_t)IDA_GUD_YON_ACI : (uint8_t)IDA_GUD_YON_YOK;
+        g->yon = gor->nav_yon;
+        degisti = true;
+    }
+    if (g->yatay == (uint8_t)IDA_GUD_YATAY_HIZ) {
+        g->yatay = gor->nav_konum_var ? (uint8_t)IDA_GUD_YATAY_KONUM : (uint8_t)IDA_GUD_YATAY_YOK;
+        g->konum_ne[0] = gor->nav_ne[0];
+        g->konum_ne[1] = gor->nav_ne[1];
+        degisti = true;
+    }
+    g->sp_var = false; /* yeni GUIDED_SP'ye kadar */
+    if (degisti) {
+        /* kontrol referansı bulunulan durumdan yenilenir */
+        c->emn.hedef_iptal = (uint8_t)(c->emn.hedef_iptal | IDA_EMN_IPTAL_KON);
+    }
+}
+
 void ida_gud_adim(ida_gud_t *g, ida_core_t *c)
 {
-    if ((c->emn.hedef_iptal & IDA_EMN_IPTAL_GUD) != 0u) {
+    const bool iptal = (c->emn.hedef_iptal & IDA_EMN_IPTAL_GUD) != 0u;
+    if (iptal) {
         hedef_sil(g, &c->emn); /* önce sil, sonra kendi bitini temizle (EMNİYET) */
         c->emn.hedef_iptal = (uint8_t)(c->emn.hedef_iptal & (uint8_t)(0xFFu ^ IDA_EMN_IPTAL_GUD));
     }
@@ -168,12 +234,23 @@ void ida_gud_adim(ida_gud_t *g, ida_core_t *c)
         (ida_gor_fs_duzey(&c->gor) >= (uint8_t)IDA_FS_HOLD)) {
         hedef_sil(g, &c->emn);
     }
+    sp_zaman_asimi(g, c);
+    ida_gud_oto_adim(g, c, iptal);
+}
+
+static bool b_gecerli(const bool *b)
+{
+    uint8_t x = 0u;
+    (void)memcpy(&x, b, sizeof(x));
+    return x <= 1u;
 }
 
 bool ida_gud_tutarli(const ida_gud_t *g)
 {
     return (g->dikey <= (uint8_t)IDA_GUD_DIKEY_HIZ) && (g->yon_turu <= (uint8_t)IDA_GUD_YON_HIZ) &&
-           (g->yatay <= (uint8_t)IDA_GUD_YATAY_HIZ);
+           (g->yatay <= (uint8_t)IDA_GUD_YATAY_HIZ) && b_gecerli(&g->sp_var) &&
+           b_gecerli(&g->oto_var) && b_gecerli(&g->t_var) && ida_sonlu(g->ref.d) &&
+           ida_sonlu(g->ref.w) && ida_sonlu(g->y_int);
 }
 
 uint8_t ida_gud_param_grup(const ida_prm_kume_t *p)
@@ -284,9 +361,22 @@ static void yatay_yaz(const ida_gud_t *g, const ida_core_t *c, uint8_t v, ida_ko
     }
 }
 
+static void guided_yaz(const ida_gud_t *g, const ida_core_t *c, ida_kon_istek_t *i);
+
 void ida_gud_kon_istegi(const ida_gud_t *g, const ida_core_t *c, ida_kon_istek_t *i)
 {
     ida_gor_istek(&c->gor, &c->emn, i);
+    if ((c->emn.mode == (uint8_t)IDA_MODE_AUTO) &&
+        ((c->emn.hedef_iptal & IDA_EMN_IPTAL_GUD) == 0u)) {
+        ida_gud_oto_istek(g, c, i); /* görev yürütücüsünün hedefi (arıza HOLD'dan hafifken) */
+    }
+    guided_yaz(g, c, i);
+    ida_gud_irtifa_kisit(c, i); /* en az irtifa (02 §4.3): her kipte en son */
+}
+
+/* GUIDED_SP'nin saklı kanalları. */
+static void guided_yaz(const ida_gud_t *g, const ida_core_t *c, ida_kon_istek_t *i)
+{
     /* GUIDED_SP yalnız GUIDED kipinde, silahlıyken, arıza eylemi HOLD'dan hafifken, istek
        etkinken ve hedef saklandığından beri daraltma kuşağı değişmemişken uygulanır (arıza >
        operatör, 02 §2.6; sol bulgu 1). */

@@ -189,7 +189,7 @@ ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)
     ida_gud_kur(&c->gud);
     ida_gor_kur(&c->gor);
     ida_kon_kur(&c->kon);
-    ida_fc_kur(&c->fc);
+    ida_fc_kur(&c->fc, in->now_w);
     ida_son_kur(&c->son);
 
     /* İlk yazılabilir step/tick'te çıkacak açılış kayıtları (3.15; A4-K77). */
@@ -337,14 +337,15 @@ static void cagri_izleri(ida_core_t *c, const ida_in_t *in, ida_cagri_t *cg)
 
 /* ---- (e) olağan işleniş ------------------------------------------------------------------- */
 
-static void kabul_edilen_ornekler(ida_core_t *c, const ida_in_t *in, const ida_orn_sonuc_t *os)
+static void kabul_edilen_ornekler(ida_core_t *c, const ida_in_t *in, const ida_orn_sonuc_t *os,
+                                  const ida_fc_ortam_t *fo)
 {
     for (uint32_t i = 0u; i < (uint32_t)os->n; i++) {
         const ida_sample_t *s = &in->samples[os->sira[i]];
         switch (s->hdr.type) {
         case IDA_SENS_SAFETY:
             ida_emn_kabul_kisit(&c->emn, &s->u.safety);
-            ida_fc_emniyet_ornegi(&c->fc, &c->emn, s);
+            ida_fc_emniyet_ornegi(&c->fc, &c->emn, s, fo);
             break;
         case IDA_SENS_BATT:
         case IDA_SENS_LEAK:
@@ -357,7 +358,8 @@ static void kabul_edilen_ornekler(ida_core_t *c, const ida_in_t *in, const ida_o
     }
 }
 
-static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t *cg)
+static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t *cg,
+                           const ida_fc_ortam_t *fo)
 {
     ida_core_counters_t *cnt = &c->cer.cnt;
     /* (c) n_evres ≤ 4'ü doğruladı; sınır çözümleyicinin görebilmesi için ayrıca kırpılır. */
@@ -371,7 +373,7 @@ static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t 
                                  .arg0 = (int32_t)b.kind,
                                  .arg1 = (int32_t)in->evres[i].result};
             gunluk(c, &g);
-            ida_fc_olay_sonucu(&c->fc, &b, in->evres[i].result);
+            ida_fc_olay_sonucu(&c->fc, &b, &in->evres[i], fo);
         } else {
             cnt->evres_ignored++;
         }
@@ -384,7 +386,7 @@ static void olay_sonuclari(ida_core_t *c, const ida_in_t *in, const ida_cagri_t 
                              .arg0 = (int32_t)b.kind,
                              .arg1 = (int32_t)b.tube};
         gunluk(c, &g);
-        ida_fc_olay_bilinmiyor(&c->fc, &b);
+        ida_fc_olay_bilinmiyor(&c->fc, &b, fo);
     }
 }
 
@@ -402,6 +404,7 @@ static bool cagrida_arm(const ida_in_t *in)
 static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_t *cg)
 {
     ida_cerceve_t *k = &c->cer;
+    const ida_fc_ortam_t fo = {.now = cg->now, .prm = &c->prm, .gun = &c->gun};
     if (k->yeniden_baslat) {
         /* SESSION_START sonrası modüllerin yeniden başlaması (A4-K72). */
         ida_kes_oturum_basi(&c->kes);
@@ -431,7 +434,7 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
         ida_imz_imu_kabul(&c->imz, &in->imu, &zb);
         ida_kes_imu(&c->kes, &in->imu);
     }
-    kabul_edilen_ornekler(c, in, &os);
+    kabul_edilen_ornekler(c, in, &os, &fo);
     if ((in->ping360 != NULL) && ida_orn_ping360(&c->orn, in->ping360, &ob)) {
         ida_son_ping360(&c->son, in->ping360);
     }
@@ -450,7 +453,7 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
     cg->imu_bayat = ida_imz_bayat(&c->imz, cg->now, &c->prm);
     ida_imz_bayat_izle(&c->imz, cg->imu_bayat, &zb);
 
-    olay_sonuclari(c, in, cg);
+    olay_sonuclari(c, in, cg, &fo);
 
     if (cg->step && cg->imu_kabul) {
         ida_kes_adim(&c->kes, c);
@@ -471,7 +474,10 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
         .oturum_var = (in->plat.link_state == (uint8_t)IDA_LINK_RUNNING),
         .emn_fci = ida_emn_fci(&c->emn),
         .bekleyen_tupler = ida_olay_bekleyen_tupler(&c->olay),
+        .gcs_son_ns = c->gor.gcs_son_ns,
     };
+    /* Atış kontrol: süreler ve evrensel geçişler komutlardan önce (W5; TASARIM §10). */
+    ida_fc_cagri(&c->fc, &c->emn, &fb, &fo);
     const ida_komut_baglam_t kb = {
         .now_w = cg->now,
         .daraldi = c->emn.d.herhangi || ida_gor_daraldi(&c->gor), /* A4-K45; W3-K9 */
@@ -492,8 +498,18 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
 
     ida_gud_adim(&c->gud, c);
     const bool step_ok = cg->step && cg->imu_kabul;
+    /* Atış kontrol: komutlardan sonra, kabul edilen her çağrıda; genişletici aday yalnız
+       step_ok (A4-K64). Bağlam komutlardan sonraki değerlerle yeniden kurulur. */
+    ida_fc_baglam_t fb2 = fb;
+    fb2.armed = c->emn.armed;
+    fb2.mode = c->emn.mode;
+    fb2.fs_level = ida_gor_fs_duzey(&c->gor);
+    fb2.events_ok = ida_olay_kullanilabilir(&c->olay);
+    fb2.emn_fci = ida_emn_fci(&c->emn);
+    fb2.bekleyen_tupler = ida_olay_bekleyen_tupler(&c->olay);
+    fb2.gcs_son_ns = c->gor.gcs_son_ns;
+    ida_fc_adim(&c->fc, &c->emn, &fb2, &c->olay, step_ok, &fo);
     if (step_ok) {
-        ida_fc_adim(&c->fc, &fb, &c->olay);
         ida_kon_adim(&c->kon, c);
         ida_son_adim(&c->son, c, out);
     }
@@ -549,7 +565,8 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     /* (b) daraltma: geri alınmaz, reddedilen ve out NULL çağrıda da. */
     const ida_emn_baglam_t eb = {.gun = &c->gun, .now = cg.now};
     ida_emn_daralt(&c->emn, in, &eb);
-    ida_fc_daralt(&c->fc, &c->emn.d);
+    const ida_fc_ortam_t fo = {.now = cg.now, .prm = &c->prm, .gun = &c->gun};
+    ida_fc_daralt(&c->fc, &c->emn, &fo);
     ida_olay_kapat_iste(&c->olay, c->emn.d.kapat);
     if (c->emn.d.oturum_sonu) {
         const ida_log_t g = {.t_w = cg.now,
@@ -563,13 +580,14 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
        NULL olsa da; geri alınmaz. Sıfırlananlar: her (type, inst) için son kabul edilen
        örneğin izi (IMU ve Ping360 dahil), IMU izi (IMU bayat sayılır, taze idiyse
        IMU_STALE = 1; IMU_LAG'ın çözülme sayacı; mandal çözülmez), zaman çerçevesi izi.
-       A4-K118'in süre başlangıcı atış kontrol işinindir (yer tutucuda DET_STALE hep kurulu).
+       A4-K118'in süre başlangıcı atış kontrolündedir (ida_fc_oturum_basi; W5-K21).
        Başka hiçbir durum sıfırlanmaz; modüllerin yeniden başlaması bir sonraki kabul edilen
        çağrının (e) adımındadır. */
     if (in->plat.link_event == (uint8_t)IDA_LINKEV_SESSION_START) {
         ida_orn_kur(&c->orn);
         ida_imz_oturum_basi(&c->imz, &c->gun, cg.now);
         ida_emn_oturum_basi(&c->emn);
+        ida_fc_oturum_basi(&c->fc, &fo);
         k->tf_var = false;
         k->yeniden_baslat = true;
         const ida_log_t g = {.t_w = cg.now,

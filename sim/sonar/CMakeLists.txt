@@ -18,6 +18,7 @@ target_include_directories(ida_sonar_akustik PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}
 ida_sonar_ayar(ida_sonar_akustik)
 
 add_library(ida_sonar STATIC
+  src/ag_sahnesi.cpp
   src/ayarlar.cpp
   src/demet.cpp
   src/sahne.cpp
@@ -38,7 +39,8 @@ add_executable(ida_sonar_test
   test/test_ariza.cpp
   test/test_kurulum.cpp
   test/test_sure.cpp
-  test/test_duzeltme.cpp)
+  test/test_duzeltme.cpp
+  test/test_ag.cpp)
 target_include_directories(ida_sonar_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_sonar_test PRIVATE ida_sonar)
 ida_sonar_ayar(ida_sonar_test)
@@ -72,7 +74,13 @@ set(_ida_sonar_testleri
   sol5_cekirdek_birim
   sol6_saat_kaymasi
   sol7_darbe_suresi
-  sol8_gecerlilik_alani)
+  sol8_gecerlilik_alani
+  # W4-sonar-sahne: üçgen ağlı sahne
+  ag_kaba_kuvvet
+  ag_esitlik
+  ag_hareket
+  ag_hucre
+  ag_cozumsel)
 foreach(_ad IN LISTS _ida_sonar_testleri)
   add_test(NAME sim.sonar.${_ad} COMMAND ida_sonar_test ${_ad})
 endforeach()

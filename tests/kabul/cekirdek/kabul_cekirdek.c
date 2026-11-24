@@ -956,13 +956,24 @@ static void sonuclari_denetle(const baglam_t *b, const ida_out_t *o)
                                    "bekleniyordu (A4-K45; 3.17 (2))",
                                    (unsigned)c->type, (unsigned)r->ack, (unsigned)r->reason);
                     } else if (b->rc == IDA_RC_IMU_REJECTED) {
-                        KC_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == IDA_REASON_IMU_REJECTED,
+                        /* W5-K22: çekirdeğin o çağrıda kendi uyguladığı daraltma (arıza eylemi, kip
+                           düşmesi, bütünlük bozulması) (b) girdisi olmadan da genişleticiye NARROWED
+                           verir; 3.17 (2) sırasıyla NARROWED > IMU_REJECTED. Düzenek bu daraltmayı
+                           girdiden bilemez: iki neden de kabul edilir, ikisi de RED'dir. Hangi
+                           çağrıda NARROWED gerektiği özel testlerdedir (kabul.atis.G-Ç33,
+                           kabul.atis.F1). */
+                        KC_DOGRULA(r->ack == IDA_ACK_REJECTED &&
+                                       (r->reason == IDA_REASON_IMU_REJECTED || r->reason == IDA_REASON_NARROWED),
                                    "IMU_REJECTED çağrısında genişletici (tür %u) %u/%u, REJECTED/IMU_REJECTED "
+                                   "(ya da W5-K22 ile çekirdeğin kendi daraltmasında REJECTED/NARROWED) "
                                    "bekleniyordu (A4-K103; 3.17 (2))",
                                    (unsigned)c->type, (unsigned)r->ack, (unsigned)r->reason);
                     } else {
-                        KC_DOGRULA(r->reason != IDA_REASON_NARROWED && r->reason != IDA_REASON_IMU_REJECTED,
-                                   "daraltmasız çağrıda genişletici reason %u (A4-K45, K103)",
+                        /* (b) girdisi yok: NARROWED yalnız çekirdeğin o çağrıdaki kendi daraltmasıyla
+                           (W5-K22) ve yalnız REJECTED ile (A4-K120) gelir. */
+                        KC_DOGRULA(r->reason != IDA_REASON_IMU_REJECTED &&
+                                       (r->reason != IDA_REASON_NARROWED || r->ack == IDA_ACK_REJECTED),
+                                   "daraltmasız çağrıda genişletici %u/%u (A4-K45, K103; W5-K22)", (unsigned)r->ack,
                                    (unsigned)r->reason);
                     }
                 }

@@ -38,6 +38,8 @@ int test_sol_9_routh_olcegi(const TestBaglami&);
 int test_sol_10_bulgu_toplama(const TestBaglami&);
 int test_sol_11_tek_gecis(const TestBaglami&);
 int test_sol_12_arac_dosyasi(const TestBaglami&);
+int test_a7_varlik_havuz(const TestBaglami&);
+int test_a7_varlik_olumsuz(const TestBaglami&);
 }  // namespace ida::senaryo::test
 
 int main(int argc, char** argv)
@@ -82,6 +84,8 @@ int main(int argc, char** argv)
         {"sol_10_bulgu_toplama", test_sol_10_bulgu_toplama},
         {"sol_11_tek_gecis", test_sol_11_tek_gecis},
         {"sol_12_arac_dosyasi", test_sol_12_arac_dosyasi},
+        {"a7_varlik_havuz", test_a7_varlik_havuz},
+        {"a7_varlik_olumsuz", test_a7_varlik_olumsuz},
     };
     if (argc < 3) {
         std::printf("kullanım: %s <test> <depo kökü>\n", argv[0]);

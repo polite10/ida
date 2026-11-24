@@ -7,6 +7,9 @@
  * düşerse aralık orada bölünür, durum ve P o ana kadar yayılır, ölçüm füzyonlanır ve kalan
  * aralık sonra yayılır. Ufka göre geç kalan ölçüm (t_m < t_h) füzyonlanmaz, sayılır. Adım
  * başına en çok IDA_KES_BUTCE skaler güncelleme yapılır; sınır dolunca ufuk o çağrıda durur.
+ * İki kuyruk vardır: manyetometre ve basınç (olc) ile yatay yardım ölçümleri DVL ve GNSS (yolc;
+ * modelleri kes_yatay.c'de). Ufuk ikisini ölçüm zamanına göre birleştirerek işler; eşit zamanda
+ * sabit sıra basınç, DVL, manyetometre, GNSS'tir (02 §2.3.2).
  *
  * Çıkış öngörücüsü her yeni IMU ile ufkun sapma kestirimleriyle yayılır; ufuk bir kaydın
  * sonuna vardığında e = x_h ⊖ x_o(t_h) hesaplanır (tutumda dünya çerçevesinde, soldan) ve
@@ -72,6 +75,37 @@ void ida_kes_olc_cikar(ida_kes_t *k)
         k->olc[i - 1u] = k->olc[i];
     }
     k->olc_n--;
+}
+
+void ida_kes_yolc_ekle(ida_kes_t *k, const ida_kes_yolc_t *o)
+{
+    if (k->yolc_n >= IDA_KES_YOLC_N) {
+        k->n_tasma++;
+        return;
+    }
+    uint32_t i = k->yolc_n;
+    while (i > 0u) {
+        const ida_kes_yolc_t *p = &k->yolc[i - 1u];
+        const bool once = (p->t_ns < o->t_ns) || ((p->t_ns == o->t_ns) && (p->sira <= o->sira));
+        if (once) {
+            break;
+        }
+        k->yolc[i] = *p;
+        i--;
+    }
+    k->yolc[i] = *o;
+    k->yolc_n++;
+}
+
+static void yolc_cikar(ida_kes_t *k)
+{
+    if (k->yolc_n == 0u) {
+        return;
+    }
+    for (uint32_t i = 1u; i < k->yolc_n; i++) {
+        k->yolc[i - 1u] = k->yolc[i];
+    }
+    k->yolc_n--;
 }
 
 /* ---- Kurulum ve IMU -------------------------------------------------------------------- */
@@ -157,6 +191,7 @@ static void ufuk_yay(ida_kes_t *k, ida_v3_t w, ida_v3_t f, float dt, const ida_k
     const float h = dt / (float)n;
     for (uint32_t i = 0u; i < n; i++) {
         ida_kes_P_yay(k->P, &k->xh, w, f, h, a);
+        ida_kes_dr_buyut(k, a, h); /* yatay hız ölçümle destekli değilken hiçbir şey yapmaz */
         ida_kes_nominal_yay(&k->xh, w, f, h, a->g);
     }
 }
@@ -419,7 +454,41 @@ static bool kayit_isle_d(ida_kes_t *k, const ida_kes_ayar_t *a, uint32_t *butce,
 {
     const uint32_t yer = k->imu_bas;
     const ida_kes_imu_kayit_t r = k->imu[yer]; /* w, f, t, dt (sıfırlamalar değiştirmez) */
-    while ((k->olc_n > 0u) && (k->olc[0].t_ns <= r.t_ns)) {
+    for (;;) {
+        const bool o_var = (k->olc_n > 0u) && (k->olc[0].t_ns <= r.t_ns);
+        const bool y_var = (k->yolc_n > 0u) && (k->yolc[0].t_ns <= r.t_ns);
+        if (!o_var && !y_var) {
+            break;
+        }
+        bool yardim = y_var;
+        if (o_var && y_var) {
+            /* İki kuyruğun başları: önce zamanı küçük olan; eşitte sabit sıra (02 §2.3.2). */
+            yardim = (k->yolc[0].t_ns < k->olc[0].t_ns) ||
+                     ((k->yolc[0].t_ns == k->olc[0].t_ns) && (k->yolc[0].sira < k->olc[0].sira));
+        }
+        if (yardim) {
+            const ida_kes_yolc_t y = k->yolc[0];
+            if (y.t_ns < k->th_ns) {
+                k->n_gec++; /* ufka göre geç (02 §2.3.2) */
+                yolc_cikar(k);
+                continue;
+            }
+            /* DVL üç, GNSS dört (hız 2 + konum 2) skaler güncellemedir. */
+            const uint32_t gerek = (y.tur == (uint8_t)IDA_SENS_DVL) ? 3u : 4u;
+            if (!zorla && (*butce < gerek)) {
+                return false;
+            }
+            ufuk_yay(k, r.w, r.f, ida_kes_ns_s(y.t_ns - k->th_ns), a);
+            k->th_ns = y.t_ns;
+            if (y.tur == (uint8_t)IDA_SENS_DVL) {
+                ida_kes_dvl_fuzyon(k, a, &y, r.w);
+            } else {
+                ida_kes_gnss_fuzyon(k, a, &y, r.w);
+            }
+            *butce = (*butce >= gerek) ? (*butce - gerek) : 0u;
+            yolc_cikar(k);
+            continue;
+        }
         const ida_kes_olc_t o = k->olc[0];
         if (o.t_ns < k->th_ns) {
             k->n_gec++; /* ufka göre geç (02 §2.3.2) */
@@ -536,6 +605,10 @@ void ida_kes_ufuk_ilerle(ida_kes_t *k, const ida_kes_ayar_t *a)
     while ((k->olc_n > 0u) && (k->olc[0].t_ns < k->th_ns)) {
         k->n_gec++;
         ida_kes_olc_cikar(k);
+    }
+    while ((k->yolc_n > 0u) && (k->yolc[0].t_ns < k->th_ns)) {
+        k->n_gec++;
+        yolc_cikar(k);
     }
     duzeltme_uygula(k, a, &d);
 }

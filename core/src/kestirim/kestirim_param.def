@@ -8,6 +8,11 @@
  *
  * Yalnız hizalamada okunanlar: KES_D_MS, KES_HIZ_S, BARO_KAL, BARO_KAL_D, BARO_P_ATM; ötekiler
  * her çağrıda okunur.
+ *
+ * 0x0234 ve sonrası W5 kestirim-yatay işinindir (DVL, GNSS, Ping1D; yatay hız ve konum; düzey
+ * histerezisi). Grup koşulu (ida_kes_param_grup): KES_N_RED < KES_N_RESET. Montajlar scenarios/ida0.toml'dan, orijin scenarios/ornek-havuz.toml'dandır;
+ * başka orijinli senaryo ORIJIN_LAT ve ORIJIN_LON'u kendi (kimlik, değer) çiftleriyle verir
+ * (A4 Bölüm 10, A5'ten beklenen md. 3 ve 4). Gürültü, eşik, sayı ve süreler TAHMİNDİR.
  */
 /* Füzyon ufku ve çıkış öngörücüsü (02 §2.3.2) */
 IDA_PARAM(0x0201u, KES_D_MS,     U32, B, 20u,      200u,     150u,      kes_d_ms)     /* ufuk gecikmesi D */
@@ -67,3 +72,43 @@ IDA_PARAM(0x0230u, T_BARO_STALE, U32, B, 20u,      5000u,    200u,      t_baro_s
 IDA_PARAM(0x0231u, T_MAG_STALE,  U32, B, 20u,      5000u,    500u,      t_mag_stale)  /* ms, 02 §4.1 */
 IDA_PARAM(0x0232u, IMU_GAP_MAX,  U32, B, 10u,      2000u,    500u,      imu_gap_max)  /* ms; aşılırsa yeniden hizalama */
 IDA_PARAM(0x0233u, BARO_RESET_MS, U32, B, 500u,     60000u,   2000u,     baro_reset_ms) /* sürekli retten sonra derinlik sıfırlaması */
+/* ---- W5 kestirim-yatay: DVL, GNSS, Ping1D (02 §2.3.3–§2.3.6) ----------------------------- */
+/* Montajlar (A4-K42; O_b'ye göre gövde çerçevesinde) */
+IDA_PARAM(0x0234u, GNSS_L_X,     F32, B, -10.0f,   10.0f,    -0.05f,    gnss_l_x)     /* m, anten */
+IDA_PARAM(0x0235u, GNSS_L_Y,     F32, B, -10.0f,   10.0f,    0.0f,      gnss_l_y)
+IDA_PARAM(0x0236u, GNSS_L_Z,     F32, B, -10.0f,   10.0f,    -0.22f,    gnss_l_z)
+IDA_PARAM(0x0237u, DVL_L_X,      F32, B, -10.0f,   10.0f,    0.05f,     dvl_l_x)      /* m */
+IDA_PARAM(0x0238u, DVL_L_Y,      F32, B, -10.0f,   10.0f,    0.0f,      dvl_l_y)
+IDA_PARAM(0x0239u, DVL_L_Z,      F32, B, -10.0f,   10.0f,    0.14f,     dvl_l_z)
+IDA_PARAM(0x023Au, DVL_ROLL,     F32, B, -3.15f,   3.15f,    0.0f,      dvl_roll)     /* sensör → gövde, ZYX */
+IDA_PARAM(0x023Bu, DVL_PITCH,    F32, B, -3.15f,   3.15f,    0.0f,      dvl_pitch)
+IDA_PARAM(0x023Cu, DVL_YAW,      F32, B, -3.15f,   3.15f,    0.0f,      dvl_yaw)
+IDA_PARAM(0x023Du, PING_L_X,     F32, B, -10.0f,   10.0f,    -0.08f,    ping_l_x)     /* m; ışın ekseni gövde +z sayılır */
+IDA_PARAM(0x023Eu, PING_L_Y,     F32, B, -10.0f,   10.0f,    0.08f,     ping_l_y)
+IDA_PARAM(0x023Fu, PING_L_Z,     F32, B, -10.0f,   10.0f,    0.14f,     ping_l_z)
+/* Senaryo orijini (WGS-84, 1e-7 derece; nav.p_ned bu noktaya göredir) */
+IDA_PARAM(0x0240u, ORIJIN_LAT,   I32, B, -890000000, 890000000, 410000000, orijin_lat) /* |enlem| ≤ 89° */
+IDA_PARAM(0x0241u, ORIJIN_LON,   I32, B, -1800000000, 1800000000, 290000000, orijin_lon)
+/* DVL */
+IDA_PARAM(0x0242u, R_DVL,        F32, B, 1.0e-4f,  1.0f,     0.02f,     r_dvl)        /* m/s, 1σ taban; sensör kovaryansına eklenir */
+IDA_PARAM(0x0243u, DVL_FOM_MAX,  F32, B, 1.0e-3f,  10.0f,    0.1f,      dvl_fom_max)  /* m/s; üstü kullanılmaz */
+IDA_PARAM(0x0244u, DVL_ALT_MIN,  F32, B, 0.0f,     10.0f,    0.1f,      dvl_alt_min)  /* m; altı (ve bilinmeyen irtifa) kullanılmaz */
+/* GNSS */
+IDA_PARAM(0x0245u, R_GNSS_P,     F32, B, 0.01f,    100.0f,   0.5f,      r_gnss_p)     /* m; σ_g = max(eph, R_GNSS_P) */
+IDA_PARAM(0x0246u, GNSS_SIG_K,   F32, B, 1.0f,     20.0f,    4.0f,      gnss_sig_k)   /* güncellemede σ = K·σ_g (ilişkili hata) */
+IDA_PARAM(0x0247u, R_GNSS_V,     F32, B, 5.0e-3f,  10.0f,    0.1f,      r_gnss_v)     /* m/s, 1σ */
+IDA_PARAM(0x0248u, GNSS_EPH_MAX, F32, B, 0.1f,     100.0f,   5.0f,      gnss_eph_max) /* m; üstü kullanılmaz */
+IDA_PARAM(0x0249u, KAPI_G2,      F32, B, 1.0f,     100.0f,   11.83f,    kapi_g2)      /* ki-kare eşiği, 2 boyut */
+IDA_PARAM(0x024Au, KES_YUZEY_D,  F32, B, 0.0f,     2.0f,     0.2f,      kes_yuzey_d)  /* m; GNSS yalnız derinlik bunun altındayken */
+/* Ölü hesap, geçerlilik ve düzey */
+IDA_PARAM(0x024Bu, DR_ORAN,      F32, B, 0.0f,     1.0f,     0.02f,     dr_oran)      /* ölü hesapta konum σ'sı: kat edilen yolun oranı */
+IDA_PARAM(0x024Cu, SIG_HVEL,     F32, B, 0.01f,    10.0f,    0.2f,      sig_hvel)     /* m/s; üstü yatay hız geçersiz */
+IDA_PARAM(0x024Du, KONUM_SICRA,  F32, B, 0.1f,     1000.0f,  2.0f,      konum_sicra)  /* m; üstü düzeltme çıkışa sıçrama olarak */
+IDA_PARAM(0x024Eu, KES_N_IYI,    U32, B, 2u,       50u,      5u,        kes_n_iyi)    /* kullanımdan önce ardışık iyi örnek */
+IDA_PARAM(0x024Fu, KES_N_RESET,  U32, B, 3u,       100u,     10u,       kes_n_reset)  /* ardışık kapı reddinden sonra sıfırlama; > KES_N_RED */
+IDA_PARAM(0x0250u, KES_OK_MS,    U32, B, 100u,     60000u,   2000u,     kes_ok_ms)    /* OK'tan önce koşulların kesintisiz süresi (duvar) */
+IDA_PARAM(0x0251u, T_DVL_STALE,  U32, B, 100u,     10000u,   1000u,     t_dvl_stale)  /* ms, 02 §4.1; Ping1D irtifası da */
+IDA_PARAM(0x0252u, T_GNSS_STALE, U32, B, 100u,     10000u,   1000u,     t_gnss_stale) /* ms, 02 §4.1 */
+/* W5 düzeltme turu (inceleme bulgu 1): ardışık ret, ilgili geçerliliği süre (KES_RED_MS) dolmadan
+   örnek sayısıyla da düşürür. Grup koşulu (ida_kes_param_grup): KES_N_RED < KES_N_RESET. */
+IDA_PARAM(0x0253u, KES_N_RED,    U32, B, 2u,       50u,      3u,        kes_n_red)    /* ardışık kapı reddinden sonra kaynak kuşkulu (geçerlilik düşer) */

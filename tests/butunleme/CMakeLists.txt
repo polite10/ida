@@ -14,6 +14,7 @@ add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_b
   test_a3.cpp a3_istemci.cpp)   # W4-bagla-a3
 target_sources(ida_butunleme_test PRIVATE test_sonar.cpp)   # W4-bagla-sonar
 target_sources(ida_butunleme_test PRIVATE test_duraklat.cpp)   # W4-duraklat
+target_sources(ida_butunleme_test PRIVATE test_gorev_sil.cpp)   # W5-gorev-yurutucu
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -178,3 +179,14 @@ if(NOT WIN32)
     set_tests_properties(butunleme.sonar_hil_olcum_${_n} PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   endforeach()
 endif()
+
+# W5-gorev-yurutucu kabul 6: görev senaryosu (yüzeyde iki yol noktası, dalış, su altında yol
+# noktası, yüzeye çıkış) süreç içi SIL'de COMPLETE olur; yer gerçeğine göre ölçümler ve iki koşunun
+# bayt eşitliği. Ayrıca aynı senaryo `ida_sim --kip sil` ile çıkış kodu 0.
+add_test(NAME butunleme.gorev_sil COMMAND ida_butunleme_test gorev_sil)
+set_tests_properties(butunleme.gorev_sil PROPERTIES TIMEOUT 600)
+add_test(NAME butunleme.ida_sim_gorev_senaryosu
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--kip;sil;--senaryo;scenarios/gorev-havuz.toml;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_gorev_senaryosu PROPERTIES TIMEOUT 600)

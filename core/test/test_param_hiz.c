@@ -355,10 +355,31 @@ static void test_sema_ozeti_tablodan_turer(void)
    varsayılan blok boyu. Değerler değişiklikten önceki çekirdeğin (bc83bca) ikilisiyle ve sol
    incelemesinin bağımsız hesabıyla aynı bulundu (159 parametre; varsayılan bloğun yük CRC'si
    0xB011EAB1, varsayılanlar ayarlandıkça değiştiği için sabitlenmez). Parametre sayısı ayrıca
-   sabitlenmez (W3-K6); ama şemadaki her değişiklik özeti de değiştirir. */
-#define ALTIN_OZET UINT64_C(0x34065414A77F8846)
-#define ALTIN_METIN 2426u
-#define ALTIN_BLOK 1296u
+   sabitlenmez (W3-K6); ama şemadaki her değişiklik özeti de değiştirir.
+   W5-kestirim-yatay (2026-11-24): kestirim şemasına 31 parametre eklendi (0x0234–0x0252; ikisi
+   I32); 190 parametre. Önceki değerler 0x34065414A77F8846, 2 426 B, 1 296 B idi. Yeni değerler
+   çekirdekten bağımsız bir hesapla (.def dosyalarından kanonik metin, SHA-256'nın ilk 8 baytı
+   küçük uçlu) bulundu; aynı hesap önceki şemada eski altın değerleri veriyor.
+   W5-kestirim-yatay düzeltme turu (2026-11-24): KES_N_RED eklendi (0x0253, U32); 191 parametre.
+   Önceki değerler 0xC0C86286048EBFF0, 2 917 B, 1 544 B idi; yenileri aynı bağımsız hesapla.
+   W5-atis-emniyet (2026-11-24): atış kontrolün üç emniyet zinciri parametresi eklendi
+   (0x0601–0x0603; 162 parametre); değerler kanonik metnin SHA-256'sıyla çekirdekten bağımsız
+   hesaplandı (aynı hesap eski şemada 0x34065414A77F8846 / 2426 B'yi verir).
+   W5-atis-emniyet düzeltme turu (2026-11-24; W5-K13): T_assess ve T_tup_bos parametre oldu
+   (0x0604, 0x0605; 164 parametre); değerler .def dosyalarının çekirdekten bağımsız
+   ayrıştırılmasıyla kurulan kanonik metnin SHA-256'sından (aynı hesap 162 parametrede
+   0x18BE798234EDD38D / 2477 B'yi verir).
+   Birleşim (W5-kestirim-yatay + W5-atis-emniyet, 2026-11-24): iki işin parametreleri birlikte
+   196 parametre (159 + 32 kestirim + 5 atış); değerler aynı bağımsız hesapla (.def dosyalarından
+   kanonik metin). Dalların ayrı ayrı değerleri: kestirim 0xA4B1E4F1ECAADCBB / 2 933 B / 1 552 B
+   (191 parametre), atış 0xE0ED504FB6AEA22D / 2 510 B / 1 336 B (164 parametre).
+   W5-gorev-yurutucu (2026-11-24): görevin sekiz (0x0411–0x0418) ve güdümün dört (0x0302–0x0305)
+   parametresi; 208 parametre. Önceki değerler 0x8F918D01B26C0791, 3 017 B, 1 592 B idi; yeniler
+   aynı bağımsız hesapla (.def dosyalarından kanonik metin; hesap önceki şemada eski değerleri
+   veriyor). */
+#define ALTIN_OZET UINT64_C(0xCCBD046F048653C3)
+#define ALTIN_METIN 3238u
+#define ALTIN_BLOK 1688u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \
