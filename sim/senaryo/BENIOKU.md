@@ -39,6 +39,13 @@ ida_senaryo_dogrula <senaryo.toml> [--cozumlenmis <çıktı.json>] [--rapor <ç�
 Dosya boyu en çok 4 MiB, iç içe tablo/dizi derinliği en çok 48 (`kAzamiDosyaBoyu`,
 `kAzamiDerinlik`); aşan dosya A5-K01 ile reddedilir.
 
+toml++ depo içi vcpkg overlay port'undan gelir (`vcpkg-overlay/tomlplusplus`, kök
+`vcpkg-configuration.json` ile kayıtlı): 3.4.0 + üst akımda birleşmiş dört düzeltme (PR #242,
+#301, #305, #321; adresler `portfile.cmake`'te). Bu yamalar bozuk girdinin kitaplıktaki tanımsız
+davranış yollarına (`TOML_UNREACHABLE`, `TOML_ASSERT_ASSUME`) ulaşmasını olağan ayrıştırma
+hatasına çevirir; güvenlik sınırı kitaplığın kendisidir, `toml_okuma.cpp`'deki ön tarama değil.
+3.5.x kullanılmaz: TOML 1.1.0'ı koşulsuz ayrıştırır, A5-K01 ise TOML 1.0.0 ister.
+
 ## Testler
 
 `ctest -R sim.senaryo` (test kodu `test/`; bozuk dosyalar bellekte, örnek dosyalardan üretilir).
