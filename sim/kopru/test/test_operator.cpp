@@ -13,9 +13,11 @@
 namespace {
 std::atomic<long long> g_canli_bayt{0};
 std::atomic<bool> g_bayt_say{false};
-constexpr std::size_t kBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
 }  // namespace
 #if !defined(_MSC_VER)
+namespace {
+constexpr std::size_t kBaslik = alignof(std::max_align_t) > 16u ? alignof(std::max_align_t) : 16u;
+}  // namespace
 void* operator new(std::size_t n)
 {
     auto* p = static_cast<unsigned char*>(std::malloc(n + kBaslik));

@@ -894,7 +894,7 @@ struct A3Uc {
     ida::test::a3::HttpSonuc post(const std::string& yol, const std::string& govde)
     {
         char kimlik[32];
-        std::snprintf(kimlik, sizeof kimlik, "%024x", ++istek);   // istek_kimligi deseni: 24 onaltılık
+        std::snprintf(kimlik, sizeof kimlik, "%024x", static_cast<unsigned>(++istek));   // istek_kimligi: 24 onaltılık
         const std::string g = "{\"istek_kimligi\":\"" + std::string(kimlik) + "\"," + govde.substr(1);
         return ida::test::a3::http_istek(port, jeton, "POST", "/api/v1" + yol, g, istemci);
     }
