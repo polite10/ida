@@ -30,7 +30,7 @@ Her modül `core/src/<modül>/` dizinindedir ve her dosyanın tek sahibi vardır
 | Zaman | `zaman/zaman.h` (yalnız `static inline`) | W2 | tam |
 | Matematik | `mat/`: `mat.{c,h}`, `ida_math.{c,h}` | W2 | tam (çekirdek küme) |
 | Günlük | `telemetri/`: `telemetri.h`, `gunluk.c` | W2 | tam |
-| Kestirim | `kestirim/`: `kestirim.{c,h}`, `kes_eskf.c`, `kes_ufuk.c`, `kes_ic.h` | W3 kestirim | dilim 1 (yönelim, derinlik, dikey hız; yatay hız ve konum yok) |
+| Kestirim | `kestirim/`: `kestirim.{c,h}`, `kes_eskf.c`, `kes_ufuk.c`, `kes_yatay.c`, `kes_ic.h` | W3 kestirim; W5 kestirim-yatay | dilim 1 (yönelim, derinlik, dikey hız) ve dilim 2 (yatay hız, konum, irtifa, düzey histerezisi; §10) |
 | Güdüm | `gudum/`: `gudum.{c,h}` (GUIDED_SP, kontrol isteğinin tek erişimcisi) | W3-zincir | GUIDED_SP; görev öğeleri ve `AUTO` yok |
 | Görev, kip, arıza | `gorev/`: `gorev.{c,h}`, `kip.c`, `ariza.c`, `istek.c`, `gorev_ic.h` | W3 güdüm ve görev | dilim 1 (kipler, ARM, arıza güvenliği, kontrol isteği); `MISSION_*` yok |
 | Kontrol, tahsis | `kontrol/`: `kontrol.{c,h}`, `tahsis.{c,h}` | W3 kontrol | tam (dilim 1); `MANUAL` komutu yok |
@@ -379,3 +379,55 @@ Sayım: 130 kural (K01–K130, boşluk ve yineleme yok; betikle denetlendi). Bas
 **Kazanç ayarı** (`kontrol/kontrol_param.def`): W_KP 60 → 120, W_KI 30 → 15, W_DAMP_FF 40 → 80, ATT_KP_Y 1,5 → 3, RATE_KP_R 4 → 8; **bu fizik modeline göre** (sim/fizik dilim 1, `scenarios/ida0.toml`) Z1 koşusunda ayarlandı, gerçek araçta ölçülmedi. `test_sol_bulgulari.c`'nin iki testi ilk varsayılanlarla yazılmış beklenen değerleri koruyarak o kazançları kendi kurulumunda sabitler.
 
 **Kapalı çevrim düzeneği** `tests/zincir/` (C++20): fizik + sade sensörler + gerçek çekirdek + platform taklidi; CTest `zincir.z1`, araç `ida_zincir_deneme` (CSV). Senaryo: dalış 1,5 m / +90°, 40 s tutma; manevra 2,5 m / −90° ve aynı anda itici arızası (itki × 0,4; şekil polinomunun tersiyle darbe genişliği ölçeklenir), 40 s tutma; DISARM. Test dört koşuyu karşılaştırır: arızasız, dikey t5, yatay t1, ikisi. Parametre bloğu SIL yoluyla verilir (A4-K78): geçici bir örnek PARAM_SET/COMMIT/SAVE ile bloğu üretir; senaryonun yapılandırması `YER_G` = 9,82 (havuz, A5 Ek E) ve `BARO_KAL_D` = yüzer denge derinliğidir.
+
+## 10. Kestirim dilim 2: yatay hız, konum, irtifa ve düzey (W5-kestirim-yatay, 2026-11-24)
+
+Görev belgesi `docs/gorevler/W5-kestirim-yatay.md`. Bu bölümdeki bütün eşik, süre, sayı ve gürültü değerleri **tahmindir** (parametre varsayılanı ya da derleme sabiti); kartta ya da gerçek duyargayla ölçülmedi. Süre rakamları yalnız host ölçümüdür ve bağıldır.
+
+**Yöntem.** Durum vektörü büyümedi: 15 hata durumlu süzgecin (`kes_eskf.c`) yatay hız ve konum durumlarına iki ölçüm eklendi; sabit gecikmeli ufuk ve çıkış öngörücüsü aynen kullanılır (02 §2.3.2). Ölçüm modelleri ve Jacobian'ları `kes_yatay.c`'dedir ve üç işlev olarak ayrıdır (`ida_kes_dvl_model`, `ida_kes_gnss_hiz_model`, `ida_kes_gnss_konum_model`); birim testi Jacobian'ı sayısal türevle karşılaştırır.
+
+| Ölçüm | Model (R: gövde → NED; kollar O_b'den, gövde çerçevesinde) | Gürültü | Kapı |
+|---|---|---|---|
+| DVL hızı, gövdede üç eksen | `h = Rᵀ v + ω × l_dvl`; `H_v = Rᵀ`, `H_θ = [Rᵀ v]×`, `H_bg = [l_dvl]×`; ölçüm DVL çerçevesinden gövdeye `DVL_ROLL/PITCH/YAW` ile döner | `R_dvl C R_dvlᵀ + R_DVL² I` (sensör kovaryansı varsa ve pozitif tanımlıysa; yoksa yalnız `R_DVL² I`); beyazlatılır | 3 boyut, `KAPI_G3` |
+| GNSS yatay hızı | `h = (v + R (ω × l_a))_NE`; `H_θ = −(R [ω × l_a]×)_NE`, `H_bg = (R [l_a]×)_NE` | `R_GNSS_V² I` | 2 boyut, `KAPI_G2` |
+| GNSS yatay konumu | `h = (p + R l_a)_NE`; `H_θ = −(R [l_a]×)_NE` | kapıda `σ_g² I`, güncellemede `(GNSS_SIG_K σ_g)² I`; `σ_g = max(eph, R_GNSS_P)` | 2 boyut, `KAPI_G2` |
+
+- **Kullanım koşulları.** DVL: başlık bayrağı temiz, `VEL_VALID`, `TRACK_BOTTOM`, `fom ≤ DVL_FOM_MAX`, irtifa biliniyor ve `≥ DVL_ALT_MIN`. GNSS: başlık bayrağı temiz, `fix_type` 3B ve üstü, `eph ≤ GNSS_EPH_MAX`, basınç destekli derinlik `< KES_YUZEY_D` (dalışta GNSS örneği kullanılmaz), konum orijinden en çok 0,2° uzakta.
+- **Yerel düzlem.** Enlem ve boylam farkı `int64`'te alınır, boylam ±180°'ye sarılır; kuzey ve doğu ikinci mertebeye kadar hesaplanır (`ida_kes_gnss_ne`). Orijin `ORIJIN_LAT`, `ORIJIN_LON` parametreleridir (I32, 1e-7 derece; varsayılan `scenarios/ornek-havuz.toml` orijini) ve `nav.origin_*` alanlarına yazılır. Tam ECEF dönüşümüne göre hata testte ölçüldü: 5 km içinde 7 mm, 15 km içinde 41 mm.
+- **Nitelendirme.** Bir kaynak ancak `KES_N_IYI` ardışık iyi örnekten sonra füzyonlanır. Nitelikli kaynakta iyi olmayan tek örnek yalnız atlanır; iyi örnekler arasındaki boşluk bayatlık sınırını aşarsa nitelik düşer. Sayım ölçüm zamanında, ufukta, zaman sırasıyla yapılır.
+- **Ret ve geri dönüş yolu.** Kapıdan geçemeyen ölçüm füzyonlanmaz ve desteği yenilemez. `KES_N_RESET` ardışık nitelikli örnek reddedilirse durum ölçüme sıfırlanır: hız DVL'e ya da GNSS hızına, konum GNSS'e. Hız sıfırlamasında yatay konum σ'sı `|Δv| × ret süresi` kadar büyütülür.
+- **GNSS'in ilişkili hatası.** GNSS konum hatası zamanda ilişkilidir (sim modelinde varyansın %90'ı τ = 60 s). Kazanç `GNSS_SIG_K` katı büyütülmüş gürültüyle kurulur ve güncellemeden sonra yatay konum varyansı `σ_g²`'nin altına indirilmez: bildirilen σ alıcının bildirdiği doğruluktan iyi olmaz.
+- **Ölü hesap.** Yatay hız ölçümle destekliyken ufuktaki yatay konum σ'sı her yayılımda `DR_ORAN × |v_yatay| × Δt` kadar büyütülür (yön hatası ve DVL ölçek hatası yolla orantılı hata verir; beyaz süreç gürültüsü bunu vermez). Hız desteksizken uygulanmaz; o durumda P ivme gürültüsü ve sapma belirsizliğiyle büyür.
+- **Konumun kurulması ve yüzeye çıkış.** Hizalamadaki yatay konum (0, 0) bir kabuldür: ilk kabul edilen fix konumu kapısız kurar (`reset_counter` artar) ve konum ancak bundan sonra geçerli olabilir. Sonraki fix'ler kapıdan geçerse olağan güncellemedir; tek güncellemenin yatay düzeltmesi `KONUM_SICRA`'yı aşarsa çıkışa ve geçmişe aynı çağrıda sıçrama olarak uygulanır ve `reset_counter` artar, aşmazsa τ_o ile yumuşar (çağrı başına en çok `KONUM_SICRA × T/τ_o`). Kapıdan geçemeyen fix'ler `KES_N_RESET` örnekten sonra konumu sıfırlar (tek sıçrama, sayaçla).
+- **Seyreltme ve kuyruklar.** Her türün kuyruğa alınmasında en kısa ölçüm zamanı aralığı vardır (`kes_ic.h`: manyetometre 8 ms, basınç 18 ms, DVL 45 ms, GNSS 90 ms); olağan cihaz hızları geçer, daha sık gelen örnek akışı canlı sayar ama füzyonlanmaz. DVL ve GNSS ayrı kuyruktadır (8 kayıt); manyetometre ve basınç kuyruğu 24'ten 32'ye çıktı. Gerekçe: her çağrıda örnek veren bir akışta kuyruk sürekli dolu kalıyor, boşalan yeri hep sıralamada önce gelen tür alıyor ve öteki türler füzyonlanamıyordu (testte görüldü: derinlik geçerliliği ≈ 4,9 s'de düşüyordu).
+- **İrtifa.** `nav.altitude` O_b'nin dibe mesafesidir: DVL irtifası (dibe dik mesafe; A4 §3.3) ve Ping1D menzili (ışın gövde +z ekseninde sayılır, düşeye izdüşürülür; güven ≥ %50 ve eğim kosinüsü ≥ 0,8) montaj kolunun düşey bileşeniyle O_b'ye taşınır; ikisi de varsa küçüğü verilir; kaynak yok ya da `T_DVL_STALE`'den eskiyse −1. Filtreye girmez. Son örnekten beri derinlik değişimi eklenmez.
+
+**Geçerlilik ve düzey** (`kestirim.c` `suzgec_duzeyi`; `IDA_EST_OK` atış kontrolün silahlanma ön koşuludur, A4 §3.16).
+
+| Büyüklük | Koşul |
+|---|---|
+| Yatay hız (`IDA_KES_G_YATAY_HIZ`) | tutum ve yön geçerli; yatay hız σ'sı ≤ `SIG_HVEL`; bir kaynak destekliyor: DVL (akış canlı, son füzyon `T_DVL_STALE` içinde, kapı reddi `KES_RED_MS`'tir sürmüyor) ya da GNSS hızı (aynı koşullar, `T_GNSS_STALE`) |
+| Konum (`IDA_KES_G_KONUM`) | konum hizalamadan beri GNSS'ten kuruldu; yatay konum σ'sı ≤ `SIG_HPOS`; konumu taşıyan destek var (geçerli yatay hız ya da canlı ve taze GNSS konumu); GNSS konum kapısının reddi `KES_RED_MS`'tir sürmüyor |
+| `OK`'a yükselme | tutum, yön, derinlik, yatay hız ve konum geçerli, çıkış gecikmesi yok ve bu durum `KES_OK_MS` boyunca (duvar saati) kesintisiz sürdü |
+| `OK`'tan düşme | koşullardan biri bozulduğu çağrıda `DEGRADED`; süre baştan sayılır. Kaynak kesilirse geçerlilik son füzyondan `T_DVL_STALE` / `T_GNSS_STALE` sonra düşer; ölü hesapta σ `SIG_HPOS`'u aşınca düşer |
+| `BAD` | değişmedi (bayraklı IMU, tutum σ'sı, yerçekimi ya da basınç kapısının sürekli reddi). DVL ya da GNSS kapısının sürekli reddi `BAD` değil, ilgili geçerliliğin düşmesidir |
+
+Oturum yenilenmesinde ve yeniden hizalamada yatay konum korunmaz; yeniden GNSS'ten kurulana kadar geçersizdir.
+
+**Parametreler** (`kestirim_param.def`, 0x0234–0x0252; hepsi B sınıfı; varsayılanlar tahmin): montajlar `GNSS_L_X/Y/Z`, `DVL_L_X/Y/Z`, `DVL_ROLL/PITCH/YAW`, `PING_L_X/Y/Z`; orijin `ORIJIN_LAT`, `ORIJIN_LON` (I32); DVL `R_DVL` (0,02 m/s), `DVL_FOM_MAX` (0,1 m/s), `DVL_ALT_MIN` (0,1 m); GNSS `R_GNSS_P` (0,5 m), `GNSS_SIG_K` (4), `R_GNSS_V` (0,1 m/s), `GNSS_EPH_MAX` (5 m), `KAPI_G2` (11,83), `KES_YUZEY_D` (0,2 m); ölü hesap ve düzey `DR_ORAN` (0,02), `SIG_HVEL` (0,2 m/s), `KONUM_SICRA` (2 m), `KES_N_IYI` (5), `KES_N_RESET` (10), `KES_OK_MS` (2000), `T_DVL_STALE` (1000), `T_GNSS_STALE` (1000). Şema 159 → 190 parametre; altın özet `0xC0C86286048EBFF0`, kanonik metin 2 917 B, varsayılan blok 1 544 B (`cekirdek.birim.param_hiz`). Başka orijinli senaryo `ORIJIN_LAT` ve `ORIJIN_LON`'u kendi (kimlik, değer) çiftleriyle verir.
+
+**Kaynak** (ölçüm; fw-release GCC 14.3.1 `-O2`, host Apple Clang `-O3`):
+
+| Ölçüm | Önce | Sonra |
+|---|---|---|
+| Çekirdek arşivi, fw-release (`arm-none-eabi-size -t libida_core.a`) | text 62 525 B | text 73 701 B (+11 176 B: kestirim nesneleri +9 760 B, `param.c` +1 480 B, öteki nesneler −64 B); data 0, bss 0 |
+| `ida_fw.elf`, fw-release | text 124 248 B, data 92 B, bss 168 608 B | text 135 460 B (+11 212 B), data 92 B, bss 168 608 B |
+| `sizeof(ida_core_t)` (Cortex-M33 ve macOS arm64 aynı) | 12 600 B | 14 304 B (+1 704 B: kestirim 5 960 → 7 136 B, parametreler 2 768 → 3 296 B) |
+| En büyük yığın çerçeveleri, fw-release (`-fstack-usage`; tek çerçeve) | `ida_kon_hesapla` 728 B, `ida_kes_saglam` 720 B, `commit_karari` ve `kayit_isle_d` 672 B, `ida_prm_blok_coz` 664 B | `commit_karari` 792 B ve `ida_prm_blok_coz` 784 B (parametre sayısıyla büyür), `ida_kes_dvl_fuzyon` 752 B (yeni), `ida_kon_hesapla` 728 B, `ida_kes_saglam` 720 B, `kayit_isle_d` 640 B, `ida_kes_gnss_fuzyon` 384 B |
+
+Kart üzerindeki adım süresi bu işte ölçülmedi (ayrı iş). Host'taki bağıl step süresi raporda verilir.
+
+**Doğrulama** (`cekirdek.birim.kestirim`; dilim 2'nin testleri `core/test/kestirim/test_kestirim_yatay.inc`, dilim 1'in düzeneğini kullanır; 22 test). Yer gerçeği çözümsel yörüngelerdir; GNSS enlem ve boylamı tam ECEF dönüşümüyle, DVL hızı `Rᵀ v + ω × l`'den, çekirdeğin modellerinden bağımsız üretilir. Kabul 1–8'in testleri ve ölçülen değerler iş raporundadır. Ek sınamalar: yerel düzlem dönüşümü, Jacobian'ların sayısal türevi, büyük kollar ve dönük DVL montajı, irtifa, seyreltme, her çağrıda bütün duyargaların geldiği sade akış, tek kaynak (yalnız GNSS, yalnız DVL), GNSS kalitesi ve oturum yenilenmesi. Depoya girmeyen bir çapraz denetimde `sim/sensor` modellerinin (GNSS, DVL dahil) çıktısı çekirdeğe verildi (çember, dalış, yüzeye çıkış; altı tohum): yüzeyde yatay konum hatası ≤ 2,7 m, 140 m ölü hesapta ≤ 2,1 m, yatay hız hatası ≤ 0,043 m/s, düzey 4,15 s'de `OK` ve koşu boyunca `OK`.
+
+**Bilinen sınırlar.** (1) DVL fiziksel rejime bakılmadan kullanılır (02 §2.3.3 "yalnız DALIŞ" diyordu; görev belgesi yüzeyde GNSS + DVL ister). (2) Su izi (dip kilidi olmayan DVL hızı) kullanılmaz; akıntı durumu yoktur. (3) GNSS yüksekliği kullanılmaz. (4) Hızlanırken yerçekimi ölçümü ivmeyi eğim sanar; DVL yokken (yalnız GNSS hızı) ≈ 0,4 m/s² hızlanmada yatay hız hatası 0,17 m/s'ye çıktı (testte ölçüldü). (5) Araç sabit hızla giderken hizalanırsa hız 0 kabul edilir; DVL ya da GNSS hızı `KES_N_RESET` örnek reddedildikten sonra sıfırlamayla düzeltir (testte oturum yenilenmesinden `OK`'a 5,96 s). (6) Ping1D ışın ekseni gövde +z sayılır; montaj dönüşü parametresi yoktur.
+
