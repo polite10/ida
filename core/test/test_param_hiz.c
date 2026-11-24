@@ -355,10 +355,14 @@ static void test_sema_ozeti_tablodan_turer(void)
    varsayılan blok boyu. Değerler değişiklikten önceki çekirdeğin (bc83bca) ikilisiyle ve sol
    incelemesinin bağımsız hesabıyla aynı bulundu (159 parametre; varsayılan bloğun yük CRC'si
    0xB011EAB1, varsayılanlar ayarlandıkça değiştiği için sabitlenmez). Parametre sayısı ayrıca
-   sabitlenmez (W3-K6); ama şemadaki her değişiklik özeti de değiştirir. */
-#define ALTIN_OZET UINT64_C(0x34065414A77F8846)
-#define ALTIN_METIN 2426u
-#define ALTIN_BLOK 1296u
+   sabitlenmez (W3-K6); ama şemadaki her değişiklik özeti de değiştirir.
+   W5-kestirim-yatay (2026-11-24): kestirim şemasına 31 parametre eklendi (0x0234–0x0252; ikisi
+   I32); 190 parametre. Önceki değerler 0x34065414A77F8846, 2 426 B, 1 296 B idi. Yeni değerler
+   çekirdekten bağımsız bir hesapla (.def dosyalarından kanonik metin, SHA-256'nın ilk 8 baytı
+   küçük uçlu) bulundu; aynı hesap önceki şemada eski altın değerleri veriyor. */
+#define ALTIN_OZET UINT64_C(0xC0C86286048EBFF0)
+#define ALTIN_METIN 2917u
+#define ALTIN_BLOK 1544u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \

@@ -335,3 +335,37 @@ bool ida_kes_nis3(float S[3][3], const float y[3], float *nis)
     *nis = t;
     return true;
 }
+
+bool ida_kes_chol3(float S[3][3], float c[6])
+{
+    float c00 = S[0][0];
+    if (!(c00 > 0.0f)) {
+        return false;
+    }
+    c00 = ida_karekok(c00);
+    const float c10 = S[1][0] / c00;
+    const float c20 = S[2][0] / c00;
+    float c11 = S[1][1] - c10 * c10;
+    if (!(c11 > 0.0f)) {
+        return false;
+    }
+    c11 = ida_karekok(c11);
+    const float c21 = (S[2][1] - c20 * c10) / c11;
+    float c22 = S[2][2] - c20 * c20 - c21 * c21;
+    if (!(c22 > 0.0f)) {
+        return false;
+    }
+    c22 = ida_karekok(c22);
+    c[0] = c00;
+    c[1] = c10;
+    c[2] = c11;
+    c[3] = c20;
+    c[4] = c21;
+    c[5] = c22;
+    for (uint32_t i = 0u; i < 6u; i++) {
+        if (!ida_sonlu(c[i])) {
+            return false;
+        }
+    }
+    return true;
+}
