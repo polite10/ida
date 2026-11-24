@@ -21,7 +21,7 @@
 #   ctest --preset host-debug -L kabul_kontrol_beklenen                         (beklenenler)
 
 option(IDA_KABUL_KONTROL_BEKLENEN
-  "Bugünkü çekirdeğe karşı düşen (bekleniyor) acil durdurma kontrol kabul testlerini varsayılan turda koştur" OFF)
+  "Bugünkü çekirdeğe karşı düşen (bekleniyor) acil durdurma kontrol kabul testlerini varsayılan turda koştur" ON)
 
 ida_unity_kur()
 

@@ -57,7 +57,7 @@
 
 /* Görev belgesinde sabitlenen rampa parametresi (W5-kontrol-acil, "Bağımsız kabul testleri"):
    varsayılan 500 ms (tahmin), aralık 0–5 000 ms, 0 = rampa yok, sınıf B (Kural 3: IDA_PCLS_B). */
-#define KK_RAMPA_AD "KON_ACIL_RAMPA_MS"
+#define KK_RAMPA_AD "KON_ACIL_RAMPA"
 #define KK_RAMPA_VARSAYILAN_MS 500u
 #define KK_RAMPA_AZAMI_MS 5000u
 
