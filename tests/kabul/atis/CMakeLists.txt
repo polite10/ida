@@ -23,8 +23,6 @@
 #     dalıyla (W5-atis-emniyet) birlikte varsayılan turda koşar. Bu dal tek başına main'e
 #     girmez, uygulama dalına birleştirilir; yer tutucuya karşı koşturmak için seçenek OFF
 #     verilir.
-#   - kabul_atis_belirsiz (yalnız etiket; devre dışı bırakmaz): beklentisi sözleşmenin açıkça
-#     sıralamadığı bir okumaya dayanan, mimar kararı bekleyen testler.
 # Koşturma:
 #   ctest --preset host-debug -R '^kabul\.atis\.'                                   (varsayılan)
 #   cmake --preset host-debug -DIDA_KABUL_ATIS_SILAHLI=ON && cmake --build build/host-debug
@@ -52,9 +50,9 @@ foreach(_dosya temel komut emniyet kilit izin ozellik)
   ida_ayar_uygula(kabul_atis_${_dosya} CEKIRDEK)
 endforeach()
 
-# kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR] [SILAHLI] [BELIRSIZ])
+# kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR] [SILAHLI])
 function(kabul_atis_testi dosya madde kisa)
-  cmake_parse_arguments(PARSE_ARGV 3 A "BEKLENIYOR;SILAHLI;BELIRSIZ" "" "")
+  cmake_parse_arguments(PARSE_ARGV 3 A "BEKLENIYOR;SILAHLI" "" "")
   set(_ad "kabul.atis.${madde}.${kisa}")
   add_test(NAME "${_ad}" COMMAND kabul_atis_${dosya} "${kisa}")
   set(_etiket "")
@@ -68,9 +66,6 @@ function(kabul_atis_testi dosya madde kisa)
     if(NOT IDA_KABUL_ATIS_BEKLENEN)
       set_tests_properties("${_ad}" PROPERTIES DISABLED TRUE)
     endif()
-  endif()
-  if(A_BELIRSIZ)
-    list(APPEND _etiket kabul_atis_belirsiz)
   endif()
   if(_etiket)
     set_tests_properties("${_ad}" PROPERTIES LABELS "${_etiket}")

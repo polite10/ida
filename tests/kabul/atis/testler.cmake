@@ -1,7 +1,7 @@
-# tests/kabul/atis — test kayıtları: kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR] [SILAHLI] [BELIRSIZ]).
+# tests/kabul/atis — test kayıtları: kabul_atis_testi(<dosya> <madde> <kısa ad> [BEKLENIYOR] [SILAHLI]).
 # BEKLENIYOR: yer tutucu atış kontrole karşı düşen, silahlanma gerektirmeyen test (LABELS kabul_atis).
 # SILAHLI: FC'nin silahlanmasını (kestirim OK; W5-K12) gerektiren test (LABELS kabul_atis_silahli).
-# BELIRSIZ: mimar kararı bekleyen okuma (LABELS kabul_atis_belirsiz). Ayrıntı CMakeLists.txt'te.
+# Ayrıntı CMakeLists.txt'te.
 
 # temel
 kabul_atis_testi(temel G-Ç01 ilk_cikti)
@@ -48,7 +48,8 @@ kabul_atis_testi(komut G-Ç06 daraltici_komut_ve_oturum)
 kabul_atis_testi(komut G-Ç06 daraltici_emniyet_girdisi BEKLENIYOR)
 kabul_atis_testi(komut G-Ç33 genisletici_komut_ve_oturum)
 kabul_atis_testi(komut G-Ç33 genisletici_emniyet_girdisi BEKLENIYOR)
-# W5-K17 (a): çekirdeğin sapması düzeltme turunda giderilir; beklenti sözleşmedendir (A4-K44, K45).
+# W5-K22 (W5-K17 geri alındı): çekirdeğin o çağrıda kendi uyguladığı kip düşmesinde genişleticiler
+# REJECTED/NARROWED, health.narrowed = 0; kendi daraltması olmayan (b) girdisiz çağrıda NARROWED yok.
 kabul_atis_testi(komut G-Ç33 daraltmasiz_cagri BEKLENIYOR)
 kabul_atis_testi(komut G-Ç34 reddedilen_cagri)
 kabul_atis_testi(komut G-Ç35 imu_lag)
@@ -56,19 +57,18 @@ kabul_atis_testi(komut G-Ç46 reset_kilitsiz)
 kabul_atis_testi(komut G-Ç51 test_disi)
 kabul_atis_testi(komut G-Ç16 gecis_cagrisi BEKLENIYOR)
 kabul_atis_testi(komut F1 f1_daraltma BEKLENIYOR)
-# W5-K17 (b): arıza eylemi kenarı daraltıcı girdi değildir; çekirdeğin sapması düzeltme turunda giderilir.
+# W5-K22: arıza eylemi kenarının çağrısında genişleticiler REJECTED/NARROWED, health.narrowed = 0.
 kabul_atis_testi(komut F1 f1_ariza_kenari BEKLENIYOR)
 kabul_atis_testi(komut F10 f10_bicim)
 
 # emniyet
 kabul_atis_testi(emniyet G-Ç14 etkin_deger BEKLENIYOR)
 kabul_atis_testi(emniyet G-Ç15 kapanma_bir_kez BEKLENIYOR)
-# BELIRSIZ: SESSION_END'i aynı çağrıda gevşek inst 0 emniyet örneğiyle veren step; örneğin o çağrıda
-# gevşetip gevşetmediği sözleşmede açıkça sıralanmaz (en kısıtlayan okuma: gevşetmez). A4-K122
-# çağrısıyla aynı maddeler *_k122 testlerindedir.
-kabul_atis_testi(emniyet G-Ç18 oturum_sonu BELIRSIZ)
-kabul_atis_testi(emniyet G-Ç44 ikinci_oturum_sonu BEKLENIYOR BELIRSIZ)
-kabul_atis_testi(emniyet G-Ç45 oturum_baslangici BELIRSIZ)
+# SESSION_END'i aynı çağrıda gevşek inst 0 emniyet örneğiyle veren step: örnek o çağrıda gevşetmez
+# (W5-K20). A4-K122 çağrısıyla aynı maddeler *_k122 testlerindedir.
+kabul_atis_testi(emniyet G-Ç18 oturum_sonu)
+kabul_atis_testi(emniyet G-Ç44 ikinci_oturum_sonu BEKLENIYOR)
+kabul_atis_testi(emniyet G-Ç45 oturum_baslangici)
 kabul_atis_testi(emniyet G-Ç18 oturum_sonu_k122 BEKLENIYOR)
 kabul_atis_testi(emniyet G-Ç44 ikinci_oturum_sonu_k122 BEKLENIYOR)
 kabul_atis_testi(emniyet G-Ç45 oturum_baslangici_k122)

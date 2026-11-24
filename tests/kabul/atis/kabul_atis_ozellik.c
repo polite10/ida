@@ -343,14 +343,6 @@ static void adim(const profil_t *p)
             (*ka_son_komut(in)).u.fc.arg1 = (uint32_t)kc_rng_aralik(&R, 2u);
         }
     }
-    if ((red || nul) && (in->narrow.mask & IDA_NARROW_MODE) != 0u && in->narrow.mode == IDA_MODE_STATION_KEEP) {
-        /* Bugünkü çekirdeğin kip modülünde atış kontrol dışı bir sapma: reddedilen çağrıdaki
-           STATION_KEEP hedefli kip mandalından sonra daraltıcı girdisiz çağrıda genişleticiler
-           NARROWED alıyor (A4-K45). Bu örüntü kabul.atis.G-Ç33.daraltmasiz_cagri ile ayrıca
-           sınanır; özellik testleri atış kontrol değişmezlerine odaklı kalsın diye burada
-           üretilmez. */
-        in->narrow.mode = (uint8_t)IDA_MODE_DEPTH_HOLD;
-    }
     /* Daraltıcının etkisi için çağrı öncesi model: çekirdekçe açık sayılan izinler (G-Ç11). */
     bool izin_once[IDA_PORT_N_TUBE];
     for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
