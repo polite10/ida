@@ -116,6 +116,7 @@ struct Sayaclar {
     std::uint64_t kritik_erteleme = 0;           // A1-K113: kayan kritik üye
     std::uint64_t kritik_erteleme_en_buyuk = 0;  // en büyük kayma (parti)
     std::uint64_t eszamansiz_ilk_parti_oncesi = 0;  // W4-K6: uygulandı, A1-K79'a sayılmadı
+    std::uint64_t esz_birlesen = 0;  // W4-K27 (3): daha yeni bir eşzamansız çıktıyla geçersiz kılınan (beklerken)
     // Tanı (yinelenemeyen 0x20 gözlemi): A1-K79'a sayılan ilk dört eşzamansız güvenli çıktı.
     struct EszKaydi {
         std::uint64_t adim = 0;            // uygulandığı fizik sınırı
@@ -418,6 +419,15 @@ public:
     std::uint64_t olay_karari_atilan() const;
     // HIL'de kullanıcı duraklatması (A1-K41, K79): çalıştırma zamanlama bakımından geçersiz.
     void hil_duraklatma_bildir();
+    // W4-K27 (1) (EMNİYET): duraklatılmış sınırda operatör emniyet istekleri, sınır yeniden
+    // işlenmeden, yalnız emniyet adımlarıyla (sinir_isle'nin kodu) artımlı işlenir: önce
+    // kısıtlayanlar (koşulsuz, istek başına revizyon), sonra gevşetenler (`beklenen_rev` güncel
+    // revizyona eşitse); acil durdurmanın etkinleşmesi/kalkması W4-K3'e göre işlenir. Senaryo
+    // atamaları ve bekleyen atamalar bu işleme girmez; parti, olay ve sürekli çıktı işlenmez.
+    // `sonuc` en az n öğe; dönüş yazılan sonuç sayısı. Bellek ayırmaz.
+    std::size_t emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc);
+    // W4-K27 (3): bekleyen eşzamansız güvenli çıktı sayısı (en çok 1).
+    std::size_t esz_bekleyen_sayisi() const;
 
     // ---- Komutlar (A1 §3.6, §4.5) ----
     // Dönüş: cmd_id. t_ns komutun verildiği sim anı (t_hazır).

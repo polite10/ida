@@ -116,6 +116,8 @@ set(_ida_kopru_testleri
   pty_tasima
   operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
   operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
+  operator_artimli  # W4-K27 (1) EMNİYET: duraklatmada artımlı emniyet işlemi
+  esz_sinirli  # W4-K27 (3): bekleyen eşzamansız çıktı sınırlı
 )
 foreach(_ad IN LISTS _ida_kopru_testleri)
   add_test(NAME sim.kopru.${_ad} COMMAND ida_kopru_test ${_ad})

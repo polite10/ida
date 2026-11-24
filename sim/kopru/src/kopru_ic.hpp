@@ -278,7 +278,8 @@ struct Kopru::Ic {
     std::deque<mavlink_ida_event_result_t> sonuc_kuyrugu;
     std::deque<std::uint64_t> sakli_talep;
     // W4-bagla-a3 (A3-K98): verilen olay kararları, A3'e aktarılana dek (en çok 1024).
-    std::deque<OlayKarari> olay_kararlari;
+    std::array<OlayKarari, 1024> olay_kararlari{};
+    std::size_t olay_karari_bas = 0, olay_karari_n = 0;
     std::uint64_t olay_karari_atilan = 0;
 
     // ---- Emniyet ----
@@ -357,6 +358,11 @@ struct Kopru::Ic {
     void pencere_ac(std::int64_t t_onceki);
     void rev_artir();
     void izin_kapat(int tup);
+    // Emniyet adımlarının ortak kodu (sinir_isle ve emniyet_artimli; W4-K27 (1)).
+    bool kisitla(const EmniyetAtama& at, bool& degisti);
+    bool operator_kisitla(const EmniyetAtama& at, OperatorSonucu& o);
+    OperatorSonucu operator_gevset(const EmniyetAtama& at, bool kisitlama_hakim, std::uint32_t rev_bas);
+    void estop_isle();
     void olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no);
     void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply, std::uint8_t kind = 255,
                        std::uint8_t tube = 255);

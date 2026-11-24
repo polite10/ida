@@ -134,6 +134,16 @@ Canlilik Kopru::Ic::yanit_al(const mavlink_ida_actuator_t& m)
         }
         out_seq_var = true;
         son_out_seq = m.out_seq;
+        // W4-K27 (3): yalnız en yeni eşzamansız güvenli çıktı bekler (ötekini geçersiz kılar: daha
+        // eski üretimin iptal ettiklerini de iptal eder); bellek sınırlı, sayaç tutulur.
+        if (!esz_bekleyen.empty() && !yeni(m.out_seq, esz_bekleyen.back().out_seq)) {
+            ++say.esz_birlesen;
+            return Canlilik::aninda;
+        }
+        if (!esz_bekleyen.empty()) {
+            ++say.esz_birlesen;
+            esz_bekleyen.clear();
+        }
         esz_bekleyen.push_back(m);
         return Canlilik::aninda;   // ASYNC: beklemeden uygulanır
     }
@@ -439,11 +449,14 @@ void Kopru::Ic::sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::i
                                std::uint8_t tube)
 {
     // W4-bagla-a3 (A3-K98): kararın A3'e aktarılacak kopyası (yalnız gözlem; davranışı değiştirmez).
-    olay_kararlari.push_back(OlayKarari{event_id, kind, tube, sonuc, t_apply});
-    while (olay_kararlari.size() > 1024u) {
-        olay_kararlari.pop_front();
+    // Sabit boylu halka (en çok 1024): dolarsa en eski karar atılır, sayaç artar.
+    if (olay_karari_n == olay_kararlari.size()) {
+        olay_karari_bas = (olay_karari_bas + 1u) % olay_kararlari.size();
+        --olay_karari_n;
         ++olay_karari_atilan;
     }
+    olay_kararlari[(olay_karari_bas + olay_karari_n) % olay_kararlari.size()] = OlayKarari{event_id, kind, tube, sonuc, t_apply};
+    ++olay_karari_n;
     karari_bekleyen.erase(event_id);
     sakli[event_id] = SakliSonuc{sonuc, t_apply};
     if (sonuc < say.olay_sonuc.size()) {
@@ -549,6 +562,139 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t 
     karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
 }
 
+// ---- Emniyet adımlarının ortak kodu: sinir_isle ve emniyet_artimli (W4-bagla-a3; W4-K27 (1)) ----
+
+static bool gevseten_mi(const EmniyetAtama& at)
+{
+    return (at.acil_durdurma && !*at.acil_durdurma) || (at.fis[0] && *at.fis[0]) || (at.fis[1] && *at.fis[1]) ||
+           (at.pim[0] && !*at.pim[0]) || (at.pim[1] && !*at.pim[1]);
+}
+
+// Atamanın kısıtlayan alanlarını uygular; dönüş: kısıtlayan alan vardı. `degisti`: yetkili durum değişti.
+bool Kopru::Ic::kisitla(const EmniyetAtama& at, bool& degisti)
+{
+    bool var = false;
+    if (at.acil_durdurma && *at.acil_durdurma) {
+        degisti = degisti || !emn.acil_durdurma;
+        emn.acil_durdurma = true;
+        izin_kapat(0);
+        izin_kapat(1);
+        var = true;
+    }
+    for (std::size_t k = 0; k < 2; ++k) {
+        if (at.fis[k] && !*at.fis[k]) {
+            degisti = degisti || emn.fis[k];
+            emn.fis[k] = false;
+            izin_kapat(static_cast<int>(k));
+            var = true;
+        }
+        if (at.pim[k] && *at.pim[k]) {
+            degisti = degisti || !emn.pim[k];
+            emn.pim[k] = true;
+            izin_kapat(static_cast<int>(k));
+            var = true;
+        }
+    }
+    return var;
+}
+
+// Operatörün kısıtlayan isteği: istek başına bir revizyon; durum değişmese de artar (A3-K92,
+// K117 (1)). EMNİYET: hiçbir koşulda reddedilmez. Dönüş: istek kısıtlayandı (sonuç `o`'da).
+bool Kopru::Ic::operator_kisitla(const EmniyetAtama& at, OperatorSonucu& o)
+{
+    if (gevseten_mi(at)) {
+        return false;
+    }
+    bool degisti = false;
+    if (!kisitla(at, degisti)) {
+        return false;
+    }
+    rev_artir();
+    o = OperatorSonucu{at.operator_kimligi, AtamaSonucu::uygulandi, true, degisti, emn.emniyet_revizyonu};
+    return true;
+}
+
+// Operatörün gevşeten isteği (A3-K95 (4), K117 (6), K118). `kisitlama_hakim`: bu sınırda revizyon
+// 1–3. adımlarda arttı (artımlı işlemde yok: W4-K27 (1)); `rev_bas`: o durumda kodu ayırmak için.
+OperatorSonucu Kopru::Ic::operator_gevset(const EmniyetAtama& at, bool kisitlama_hakim, std::uint32_t rev_bas)
+{
+    OperatorSonucu o{at.operator_kimligi, AtamaSonucu::uygulandi, false, false, 0};
+    if (kisitlama_hakim) {
+        o.sonuc = say.emniyet_rev_doydu && emn.emniyet_revizyonu == rev_bas ? AtamaSonucu::rev_doydu
+                                                                              : AtamaSonucu::kisitlama_hakim;
+    } else if (say.emniyet_rev_doydu) {
+        o.sonuc = AtamaSonucu::rev_doydu;
+    } else if (!at.beklenen_rev || *at.beklenen_rev != emn.emniyet_revizyonu) {
+        o.sonuc = AtamaSonucu::rev_uyusmuyor;
+    } else {
+        if (at.acil_durdurma && !*at.acil_durdurma) {
+            o.degisti = o.degisti || emn.acil_durdurma;
+            emn.acil_durdurma = false;
+        }
+        for (std::size_t k = 0; k < 2; ++k) {
+            if (at.fis[k] && *at.fis[k]) {
+                o.degisti = o.degisti || !emn.fis[k];
+                emn.fis[k] = true;
+            }
+            if (at.pim[k] && !*at.pim[k]) {
+                o.degisti = o.degisti || emn.pim[k];
+                emn.pim[k] = false;
+            }
+        }
+        rev_artir();   // A3-K117 (6): uygulanan her gevşetme
+    }
+    o.rev_sonra = emn.emniyet_revizyonu;
+    return o;
+}
+
+// W4-K3 (EMNİYET): acil durdurmanın etkinleştiği anda yürürlükteki komut ve bekleyen bütün
+// yuvalar iptal edilir; kalkıştan sonra itki yalnız kalkış anından sonra gönderilen bir partinin
+// (batch_seq ≥ eşik) yanıtıyla gelir. Eşik, acil durdurma sürerken ve kalktığı anda sonraki TF'nin
+// batch_seq'idir (o andan sonraki parti kalkıştan sonra gönderilir).
+void Kopru::Ic::estop_isle()
+{
+    if (emn.acil_durdurma) {
+        if (!estop_onceki) {
+            if (yururluk) {
+                ++say.estop_iptal;
+            }
+            yururluk = false;
+            for (auto& [sq, y] : yuvalar) {
+                (void)sq;
+                if (!y.islendi && !y.iptal) {
+                    y.iptal = true;
+                    ++say.estop_iptal;
+                }
+            }
+        }
+        estop_esik_var = true;
+        estop_esik = sonraki_seq;
+    } else if (estop_onceki) {
+        estop_esik = sonraki_seq;
+    }
+    estop_onceki = emn.acil_durdurma;
+}
+
+std::size_t Kopru::emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc)
+{
+    Ic& i = *ic_;
+    std::size_t k = 0;
+    // A1-K85 sırası: önce kısıtlayanlar (hepsi), sonra gevşetenler (her biri taşıdığı revizyona göre).
+    for (std::size_t j = 0; j < n; ++j) {
+        OperatorSonucu o;
+        if (a[j].operator_kimligi != 0u && i.operator_kisitla(a[j], o)) {
+            sonuc[k++] = o;
+        }
+    }
+    for (std::size_t j = 0; j < n; ++j) {
+        if (a[j].operator_kimligi != 0u && gevseten_mi(a[j])) {
+            sonuc[k++] = i.operator_gevset(a[j], false, i.emn.emniyet_revizyonu);
+        }
+    }
+    i.estop_isle();
+    return k;
+}
+
 void Kopru::emniyet_ata(const EmniyetAtama& a) { ic_->atama_bekleyen.push_back(a); }
 
 bool Kopru::emniyet_baslangic(bool acil_durdurma, const std::array<bool, 2>& fis, const std::array<bool, 2>& pim,
@@ -589,9 +735,14 @@ bool Kopru::emniyet_rev_doydu() const { return ic_->say.emniyet_rev_doydu; }
 
 void Kopru::olay_kararlari_al(std::vector<OlayKarari>& v)
 {
-    v.insert(v.end(), ic_->olay_kararlari.begin(), ic_->olay_kararlari.end());
-    ic_->olay_kararlari.clear();
+    Ic& i = *ic_;
+    for (; i.olay_karari_n > 0u; --i.olay_karari_n) {
+        v.push_back(i.olay_kararlari[i.olay_karari_bas]);
+        i.olay_karari_bas = (i.olay_karari_bas + 1u) % i.olay_kararlari.size();
+    }
 }
+
+std::size_t Kopru::esz_bekleyen_sayisi() const { return ic_->esz_bekleyen.size(); }
 
 std::uint64_t Kopru::olay_karari_atilan() const { return ic_->olay_karari_atilan; }
 
@@ -634,60 +785,24 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     }
     bool kisit = false;
     bool gevset = false;
-    // Bir atamanın kısıtlayan alanlarını uygular; dönüş: kısıtlayan alan vardı. `degisti`: yetkili
-    // durum değişti.
-    auto kisitla = [&i](const EmniyetAtama& at, bool& degisti) {
-        bool var = false;
-        if (at.acil_durdurma && *at.acil_durdurma) {
-            degisti = degisti || !i.emn.acil_durdurma;
-            i.emn.acil_durdurma = true;
-            i.izin_kapat(0);
-            i.izin_kapat(1);
-            var = true;
-        }
-        for (std::size_t k = 0; k < 2; ++k) {
-            if (at.fis[k] && !*at.fis[k]) {
-                degisti = degisti || i.emn.fis[k];
-                i.emn.fis[k] = false;
-                i.izin_kapat(static_cast<int>(k));
-                var = true;
-            }
-            if (at.pim[k] && *at.pim[k]) {
-                degisti = degisti || !i.emn.pim[k];
-                i.emn.pim[k] = true;
-                i.izin_kapat(static_cast<int>(k));
-                var = true;
-            }
-        }
-        return var;
-    };
-    auto gevseten_mi = [](const EmniyetAtama& at) {
-        return (at.acil_durdurma && !*at.acil_durdurma) || (at.fis[0] && *at.fis[0]) || (at.fis[1] && *at.fis[1]) ||
-               (at.pim[0] && !*at.pim[0]) || (at.pim[1] && !*at.pim[1]);
-    };
     // Senaryonun kısıtlayan atamaları: tek işlem (A3-K117 (2)).
     for (const EmniyetAtama& at : i.atama_bekleyen) {
         if (at.operator_kimligi != 0u) {
             continue;
         }
         bool degisti = false;
-        kisit = kisitla(at, degisti) || kisit;
+        kisit = i.kisitla(at, degisti) || kisit;
         gevset = gevset || gevseten_mi(at);
     }
     if (kisit) {
         i.rev_artir();
     }
-    // Operatörün kısıtlayan istekleri (W4-bagla-a3): istek başına bir işlem; durum değişmese de
-    // revizyon artar (A3-K92, K117 (1)). EMNİYET: hiçbir koşulda reddedilmez.
+    // Operatörün kısıtlayan istekleri (W4-bagla-a3): istek başına bir işlem (A3-K92, K117 (1));
+    // artımlı işlemle (`emniyet_artimli`) aynı kod.
     for (const EmniyetAtama& at : i.atama_bekleyen) {
-        if (at.operator_kimligi == 0u || gevseten_mi(at)) {
-            continue;
-        }
-        bool degisti = false;
-        if (kisitla(at, degisti)) {
-            i.rev_artir();
-            s.operator_sonuclari.push_back({at.operator_kimligi, AtamaSonucu::uygulandi, true, degisti,
-                                            i.emn.emniyet_revizyonu});
+        OperatorSonucu o;
+        if (at.operator_kimligi != 0u && i.operator_kisitla(at, o)) {
+            s.operator_sonuclari.push_back(o);
         }
     }
 
@@ -754,38 +869,9 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     // sonra, istek başına; her biri taşıdığı revizyona göre (A3-K118). EMNİYET: revizyon bu
     // sınırda 1–3. adımlarda arttıysa hepsi reddedilir ve yeniden denenmez.
     for (const EmniyetAtama& at : i.atama_bekleyen) {
-        if (at.operator_kimligi == 0u || !gevseten_mi(at)) {
-            continue;
+        if (at.operator_kimligi != 0u && gevseten_mi(at)) {
+            s.operator_sonuclari.push_back(i.operator_gevset(at, !gevsetme_serbest, rev_bas));
         }
-        OperatorSonucu o{at.operator_kimligi, AtamaSonucu::uygulandi, false, false, 0};
-        if (!gevsetme_serbest) {
-            o.sonuc = i.say.emniyet_rev_doydu || doymus_bas ? AtamaSonucu::rev_doydu : AtamaSonucu::kisitlama_hakim;
-            if (i.emn.emniyet_revizyonu != rev_bas) {
-                o.sonuc = AtamaSonucu::kisitlama_hakim;
-            }
-        } else if (i.say.emniyet_rev_doydu) {
-            o.sonuc = AtamaSonucu::rev_doydu;
-        } else if (!at.beklenen_rev || *at.beklenen_rev != i.emn.emniyet_revizyonu) {
-            o.sonuc = AtamaSonucu::rev_uyusmuyor;
-        } else {
-            if (at.acil_durdurma && !*at.acil_durdurma) {
-                o.degisti = o.degisti || i.emn.acil_durdurma;
-                i.emn.acil_durdurma = false;
-            }
-            for (std::size_t k = 0; k < 2; ++k) {
-                if (at.fis[k] && *at.fis[k]) {
-                    o.degisti = o.degisti || !i.emn.fis[k];
-                    i.emn.fis[k] = true;
-                }
-                if (at.pim[k] && !*at.pim[k]) {
-                    o.degisti = o.degisti || i.emn.pim[k];
-                    i.emn.pim[k] = false;
-                }
-            }
-            i.rev_artir();   // A3-K117 (6): uygulanan her gevşetme
-        }
-        o.rev_sonra = i.emn.emniyet_revizyonu;
-        s.operator_sonuclari.push_back(o);
     }
     i.atama_bekleyen.clear();
 
@@ -794,30 +880,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         i.yururluk = false;
         i.yururluk_sil = false;
     }
-    // W4-K3 (EMNİYET): acil durdurmanın etkinleştiği sınırda yürürlükteki komut ve bekleyen bütün
-    // yuvalar iptal edilir; kalkıştan sonra itki yalnız kalkış anından sonra gönderilen bir
-    // partinin (batch_seq ≥ eşik) yanıtıyla gelir. Eşik, acil durdurma sürerken ve kalktığı
-    // sınırda sonraki TF'nin batch_seq'idir (o sınırın partisi kalkıştan sonra gönderilir).
-    if (i.emn.acil_durdurma) {
-        if (!i.estop_onceki) {
-            if (i.yururluk) {
-                ++i.say.estop_iptal;
-            }
-            i.yururluk = false;
-            for (auto& [sq, y] : i.yuvalar) {
-                (void)sq;
-                if (!y.islendi && !y.iptal) {
-                    y.iptal = true;
-                    ++i.say.estop_iptal;
-                }
-            }
-        }
-        i.estop_esik_var = true;
-        i.estop_esik = i.sonraki_seq;
-    } else if (i.estop_onceki) {
-        i.estop_esik = i.sonraki_seq;
-    }
-    i.estop_onceki = i.emn.acil_durdurma;
+    i.estop_isle();
     struct Aday {
         mavlink_ida_actuator_t m;
         bool esz;

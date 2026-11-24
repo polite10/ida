@@ -60,6 +60,8 @@ int test_tcp_tasima();
 int test_pty_tasima();
 int test_operator_emniyet();
 int test_operator_ve_senaryo();
+int test_operator_artimli();
+int test_esz_sinirli();
 
 namespace {
 
@@ -127,6 +129,8 @@ const Test kTestler[] = {
     {"pty_tasima", test_pty_tasima},
     {"operator_emniyet", test_operator_emniyet},
     {"operator_ve_senaryo", test_operator_ve_senaryo},
+    {"operator_artimli", test_operator_artimli},
+    {"esz_sinirli", test_esz_sinirli},
 };
 
 }  // namespace

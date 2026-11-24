@@ -137,3 +137,96 @@ int test_operator_ve_senaryo()
     DOGRULA(d, z.k.emniyet_revizyonu() == r3 + 1u, "yalnız senaryonun gevşetmesi revizyonu artırdı");
     return d.hata;
 }
+
+// W4-K27 (1) (EMNİYET): duraklatılmış sınırda artımlı işlem. Sol'un karşı örneği: senaryo sınır
+// b'de acili bırakır (b bir kez işlenir), duraklatmada operatör yeniden basar → basılı kalır;
+// senaryo ataması artımlı işleme yeniden girmez. Duraklatmada bas → bırak (güncel revizyonla):
+// eski (basmadan önce kabul edilmiş) nötr dışı komut geri gelmez (W4-K3).
+int test_operator_artimli()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    EmniyetAtama bas;
+    bas.acil_durdurma = true;
+    z.k.emniyet_ata(bas);
+    (void)z.periyot();
+    EmniyetAtama birak;
+    birak.acil_durdurma = false;
+    z.k.emniyet_ata(birak);
+    z.sinir_ilerle();   // sınır b: senaryonun bırakması (tek kez)
+    DOGRULA(d, !z.k.acil_durdurma(), "senaryo b'de bıraktı");
+    const std::uint32_t r = z.k.emniyet_revizyonu();
+    std::array<OperatorSonucu, 4> s{};
+    const EmniyetAtama ob = op_acil(31, true);
+    DOGRULA(d, z.k.emniyet_artimli(&ob, 1, s.data()) == 1u && s[0].sonuc == AtamaSonucu::uygulandi && s[0].degisti,
+            "duraklatmada operatörün basması uygulandı");
+    DOGRULA(d, z.k.acil_durdurma() && z.k.emniyet_revizyonu() == r + 1u, "basılı, revizyon +1");
+    z.sinir_ilerle();   // bekleyen atama yok: senaryonun bırakması yeniden işlenmez
+    DOGRULA(d, z.k.acil_durdurma(), "sürdürmeden sonra basılı kaldı");
+
+    // Nötr dışı komut yürürlükteyken duraklatmada bas → bırak: eski komut dönmez (W4-K3).
+    SahteDuzenek y;
+    DOGRULA(d, y.el_sikis(), "el sıkışma (2)");
+    std::array<std::uint16_t, 8> p{};
+    p.fill(1700);
+    y.sk.tf_kancasi = [&y, &p](const SahteKart::Tf& tf) {
+        y.sk.yanit(tf.seq, static_cast<std::uint16_t>(IDAW_ACT_FLAGS_THR_VALID | IDAW_ACT_FLAGS_ARMED), p);
+    };
+    for (int n = 0; n < 6; ++n) {
+        (void)y.periyot();
+    }
+    // Bundan sonra yeni parti yok: bekleyen yuvaların hepsi basmadan önce gönderilmiş partilerin.
+    DOGRULA(d, !y.sinirlar.back().notr && y.sinirlar.back().pwm_us[0] == 1700.0, "ön koşul: nötr dışı komut yürürlükte");
+    const EmniyetAtama yb = op_acil(41, true);
+    (void)y.k.emniyet_artimli(&yb, 1, s.data());
+    const EmniyetAtama yk = op_acil(42, false, y.k.emniyet_revizyonu());
+    DOGRULA(d, y.k.emniyet_artimli(&yk, 1, s.data()) == 1u && s[0].sonuc == AtamaSonucu::uygulandi,
+            "duraklatmada bırakma (güncel revizyon) uygulandı");
+    bool notr = true;
+    for (int j = 0; j < 12; ++j) {
+        y.sinir_ilerle();
+        notr = notr && y.sinirlar.back().notr;
+    }
+    DOGRULA(d, notr, "bas → bırak sonrası eski nötr dışı komut geri gelmedi (W4-K3)");
+    // Aynı artımlı çağrıda bırakma (eski revizyon) + bas: kısıtlayan önce, bırakma bayat.
+    const std::uint32_t r2 = y.k.emniyet_revizyonu();
+    const std::array<EmniyetAtama, 2> iki{op_acil(52, false, r2), op_acil(51, true)};
+    DOGRULA(d, y.k.emniyet_artimli(iki.data(), 2, s.data()) == 2u && s[0].kimlik == 51u &&
+                   s[1].sonuc == AtamaSonucu::rev_uyusmuyor && y.k.acil_durdurma(),
+            "aynı çağrıda kısıtlayan önce; bırakma bayat revizyonla reddedildi");
+    return d.hata;
+}
+
+// W4-K27 (3): duraklatmada kart güvenli çıktıları sınır işlenmeden gelir; bekleyen bellek sınırlı
+// (yalnız en yeni). Bir saatlik HIL ızgarası eşdeğeri: 360 000 eşzamansız güvenli çıktı.
+int test_esz_sinirli()
+{
+    Denetci d;
+    SahteDuzenek z;
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    for (int n = 0; n < 3; ++n) {
+        (void)z.periyot();
+    }
+    std::array<std::uint16_t, 8> notr{};
+    notr.fill(1500);
+    const auto bayrak = static_cast<std::uint16_t>(IDAW_ACT_FLAGS_THR_VALID | IDAW_ACT_FLAGS_IS_SAFE |
+                                                   IDAW_ACT_FLAGS_SRC_TICK | IDAW_ACT_FLAGS_ASYNC);
+    std::size_t en_cok = 0;
+    for (int i = 0; i < 360'000; ++i) {
+        z.sk.yanit(z.k.son_parti(), bayrak, notr);
+        if (i % 1000 == 999) {
+            alisveris(z.k, z.sk, z.t);
+            en_cok = std::max(en_cok, z.k.esz_bekleyen_sayisi());
+        }
+    }
+    alisveris(z.k, z.sk, z.t);
+    en_cok = std::max(en_cok, z.k.esz_bekleyen_sayisi());
+    DOGRULA(d, en_cok == 1u, "bekleyen eşzamansız çıktı en çok 1 (" + std::to_string(en_cok) + ")");
+    DOGRULA(d, z.k.sayaclar().esz_birlesen == 359'999u,
+            "geçersiz kılınanlar sayıldı (" + std::to_string(z.k.sayaclar().esz_birlesen) + ")");
+    z.sinir_ilerle();
+    DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u && z.k.esz_bekleyen_sayisi() == 0u,
+            "sürdürmede en yenisi uygulandı");
+    return d.hata;
+}
