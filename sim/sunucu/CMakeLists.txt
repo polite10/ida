@@ -19,12 +19,16 @@ function(ida_sunucu_ayar hedef)
   endif()
 endfunction()
 
-add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp)
+find_package(nlohmann_json CONFIG REQUIRED)   # A3 yer istasyonu komutlarının parametreleri (W4-bagla-a3)
+
+add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp src/a3_baglanti.cpp)
 target_include_directories(ida_sunucu
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # A5 senaryo dosyası (W4-sim-senaryo): çözümleyici ida_senaryo, yükleyiciler ida_senaryo_sensor.
 target_link_libraries(ida_sunucu PUBLIC ida_kopru ida_kopru_karsi ida_fizik ida_sensor ida_senaryo ida_senaryo_sensor)
+# A3 sunucusu (W4-bagla-a3): --a3-port verilince başlar; ida_a3 sim/a3'te tanımlanır (hedef adı üretimde çözülür).
+target_link_libraries(ida_sunucu PUBLIC ida_a3 PRIVATE nlohmann_json::nlohmann_json)
 ida_sunucu_ayar(ida_sunucu)
 
 add_executable(ida_sim src/main.cpp)

@@ -29,6 +29,10 @@ void kullanim()
         "  --acil <s> [--acil-kalk <s>]  sanal acil durdurma\n"
         "  --csv <yol>              kontrol adımı başına CSV\n"
         "  --gunluk <0..2>          stderr günlüğü (varsayılan 1)\n"
+        "  --a3-port <port>         A3 sunucusu (web panelleri; yalnız 127.0.0.1; 0: boş port); açılış\n"
+        "                           adresi standart çıktıya bir kez yazılır (A3-K05)\n"
+        "  --a3-kok <dizin>         A3: panellerin derleme çıktısı (web/dist)\n"
+        "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
         "çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo (doğrulama raporu\n"
         "standart hataya), 4 senaryo bu dilimde yürütülemez\n");
 }
@@ -184,6 +188,19 @@ int main(int argc, char** argv)
                 return 1;
             }
             a.gunluk = static_cast<int>(x);
+        } else if (s == "--a3-port") {
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 65535.0, x)) {
+                std::fprintf(stderr, "ida_sim: --a3-port 0–65535 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.a3_acik = true;
+            a.a3_port = static_cast<std::uint16_t>(x);
+        } else if (s == "--a3-kok") {
+            a.a3_kok = deger();
+        } else if (s == "--a3-bekle") {
+            a.a3_bekle = true;
         } else if (s == "--yardim" || s == "-h") {
             kullanim();
             return 0;
@@ -211,7 +228,16 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_sim: sil kipinde karşı taraf ic ya da tcp olmalı\n");
         return 1;
     }
+    if (!a.a3_acik && (!a.a3_kok.empty() || a.a3_bekle)) {
+        std::fprintf(stderr, "ida_sim: --a3-kok ve --a3-bekle --a3-port ister\n");
+        return 1;
+    }
     a.csv_uret = !a.csv_yolu.empty();
+    // A3-K04, K05: açılış adresi (erişim jetonuyla) standart çıktıya bir kez; günlüğe yazılmaz.
+    a.a3_acilis = [](const std::string& adres) {
+        std::printf("%s\n", adres.c_str());
+        std::fflush(stdout);
+    };
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
     const ida::kopru::Sayaclar& c = s.sayac;
     using ida::sunucu::HataTuru;

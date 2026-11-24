@@ -237,6 +237,7 @@ struct KomutSonucu {
     std::uint16_t reason = 0;    // IDAW_REASON
     std::uint8_t kind = 0;       // IDAW_RES_KIND
     std::uint32_t value_bits = 0;
+    std::uint8_t param_type = 0;  // IDAW_PARAM_TYPE (kind = PARAM_VALUE ve kabulde; W4-bagla-a3)
     std::uint32_t save_crc = 0;
     bool yerel = false;
     std::int64_t t_ns = 0;       // sonucun alındığı/verildiği sim zamanı

@@ -690,6 +690,7 @@ bool Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
     s.reason = m.reason;
     s.kind = m.kind;
     s.value_bits = m.value_bits;
+    s.param_type = m.param_type;
     s.save_crc = m.save_crc;
     s.t_ns = tf_var ? tf_zamani(son_seq) : 0;
     sonuclar[m.cmd_id] = s;

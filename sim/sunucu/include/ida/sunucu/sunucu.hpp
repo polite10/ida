@@ -16,6 +16,7 @@
 // sınırıysa parti kapanır.
 #pragma once
 
+#include "ida/a3/komut.hpp"
 #include "ida/kopru/kopru.hpp"
 #include "ida/port.h"
 
@@ -116,6 +117,26 @@ struct Ayar {
     // Yalnız sınama: görev iletileri sonuç beklenmeden (sınır başına bir) gönderilir; köprünün ve
     // kartın dönüştürücüsünün alanları taşıdığını sınamak için (çekirdek görevi desteklemese de).
     bool gorev_beklemeden = false;
+
+    // ---- A3 sunucusu (W4-bagla-a3; docs/sozlesmeler/A3-web.md) ----
+    // Kapalıyken (varsayılan) sunucu hiç başlamaz ve koşu bugünkü davranışla bayt bayt aynıdır.
+    bool a3_acik = false;
+    std::uint16_t a3_port = 47100;  // A3-K01; 0: işletim sistemi atar
+    std::string a3_kok;             // panellerin derleme çıktısı (web/dist); boşsa statik yollar 404
+    // true: çalıştırma `yuklendi`'de bekler, panelden `calistirma/baslat` ile başlar (A3-K62).
+    // false: çalıştırma kendiliğinden başlar (komut satırındaki koşunun davranışı).
+    bool a3_bekle = false;
+    // Açılış adresi (A3-K05) bir kez verilir; program standart çıktıya yazar.
+    std::function<void(const std::string& adres)> a3_acilis;
+    // Koşu bitince sunucunun son çerçeveleri yayınlaması için beklenen duvar süresi (s).
+    double a3_kapanis_bekleme_s = 0.2;
+    // Yalnız sınama: sunucu dinlemeye başladı (port, erişim jetonu).
+    std::function<void(std::uint16_t port, const std::string& jeton)> a3_hazir;
+    // Yalnız sınama: her fizik sınırının başında (dünya iş parçacığı), A3 komutları çekilmeden
+    // önce; sınama komut alıcısına doğrudan istek verebilir.
+    std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
+    // Yalnız sınama: A1 bayt akışı (sim → karşı taraf: true; karşı taraf → sim: false).
+    std::function<void(bool sim_giden, const std::uint8_t* p, std::size_t n)> a1_bayt_kancasi;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -172,7 +193,21 @@ struct OlaySonucu {
     std::string kimlik;
     std::string sonuc;               // uygulandi | reddedildi | uygulanmadi
     std::int64_t t_ns = -1;          // uygulandığı/reddedildiği sınır; uygulanmadi'da çalıştırma sonu
-    std::string neden;               // gevsetme_reddedildi, desteklenmiyor, hedef_yok, kosul_saglanmadi
+    std::string neden;               // gevsetme_reddedildi, desteklenmiyor, hedef_yok, kosul_saglanmadi;
+                                     // A3 komutunda A3 §3.9 hata kodu
+    // W4-bagla-a3 kapsam 4: kaynak. "senaryo" (zaman çizelgesi; kimlik olay kimliği) ya da "a3"
+    // (panel komutu; kimlik "a3/<komut_no>/<tür>").
+    std::string kaynak = "senaryo";
+};
+
+// Yetkili emniyet girdisi değişimi (A3-K96; kaynak "senaryo" ya da "operator").
+struct EmniyetDegisimi {
+    std::int64_t t_ns = 0;
+    std::string alan;                // acil_durdurma | silahlandirma_fisi.f1 | … | emniyet_pimi.f2
+    bool onceki = false, sonraki = false;   // true: basılı / takılı
+    std::string kaynak;
+    std::uint32_t komut_no = 0;      // operatörde A3 komut numarası
+    std::uint32_t emniyet_rev = 0;   // değişimin uygulandığı sınırdan sonraki revizyon
 };
 struct AtamaCeliskisi {
     std::int64_t t_ns = 0;
@@ -244,6 +279,14 @@ struct Sonuc {
     std::uint32_t karsi_imu_rejected = 0;
     std::uint64_t karsi_gecerli_red = 0;
     std::string evre_ozeti;                    // HIL: döngü evrelerinin ölçümü (duvar)       // VALID olduğu halde reddedilen örnek (0 olmalı)
+    // ---- A3 (W4-bagla-a3) ----
+    std::string calistirma_sonu;               // A3 açıkken: bitti | durduruldu | hata
+    std::vector<EmniyetDegisimi> emniyet_degisimleri;   // A3 açıkken
+    std::uint64_t a3_yayin_cagrisi = 0;        // Yayinci çağrısı (dünya iş parçacığı)
+    std::int64_t a3_cagri_en_kotu_ns = 0;      // tek çağrının en uzun süresi (duvar; ölçüm)
+    std::int64_t a3_sinir_en_kotu_ns = 0;      // bir sınırdaki bütün yayın çağrılarının en uzun toplamı
+    std::uint64_t a3_halka_tasma = 0;          // A3-K38
+    std::uint64_t a3_komut = 0;                // dünyaya ulaşan A3 komutu
 };
 
 Sonuc kos(const Ayar& ayar);
