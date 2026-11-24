@@ -26,7 +26,7 @@ Her modül `core/src/<modül>/` dizinindedir ve her dosyanın tek sahibi vardır
 | Emniyet | `emniyet/emniyet.{c,h}`: yalnız kısıtlayan yön | W2 | tam |
 | Emniyet gevşetmesi | `emniyet/emniyet_gevset.c` (W4 açar) | W4 atış kontrol | yok |
 | Olaylar | `olay/olay.{c,h}`: kimlik, SAFETY_CLOSE, bekleyenler, sonuçlar, yalnız silen çıkış kapısı | W2 | tam; genişletici aday üretimi W4'ün kendi dosyasında |
-| Parametreler | `param/`: `param.{c,h}`, `param_komut.c`, `ozet.{c,h}` (SHA-256), `param_listesi.inc` | W2 | tam |
+| Parametreler | `param/`: `param.{c,h}`, `param_komut.c`, `ozet.{c,h}` (SHA-256), `crc32.c` (CRC-32, tablolu; W4-param-hiz), `param_listesi.inc` | W2 | tam |
 | Zaman | `zaman/zaman.h` (yalnız `static inline`) | W2 | tam |
 | Matematik | `mat/`: `mat.{c,h}`, `ida_math.{c,h}` | W2 | tam (çekirdek küme) |
 | Günlük | `telemetri/`: `telemetri.h`, `gunluk.c` | W2 | tam |
@@ -59,12 +59,12 @@ Sıra: koruma sözcüğü, kurulu işareti ve tümleyeni, çerçeve, emniyet, ol
 
 | Ölçüm | Değer | Kaynak |
 |---|---|---|
-| `sizeof(ida_core_t)` | W2: 2160 B. W3-zincir sonrası (2026-11-21): **12 568 B** (Cortex-M33 ve macOS arm64 aynı); hizalama 8. Büyük parçalar: kestirim 5960 B, kontrol 1592 B, görev 272 B, güdüm 40 B | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2` `.rodata`, Apple Clang `__const`) |
-| Çekirdek arşivi, fw-release | W2: text 19 820 B. W3-zincir sonrası: **text 59 985 B**, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
+| `sizeof(ida_core_t)` | W2: 2160 B. W3-zincir sonrası (2026-11-21): **12 568 B** (Cortex-M33 ve macOS arm64 aynı); hizalama 8. Büyük parçalar: kestirim 5960 B, kontrol 1592 B, görev 272 B, güdüm 40 B. W4-param-hiz: 12 584 → **12 600 B** (macOS arm64; `ida_param_t.sema_ozeti` ve tümleyeni, 16 B) | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2` `.rodata`, Apple Clang `__const`) |
+| Çekirdek arşivi, fw-release | W2: text 19 820 B. W3-zincir sonrası: **text 59 985 B**, data 0, bss 0. W4-param-hiz: 61 241 → **62 525 B** (+1 284 B; CRC tablosu 1 024 B `.rodata`), data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
 | Çekirdek arşivi, fw-debug | W2: text 21 166 B. W3-zincir sonrası: **text 61 775 B**, data 0, bss 0 | aynı |
 | En büyük yığın çerçevesi (fw-release) | W2: 344 B. W3-zincir sonrası: **720 B** (`ida_kon_hesapla` ve `ida_kes_saglam`); sonra `ida_prm_blok_coz` 680 B, `commit_karari` ve `kayit_isle_d` 672 B. Tek çerçevedir, çağrı zincirinin toplamı değildir | `-fstack-usage` (.su) |
 
-`ida_core_info`: port 1.0, `core_size` = `sizeof`, `core_align` = `_Alignof`, `param_schema_hash` her çağrıda hesaplanır (önbellek yok), `core_version` = `0x000100` (0.1.0).
+`ida_core_info`: port 1.0, `core_size` = `sizeof`, `core_align` = `_Alignof`, `param_schema_hash` her çağrıda tablodan hesaplanır (örneksiz işlevdir; önbelleği yok), `core_version` = `0x000100` (0.1.0). Çekirdek örneği özeti `ida_core_init`'te bir kez hesaplayıp `ida_param_t.sema_ozeti`'de tutar (`ida_prm_kur`; §5).
 
 A4-K22: dosya ya da işlev ölçeğinde `const` olmayan nesne yoktur; tablolar işaretçisiz `static const`'tır. `cekirdek.yazilabilir_veri` testi çekirdek arşivinde yazılabilir veri simgesi olmadığını simge tablosundan gösterir (host Mach-O ve ARM ELF); karşı örneği yakalar.
 
@@ -91,6 +91,23 @@ Satır biçimi: `IDA_PARAM(kimlik, AD, TIP, SINIF, en_az, en_cok, varsayilan, al
 | 0x0109 | `FC_HOLD_NS` | U32 (ns), B | 60–450 ms | 200 ms (A1 §3.9) | K66 |
 
 `T_*` ve `N_lag_clear` satırlarının adı, birimi, tipi, varsayılanı ve aralığı A4 §3.9 tablosunun birebir karşılığıdır (`cekirdek.birim.param` `test_39_parametre_tablosu`). ms parametresi kullanılırken ns'ye `int64_t`'de çevrilir (`zaman/zaman.h` `ida_ms_ns`: ns = ms × 1 000 000); `port.h`'nin ns sabitleri (`IDA_IMU_STALE_*_NS`, `IDA_DET_STALE_DEFAULT_NS`) değişmez ve testte ms değerleriyle karşılaştırılır. `VALID_FOR_NS`, `FC_APPLY_BY_NS`, `FC_HOLD_NS` 3.9 tablosunda yoktur; adları ve birimleri bu işin seçimidir (ns, `uint32_t`'ye sığar). B sınıfı (yalnız silahsızken) seçimi uygulamanındır: zamanlama emniyetine giren değerler silahlıyken değişmez.
+
+**Şema özeti ve CRC'nin maliyeti (W4-param-hiz, 2026-11-24).** Tablo derlemede sabit olduğundan şema özeti `ida_core_init`'te, örnek sıfırlandıktan sonra ve blok çözülmeden önce bir kez hesaplanır (`ida_prm_kur` → `ida_param_t.sema_ozeti` ve tümleyeni `sema_ozeti_tumleyen` = `UINT64_MAX ^ sema_ozeti`); init'in blok denetimi (2) ve PARAM_SAVE'in kodlaması (`ida_prm_blok_kodla(k, sema_ozeti, blok)`) bu değeri kullanır. Özet `ida_prm_sema_ozeti_tablo(tablo, sayi)` ile verilen tanım dizisinden türer; `ida_prm_sema_ozeti()` onu derlenmiş tabloyla çağırır. Kodlama da tablo parametrelidir (`ida_prm_blok_kodla_tablo`); derlenmiş tabloda I32 kayıt olmadığından I32 kodlaması bir test düzeneğiyle sınanır. CRC-32/ISO-HDLC bayt başına 256 girdilik `static const` tabloyla hesaplanır (`param/crc32.c`; ROM'da 1 024 B); çokterim, başlangıç ve son XOR değişmedi.
+
+Önbelleğin bütünlüğü (A4-K89; sol W4-param-hiz bulgu 1 ve sol-2 bulguları 1–3): önbellek tümleyeniyle tutarsızsa (`ida_prm_tutarli`) çerçevenin çağrı başındaki bütünlük denetimi 2'yi (tamamlayıcı kopya) verir. PARAM_SAVE'in kararı (`save_karari`) özeti ve tümleyenini `ida_prm_ozet_al` ile birer kez (volatile) okur, doğrular ve bloğu yalnız bu doğrulanmış yerel değerle kodlar; önbellek yeniden okunmaz. Tutarsızlıkta blok üretilmez, `gen` tüketilmez ve `ida_prm_cagri_sonu` 2 döner; çerçeve bunu çağrı başındaki denetimle aynı yoldan (`butunluk_bildir`) aynı çağrının bütünlük sonucuna taşır: `health.core_ok` = 0 (mandallı) ve `CORE_INTEGRITY` (arg0 2) o bozulma için bir kez. Komut sonucu: A4 bütünlük hatalı çağrıdaki komut sonucunu tanımlamaz; `ACCEPTED` blob ister (K82), `REJECTED` 3.17'den bir neden ister (K120, K124) ve sonuç yazmamak K43'e aykırıdır; `REJECTED` / `PARAM_INVALID` seçildi (sözleşme boşluğu; mimar küçük sürüm notu olarak kaydeder). Böylece bozuk özet kalıcı kayda yazılmaz; yeniden init özeti tablodan yeniden kurar ve önceki geçerli blok okunur. Denetimin çağrı başına maliyeti iki 64 bitlik okuma ve bir karşılaştırmadır; host ölçümünde komutsuz adımda ayırt edilemedi (tahmin: birkaç çevrim).
+
+Doğrulama (`cekirdek.birim.param_hiz`, 14 test): değişiklikten önceki bit bit CRC, özet gövdesi ve kodlayıcı testte çekirdek işlevleri çağrılmadan referans olarak tutulur; bayt eşitliği varsayılanlarda, tablodaki her tipin (U32, F32) en az/en çok değerinde, yedi bit deseninde, 1 000 rastgele durumda (sabit tohum), PARAM_SET + COMMIT + SAVE'in çekirdek yolunda ve I32 içeren sekiz kayıtlı düzenekte (uç değerler ve 1 000 rastgele durum) sınanır. Güncel şemanın özeti altın değere sabitlenir: `0x34065414A77F8846`, kanonik metin 2 426 B, varsayılan blok 1 296 B (eski çekirdeğin ikilisiyle ve sol incelemesinin bağımsız hesabıyla aynı; şema bilerek değişirse güncellenir, testin iletisi söyler; parametre sayısı ayrıca sabitlenmez, W3-K6). CRC bilinen vektörlerde, 256 tek baytta, 8 KB'ta ve 10 000 rastgele girdide referansla eşlenir; bozulma testi özette ve tümleyende tek bit bozar, SAVE'in blok üretmediğini, `core_ok` = 0 ve `CORE_INTEGRITY` (2) bildirildiğini, yeniden init'te eski geçerli bloğun okunduğunu gösterir; beyaz kutu testi tutarlı ama tablonunkinden farklı bir çiftin başlığa aynen yazıldığını (doğrulanan yerel değer) ve birim testi çağrı sonundaki SAVE kararının bozulmayı 2 ile döndürdüğünü, blok üretmediğini ve `gen` tüketmediğini gösterir. Denetimle kullanım arasına bozma enjekte eden kanca çekirdekte yoktur (M9); tek okuma yapısal olarak sağlanır.
+
+Host ölçümü (ölçüm, bağıl; Apple M3 Pro, Apple Clang 17, çekirdek `-O3`; önce ve sonra aynı oturumda arka arkaya üçer koşu; 159 parametre, 1 296 B blok):
+
+| Ölçülen | Tekrar (koşu başına) | Önce: ortanca / en kötü | Sonra: ortanca / en kötü |
+|---|---|---|---|
+| `ida_prm_blok_kodla` | 20 000 | 20,8 µs / 26,7–29,2 µs | 3,0 µs / 8,3–10,2 µs |
+| `ida_core_step`, yalnız PARAM_SAVE | 10 000 | 22,2–22,7 µs / 28,8–44,8 µs | 4,7–4,8 µs / 10,7–12,8 µs |
+| `ida_core_step`, SET + COMMIT + SAVE | 10 000 | 24,5 µs / 34,3–41,4 µs | 6,5 µs / 13,9–15,5 µs |
+| `ida_core_step`, komutsuz | 10 000 | 1,75 µs / 7,1–20,1 µs | 1,71 µs / 4,0–12,4 µs |
+
+En kötü değerler işletim sisteminin kesintilerini de içerir; host ortancaları kart hedefinin kanıtı değildir. Kart ölçümü ayrı yapılır (W4-K16).
 
 Kayıt durumu (A4-K83; sol bulgu 2): `plat.param_gen`, `param_store`'un bildirdiği son tamamlanan kayıt denemesinin kuşağıdır (OK'te kalıcı bloğun, FAIL'de başarısız denemenin). Bekleyen PARAM_SAVE'in tamamlanması `param_store` ∈ {OK, FAIL} ve `param_gen` = beklenen `gen` eşleşmesiyle, durum kodu değişmeden de (aradaki BUSY görülmeden) saptanır; art arda iki FAIL ayrı ayrı saptanır. PARAM_SAVE günlüğü durum geçişinde ya da bu tamamlanmada bir kez üretilir; başka bir kuşağın OK'i ya da FAIL'i beklemeyi bitirmez; FAIL'de `param_ok` değişmez ve `gen` tabanı yükselmiş kalır (A4-K82). `cekirdek.birim.param` `test_k83_ayni_durum_koduyla_tamamlanma`.
 

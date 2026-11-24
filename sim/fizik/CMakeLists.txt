@@ -49,6 +49,7 @@ add_executable(ida_fizik_test
   test/test_duzeltme.cpp
   test/test_hidrostatik.cpp
   test/test_itici.cpp
+  test/test_itki_carpani.cpp
   test/test_kutle.cpp
   test/test_sayisal.cpp)
 target_include_directories(ida_fizik_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -77,7 +78,10 @@ set(_ida_fizik_testleri
   esc_notr_disi_hazir_olmaz        # bulgu 2
   esc_notr_bekleme_sonrasi_hazir   # bulgu 2
   kurulum_sonluluk                 # bulgu 3
-  transfer_olcek)                  # bulgu 4
+  transfer_olcek                   # bulgu 4
+  # itici arızası (W4-K20; W4-sim-senaryo sol #3)
+  itki_carpani_birim
+  itki_carpani_gecis)
 foreach(_ad IN LISTS _ida_fizik_testleri)
   add_test(NAME sim.fizik.${_ad}
     COMMAND ida_fizik_test ${_ad} "${PROJECT_SOURCE_DIR}/scenarios/ida0.toml")

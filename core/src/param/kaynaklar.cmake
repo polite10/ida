@@ -4,4 +4,5 @@ target_sources(ida_core PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/param.c"
   "${CMAKE_CURRENT_LIST_DIR}/param_komut.c"
   "${CMAKE_CURRENT_LIST_DIR}/ozet.c"
+  "${CMAKE_CURRENT_LIST_DIR}/crc32.c"
 )

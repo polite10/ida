@@ -1,0 +1,6 @@
+# Geçersiz senaryo (butunleme.ida_sim_gecersiz_senaryo): TOML sözdizimi hatası (A5-K01).
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad = "gecersiz"
+aciklama = "kapanmamis dizgi

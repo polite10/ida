@@ -46,6 +46,12 @@ Tablo en çok 256 partiyi tutar (ekleme sırasıyla); tahliye edilen bekleyen k�
 
 Emniyet örneği (W4-K12, W4-K15 (5)): revizyon köprünün bütün yetkili geçmişinden seçilir (tam eşleşen en yeni; yoksa en az o kadar kısıtlayıcı olunan en yeni). Hiçbiri yoksa (kaydın revizyonu tablodan atılmış olabilir) durum güncel yetkili durumla alan alan en kısıtlayıcı birleşime çevrilir ve güncel revizyonla gönderilir.
 
+## Senaryo yürütücüsü için arayüz (W4-sim-senaryo)
+
+- `emniyet_baslangic(...)`: senaryonun başlangıç emniyet durumu (A5-K86, K87); yalnız ilk fizik sınırından önce, revizyon 1 kalır ve yetkili geçmişin ilk kaydı bu durumla kurulur.
+- `SinirSonucu::gevsetme_reddedildi`, `rev_adim_basi`, `rev_adim3_sonu`: o sınırın gevşeten atamaları reddedildi mi ve revizyonlar (A5 §3.15 `gevsetme_reddedildi`); sayaç `gevsetme_reddedildi`.
+- `komut_gorev_ogesi(...)`: `IDA_CMD_MISSION_ITEM` (A1-K69; toplu sınıf, bayt boyu 59 ile sayılır).
+
 ## Bu dilimin sınırları
 
 - Bariyer kipi (HIL 1x + adım bariyeri) yoktur; SIL kilitli adım ve HIL 1x vardır.

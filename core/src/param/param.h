@@ -49,6 +49,11 @@ typedef struct {
     uint8_t commit_indis[IDA_PORT_MAX_CMDS]; /* out->results[] indisleri              */
     bool save_bekliyor;                   /* ilk PARAM_SAVE ön koşulları geçti, karar sonda */
     uint8_t save_indis;
+    /* Şema özetinin önbelleği ve tümleyeni (A4-K89): ida_prm_kur'da bir kez hesaplanır (tablo
+       sabit); ida_prm_tutarli ile çerçevenin bütünlük denetimine bağlıdır ve PARAM_SAVE
+       yalnız doğrulanan özetle blok üretir. */
+    uint64_t sema_ozeti;
+    uint64_t sema_ozeti_tumleyen;         /* UINT64_MAX ^ sema_ozeti                  */
     uint8_t blob[IDA_PRM_BLOB_BOYU];      /* son PARAM_SAVE bloğu (A4-K82, A4-K100)  */
 } ida_param_t;
 
@@ -63,8 +68,21 @@ bool ida_prm_deger_gecerli(const ida_param_desc_t *d, uint32_t ham);
 /* Ham değeri tanımın kimliği ve türüyle ida_param_value_t'ye yazar. */
 void ida_prm_deger_yaz(const ida_param_desc_t *d, uint32_t ham, ida_param_value_t *v);
 /* Kanonik şema metninin SHA-256 özetinin ilk 8 baytı, küçük uçlu (A4 §3.10).
-   Metin: kimlik artan sırada her parametre için "<id>\t<ad>\t<type>\n" (ondalık, ASCII). */
+   Metin: kimlik artan sırada her parametre için "<id>\t<ad>\t<type>\n" (ondalık, ASCII).
+   Her çağrıda tablodan yeniden hesaplanır; çağrı içi yollar ida_param_t.sema_ozeti'yi kullanır. */
 uint64_t ida_prm_sema_ozeti(void);
+/* Aynı özet, verilen tanım dizisi üzerinden (tablo[0..sayi-1]); ida_prm_sema_ozeti bunu derlenmiş
+   tabloyla çağırır. Özetin tablodan türediğini sınayan birim testi için ayrıdır. */
+uint64_t ida_prm_sema_ozeti_tablo(const ida_param_desc_t *tablo, uint16_t sayi);
+/* Örneğin tablodan türeyen sabitlerini kurar (şema özeti); ida_core_init'te, örnek
+   sıfırlandıktan sonra ve blok çözülmeden önce bir kez çağrılır. */
+void ida_prm_kur(ida_param_t *p);
+/* Özet önbelleği tümleyeniyle tutarlı mı (A4-K89 tamamlayıcı kopya). */
+bool ida_prm_tutarli(const ida_param_t *p);
+/* Özeti ve tümleyenini birer kez okur, *ozet'e okunan özeti yazar ve ikisinin tutarlı olup
+   olmadığını döner. Çağıran yalnız true dönüşte ve yalnız *ozet'teki (doğrulanmış yerel)
+   değeri kullanır; önbellek yeniden okunmaz (sol W4-param-hiz-2 bulgu 1). */
+bool ida_prm_ozet_al(const ida_param_t *p, uint64_t *ozet);
 /* İlişkili grup denetimleri (A4-K80 md. 8): 0 geçerli; modüllerin kancalarını da çağırır. */
 uint8_t ida_prm_grup(const ida_prm_kume_t *k);
 
@@ -75,11 +93,18 @@ float ida_prm_f32(const ida_param_t *p, enum ida_prm_indis indis);
 
 /* ---- Kodlanmış blok (A4 §3.10, A4-K79, A4-K80) ------------------------------------------ */
 /* Bloğu çözer ve doğrular; 0 geçerli (k yazılır), 1–8 ilk başarısız denetimin numarası
-   (k yazılmaz). */
-uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, ida_prm_kume_t *k);
-/* k'yi blok biçiminde yazar (blok en az IDA_PRM_BLOB_BOYU bayt); uzunluğu döner. */
-uint32_t ida_prm_blok_kodla(const ida_prm_kume_t *k, uint8_t *blok);
-/* CRC-32/ISO-HDLC. */
+   (k yazılmaz). sema_ozeti beklenen şema özetidir (ida_prm_sema_ozeti() ya da önbelleği). */
+uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, uint64_t sema_ozeti,
+                         ida_prm_kume_t *k);
+/* k'yi blok biçiminde yazar (blok en az IDA_PRM_BLOB_BOYU bayt); uzunluğu döner. sema_ozeti
+   başlığa yazılan şema özetidir (ida_prm_sema_ozeti() ya da önbelleği). */
+uint32_t ida_prm_blok_kodla(const ida_prm_kume_t *k, uint64_t sema_ozeti, uint8_t *blok);
+/* Aynı kodlama, verilen tanım dizisi ve ham değerlerle (tablo[0..sayi-1], ham[0..sayi-1]; blok
+   en az IDA_PBLOB_HDR_SIZE + 8 × sayi bayt). ida_prm_blok_kodla bunu derlenmiş tabloyla
+   çağırır; derlenmiş tabloda olmayan tipleri (I32) sınayan birim testi için ayrıdır. */
+uint32_t ida_prm_blok_kodla_tablo(const ida_param_desc_t *tablo, uint16_t sayi,
+                                  const uint32_t *ham, uint64_t sema_ozeti, uint8_t *blok);
+/* CRC-32/ISO-HDLC, bayt başına tablolu (param/crc32.c). */
 uint32_t ida_crc32(const uint8_t *veri, uint32_t uzunluk);
 
 /* ---- Komutlar (A4-K81, K82, K112; tablo 3.17) ------------------------------------------- */
@@ -103,9 +128,12 @@ void ida_prm_komut(ida_param_t *p, const ida_prm_komut_baglam_t *b, const ida_cm
    commit olarak değerlendirir, aynı sonucu hepsine yazar, PARAM_COMMIT günlüklerini üretir ve
    kabul edilirse uygular; sonra bekleyen PARAM_SAVE'in PARAM_INVALID ve gen doyması
    koşullarını değerlendirir ve kabul edilirse commit sonrası kümeyi kodlar. Reddedilen her
-   sonuç için cnt->cmd_rejected bir artar. */
-void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
-                        ida_core_counters_t *cnt);
+   sonuç için cnt->cmd_rejected bir artar.
+   Dönüş: 0, ya da bekleyen PARAM_SAVE özet önbelleğini tümleyeniyle tutarsız bulduysa 2
+   (A4-K89 tamamlayıcı kopya; blok üretilmez, gen tüketilmez). Çağıran bu sonucu aynı
+   çağrının bütünlük sonucuna taşır (core_ok, CORE_INTEGRITY). */
+int32_t ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
+                           ida_core_counters_t *cnt);
 /* plat.param_store: PARAM_SAVE günlüğü ve A4-K78 engelinin kalkması. Bekleyen kaydın
    tamamlanması (OK ya da FAIL) durum kodu değişiminden bağımsız olarak beklenen gen ile
    eşleştirilir (param_gen = beklenen gen; aradaki BUSY görülmese de); günlük bir kez. */
