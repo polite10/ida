@@ -1,6 +1,7 @@
 // ida_sim — başsız sim sunucusu (W4-kopru). Kullanım: sim/sunucu/BENIOKU.md.
 #include "ida/sunucu/sunucu.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -119,10 +120,22 @@ int main(int argc, char** argv)
                     p = q == std::string::npos ? v.size() : q + 1;
                 }
             }
-        } else if (s == "--acil") {
-            a.acil_durdurma_s = std::strtod(deger().c_str(), nullptr);
-        } else if (s == "--acil-kalk") {
-            a.acil_kalkar_s = std::strtod(deger().c_str(), nullptr);
+        } else if (s == "--acil" || s == "--acil-kalk") {
+            // EMNİYET (sol #1 dar denetimi): bir kez verilir; değer sonlu ve ≥ 0 bir sayı olmalı.
+            bool& verildi = s == "--acil" ? a.acil_verildi : a.acil_kalk_verildi;
+            if (verildi) {
+                std::fprintf(stderr, "ida_sim: %s bir kez verilebilir\n", s.c_str());
+                return 1;
+            }
+            verildi = true;
+            const std::string v = deger();
+            char* son = nullptr;
+            const double x = std::strtod(v.c_str(), &son);
+            if (v.empty() || son == nullptr || *son != '\0' || !std::isfinite(x) || x < 0.0) {
+                std::fprintf(stderr, "ida_sim: %s sonlu ve ≥ 0 bir süre (s) ister: %s\n", s.c_str(), v.c_str());
+                return 1;
+            }
+            (s == "--acil" ? a.acil_durdurma_s : a.acil_kalkar_s) = x;
         } else if (s == "--csv") {
             a.csv_yolu = deger();
         } else if (s == "--gunluk") {

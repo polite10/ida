@@ -46,6 +46,23 @@ foreach(_secenek acil acil-kalk ariza)
             "-DILETI=--${_secenek} senaryo dosyasıyla birlikte kullanılamaz"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 endforeach()
+# EMNİYET (sol #1 dar denetimi): değerden ve yinelemeden bağımsız; geçersiz değerler yerleşikte de.
+function(ida_sim_kullanim_testi ad ileti)
+  add_test(NAME butunleme.ida_sim_${ad}
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
+            "-DARGUMANLAR=${ARGN};--kok;${PROJECT_SOURCE_DIR};--sure;1"
+            "-DILETI=${ileti}" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+endfunction()
+ida_sim_kullanim_testi(dosya_acil_yinelenen "--acil bir kez verilebilir" --senaryo scenarios/z1.toml --acil 12 --acil -1)
+ida_sim_kullanim_testi(dosya_acil_nan "--acil sonlu" --senaryo scenarios/z1.toml --acil nan)
+ida_sim_kullanim_testi(dosya_acil_kalk_nan "--acil-kalk sonlu" --senaryo scenarios/z1.toml --acil-kalk nan)
+ida_sim_kullanim_testi(dosya_acil_negatif "--acil sonlu" --acil -1 --senaryo scenarios/z1.toml)
+ida_sim_kullanim_testi(yerlesik_acil_nan "--acil sonlu" --acil nan)
+ida_sim_kullanim_testi(yerlesik_acil_negatif "--acil sonlu" --acil -1)
+ida_sim_kullanim_testi(yerlesik_acil_sayi_degil "--acil sonlu" --acil 12x)
+ida_sim_kullanim_testi(yerlesik_acil_sonsuz "--acil sonlu" --acil inf)
+ida_sim_kullanim_testi(yerlesik_kalk_once "--acil-kalk --acil'den sonra" --acil 12 --acil-kalk 10)
+ida_sim_kullanim_testi(yerlesik_acil_yinelenen "--acil bir kez verilebilir" --acil 12 --acil 13)
 add_test(NAME butunleme.ida_sim_tohum_ve_senaryo
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
           "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--tohum;2;--kok;${PROJECT_SOURCE_DIR}"

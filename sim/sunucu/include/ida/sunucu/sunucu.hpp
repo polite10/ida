@@ -75,7 +75,11 @@ struct Ayar {
     std::string depo_koku = ".";
     std::shared_ptr<const senaryo::DosyaKaynagi> senaryo_kaynagi;   // sınama: bellekteki dosyalar
     bool kip_verildi = false, karsi_verildi = false, tohum_verildi = false, sure_verildi = false;
-    bool ariza_verildi = false;   // --ariza (yalnız yerleşik z1)
+    // Yalnız yerleşik senaryoda anlamı olan seçeneklerin verildiği (değerden ve yinelemeden
+    // bağımsız kalıcı bayraklar; EMNİYET, W4-sim-senaryo sol #1 ve dar denetimi).
+    bool ariza_verildi = false;      // --ariza (yalnız yerleşik z1)
+    bool acil_verildi = false;       // --acil
+    bool acil_kalk_verildi = false;  // --acil-kalk
     std::uint64_t tohum = 1;        // A5 rastgelelik.ana_tohum (sensörler, A1-K114)
     double sure_s = 90.0;
     Z1 z1{};

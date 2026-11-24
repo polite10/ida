@@ -562,10 +562,12 @@ bool Calistirici::dosya_plani()
     // sayılmaz; başlamadan kullanım hatasıdır. Dosyanın emniyet ve arıza olayları yalnız
     // dosyadadır (davranış özetine girer).
     {
+        // Verildi sayılır: bayrak ya da varsayılandan (−1) farklı her değer (NaN dahil); değerin
+        // işareti ve yineleme sonucu etkilemez.
         std::string secenek;
-        if (a_.acil_durdurma_s >= 0.0) {
+        if (a_.acil_verildi || !(a_.acil_durdurma_s == -1.0)) {
             secenek = "--acil";
-        } else if (a_.acil_kalkar_s >= 0.0) {
+        } else if (a_.acil_kalk_verildi || !(a_.acil_kalkar_s == -1.0)) {
             secenek = "--acil-kalk";
         } else if (a_.ariza_verildi) {
             secenek = "--ariza";
@@ -1097,6 +1099,25 @@ Sonuc Calistirici::kos()
             return s_;
         }
     } else {
+        // EMNİYET (sol #1 dar denetimi): verilen acil durdurma anları sonlu ve ≥ 0, kalkış
+        // basıştan sonra olmalı; geçersiz değer sessizce "yok" sayılmaz.
+        const bool acil = a_.acil_verildi || !(a_.acil_durdurma_s == -1.0);
+        const bool kalk = a_.acil_kalk_verildi || !(a_.acil_kalkar_s == -1.0);
+        std::string h;
+        if (acil && !(std::isfinite(a_.acil_durdurma_s) && a_.acil_durdurma_s >= 0.0)) {
+            h = "--acil sonlu ve ≥ 0 bir süre olmalı";
+        } else if (kalk && !(std::isfinite(a_.acil_kalkar_s) && a_.acil_kalkar_s >= 0.0)) {
+            h = "--acil-kalk sonlu ve ≥ 0 bir süre olmalı";
+        } else if (acil && kalk && !(a_.acil_kalkar_s > a_.acil_durdurma_s)) {
+            h = "--acil-kalk --acil'den sonra olmalı";
+        } else if (kalk && !acil) {
+            h = "--acil-kalk yalnız --acil ile verilebilir";
+        }
+        if (!h.empty()) {
+            s_.hata = h;
+            s_.hata_turu = HataTuru::kullanim;
+            return s_;
+        }
         plan_ = yerlesik_plan(a_);
     }
 

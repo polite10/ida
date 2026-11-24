@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -212,6 +213,37 @@ int test_gecersiz()
         r = sunucu::kos(b);
         dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--acil-kalk") == 0u,
                 "--acil-kalk + senaryo: kullanım hatası");
+        // Dar denetim: verilmiş ama değeri negatif ya da NaN (değerden bağımsız ret).
+        b = dosya_ayari(kaynak(z1_metni()));
+        b.acil_verildi = true;
+        b.acil_durdurma_s = -1.0;
+        r = sunucu::kos(b);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--acil ") == 0u,
+                "--acil (son değer −1) + senaryo: kullanım hatası");
+        b = dosya_ayari(kaynak(z1_metni()));
+        b.acil_kalkar_s = std::numeric_limits<double>::quiet_NaN();
+        r = sunucu::kos(b);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--acil-kalk") == 0u,
+                "--acil-kalk NaN (bayraksız) + senaryo: kullanım hatası");
+        // Yerleşik koşuda geçersiz değerler de açık hata.
+        sunucu::Ayar y;
+        y.gunluk = 0;
+        y.acil_durdurma_s = std::numeric_limits<double>::quiet_NaN();
+        r = sunucu::kos(y);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.sayac.parti_gonderilen == 0u,
+                "yerleşik: --acil NaN kullanım hatası: " + r.hata);
+        y = sunucu::Ayar{};
+        y.gunluk = 0;
+        y.acil_verildi = true;
+        y.acil_durdurma_s = -1.0;
+        r = sunucu::kos(y);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim, "yerleşik: --acil −1 kullanım hatası");
+        y = sunucu::Ayar{};
+        y.gunluk = 0;
+        y.acil_durdurma_s = 12.0;
+        y.acil_kalkar_s = 10.0;
+        r = sunucu::kos(y);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim, "yerleşik: --acil-kalk ≤ --acil kullanım hatası");
         b = dosya_ayari(kaynak(z1_metni()));
         b.ariza_verildi = true;
         r = sunucu::kos(b);
