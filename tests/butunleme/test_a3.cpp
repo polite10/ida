@@ -39,18 +39,25 @@
 #include <thread>
 #include <vector>
 
-// W4-K27 (5): dünya tarafındaki A3 hizmeti sırasında yapılan bellek ayırmalarını sayan kanca
-// (yalnız bu sınama programında; MSVC'de değiştirilmez).
+// W4-K27 (5): dünya tarafındaki A3 hizmeti ve sonar hesabı/boşaltması (W4-bagla-sonar sol #5)
+// sırasında yapılan bellek ayırmalarını sayan kanca (yalnız bu sınama programında; MSVC'de
+// değiştirilmez).
 namespace {
 std::atomic<std::uint64_t> g_a3_ayirma{0};
+std::atomic<std::uint64_t> g_sonar_ayirma{0};
 }  // namespace
 void a3_ayirma_sifirla() { g_a3_ayirma.store(0); }
 std::uint64_t a3_ayirma_sayisi() { return g_a3_ayirma.load(); }
+void sonar_ayirma_sifirla() { g_sonar_ayirma.store(0); }
+std::uint64_t sonar_ayirma_sayisi() { return g_sonar_ayirma.load(); }
 #if !defined(_MSC_VER)
 void* operator new(std::size_t n)
 {
     if (ida::sunucu::a3_ayirma_sayilir() > 0) {
         g_a3_ayirma.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (ida::sunucu::sonar_ayirma_sayilir() > 0) {
+        g_sonar_ayirma.fetch_add(1, std::memory_order_relaxed);
     }
     if (void* p = std::malloc(n == 0u ? 1u : n)) {
         return p;

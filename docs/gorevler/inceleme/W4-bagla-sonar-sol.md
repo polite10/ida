@@ -1,0 +1,32 @@
+# sol incelemesi: kopru
+
+## Hüküm
+
+**Düzeltme gerekli.** İnceleme yalnız `0fbe30f..d11131b` farkını kapsar. Ping360’ın parçalama ve bayt bütçesi yolunda somut aşım; emniyet örneğinin durum/revizyon kurallarında bu farktan kaynaklanan bozulma bulamadım. Ancak kurulum, kapasite ve kabul doğrulamasında aşağıdaki açıklar var.
+
+İnceleme statiktir; test, kart ve Windows ölçümü çalıştırılmadı. Sayısal karşı örnekler koddan yeniden hesaplandı.
+
+## Düzeltilmesi gerekenler
+
+| # | Yer | Sorun | Doğrusu / önerilen düzeltme | Önem |
+|---|---|---|---|---|
+| 1 | `sim/senaryo/src/sonar_yukleyici.cpp:226`; `sim/sunucu/src/sunucu.cpp:1597` | **Ping1D yükü için kapasite ön denetimi yok.** Dört etkin Ping1D, ayrı `inst`, `ping_araligi_ns = 1`, sıfır işlem süresi ve otomatik pencerenin 0,5 m’ye indiği yakın dip durumunda sensör başına her 1,25 ms’de kayıt üretilebilir. Yalnız Ping1D’nin üst boy hesabı **768 B/periyot** olur; A1 §3.9’daki `A_sensör ≤ 150 B` koşulu aşılır. Kurulum kabul edilir; kritik sensör kuyruğu büyür. | Sonar kurulumu ve mevcut sensörleri birlikte kapsayan A1-K113/K116 ön denetimi yap; taşınamayacak yapılandırmayı çalıştırmadan reddet. Ping360 kredisi Ping1D’yi sınırlamaz. | kritik |
+| 2 | `sim/sunucu/src/sunucu.cpp:1587` | **İzin verilen örnek sayısı cihaz sınırı dışında darbe ürettiriyor.** `--ping360-ornek 200`, periyodu 13 332’ye çıkarır; yapılandırmada darbe otomatik bırakıldığı için model **1 333 µs** üretir (`sim/sonar/src/sonar_kumesi.cpp:326`). Üreticinin sınırı 1–1000 µs’tir. [Ping360 protokolü](https://docs.bluerobotics.com/ping-protocol/pingmessage-ping360/) | Örnek/periyot dönüşümünden sonra otomatik darbenin gerçekleşen değerini de doğrula; cihaz aralığında üret veya açık hatayla reddet. | kritik |
+| 3 | `sim/senaryo/src/sonar_yukleyici.cpp:115` | **Yeniden okunan manifest, doğrulanan manifestten farklı olabilir.** `manifest_ozeti` verilmemesi geçerlidir. Senaryo `kume_surumu = 1` ile doğrulandıktan sonra aynı kaynağın ikinci okuması sürüm 2 manifest döndürürse sonar yükleyici bunu kabul eder: özet karşılaştırması atlanır, küme sürümü de denetlenmez. Sonarın malzemeleri ile doğrulama raporunun kaynak özeti ayrışır; A5-K115 ihlal edilir. | Doğrulama sırasında okunan manifesti kullan veya yeniden okunan baytları raporda hesaplanan özetle koşulsuz karşılaştır; beyan edilmiş küme sürümünü de koru. | kritik |
+| 4 | `sim/senaryo/src/sonar_yukleyici.cpp:285` | **Havuz sahnesi açık suya dönüşüyor.** `ortam.tur = "havuz"` ve manifestte duvarlar bulunsa bile yalnız sonsuz yüzey/taban düzlemleri kuruluyor; duvarlar uyarıyla çıkarılıyor. Dolayısıyla duvara yönelen ışının beklenen dönüşü yoktur. Görev kapsamı 1’deki senaryodan sahne kurulumu karşılanmıyor. Örnek manifestin `.glb` dosyaları da depoda bulunmuyor. | Desteklenen sahne geometrisini yükle; bu yapılamıyorsa ilgili sahneyi çalıştırmadan reddet. Eksik geometrili koşuyu havuz senaryosunun uygulanması olarak kabul etme. | kritik |
+| 5 | `sim/sunucu/src/sunucu.cpp:1614`, `:1649`, `:1669` | **Dünya tarafındaki sonar yolu sabit bellekli değil.** Ping hesabı yeni `yog`, `data` ve `profil` tamponları ayırıyor. Ayrıca `reserve(16)` teslim deposuna tavan koymaz: geç teslim arızası sonrasında teslim zamanları aynı sınıra yığılan 17’den fazla kayıt depoyu büyütür. A3 ayırma testi yalnız A3 hizmeti sayılırken etkin olduğundan bu yolları görmez. Kapasite aşımında yeniden ayırma C++ kuralıdır. [C++ taslağı](https://eel.is/c++draft/vector.modifiers) | Sonar çalışma tamponlarını ve teslim deposunu önceden boyutlandır; kapasite/taşma davranışını tanımla. Ayırma denetimini hesaplama ve boşaltmayı da kapsayacak biçimde genişlet. | önemli |
+| 6 | `tests/butunleme/test_sonar.cpp:240`, `:250`, `:265` | **“Bu iş öncesiyle eşitlik” testi eski sürümü karşılaştırmıyor.** Üç koşu da yeni ikiliyle çalışıyor; özetler yalnız yazdırılıyor. Sonarsız yola eklenen ortak bir davranış değişikliği üç koşuyu birlikte değiştirse test geçer. Kabul 1 bu testle doğrulanmış sayılmaz. | `0fbe30f` çıktısından sabitlenmiş referansla veya iki sürümün ayrı çıktılarıyla CSV ve iki yönlü A1 akışını gerçekten karşılaştır. | kritik |
+| 7 | `tests/butunleme/test_sonar.cpp:712` | **Yerel debug derlemesinde zamanlama kabulü koşulsuz kaldırılıyor.** `GITHUB_ACTIONS` bulunmasa bile `NDEBUG` yokken kaçırma ve TF gecikmesi denetimleri yalnız yazdırılıyor. Örneğin kaynak yorumundaki 3–7 ms sonar hesabının doğurduğu zamanlama başarısızlığı test sonucunu değiştirmez. W4-K24’ün muafiyeti paylaşılan CI içindir. | Zamanlama ölçütünü W4-K24’ün ortam koşuluyla uygula; debug için ek muafiyet gerekiyorsa bunu mimar kararıyla açıkça ayır. | kritik |
+
+## Yeniden hesaplananlar
+
+- **Parçalama:** `n = 239, 240, 241, 1200` için sırasıyla **1, 1, 2, 5 DATA + HEAD** gerekir. Son parçadaki geçerli örnek sayıları **239, 240, 1, 240**’tır. `n = 0, 1, 65535` A1’in 200–1200 aralığı dışında olduğundan reddedilir. Sıfır dolgusu 1200 baytlık dizinin içinde kalır; bu yolda taşma görmedim.
+- **Pencere bütçesi:** ayrılmış ilk sonar çerçevesi + azami toplu komut kredisi + kritik pay = `258 + 236 + 520 = 1014 B`. Ek sonar çerçeveleri `pen_bayt + 520 + boy ≤ 1200` ile sınırlanıyor. İncelenen kapsamda algılama partisi yok.
+- **Satır hızı:** azami 1200 örnekli satır `5 × 258 + 39 = 1329 B`; sonar kredisi `260 × 200 = 52 000 B/s`, dolayısıyla yaklaşık **39,13 satır/s**. MAVLink’in sondaki sıfırları kırpması gerçek boyu azaltabilir. [MAVLink serileştirme kuralı](https://mavlink.io/en/guide/serialization.html)
+- **200 örnek dönüşümü:** `2222 × 1200 / 200 = 13332`; otomatik darbe `round(4 × 13332 × 25 ns) = 1333 µs`.
+
+## İskelete ya da diğer bölümlere notlar
+
+`sonar_onceden(b + 1)`, fizik adımı tamamlandıktan ve koşullar değerlendirildikten sonra çağrılıyor. İncelenen sonar hesabı poz/yönelim kullandığından bir adım eski durum veya koşullu arızanın erken uygulanması için karşı örnek bulamadım. RNG etiketleri ayrı; W4-K25/K26 alım noktaları değiştirilmemiş.
+
+Bununla birlikte Ping360 hesabının dünya iş parçacığında eşzamanlı yürütülmesi, 04 §2.12 ve 05 §2.2’deki işçi düzeninden sapıyor. Hesabı bekleme öncesine taşımak süreyi ortadan kaldırmaz; çoklu sonar yükünde kontrol zamanlamasının korunması ayrıca ölçülmelidir. Bu inceleme mevcut performans beyanlarını bağımsız ölçüm olarak doğrulamaz.

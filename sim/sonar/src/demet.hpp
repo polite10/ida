@@ -86,6 +86,9 @@ double dinleme_sonu(double tau0, double t_s, int n_kutu, double darbe_s);
 class Demet {
 public:
     void izle(const DemetGirdisi& g, DemetSonucu& s);
+    // `g` ile yapılacak `izle` çağrısının tamponlarını önceden ayırır (ışın izlemez; W4-K27 (5)).
+    // Kapasite yalnız büyür; aynı boyutlu sonraki `izle` çağrıları bellek ayırmaz.
+    void hazirla(const DemetGirdisi& g, DemetSonucu& s);
 
 private:
     struct Hucre {

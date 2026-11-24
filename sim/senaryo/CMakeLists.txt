@@ -147,6 +147,19 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/sim/sensor/CMakeLists.txt")
   endforeach()
 endif()
 
+# ---- sonar yükleyici (W4-bagla-sonar): yalnız sim/sonar depoda varken (W4-sonar) ----------
+# ida_sonar sim/sonar'da sonradan tanımlanır; hedef adı üretimde çözülür.
+if(EXISTS "${PROJECT_SOURCE_DIR}/sim/sonar/CMakeLists.txt")
+  add_library(ida_senaryo_sonar STATIC src/sonar_yukleyici.cpp)
+  target_include_directories(ida_senaryo_sonar PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(ida_senaryo_sonar PUBLIC ida_senaryo ida_sonar)
+  ida_senaryo_ayar(ida_senaryo_sonar)
+  add_executable(ida_senaryo_sonar_test test/test_sonar_yukleyici.cpp)
+  target_link_libraries(ida_senaryo_sonar_test PRIVATE ida_senaryo_sonar)
+  ida_senaryo_ayar(ida_senaryo_sonar_test)
+  add_test(NAME sim.senaryo.sonar_yukleyici COMMAND ida_senaryo_sonar_test sonar_yukleyici "${PROJECT_SOURCE_DIR}")
+endif()
+
 # Komut satırı aracının çıkış kodları (0 geçerli, 1 geçersiz, 2 kullanım, 3 G/Ç).
 set(_cikis "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cikis_kodu.cmake")
 set(_arac_cikti "${CMAKE_CURRENT_BINARY_DIR}/arac_cikti")
