@@ -23,7 +23,7 @@ void ida_fc_ic_yaz(ida_fc_t *fc, uint32_t ic, int64_t now_ns)
 void ida_fc_tup_yaz(ida_fc_t *fc, uint8_t tup)
 {
     fc->tup = tup;
-    fc->tup_tumleyen = (uint8_t)~tup;
+    fc->tup_tumleyen = (uint8_t)(0xFFu ^ (uint32_t)tup);
 }
 
 void ida_fc_kapat(ida_fc_t *fc, uint8_t kapat)
@@ -155,7 +155,7 @@ bool ida_fc_ic_tutarli(const ida_fc_t *fc)
     if (!ic_tanimli(fc->ic) || (fc->ic_tumleyen != ~fc->ic)) {
         return false;
     }
-    if (fc->tup_tumleyen != (uint8_t)~fc->tup) {
+    if (fc->tup_tumleyen != (uint8_t)(0xFFu ^ (uint32_t)fc->tup)) {
         return false;
     }
     const bool silahli = (fc->ic == IDA_FC_IC_ARMED) || (fc->ic == IDA_FC_IC_FIRE_AUTH) ||

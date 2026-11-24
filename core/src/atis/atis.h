@@ -27,6 +27,36 @@
  *                               verilmesi
  *   çıktı ida_fc_cikti          olay modülünün çıkardığı olaylar okunur; dış durum yansıması
  */
+/*
+ * İZLENEBİLİRLİK (03 Ek, G-Ç maddeleri → uygulandığı yer; testler core/test/atis/):
+ *   G-Ç01 ida_fc_kur; init (cerceve.c) her şeyi sıfırlar          G-Ç02 ida_fc_dis_durum, ida_fc_engel
+ *   G-Ç03 ida_fc_engel (bitler emniyet.c ida_emn_fci ile)        G-Ç30 kapalı kodlar (günlük, neden)
+ *   G-Ç31 cikti.c ida_cik_kurulmamis                             G-Ç04 komut.c fc_bicimi_gecerli + ida_fc_komut
+ *   G-Ç05 komut.c ida_kom_isle (1)–(2) + ida_fc_komut (3)        G-Ç32 emniyet.c (b) + ida_fc_daralt
+ *   G-Ç06 emniyet.c d.herhangi; olay.c kapı; ida_fc_daralt        G-Ç33 komut.c NARROWED, widen_blocked
+ *   G-Ç34 komut.c ida_kom_reddet                                 G-Ç07 olay.c kapı (genis_serbest, fire_serbest)
+ *   G-Ç35 komut.c IMU_LAG; aday_uret yasak maskesi; olay.c kapı   G-Ç08 olay.c kimlik_ayir
+ *   G-Ç36 olay.c ida_olay_kur                                    G-Ç37 olay.c kimlik_ayir (yalnız kapat)
+ *   G-Ç09 olay.c ida_olay_yaz (birleştirme)                      G-Ç38 olay.c ida_olay_yaz (sığmayan aday)
+ *   G-Ç10 olay.c (apply_by her olayda, hold yalnız OPEN)          G-Ç39 atis_param.def / cerceve_param.def aralıkları
+ *   G-Ç11 ida_fc_izin_acik, ida_fc_olay_sonucu (APPLIED)          G-Ç40 aday_uret + olay.c (A4-K123)
+ *   G-Ç41 olay.c aday_gecer (A4-K129)                            G-Ç12 aday_uret (yenileme)
+ *   G-Ç13 olay.c ida_olay_sonuc                                  G-Ç42 olay.c zaman aşımı + ida_fc_olay_bilinmiyor
+ *   G-Ç14 ida_fc_emniyet_ornegi (gevşetme)                        G-Ç15 emniyet.c kapanma + ida_fc_cagri günlüğü
+ *   G-Ç16 ida_fc_daralt, ida_fc_evrensel, ida_fc_komut, aday_uret G-Ç17 emniyet.c ida_emn_fci (inst0_var)
+ *   G-Ç43 imu_zaman.c (A4-K39, K128)                             G-Ç18 ida_fc_daralt (oturum_sonu) + emniyet.c
+ *   G-Ç44 emniyet.c (oturum_kapali)                              G-Ç45 ida_fc_oturum_basi (durum değişmez)
+ *   G-Ç19 ida_fc_guvenli (W5-K8)                                 G-Ç46 ida_fc_komut FC_RESET, komut.c
+ *   G-Ç20 ida_fc_komut FC_RESET + ida_fc_adim (yeniden kilit)    G-Ç21 ida_fc_komut FC_FIRE, aday_uret, ida_fc_cikti
+ *   G-Ç22 ida_fc_komut                                           G-Ç47 aday_uret (yalnız FIRE_AUTH), ida_fc_komut
+ *   G-Ç48 ida_fc_cagri (pencere, ASSESS)                          G-Ç23 ida_fc_olay_sonucu / _bilinmiyor (OPEN)
+ *   G-Ç49 ida_fc_olay_sonucu / _bilinmiyor (FIRE)                G-Ç50 atis_emniyet.c kapat_sonucu
+ *   G-Ç24 ida_fc_komut (TEST), aday_uret yalnız FIRE_AUTH        G-Ç51 ida_fc_komut FC_TEST_EXIT
+ *   G-Ç25 ida_fc_evrensel (T_hb_fc)                              G-Ç26 ida_fc_tutarli, butunluk_onar; cerceve.c
+ *   G-Ç27 cikti.c fc_yaz (durum yansıması ida_fc_cikti'de)        G-Ç52 olay.c son_id / son_sonuc
+ *   G-Ç28 atis_param.def, cerceve_param.def (B sınıfı)            G-Ç29 ida_fc_emn_bayat, bayatlik
+ *   G-Ç53 atis_emniyet.c izleri_degerlendir
+ */
 #ifndef IDA_CORE_ATIS_H
 #define IDA_CORE_ATIS_H
 

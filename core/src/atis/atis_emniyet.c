@@ -127,7 +127,7 @@ static void butunluk_onar(ida_fc_t *fc, const ida_fc_ortam_t *o)
 /* G-Ç29: bayatlık acil durdurmanın etkin değerini kısıtlayana döndürür; bu dönüş bir daraltıcı
    girdidir (A4-K44, K111: SAFETY_CLOSE(IDA_TUBE_ALL), health.narrowed, genişleticiler
    NARROWED) ve aynı çağrıda acil durdurma gevşetilemez. */
-static void bayatlik(ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
+static void bayatlik(const ida_fc_t *fc, ida_emn_t *e, const ida_fc_ortam_t *o)
 {
     if (!ida_fc_emn_bayat(fc, e, o)) {
         return;
@@ -253,13 +253,13 @@ void ida_fc_emniyet_ornegi(ida_fc_t *fc, ida_emn_t *e, const ida_sample_t *s,
     /* G-Ç14 (A4-K116): gevşeten değer yalnız bu kabul edilen inst = 0 örneğiyle ve bu çağrıda
        hiçbir örnek o alanı kısıtlamıyorsa etkin olur; bayatlık sürerken acil durdurma
        gevşemez (G-Ç29). */
-    uint8_t gevsek = (uint8_t)((uint8_t)~ida_emn_kisit_icerigi(&s->u.safety) & IDA_EMN_TUMU);
-    gevsek = (uint8_t)(gevsek & (uint8_t)~e->cagri_kisit);
+    uint8_t gevsek = (uint8_t)((0xFFu ^ (uint32_t)ida_emn_kisit_icerigi(&s->u.safety)) & IDA_EMN_TUMU);
+    gevsek = (uint8_t)(gevsek & (0xFFu ^ (uint32_t)e->cagri_kisit));
     if (ida_fc_emn_bayat(fc, e, o)) {
-        gevsek = (uint8_t)(gevsek & (uint8_t)~IDA_EMN_ESTOP);
+        gevsek = (uint8_t)(gevsek & (0xFFu ^ IDA_EMN_ESTOP));
     }
     const uint8_t once = e->kisitli;
-    e->kisitli = (uint8_t)(e->kisitli & (uint8_t)~gevsek);
+    e->kisitli = (uint8_t)(e->kisitli & (0xFFu ^ (uint32_t)gevsek));
     if (e->kisitli != once) {
         fc->emn_gevsedi = true;
     }
