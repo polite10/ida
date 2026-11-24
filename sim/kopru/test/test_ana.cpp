@@ -70,6 +70,9 @@ int test_duran_oturum_sonu();
 int test_duran_kapanis_esz();
 int test_duran_daraltici_tel();
 int test_duran_esz_sinirli();
+int test_gec_kapanis_calisirken();
+int test_duran_gec_kapanis_sim();
+int test_duran_gec_kapanis_duvar();
 int test_esz_sinirli();
 int test_esz_ilk_parti_oncesi();
 int test_sonar_parcalama();
@@ -155,6 +158,9 @@ const Test kTestler[] = {
     {"duran_kapanis_esz", test_duran_kapanis_esz},
     {"duran_daraltici_tel", test_duran_daraltici_tel},
     {"duran_esz_sinirli", test_duran_esz_sinirli},
+    {"gec_kapanis_calisirken", test_gec_kapanis_calisirken},
+    {"duran_gec_kapanis_sim", test_duran_gec_kapanis_sim},
+    {"duran_gec_kapanis_duvar", test_duran_gec_kapanis_duvar},
     {"esz_sinirli", test_esz_sinirli},
     {"esz_ilk_parti_oncesi", test_esz_ilk_parti_oncesi},
     {"sonar_parcalama", test_sonar_parcalama},

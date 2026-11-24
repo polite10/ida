@@ -105,6 +105,64 @@ std::size_t mesaj_say(const std::vector<std::uint8_t>& v, std::uint32_t msgid)
     return n;
 }
 
+// W4-K30 (2): köprünün olay kararları (A3-K98 kopyası; duran kipte de hemen okunur). `biriken`e
+// eklenir; `id`'nin son kararı (yoksa 0).
+std::uint8_t karar_bul(Kopru& k, std::vector<OlayKarari>& biriken, std::uint64_t id)
+{
+    k.olay_kararlari_al(biriken);
+    std::uint8_t r = 0;
+    for (const OlayKarari& o : biriken) {
+        if (o.event_id == id) {
+            r = o.sonuc;
+        }
+    }
+    return r;
+}
+
+// Sahte kartın aldığı ilk sonuç (yoksa 0).
+std::uint8_t sonuc_bul_sk(const SahteKart& sk, std::uint64_t id)
+{
+    for (const auto& r : sk.sonuclar) {
+        if (r.event_id == id) {
+            return r.result;
+        }
+    }
+    return 0;
+}
+
+// W4-K30 (2) kurulumu: tüp 0'ın izni açık (SAFETY_OPEN, hold 200 ms), nötr dışı komut yürürlükte.
+// `say_b` ise ikinci partinin (B) yanıtı bir olayı sayar (n_events = 1: tüp 1'in SAFETY_OPEN'ı) ama
+// olayın ilk çerçevesi kaybolur (H12); sonraki partiler olaysız. Altı periyot koşar.
+struct IzinKurulum {
+    int faz = 0;
+    SahteKart::Tf b{};
+    std::uint32_t rev = 0;
+};
+
+void izin_acik_kur(SahteDuzenek& z, IzinKurulum& s, bool say_b)
+{
+    gevsek_hazirla(z);
+    s.rev = z.k.emniyet_revizyonu();
+    z.sk.tf_kancasi = [&z, &s, say_b](const SahteKart::Tf& tf) {
+        if (s.faz == 0) {
+            s.faz = 1;
+            (void)z.sk.olay(IDAW_EVENT_KIND_SAFETY_OPEN, 0, tf.seq, tf.t, s.rev);
+            z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kSafe | kArmed), pwm_hepsi(1500), 1);
+            return;
+        }
+        if (s.faz == 1) {
+            s.faz = 2;
+            s.b = tf;
+            z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600), say_b ? 1 : 0);
+            return;
+        }
+        z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600));
+    };
+    for (int n = 0; n < 6; ++n) {
+        (void)z.periyot();
+    }
+}
+
 }  // namespace
 
 // Sol-1 #1: senaryo sınır b'de acili bırakır (sınır b ilerleyen kipte BİR KEZ işlenir), duraklatmada
@@ -355,5 +413,125 @@ int test_duran_esz_sinirli()
                    (c.calistirma_gecersiz & kGecEszamansiz) == 0u,
             "her duran turda en yenisi uygulandı, ilk parti öncesi muaf (" + s(c.esz_guvenli_uygulanan) + ")");
     z.k.duraklatma_ayarla(false);
+    return d.hata;
+}
+
+// ---------------------------------------------------------------- W4-K30 (2) (EMNİYET)
+// SAFETY_CLOSE son geçerlilik denetimine (A1-K84; sim zamanı ve duvar saati) girmez: oturumu tutan
+// her SAFETY_CLOSE ne kadar geç gelirse gelsin uygulanır (APPLIED; izin kapanır, revizyon +1).
+// Genişletici olaylar (SAFETY_OPEN, FIRE) için süre denetimi aynen kalır.
+
+// (1) ve (3) HIL kipindedir (SIL'de yanıttan sonraki çerçeveler sonraki TF'ye dek tamponda bekler,
+// W4-K14; geç olay HIL'in durumudur).
+
+// (3) Çalışırken (duraklatma yok): B partisinin olayları sim zamanında son geçerliliği (t_decide +
+// 20 ms) aşmış olarak gelir (B'nin yanıtından 7 periyot sonra). SAFETY_CLOSE (tüp 0) uygulanır;
+// aynı gecikmeyle gelen, yanıtın saydığı SAFETY_OPEN (tüp 1) REJ_EXPIRED alır.
+int test_gec_kapanis_calisirken()
+{
+    Denetci d;
+    SahteDuzenek z(hil());
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    IzinKurulum ik;
+    izin_acik_kur(z, ik, true);
+    (void)z.periyot();
+    DOGRULA(d, z.k.izin_acik(0) && !z.sinirlar.back().notr, "ön koşul: tüp 0'ın izni açık, nötr dışı komut yürürlükte");
+    DOGRULA(d, ik.faz == 2 && z.t > ik.b.t + 20 * kMs, "ön koşul: B'nin son geçerliliği (sim zamanı) geçti");
+    const std::uint32_t r0 = z.k.emniyet_revizyonu();
+    const std::uint64_t kapat = z.sk.olay(IDAW_EVENT_KIND_SAFETY_CLOSE, 0, ik.b.seq, ik.b.t, 0);
+    const std::uint64_t ac = z.sk.olay(IDAW_EVENT_KIND_SAFETY_OPEN, 1, ik.b.seq, ik.b.t, r0);
+    alisveris(z.k, z.sk, z.t);
+    z.sinir_ilerle();
+    std::vector<OlayKarari> kr;
+    DOGRULA(d, karar_bul(z.k, kr, kapat) == IDA_EVR_APPLIED, "geç SAFETY_CLOSE APPLIED (" + s(karar_bul(z.k, kr, kapat)) + ")");
+    DOGRULA(d, !z.k.izin_acik(0) && z.k.emniyet_revizyonu() == r0 + 1u, "izin kapandı, revizyon +1");
+    DOGRULA(d, karar_bul(z.k, kr, ac) == IDA_EVR_REJ_EXPIRED, "aynı gecikmeyle SAFETY_OPEN REJ_EXPIRED (" + s(karar_bul(z.k, kr, ac)) + ")");
+    DOGRULA(d, !z.k.izin_acik(1), "tüp 1'in izni açılmadı");
+    return d.hata;
+}
+
+// (1) Duran kipte, sim zamanı sınırı: B'nin olayları duraklatılmışken, son geçerliliği aşmış olarak
+// gelir. SAFETY_CLOSE duran turda uygulanır (APPLIED, izin kapanır, revizyon +1); SAFETY_OPEN kendi
+// sınırını bekler ve sürdürmeden sonraki ilk sınırda REJ_EXPIRED alır.
+int test_duran_gec_kapanis_sim()
+{
+    Denetci d;
+    SahteDuzenek z(hil());
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    IzinKurulum ik;
+    izin_acik_kur(z, ik, true);
+    (void)z.periyot();
+    DOGRULA(d, z.k.izin_acik(0) && !z.sinirlar.back().notr, "ön koşul: tüp 0'ın izni açık, nötr dışı komut yürürlükte");
+    DOGRULA(d, ik.faz == 2 && z.t > ik.b.t + 20 * kMs, "ön koşul: B'nin son geçerliliği (sim zamanı) geçti");
+    z.k.duraklatma_ayarla(true);
+    const std::uint32_t r0 = z.k.emniyet_revizyonu();
+    const std::uint64_t kapat = z.sk.olay(IDAW_EVENT_KIND_SAFETY_CLOSE, 0, ik.b.seq, ik.b.t, 0);
+    const std::uint64_t ac = z.sk.olay(IDAW_EVENT_KIND_SAFETY_OPEN, 1, ik.b.seq, ik.b.t, r0);
+    std::vector<std::uint8_t> w;
+    w.swap(z.sk.giden);
+    z.k.al(w.data(), w.size(), z.t);
+    (void)z.k.sinir_isle(z.sinir, z.t);
+    std::vector<OlayKarari> kr;
+    DOGRULA(d, karar_bul(z.k, kr, kapat) == IDA_EVR_APPLIED, "duran turda geç SAFETY_CLOSE APPLIED (" + s(karar_bul(z.k, kr, kapat)) + ")");
+    DOGRULA(d, !z.k.izin_acik(0) && z.k.emniyet_revizyonu() == r0 + 1u, "duran turda izin kapandı, revizyon +1");
+    z.k.duraklatma_ayarla(false);
+    bool kapali = true;
+    for (int j = 0; j < 8; ++j) {
+        z.sinir_ilerle();
+        kapali = kapali && !z.k.izin_acik(0) && !z.k.izin_acik(1);
+    }
+    DOGRULA(d, kapali, "sürdürmeden sonra izinler kapalı");
+    DOGRULA(d, karar_bul(z.k, kr, ac) == IDA_EVR_REJ_EXPIRED, "aynı gecikmeyle SAFETY_OPEN REJ_EXPIRED (" + s(karar_bul(z.k, kr, ac)) + ")");
+    return d.hata;
+}
+
+// (2) Duran kipte, duvar saati sınırı (HIL): uzun duraklatma (100 ms ≥ apply_by + T_bekle = 50 ms;
+// sim zamanı durur). Kart ızgara tick'inde (TICK_GRID) son geçerli zaman çerçevesini taşıyan
+// SAFETY_CLOSE gönderir. Duran turda uygulanır; sürdürmeden sonra izin açık DEĞİL (eskiden REJ_EXPIRED
+// alır, izin sim zamanında hold dolana dek açık kalırdı).
+int test_duran_gec_kapanis_duvar()
+{
+    Denetci d;
+    SahteDuzenek z(hil());
+    DOGRULA(d, z.el_sikis(), "el sıkışma");
+    IzinKurulum ik;
+    izin_acik_kur(z, ik, false);
+    DOGRULA(d, z.k.izin_acik(0) && !z.sinirlar.back().notr, "ön koşul: tüp 0'ın izni açık, nötr dışı komut yürürlükte");
+    const SahteKart::Tf son = z.sk.tfler.back();
+    z.k.duraklatma_ayarla(true);
+    const std::uint32_t r0 = z.k.emniyet_revizyonu();
+    // Duraklatma: duvar saati 100 ms ilerler, sim zamanı (z.t) durur; her 5 ms'de bir duran tur.
+    std::int64_t duvar = z.t;
+    for (int j = 0; j < 20; ++j) {
+        duvar += 5 * kMs;
+        (void)z.k.sinir_isle(z.sinir, duvar);
+        alisveris(z.k, z.sk, duvar);
+    }
+    DOGRULA(d, z.k.izin_acik(0) && duvar - son.t > 50 * kMs, "ön koşul: duraklatmada izin açık; duvar saati sınırı geçti");
+    const std::uint64_t kapat = z.sk.olay(IDAW_EVENT_KIND_SAFETY_CLOSE, 0, son.seq, son.t, 0, IDAW_CALL_KIND_TICK_GRID);
+    std::vector<std::uint8_t> w;
+    w.swap(z.sk.giden);
+    z.k.al(w.data(), w.size(), duvar);
+    (void)z.k.sinir_isle(z.sinir, duvar);
+    std::vector<OlayKarari> kr;
+    DOGRULA(d, karar_bul(z.k, kr, kapat) == IDA_EVR_APPLIED, "duran turda geç SAFETY_CLOSE APPLIED (" + s(karar_bul(z.k, kr, kapat)) + ")");
+    DOGRULA(d, !z.k.izin_acik(0) && z.k.emniyet_revizyonu() == r0 + 1u, "duran turda izin kapandı, revizyon +1");
+    // Sürdürme: W(t) duraklatma süresi kadar kayar (A1-K29); sim zamanı kaldığı yerden.
+    z.k.duraklatma_ayarla(false);
+    const std::int64_t kayma = duvar - z.t;
+    bool kapali = true;
+    for (int p = 0; p < 4; ++p) {
+        for (int j = 0; j < 4; ++j) {
+            ++z.sinir;
+            z.t = static_cast<std::int64_t>(z.sinir) * kH;
+            (void)z.k.sinir_isle(z.sinir, z.t + kayma);
+            alisveris(z.k, z.sk, z.t + kayma);
+            kapali = kapali && !z.k.izin_acik(0);
+        }
+        (void)z.k.parti_kapat(z.t, z.t + kayma);
+        alisveris(z.k, z.sk, z.t + kayma);
+    }
+    DOGRULA(d, kapali, "sürdürmeden sonra izin açık değil");
+    DOGRULA(d, sonuc_bul_sk(z.sk, kapat) == IDA_EVR_APPLIED, "karta APPLIED sonucu sürdürmeden sonra gitti");
     return d.hata;
 }

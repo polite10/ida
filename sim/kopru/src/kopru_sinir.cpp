@@ -480,8 +480,12 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t 
         karar(static_cast<std::uint8_t>(IDA_EVR_REJ_SESSION), 0);
         return;
     }
-    const bool kapanis_sifir = e.kind == IDA_EVT_SAFETY_CLOSE && e.batch_seq == 0u && e.t_decide_ns == 0;
-    if (!kapanis_sifir) {
+    // W4-K30 (2) (EMNİYET): SAFETY_CLOSE son geçerlilik denetimine girmez. A1-K84'ün batch_seq = 0
+    // istisnası bütün SAFETY_CLOSE'lara genişletildi: oturumu tutan (A1-K82, K109) her SAFETY_CLOSE ne
+    // kadar geç gelirse gelsin, duraklatılmışken de çalışırken de A1-K87'ye göre uygulanır. Geç gelen
+    // eski bir kapatmanın daha yeni bir izni kapatması kısıtlayan yöndedir. Genişletici olaylar
+    // (SAFETY_OPEN, FIRE) için süre denetimi aynen kalır.
+    if (e.kind != IDA_EVT_SAFETY_CLOSE) {
         // A1-K84: sim zamanında ve duvar saatinde son geçerlilik.
         bool suresi_gecti = t > e.t_decide_ns + static_cast<std::int64_t>(e.apply_by_ns);
         const TfKaydi* tk = tf_kayit.bul(e.batch_seq);

@@ -461,6 +461,7 @@ public:
     // kuralıyla; sürekli çıktılar). Duran kipte atlanan yalnız üye gönderimidir (bekleyen daraltıcı
     // komut tele yazılmaz; A1-K41); ayrıca SAFETY_CLOSE, yuvasının sınırını beklemez (A1-K87, A3-K95:
     // duraklatılmışken emniyet işlemi beklemez). Sim zamanı ve fizik çağıran tarafta ilerlemez.
+    // SAFETY_CLOSE iki kipte de son geçerlilik denetimine (A1-K84) girmez (W4-K30 (2); EMNİYET).
     SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
     // W4-duraklat: duran kip (true) ya da ilerleyen kip (false). Duran kipte `komut_*` ile verilen
     // daraltıcı komut tele yazılmaz, tür başına bekler (A1-K61 birleştirmesiyle; düşmez) ve revizyonu

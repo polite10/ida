@@ -26,7 +26,7 @@ Parti `n`'in kümesi: `IDA_ACTUATOR(n)` ve `batch_seq = n` taşıyan, `TICK_GRID
 | BEKLİYOR | (kalır) | Yanıt yok ya da küme eksik | Genişletici olay bekler, her sınırda yeniden denenir (geç olay, A1-K83); son geçerlilikte `REJ_EXPIRED`. Yanıt artık gelemiyorsa (yuvanın uygulama anı geldi) `REJ_SAFE` |
 | DOĞRULANDI | → UYGULANDI | Yanıt `a_n`'de uygulandı | — |
 | DOĞRULANDI / UYGULANDI / REDDEDİLDİ | → oturum sonu | Aynı `batch_seq`'li **yeni** `event_id`'li genişletici olay | Sayım ihlali (yukarıdaki gibi); "sonradan tutarsızlaşma" ve geri alma yolu yoktur |
-| her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan; `ACTUATOR`'dan sonra gelen yeni kimlikli olan sayıma girmez) | Beklemeden uygulanır (A1-K87); ihlal değildir |
+| her durum | — | `SAFETY_CLOSE` (sayılan ya da sayıyı aşan; `ACTUATOR`'dan sonra gelen yeni kimlikli olan sayıma girmez) | Beklemeden uygulanır (A1-K87); ihlal değildir. Son geçerlilik denetimine (A1-K84; sim zamanı ve duvar saati) girmez: ne kadar geç gelirse gelsin, duraklatılmışken de çalışırken de uygulanır (W4-K30 (2); EMNİYET) |
 | her durum | — | Aynı `event_id`'li yineleme | A1-K81 (saklı sonuç); ihlal değildir |
 
 Canlılık (`T_bağ`; W4-K15 ek (7)): çerçevenin katkısına tek yerde karar verilir (`kopru.cpp` `kart_cercevesi`, `kopru_sinir.cpp` `kume_canliligi`). `T_bağ` denetimi yalnız işlenmiş canlılığa bakar; bekleyen küme zaman aşımını ertelemez.

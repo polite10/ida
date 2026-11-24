@@ -128,6 +128,9 @@ set(_ida_kopru_testleri
   duran_kapanis_esz  # W4-duraklat EMNİYET: sol-2 #3, SAFETY_CLOSE ve eşzamansız çıktı
   duran_daraltici_tel  # W4-duraklat EMNİYET: A1-K41, daraltıcı tele çıkmaz, revizyon hemen
   duran_esz_sinirli  # W4-duraklat: sol-2 #4, ilk TF öncesi duran kipte bellek sınırlı
+  gec_kapanis_calisirken  # W4-K30 (2) EMNİYET: geç SAFETY_CLOSE çalışırken uygulanır
+  duran_gec_kapanis_sim  # W4-K30 (2) EMNİYET: duran kipte sim zamanı sınırını aşan SAFETY_CLOSE
+  duran_gec_kapanis_duvar  # W4-K30 (2) EMNİYET: uzun HIL duraklatmasında ızgara SAFETY_CLOSE
   esz_sinirli  # W4-K27 (3): bekleyen eşzamansız çıktı sınırlı
   esz_ilk_parti_oncesi  # W4-K28 (3) EMNİYET: ilk parti öncesi muafiyet belleği sabit
   sonar_parcalama  # W4-bagla-sonar kabul 4: A1-K49 parçalama, parti bütçesi, kredi
