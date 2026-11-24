@@ -20,6 +20,7 @@
 #include "ida/kopru/tasima.hpp"
 #include "ida/sil/kosucu.hpp"
 #include "ida_link/tel.h"
+#include "ida_link/ust.h"   // IDA_LINK_CAGRI_OTURUM_SONU (koşucunun çağrı sayacı)
 #include "ida/sunucu/sunucu.hpp"
 #include "../../sim/kopru/src/mavlink_ic.hpp"   // yalnız mesaj yapıları (A1-K101)
 
@@ -820,7 +821,12 @@ int test_sil_eof_konumu()
 // komutları karta iletilmez (kart bloğu hiç kaydetmez, her el sıkışma yeniden hazırlık ister) ve
 // kartın her ACTUATOR'ının ardından kart adına SESSION_CLOSE katılır (hazırlık oturumu her ilk
 // TF'den sonra kapanır). Sim'in kart yönüne gönderdiği SESSION_CLOSE'lar ve kartın ondan sonraki
-// IDA_CALL_TRACE'leri (oturum sonu çağrısının izi, A1-K95) kaydedilir.
+// oturum sonu izleri (IDA_CALL_TRACE, call_kind = SESSION_END; A1-K95, A1-K107) kaydedilir.
+// Sim bağlantıyı kapattıktan sonra aktarıcı kart bağlantısını açık tutar ve kartın çıktısını
+// okumayı sürdürür (durdurulana ya da kart kapatana dek; duvar saati penceresi yok): kartın
+// kapanıştan sonraki izinin görülmesi koşucunun iş parçacığının ne zaman çalıştığına bağlı
+// değildir (w4-ci-mac-sure: paylaşılan macOS koşucusunda iz, koşucu durdurulduktan sonra
+// yazılamadığı için görülmemişti).
 class GeciktirenAktarici {
 public:
     GeciktirenAktarici(std::uint16_t sim_port, std::chrono::microseconds gecikme, bool sonuc_yut,
@@ -834,7 +840,12 @@ public:
         (void)ida_link_gonderici_kur(&g_, IDA_LINK_ROL_KART);
         g_.seq = 0x40;
         if (din_) {
-            is_ = std::thread([this] { dongu(); });
+            is_ = std::thread([this] {
+                dongu();
+                bitti_ = true;
+            });
+        } else {
+            bitti_ = true;
         }
     }
     ~GeciktirenAktarici() { bekle(); }
@@ -851,6 +862,23 @@ public:
     const std::vector<std::uint8_t>& sim_kapanislari() const { return sim_kapanislari_; }
     std::uint64_t kapanis_sonrasi_iz() const { return kapanis_sonrasi_iz_; }
     std::uint64_t katilan_kapanis() const { return katilan_kapanis_; }
+    // Olay güdümlü bekleme: sim'in son SESSION_CLOSE'u SHUTDOWN olup kartın ondan sonraki oturum
+    // sonu izi okununca true; aktarıcı bittiyse (kart kapattı, bağlantı yok) false. `sinir` yalnız
+    // asılma korumasıdır, ölçüt değildir (iz hiç gelmezse sınama orada kalır).
+    bool kapanis_izini_bekle(std::chrono::milliseconds sinir) const
+    {
+        const auto son = Saat::now() + sinir;
+        for (;;) {
+            const bool bitti = bitti_.load();   // önce okunur: bittiyse aşağıdaki durum son durumdur
+            if (son_kapanis_.load() == static_cast<int>(IDAW_CLOSE_REASON_SHUTDOWN) && kapanis_sonrasi_iz_.load() >= 1u) {
+                return true;
+            }
+            if (bitti || Saat::now() >= son) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
 
 private:
     using Saat = std::chrono::steady_clock;
@@ -871,20 +899,16 @@ private:
         bool hazirlikta = true;
         int bos = 0;
         bool sim_bitti = false;
-        Saat::time_point bitis{};
         while (!dur_) {
             bool is_var = false;
             std::size_t n = 0;
             ida::kopru::OkumaSonucu r = sim_bitti ? ida::kopru::OkumaSonucu::zaman_asimi
                                                   : sim->oku(t.data(), t.size(), 0, n);
             if (r == ida::kopru::OkumaSonucu::kapandi) {
-                // Sim kapattı: kartın kapanıştan sonraki çıktısı (oturum sonu izi) bir süre daha okunur.
+                // Sim kapattı: kartın kapanıştan sonraki çıktısı (oturum sonu izi) durdurulana ya
+                // da kart kapatana dek okunur (süre penceresi yok).
                 sim_bitti = true;
-                bitis = Saat::now() + std::chrono::milliseconds(500);
                 sim->kapat();
-            }
-            if (sim_bitti && Saat::now() > bitis) {
-                break;
             }
             if (r == ida::kopru::OkumaSonucu::tamam) {
                 is_var = true;
@@ -904,7 +928,8 @@ private:
                         mavlink_ida_session_close_t s{};
                         (void)ida_link_coz(&c, c.msgid, &s, sizeof s);
                         sim_kapanislari_.push_back(s.reason);
-                        kapanis_sonrasi_iz_ = 0;
+                        kapanis_sonrasi_iz_ = 0;            // önce sıfırlanır, sonra neden yazılır
+                        son_kapanis_ = static_cast<int>(s.reason);
                         if (s.reason == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_RUN_END)) {
                             hazirlikta = false;
                         }
@@ -938,7 +963,11 @@ private:
                         break;
                     }
                     if (c.msgid == MAVLINK_MSG_ID_IDA_CALL_TRACE && !sim_kapanislari_.empty()) {
-                        ++kapanis_sonrasi_iz_;
+                        mavlink_ida_call_trace_t ct{};
+                        (void)ida_link_coz(&c, c.msgid, &ct, sizeof ct);
+                        if (ct.call_kind == static_cast<std::uint8_t>(IDAW_CALL_KIND_SESSION_END)) {
+                            ++kapanis_sonrasi_iz_;   // yalnız oturum sonu çağrısının izi
+                        }
                     }
                     if (hazirlikta && sonuc_yut_ && c.msgid == MAVLINK_MSG_ID_IDA_CMD_RESULT) {
                         ++yutulan_;
@@ -996,10 +1025,12 @@ private:
     ida_link_gonderici_t g_{};
     std::thread is_;
     std::atomic<bool> dur_{false};
+    std::atomic<bool> bitti_{false};
     std::uint64_t geciktirilen_ = 0;
     std::uint64_t yutulan_ = 0;
     std::vector<std::uint8_t> sim_kapanislari_;
-    std::uint64_t kapanis_sonrasi_iz_ = 0;
+    std::atomic<int> son_kapanis_{-1};                  // sim'in son SESSION_CLOSE nedeni (-1: yok)
+    std::atomic<std::uint64_t> kapanis_sonrasi_iz_{0};  // ondan sonraki oturum sonu izleri
     std::uint64_t katilan_kapanis_ = 0;
 };
 
@@ -1011,11 +1042,20 @@ struct HazirlikKosusu {
     std::vector<std::uint8_t> sim_kapanislari;
     std::uint64_t kapanis_sonrasi_iz = 0;
     std::uint64_t katilan_kapanis = 0;
+    bool iz_beklendi = false;                 // koşucu durdurulmadan önce oturum sonu izi görüldü
+    std::uint64_t kosucu_oturum_sonu = 0;     // koşucunun kendi sayacı: oturum sonu çağrısı sayısı
 };
 
+// `kapanis_izi_bekle`: kos() döndükten sonra koşucu durdurulmadan önce, aktarıcının sim'in
+// SESSION_CLOSE(SHUTDOWN)'undan sonra kartın oturum sonu izini görmesi beklenir (olay güdümlü;
+// asılma sınırı 30 s, ölçüt değil). Durdurma isteği koşucunun yazımını keser (Soket::yaz, dur):
+// beklemeden durdurmak izi, koşucu iş parçacığının zamanlamasına bağlı olarak yok ederdi.
+// `oturum_sonu_gecikme_us`: koşucunun oturum sonu çağrısı (A1-K107) bu kadar geciktirilir (yüklü
+// makinede geç zamanlanan koşucunun belirlenimci benzeri; çekirdeğe giden girdi değişmez).
 HazirlikKosusu hazirlik_kos(std::int64_t baglanti_bekleme_ns, std::int64_t hazirlik_azami_ns, bool sonuc_yut,
                             std::int64_t gecikme_us = 25'000, bool kapat_tekrar = false, double sure_s = 1.0,
-                            std::function<void(const ida::sunucu::Ayar::SinirGozlemi&)> kanca = {})
+                            std::function<void(const ida::sunucu::Ayar::SinirGozlemi&)> kanca = {},
+                            bool kapanis_izi_bekle = false, std::int64_t oturum_sonu_gecikme_us = 0)
 {
     ida::sunucu::Ayar a;
     a.gunluk = 0;
@@ -1033,18 +1073,32 @@ HazirlikKosusu hazirlik_kos(std::int64_t baglanti_bekleme_ns, std::int64_t hazir
         ka.a1_port = ak->port();
         ka.a1_tohum = tohum;
         ka.gunluk = 0;
-        kosucu = std::make_unique<ida::sil::Kosucu>(ka);
+        ida::sil::Kancalar kk;
+        if (oturum_sonu_gecikme_us > 0) {
+            kk.cagri_icinde = [oturum_sonu_gecikme_us](int tur, const ida_in_t&) {
+                if (tur == static_cast<int>(IDA_LINK_CAGRI_OTURUM_SONU)) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(oturum_sonu_gecikme_us));
+                }
+            };
+        }
+        kosucu = std::make_unique<ida::sil::Kosucu>(ka, std::move(kk));
         is = std::thread([&] { (void)kosucu->calistir(); });
     };
     HazirlikKosusu h;
     const auto bas = std::chrono::steady_clock::now();
     h.s = ida::sunucu::kos(a);
     h.sure_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    if (kapanis_izi_bekle && ak) {
+        h.iz_beklendi = ak->kapanis_izini_bekle(std::chrono::seconds(30));
+    }
     if (kosucu) {
         kosucu->durdur();
     }
     if (is.joinable()) {
         is.join();
+    }
+    if (kosucu) {
+        h.kosucu_oturum_sonu = kosucu->istatistik().cagri[IDA_LINK_CAGRI_OTURUM_SONU];
     }
     if (ak) {
         ak->bekle();
@@ -1078,7 +1132,10 @@ int test_sil_hazirlik_tekrar()
 }
 
 // Sol 3. denetim #3 (EMNİYET, A1-K21): kurulmuş oturumun hata çıkışlarında kart SESSION_CLOSE'u
-// görür ve çekirdeğin oturum sonu çağrısı (izi: IDA_CALL_TRACE) yapılır.
+// görür ve çekirdeğin oturum sonu çağrısı (izi: IDA_CALL_TRACE, call_kind = SESSION_END) yapılır.
+// Koşucu, aktarıcı izi görmeden durdurulmaz (hazirlik_kos, kapanis_izi_bekle): iz, koşucunun
+// kapanış çerçevesine verdiği yanıttır ve koşucunun zamanlamasından bağımsız olarak denetlenir.
+// Üçüncü durum, oturum sonu çağrısı 200 ms geciken (yüklü makinede geç zamanlanan) koşucudur.
 int test_sil_hata_kapanisi()
 {
     struct Durum {
@@ -1086,18 +1143,24 @@ int test_sil_hata_kapanisi()
         std::int64_t azami;
         std::int64_t gecikme_us;
         const char* hata;
+        std::int64_t oturum_sonu_gecikme_us;
     };
     const Durum durumlar[] = {
-        {"hazırlık süre sınırı", 1'000'000'000, 25'000, "hazırlık oturumu süre sınırını aştı"},
+        {"hazırlık süre sınırı", 1'000'000'000, 25'000, "hazırlık oturumu süre sınırını aştı", 0},
         {"hazırlık 8000 periyotta bitmedi", 600'000'000'000, 0,
-         "hazırlık oturumu tamamlanmadı (param_blob_crc eşleşmedi)"},
+         "hazırlık oturumu tamamlanmadı (param_blob_crc eşleşmedi)", 0},
+        {"hazırlık 8000 periyotta bitmedi, yavaş koşucu", 600'000'000'000, 0,
+         "hazırlık oturumu tamamlanmadı (param_blob_crc eşleşmedi)", 200'000},
     };
     for (const Durum& d : durumlar) {
-        const HazirlikKosusu h = hazirlik_kos(20'000'000'000, d.azami, true, d.gecikme_us);
-        std::printf("  %s: tamam %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın izi %llu, "
-                    "kapanış yazımı eksik %llu, %.2f s\n",
+        const HazirlikKosusu h =
+            hazirlik_kos(20'000'000'000, d.azami, true, d.gecikme_us, false, 1.0, {}, true, d.oturum_sonu_gecikme_us);
+        std::printf("  %s: tamam %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın oturum sonu izi "
+                    "%llu (durdurmadan önce %d), koşucunun oturum sonu çağrısı %llu, kapanış yazımı eksik %llu, "
+                    "%.2f s\n",
                     d.ad, h.s.tamam ? 1 : 0, h.s.hata.c_str(), nedenler(h.sim_kapanislari).c_str(),
-                    static_cast<unsigned long long>(h.kapanis_sonrasi_iz),
+                    static_cast<unsigned long long>(h.kapanis_sonrasi_iz), h.iz_beklendi ? 1 : 0,
+                    static_cast<unsigned long long>(h.kosucu_oturum_sonu),
                     static_cast<unsigned long long>(h.s.kapanis_yazim_eksik), h.sure_s);
         const std::string on = std::string(d.ad) + ": ";
         dogrula_sa(!h.s.tamam && h.s.hata == d.hata, on + "beklenen hata '" + h.s.hata + "'");
@@ -1105,7 +1168,9 @@ int test_sil_hata_kapanisi()
                        h.sim_kapanislari.back() == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN) &&
                        h.s.kapanis_yazim_eksik == 0u,
                    on + "kart SESSION_CLOSE(SHUTDOWN)'u gördü (tamamen yazıldı)");
-        dogrula_sa(h.kapanis_sonrasi_iz >= 1u, on + "kartın oturum sonu çağrısı yapıldı (IDA_CALL_TRACE)");
+        dogrula_sa(h.iz_beklendi && h.kapanis_sonrasi_iz >= 1u && h.kosucu_oturum_sonu >= 1u,
+                   on + "kartın oturum sonu çağrısı yapıldı (SHUTDOWN'dan sonra, koşucu durdurulmadan önce "
+                        "IDA_CALL_TRACE(SESSION_END); koşucunun sayacı)");
         dogrula_sa(h.s.kapanis_daraltildi && !h.s.kapanis_izin_acik && !h.s.kapanis_itki_yururlukte,
                    on + "sol 4. denetim #3: kapanışta izinler kapalı, itki nötr");
     }
@@ -1122,18 +1187,20 @@ int test_sil_istisna_kapanisi()
             throw std::runtime_error("enjekte hata");
         }
     };
-    const HazirlikKosusu h = hazirlik_kos(20'000'000'000, 600'000'000'000, false, 0, false, 5.0, kanca);
-    std::printf("  istisna: tamam %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın izi %llu, "
-                "daraltma %d (önce itki %d, sonra izin %d, itki %d), yutulan istisna %llu\n",
+    const HazirlikKosusu h = hazirlik_kos(20'000'000'000, 600'000'000'000, false, 0, false, 5.0, kanca, true);
+    std::printf("  istisna: tamam %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın oturum sonu izi "
+                "%llu (durdurmadan önce %d), daraltma %d (önce itki %d, sonra izin %d, itki %d), yutulan istisna %llu\n",
                 h.s.tamam ? 1 : 0, h.s.hata.c_str(), nedenler(h.sim_kapanislari).c_str(),
-                static_cast<unsigned long long>(h.kapanis_sonrasi_iz), h.s.kapanis_daraltildi ? 1 : 0,
+                static_cast<unsigned long long>(h.kapanis_sonrasi_iz), h.iz_beklendi ? 1 : 0,
+                h.s.kapanis_daraltildi ? 1 : 0,
                 h.s.kapanis_oncesi_itki ? 1 : 0, h.s.kapanis_izin_acik ? 1 : 0, h.s.kapanis_itki_yururlukte ? 1 : 0,
                 static_cast<unsigned long long>(h.s.kapanis_istisna));
     dogrula_sa(!h.s.tamam && h.s.hata == "istisna: enjekte hata", "kos() istisnayı hataya çevirdi: '" + h.s.hata + "'");
     dogrula_sa(!h.sim_kapanislari.empty() &&
                    h.sim_kapanislari.back() == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN) &&
-                   h.kapanis_sonrasi_iz >= 1u && h.s.kapanis_istisna == 0u,
-               "kart SESSION_CLOSE(SHUTDOWN)'u gördü ve oturum sonu çağrısı yapıldı");
+                   h.iz_beklendi && h.kapanis_sonrasi_iz >= 1u && h.s.kapanis_istisna == 0u,
+               "kart SESSION_CLOSE(SHUTDOWN)'u gördü ve oturum sonu çağrısı yapıldı (koşucu durdurulmadan önce "
+               "IDA_CALL_TRACE(SESSION_END))");
     dogrula_sa(h.s.kapanis_daraltildi && h.s.kapanis_oncesi_itki && !h.s.kapanis_izin_acik &&
                    !h.s.kapanis_itki_yururlukte,
                "istisna çıkışında daraltma: itki yürürlükteydi, sonra nötr; izinler kapalı");
