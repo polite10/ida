@@ -10,6 +10,7 @@
  * akıntı yol takibine kalıcı hata olarak yansır (kötümser durum); ILOS bunu giderir.
  * Sınırlar testin kendi seçimidir (TAHMİN; gerçek araçta ölçülmedi).
  */
+#include <stddef.h>
 #include <string.h>
 
 #include "destek.h"
@@ -272,6 +273,10 @@ static void auto_kur(void)
     C.emn.armed = true;
     C.emn.mode = (uint8_t)IDA_MODE_AUTO;
     C.emn.hedef_iptal = 0u;
+    /* W5-kontrol-acil: init'te acil durdurma kısıtlayandır (hiç gevşememiş); beyaz kutu düzenek
+       gevşek değeri doğrudan kurar (kontrolün kalkış mandalı da kurulu değil). */
+    C.emn.kisitli = (uint8_t)(C.emn.kisitli & (uint8_t)(0xFFu ^ IDA_EMN_ESTOP));
+    C.kon.acil_mandal = 0u;
     C.gor.son_kip = (uint8_t)IDA_MODE_AUTO;
     C.gor.fs_level = (uint8_t)IDA_FS_NONE;
     C.gor.mission_state = (uint8_t)IDA_MS_RUNNING;
@@ -416,6 +421,148 @@ static void test_kirpma_referansi_tutar(void)
     TEST_ASSERT_TRUE(mutlak(C.gud.ref.w) <= (0.05f * 0.01f) + 1.0e-6f);
 }
 
+/* ---- W5-kontrol-acil kural 2, 3: acil durdurmada AUTO güdümünün durumu ------------------- */
+
+/* Bir çekirdek çağrısının güdüm ve kontrol kısmı, çerçevenin sırasıyla (cerceve.c): etkin değer
+   ((b) ya da (e)'de kabul edilen örnek) → kontrolün acil durdurma kancası → kabul edilen
+   çağrıda güdüm adımı → step OK'ta kontrol adımı (kalkış adımı mandalı indirir). Kestirim bu
+   beyaz kutu düzenekte kurulmadığı için kontrol itki üretmez; sınanan, güdümün durumu ve
+   isteğidir (kontrolün kendi kalkışı core/test/kontrol/test_acil.c'de). kabul = false: (b)'de
+   kalan çağrı (reddedilen ya da out NULL): yalnız kanca koşar. */
+static void oto_cagri(bool acil, bool kabul)
+{
+    C.cer.tf_t_ns += 10 * DS_MS;
+    if (acil) {
+        C.emn.kisitli = (uint8_t)(C.emn.kisitli | IDA_EMN_ESTOP);
+    } else {
+        C.emn.kisitli = (uint8_t)(C.emn.kisitli & (uint8_t)(0xFFu ^ IDA_EMN_ESTOP));
+    }
+    ida_kon_acil_izle(&C.kon, &C.emn);
+    if (kabul) {
+        ida_gud_adim(&C.gud, &C);
+        ida_kon_adim(&C.kon, &C);
+    }
+}
+
+#define OTO_KAYIT 300 /* kalkıştan sonra kaydedilen çağrı (3 s) */
+
+typedef struct {
+    ida_kon_istek_t ist;
+    float y_int;
+    float ref_d;
+    float ref_w;
+} oto_kayit_t;
+
+static oto_kayit_t OTO_A[OTO_KAYIT];
+static oto_kayit_t OTO_B[OTO_KAYIT];
+
+static void oto_kaydet(oto_kayit_t *k)
+{
+    (void)memset(k, 0, sizeof(*k));
+    ida_gud_kon_istegi(&C.gud, &C, &k->ist);
+    k->y_int = C.gud.y_int;
+    k->ref_d = C.gud.ref.d;
+    k->ref_w = C.gud.ref.w;
+}
+
+/* İki kaydın bit bit aynılığı (dolgu baytları karşılaştırılmaz). */
+static void oto_ayni(const oto_kayit_t *a, const oto_kayit_t *b, int n)
+{
+    const size_t f0 = offsetof(ida_kon_istek_t, derinlik);
+    const size_t f1 = offsetof(ida_kon_istek_t, kuvvet) + sizeof(a->ist.kuvvet);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(a->ist.kip, b->ist.kip, "kip");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(a->ist.dikey, b->ist.dikey, "dikey");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(a->ist.yon_kanali, b->ist.yon_kanali, "yön kanalı");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(a->ist.yatay, b->ist.yatay, "yatay");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(a->ist.dalis_yasak, b->ist.dalis_yasak, "dalış yasağı");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp((const uint8_t *)&a->ist + f0, (const uint8_t *)&b->ist + f0,
+                                    f1 - f0) == 0,
+                             "istek alanları");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(&a->y_int, &b->y_int, sizeof(float)) == 0, "ILOS integrali");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(&a->ref_d, &b->ref_d, sizeof(float)) == 0, "referans d");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(&a->ref_w, &b->ref_w, sizeof(float)) == 0, "referans w");
+    (void)n;
+}
+
+/* AUTO'da görev yürürken (çapraz hata 1 m, derinlik hedefi 1 m aşağıda) 5 s olağan; sonra
+   acil_ms acil durdurma (her çağrıda durum sıfır); sonra kalkıştan OTO_KAYIT çağrı kaydedilir.
+   acil_ms < 0: hiç acil durdurma yok, güdüm kalkış anında sıfırdan başlar (eş). */
+static void oto_acil_kos(int64_t acil_ms, oto_kayit_t *kayit)
+{
+    auto_kur();
+    if (acil_ms >= 0) {
+        for (int i = 0; i < 500; i++) {
+            oto_cagri(false, true);
+        }
+        /* Ön koşul: birikimli durum var (yoksa sınama boş olurdu). */
+        TEST_ASSERT_TRUE(C.gud.oto_var);
+        TEST_ASSERT_TRUE(mutlak(C.gud.y_int) > 1.0e-3f);
+        TEST_ASSERT_TRUE(C.gud.ref.d > 1.05f);
+        TEST_ASSERT_TRUE(C.gud.ref.w > 0.0f);
+        const int64_t n = acil_ms / 10;
+        for (int64_t i = 0; i < n; i++) {
+            oto_cagri(true, true);
+            TEST_ASSERT_FALSE(C.gud.oto_var);
+            TEST_ASSERT_FALSE(C.gud.t_var);
+            TEST_ASSERT_TRUE(C.gud.y_int == 0.0f);
+            TEST_ASSERT_TRUE(C.gud.ref.d == 0.0f);
+            TEST_ASSERT_TRUE(C.gud.ref.w == 0.0f);
+            TEST_ASSERT_TRUE(C.kon.acil_mandal != 0u);
+        }
+    } else {
+        /* Eş: aynı ölçülen durumda hiç acil durdurma görmemiş, kalkış anında ilk kez koşan
+           güdüm (t_var yok: ilk adımın dt'si 0). */
+        C.cer.tf_t_ns += 123456 * DS_MS; /* zaman tabanı farklı: sonuç ona bağlı olmamalı */
+    }
+    for (int i = 0; i < OTO_KAYIT; i++) {
+        oto_cagri(false, true);
+        oto_kaydet(&kayit[i]);
+    }
+    /* Kalkış adımında referans ölçülen derinlikten, integral sıfırdan başladı. */
+    TEST_ASSERT_TRUE(kayit[0].ref_d == 1.0f);
+    TEST_ASSERT_TRUE(kayit[0].y_int == 0.0f);
+    TEST_ASSERT_TRUE(C.kon.acil_mandal == 0u);
+}
+
+static void test_acil_durdurmada_oto_durumu_sifir_kalkis_sureden_bagimsiz(void)
+{
+    oto_acil_kos(2000, OTO_A);
+    oto_acil_kos(60000, OTO_B);
+    for (int i = 0; i < OTO_KAYIT; i++) {
+        oto_ayni(&OTO_A[i], &OTO_B[i], i);
+    }
+    /* Hiç acil durdurma görmemiş ve kalkış anında sıfırdan başlayan güdümle de aynı. */
+    oto_acil_kos(-1, OTO_B);
+    for (int i = 0; i < OTO_KAYIT; i++) {
+        oto_ayni(&OTO_A[i], &OTO_B[i], i);
+    }
+    /* Kayıt boş değil: kalkıştan sonra referans ve integral yeniden ilerliyor. */
+    TEST_ASSERT_TRUE(OTO_A[OTO_KAYIT - 1].ref_d > 1.0f);
+    TEST_ASSERT_TRUE(mutlak(OTO_A[OTO_KAYIT - 1].y_int) > 0.0f);
+}
+
+/* Step olmayan (reddedilen ya da out NULL) çağrıda başlayıp sonraki kabul edilen çağrıda gevşeyen
+   acil durdurma: güdüm o dönemi yalnız kontrolün mandalından görür; kalkış adımında durum yine
+   ölçülen durumdan sıfır adımla kurulur. */
+static void test_reddedilen_cagrida_acil_oto_durumunu_sifirlar(void)
+{
+    oto_acil_kos(-1, OTO_A);
+    auto_kur();
+    for (int i = 0; i < 500; i++) {
+        oto_cagri(false, true);
+    }
+    TEST_ASSERT_TRUE(mutlak(C.gud.y_int) > 1.0e-3f);
+    oto_cagri(true, false); /* yalnız kanca: mandal kurulur, güdüm koşmaz */
+    TEST_ASSERT_TRUE(C.kon.acil_mandal != 0u);
+    for (int i = 0; i < OTO_KAYIT; i++) {
+        oto_cagri(false, true);
+        oto_kaydet(&OTO_B[i]);
+    }
+    for (int i = 0; i < OTO_KAYIT; i++) {
+        oto_ayni(&OTO_A[i], &OTO_B[i], i);
+    }
+}
+
 /* ---- md. 6: GUIDED'da 3 s yeni hedef yoksa son hedefte kalınır ---------------------------- */
 
 static void test_guided_sp_zaman_asimi(void)
@@ -509,6 +656,8 @@ int main(void)
     RUN_TEST(test_auto_istegi_kanallar);
     RUN_TEST(test_en_az_irtifa_kirpmasi);
     RUN_TEST(test_kirpma_referansi_tutar);
+    RUN_TEST(test_acil_durdurmada_oto_durumu_sifir_kalkis_sureden_bagimsiz);
+    RUN_TEST(test_reddedilen_cagrida_acil_oto_durumunu_sifirlar);
     RUN_TEST(test_guided_sp_zaman_asimi);
     RUN_TEST(test_guided_sp_zaman_asimi_cekirdek_yolu);
     return UNITY_END();

@@ -10,11 +10,13 @@
  *
  * Engeller (RUNNING ⇄ PAUSED her adımda yeniden değerlendirilir): kip AUTO değil ya da araç
  * silahsız; yatay konum geçersiz; arıza eylemi HOLD ya da üstü (arıza görevin önündedir);
- * operatör duraklaması; ölü hesap yol sınırı (W5-K24: yüzeyde GNSS beklenir). Kendiliğinden
- * sürme yalnız duraklamanın nedeni çekirdeğin kendi koşuluysa (konum, HOLD, ölü hesap) ve o koşul
- * kalktıysa olur; silahsızlanma operatör duraklaması gibidir (operator_durdu): yalnız RESUME ya da
- * SET_MODE(AUTO) kaldırır, ARM tek başına sürdürmez (düzeltme turu bulgu 2). RUNNING'e her geçiş
- * açık yüklemeyi kapatır.
+ * etkin acil durdurma kısıtlayan (W5-kontrol-acil); operatör duraklaması; ölü hesap yol sınırı
+ * (W5-K24: yüzeyde GNSS beklenir). Kendiliğinden sürme yalnız duraklamanın nedeni çekirdeğin
+ * kendi koşuluysa (konum, HOLD, ölü hesap, acil durdurma) ve o koşul kalktıysa olur;
+ * silahsızlanma operatör duraklaması gibidir (operator_durdu): yalnız RESUME ya da SET_MODE(AUTO)
+ * kaldırır, ARM tek başına sürdürmez (düzeltme turu bulgu 2). RUNNING'e her geçiş açık yüklemeyi
+ * kapatır. Acil durdurma duraklamasında toplam görev süresi (duvar saati) ve ölü hesap beklemesi
+ * öteki duraklamalardaki gibi sayılmayı sürdürür (kısıtlayan yön).
  *
  * Saatler (02 §2.6, iskelet §4): öğe zaman aşımları ve toplam görev süresi duvar saatinde
  * (öğe süresi yalnız RUNNING iken sayılır); davranış süreleri (DIVE_TO bandı, HOLD süresi)
@@ -410,7 +412,13 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
     }
     const bool ariza_engel = g->fs_level >= (uint8_t)IDA_FS_HOLD;
     const bool konum_engel = !g->nav_konum_var;
-    if (kip_engel || ariza_engel || konum_engel || v->operator_durdu || v->dr_bekliyor) {
+    /* W5-kontrol-acil (mimar kararı; EMNİYET): etkin acil durdurma kısıtlayanken (basılı, bayat
+       ya da init'ten beri hiç gevşememiş) görev çekirdeğin kendi koşuluyla duraklar: öğe süresi
+       ve bitiş ölçütleri ilerlemez, hedef yoktur; değer gevşeyince kendiliğinden sürer. Değer bu
+       noktada çağrı için kesindir ((b) ve kabul edilen örnekler bu adımdan önce işlenir). */
+    const bool acil_engel = ida_kon_acil_kisitli(yetki);
+    if (kip_engel || ariza_engel || konum_engel || acil_engel || v->operator_durdu ||
+        v->dr_bekliyor) {
         if (ms0 == (uint8_t)IDA_MS_RUNNING) {
             ida_gor_gorev_durak_yakala(g);
             g->mission_state = (uint8_t)IDA_MS_PAUSED;
@@ -422,15 +430,16 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
         } else {
             /* duraklama noktası korunur */
         }
-        durak_hedefi(g, gi, !kip_engel && !ariza_engel && !konum_engel);
+        durak_hedefi(g, gi, !kip_engel && !ariza_engel && !konum_engel && !acil_engel);
         v->kosuyordu = false;
         v->bant_say = false; /* davranış süreleri duraklamada birikmez (bulgu 3) */
         return;
     }
     if (ms0 == (uint8_t)IDA_MS_PAUSED) {
-        /* Kendiliğinden sürme: yalnız çekirdeğin kendi koşulu (konum, HOLD, ölü hesap) kalktı;
-           silahsızlanma ve operatör duraklaması burada çözülmez (operator_durdu). Yürüyen görev
-           değiştirilemez: açık yükleme kapanır (A4-K51; bulgu 7). */
+        /* Kendiliğinden sürme: yalnız çekirdeğin kendi koşulu (konum, HOLD, ölü hesap, acil
+           durdurma) kalktı; silahsızlanma ve operatör duraklaması burada çözülmez
+           (operator_durdu). Yürüyen görev değiştirilemez: açık yükleme kapanır (A4-K51;
+           bulgu 7). */
         ida_gor_gorev_yukleme_kapat(g);
         g->mission_state = (uint8_t)IDA_MS_RUNNING;
         v->hedef.kusak++;

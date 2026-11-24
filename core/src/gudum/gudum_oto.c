@@ -175,6 +175,16 @@ static bool oto_derinlik_siniri(const ida_core_t *c, float *sinir)
 
 void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal)
 {
+    /* W5-kontrol-acil kural 2 (EMNİYET): etkin acil durdurma kısıtlayanken referans modeli ve
+       ILOS integrali sıfırdır ve birikmez (kipten bağımsız). */
+    if (ida_kon_acil_kisitli(&c->emn)) {
+        g->oto_var = false;
+        g->t_var = false;
+        g->ref.d = 0.0f;
+        g->ref.w = 0.0f;
+        g->y_int = 0.0f;
+        return;
+    }
     if (!oto_etkin(c)) {
         g->oto_var = false;
         g->t_var = false;
@@ -182,6 +192,14 @@ void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal)
     }
     if (iptal) {
         g->oto_var = false; /* daraltma: durum bulunulan derinlikten yeniden kurulur */
+    }
+    if (c->kon.acil_mandal != 0u) {
+        /* Kural 3: değer gevşedi ama kontrolün kalkış adımı henüz koşmadı (gevşemenin olduğu
+           çağrı ya da step olmayan çağrıda başlayıp bu çağrıda gevşeyen dönem; mandalı yalnız
+           kontrolün kalkış adımı indirir). Durum ölçülen durumdan, sıfır adımla kurulur: kalkış
+           adımının isteği acil durdurmanın süresinden bağımsızdır (sıçramasız). */
+        g->oto_var = false;
+        g->t_var = false;
     }
     const ida_gor_t *gor = &c->gor;
     const ida_gor_hedef_t *h = &gor->gv.hedef;
