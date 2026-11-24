@@ -433,7 +433,9 @@ int test_kuyruk_dolu_kisitlayan()
         DOGRULA(d, z.durum == 202, "kısıtlayan dolu kuyrukta kabul (ayrılmış yuva ve bekletme)");
         kisitlayan.push_back(komut_no(z));
     }
-    DOGRULA(d, o.cekirdek.sayaclar().bekleyen_kisitlayan == 3, "üçü sunucuda sırayla bekliyor");
+    // W4-K22 (a): alıcı doluyken etki başına mandal: f1 ve f2 fiş mandalları dolu; 5. istek (f1)
+    // 3.'nün yerini aldı (3. birleşti).
+    DOGRULA(d, o.cekirdek.sayaclar().bekleyen_kisitlayan == 2, "iki mandal dolu (fiş f1, f2)");
     // Bekleyen kısıtlayan varken gevşeten/genel komut alıcıya gitmez
     const std::string t = jeton_al(k, "silahlandirma_fisi", "f1", "takili", run);
     y = k.post("/api/v1/emniyet/degistir", emniyet(k, "silahlandirma_fisi", "f1", "takili", run,
@@ -457,7 +459,8 @@ int test_kuyruk_dolu_kisitlayan()
             sira.push_back(x.komut_no);
         }
     }
-    DOGRULA(d, sira == kisitlayan, "kısıtlayanlar sırasıyla iletildi");
+    const std::vector<std::uint32_t> beklenen_sira = {kisitlayan[0], kisitlayan[1], kisitlayan[3], kisitlayan[4]};
+    DOGRULA(d, sira == beklenen_sira, "kısıtlayanlar komut_no sırasıyla iletildi; birleşen (3.) iletilmedi");
     // Yineleme kaydı sınırı kısıtlayanı reddetmez (A3-K53) — ayrı ortamda sınır doldurulur
     return d.hata;
 }
@@ -556,7 +559,7 @@ int test_kisitlayan_bayat_run_id()
         DOGRULA(d, z.durum == 202 && guncel(z) == run2, "dolu kuyrukta bayat run_id'li kısıtlayan 202");
         nolar.push_back(komut_no(z));
     }
-    DOGRULA(d, o2.cekirdek.sayaclar().bekleyen_kisitlayan == 2, "ikisi sunucuda bekliyor");
+    DOGRULA(d, o2.cekirdek.sayaclar().bekleyen_kisitlayan == 1, "acil durdurma mandalı dolu (3. istek 2.'yle birleşti)");
     o2.dunya.dondur(false);
     for (int n = 0; n < 4; ++n) {
         o2.dunya.adim();
@@ -565,6 +568,103 @@ int test_kisitlayan_bayat_run_id()
     for (const auto no : nolar) {
         DOGRULA(d, sonuc_metni(o2, no) == "uygulandi", "dolu kuyruktan sonra uygulandı: " + std::to_string(no));
     }
+    return d.hata;
+}
+
+// EMNİYET — W4-K22 (a): kısıtlayan istek hiçbir sınır yüzünden reddedilmez. Eski 65 536'lık bekleme
+// sınırını aşan sayıda istek; son istek farklı bir kısıtlayıcı etki taşır ve alıcıya ulaşır.
+int test_kisitlayan_mandal_siniri()
+{
+    Denetci d;
+    sahte::SahteAyar sa;
+    sa.genel_kuyruk = 1;
+    sa.kisitlayan_kuyruk = 1;
+    Ortam o(sa);
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    o.dunya.dondur(true);
+    const int kAdet = 70000;
+    int ret_sayisi = 0;
+    std::uint32_t ilk = 0;
+    for (int i = 0; i < kAdet; ++i) {
+        const HttpYanit y = k.post("/api/v1/emniyet/degistir", emniyet(k, "acil_durdurma", "", "basili", run));
+        if (y.durum != 202) {
+            ++ret_sayisi;
+        }
+        if (i == 0) {
+            ilk = komut_no(y);
+        }
+    }
+    const HttpYanit son = k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f2", "takili", run));
+    const HttpYanit fis = k.post("/api/v1/emniyet/degistir", emniyet(k, "silahlandirma_fisi", "f1", "cikarilmis", run));
+    DOGRULA(d, ret_sayisi == 0 && son.durum == 202 && fis.durum == 202, "hiçbiri reddedilmedi: " + std::to_string(ret_sayisi));
+    DOGRULA(d, o.cekirdek.sayaclar().bekleyen_kisitlayan == 3, "mandal sayısı sabit (acil, pim f2, fiş f1)");
+    o.dunya.dondur(false);
+    for (int n = 0; n < 6; ++n) {
+        o.dunya.adim();
+        o.dongu();
+    }
+    DOGRULA(d, sonuc_metni(o, komut_no(son)) == "uygulandi" && sonuc_metni(o, komut_no(fis)) == "uygulandi",
+            "son istekteki farklı etkiler alıcıya ulaştı ve uygulandı");
+    const json::Deger e = o.http(istek("GET", "/api/v1/emniyet")).json_();
+    DOGRULA(d, e.bul("yetkili")->bul("acil_durdurma")->metin == "basili" &&
+                   e.bul("yetkili")->bul("emniyet_pimi")->bul("f2")->metin == "takili" &&
+                   e.bul("yetkili")->bul("silahlandirma_fisi")->bul("f1")->metin == "cikarilmis",
+            "yetkili durum kısıtlı");
+    std::size_t iletilen = 0;
+    for (const auto& x : o.dunya.alinanlar()) {
+        iletilen += x.kisitlayan ? 1u : 0u;
+    }
+    DOGRULA(d, iletilen <= 5, "birleşen istekler alıcıya tek tek gitmedi: " + std::to_string(iletilen));
+    (void)ilk;
+    return d.hata;
+}
+
+// EMNİYET — A3-K94: onay jetonu, erken ret yolları dahil ilk sunuluşta tüketilir; kısıtlayan
+// istekte jeton yok sayılır (tüketilmez).
+int test_jeton_erken_ret()
+{
+    Denetci d;
+    Ortam o;
+    Istemci k{o, o.istemci_al()};
+    const std::string run = baslat(k);
+    const std::string rv = ",\"beklenen_emniyet_rev\":" + std::to_string(emniyet_rev(o));
+    // 1) Şema hatası (fazla alan) ile reddedilen gevşetme jetonu tüketir
+    std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+    HttpYanit y = k.post("/api/v1/emniyet/degistir",
+                         emniyet(k, "emniyet_pimi", "f1", "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t + "\"" + rv + ",\"fazla\":1"));
+    DOGRULA(d, y.durum == 400, "şema hatası 400");
+    y = k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f1", "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t + "\"" + rv));
+    DOGRULA(d, y.durum == 409 && y.kod() == "onay_jetonu_gecersiz", "şema retten sonra aynı jeton geçersiz: " + y.kod());
+    // 2) kimlik_cakismasi ile reddedilen istek jetonu tüketir
+    const std::string t1 = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+    const std::string govde1 = "{\"istek_kimligi\":\"cakisma-0001\",\"beklenen_run_id\":\"" + run +
+                               "\",\"girdi\":\"emniyet_pimi\",\"tup\":\"f1\",\"hedef_durum\":\"cikarilmis\",\"onay\":true,\"onay_jetonu\":\"" + t1 + "\"" + rv + "}";
+    y = k.post("/api/v1/emniyet/degistir", govde1);
+    DOGRULA(d, y.durum == 202, "ilk istek kabul");
+    const std::string t2 = jeton_al(k, "emniyet_pimi", "f2", "cikarilmis", run);
+    const std::string govde2 = "{\"istek_kimligi\":\"cakisma-0001\",\"beklenen_run_id\":\"" + run +
+                               "\",\"girdi\":\"emniyet_pimi\",\"tup\":\"f2\",\"hedef_durum\":\"cikarilmis\",\"onay\":true,\"onay_jetonu\":\"" + t2 + "\"" + rv + "}";
+    y = k.post("/api/v1/emniyet/degistir", govde2);
+    DOGRULA(d, y.durum == 409 && y.kod() == "kimlik_cakismasi", "kimlik çakışması");
+    y = k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f2", "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t2 + "\"" + rv));
+    DOGRULA(d, y.durum == 409 && y.kod() == "onay_jetonu_gecersiz", "kimlik çakışmasından sonra jeton geçersiz: " + y.kod());
+    // 3) Yer istasyonu: şema hatasıyla reddedilen onaylı komut jetonu tüketir
+    const HttpYanit jy = k.post("/api/v1/yer_istasyonu/onay_jetonu", "{\"beklenen_run_id\":\"" + run + "\",\"komut\":\"fc_fire\",\"parametreler\":{\"tube\":0}}");
+    const json::Deger jj = jy.json_();
+    const std::string tyi = jj.bul("onay_jetonu") != nullptr ? jj.bul("onay_jetonu")->metin : std::string();
+    y = k.post("/api/v1/yer_istasyonu/komut", "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"beklenen_run_id\":\"" + run +
+                                                  "\",\"komut\":\"fc_fire\",\"parametreler\":{\"tube\":0},\"onay\":\"evet\",\"onay_jetonu\":\"" + tyi + "\"" + rv + "}");
+    DOGRULA(d, y.durum == 400, "yer istasyonu şema hatası 400");
+    y = k.post("/api/v1/yer_istasyonu/komut", "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"beklenen_run_id\":\"" + run +
+                                                  "\",\"komut\":\"fc_fire\",\"parametreler\":{\"tube\":0},\"onay\":true,\"onay_jetonu\":\"" + tyi + "\"" + rv + "}");
+    DOGRULA(d, y.durum == 409 && y.kod() == "onay_jetonu_gecersiz", "yer istasyonu jetonu tüketildi: " + y.kod());
+    // 4) Kısıtlayan istekte jeton yok sayılır, tüketilmez
+    const std::string t3 = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+    y = k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f1", "takili", run, ",\"onay_jetonu\":\"" + t3 + "\""));
+    DOGRULA(d, y.durum == 202, "kısıtlayan kabul");
+    y = k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f1", "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t3 + "\"" + rv));
+    DOGRULA(d, y.durum == 202, "kısıtlayanda sunulan jeton tüketilmedi: " + y.kod());
     return d.hata;
 }
 

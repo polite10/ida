@@ -21,6 +21,7 @@ int test_dongu_disi_adres();
 int test_erisim_http();
 int test_erisim_ws();
 int test_erisim_olayi_hiz_siniri();
+int test_statik_simgesel_bag();
 int test_merhaba_ve_zorunlu();
 int test_abonelik_ve_ozet();
 int test_seyreltme_hizi();
@@ -38,7 +39,10 @@ int test_sonuc_aynen();
 int test_kuyruk_dolu_kisitlayan();
 int test_yer_istasyonu();
 int test_kisitlayan_bayat_run_id();
+int test_kisitlayan_mandal_siniri();
+int test_jeton_erken_ret();
 int test_yavas_istemci();
+int test_yavas_istemci_ret_duser();
 int test_rastgele_cekirdek();
 int test_rastgele_ayristirici();
 int test_cok_baglanti();
@@ -65,6 +69,7 @@ int main(int argc, char** argv)
         {"erisim_http", test_erisim_http},
         {"erisim_ws", test_erisim_ws},
         {"erisim_olayi_hiz_siniri", test_erisim_olayi_hiz_siniri},
+        {"statik_simgesel_bag", test_statik_simgesel_bag},
         {"merhaba_ve_zorunlu", test_merhaba_ve_zorunlu},
         {"abonelik_ve_ozet", test_abonelik_ve_ozet},
         {"seyreltme_hizi", test_seyreltme_hizi},
@@ -82,7 +87,10 @@ int main(int argc, char** argv)
         {"kuyruk_dolu_kisitlayan", test_kuyruk_dolu_kisitlayan},
         {"yer_istasyonu", test_yer_istasyonu},
         {"kisitlayan_bayat_run_id", test_kisitlayan_bayat_run_id},
+        {"kisitlayan_mandal_siniri", test_kisitlayan_mandal_siniri},
+        {"jeton_erken_ret", test_jeton_erken_ret},
         {"yavas_istemci", test_yavas_istemci},
+        {"yavas_istemci_ret_duser", test_yavas_istemci_ret_duser},
         {"rastgele_cekirdek", test_rastgele_cekirdek},
         {"rastgele_ayristirici", test_rastgele_ayristirici},
         {"cok_baglanti", test_cok_baglanti},

@@ -22,20 +22,21 @@ set(_ida_a3_testleri
   # birim
   json desen sema ozet http_ayristirma ws_cerceve halka katalog_tablosu kodlayici
   # erişim (EMNİYET; kabul 1)
-  dongu_disi_adres erisim_http erisim_ws erisim_olayi_hiz_siniri
+  dongu_disi_adres erisim_http erisim_ws erisim_olayi_hiz_siniri statik_simgesel_bag
   # akış (A3-K17…K49)
   merhaba_ve_zorunlu abonelik_ve_ozet seyreltme_hizi olay_gecmisi ws_kapanis_kodlari canlilik
   olay_kuyrugu_tasmasi kapanis_1001
   # komut yolu ve emniyet girdileri (EMNİYET; kabul 5)
   calistirma_akisi yineleme govde_sinirlari emniyet_kisitlayan emniyet_gevseten sonuc_aynen
   kuyruk_dolu_kisitlayan yer_istasyonu kisitlayan_bayat_run_id  # W4-K19
+  kisitlayan_mandal_siniri jeton_erken_ret  # W4-K22, A3-K94 (sol #2, #3)
   # ölçüm ve dayanıklılık (kabul 4, 6)
-  yavas_istemci rastgele_cekirdek rastgele_ayristirici cok_baglanti)
+  yavas_istemci yavas_istemci_ret_duser rastgele_cekirdek rastgele_ayristirici cok_baglanti)
 foreach(_ad IN LISTS _ida_a3_testleri)
   add_test(NAME sim.a3.${_ad} COMMAND ida_a3_test ${_ad})
 endforeach()
 # Ağır testler aynı anda koşmaz (soket ve zamanlama ölçümü).
-set_tests_properties(sim.a3.yavas_istemci sim.a3.cok_baglanti sim.a3.erisim_http PROPERTIES RUN_SERIAL TRUE)
+set_tests_properties(sim.a3.yavas_istemci sim.a3.yavas_istemci_ret_duser sim.a3.cok_baglanti sim.a3.erisim_http PROPERTIES RUN_SERIAL TRUE)
 
 # A3-K02: döngü arabirimi dışı adres verilince program dinlemez ve hata koduyla çıkar.
 add_test(NAME sim.a3.sahte_dongu_disi COMMAND ida_a3_sahte --adres 0.0.0.0 --port 0 --sure 1)

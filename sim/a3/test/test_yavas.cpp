@@ -60,10 +60,17 @@ HttpYanit http(const CanliSunucu& s, const std::string& yontem, const std::strin
 
 }  // namespace
 
-int test_yavas_istemci()
+struct YavasSonucu {
+    bool kisitlayan_uygulandi = false;  // komut_sonucu olayında sonuc == uygulandi
+    bool acil_basili = false;           // GET /emniyet: yetkili acil durdurma basılı
+};
+
+// reddet: sahte alıcı kısıtlayanı adım sınırında reddeder (testin bunu yakaladığını göstermek için).
+int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
 {
     Denetci d;
     sahte::SahteAyar sa;
+    sa.kisitlayani_reddet = reddet;
     CanliSunucu s(sa);
     if (!s.sunucu) {
         return 1;
@@ -106,7 +113,7 @@ int test_yavas_istemci()
     Saat::time_point kisitlayan_bas{};
     bool kisitlayan_gonderildi = false;
     auto sonraki_http = bas + std::chrono::milliseconds(500);
-    while (Saat::now() - bas < std::chrono::seconds(10)) {
+    while (Saat::now() - bas < std::chrono::seconds(pencere_saniye)) {
         hizli.oku(5);
         WsCerceve c;
         while (ws_sunucu_cercevesi(hizli.tampon, c)) {
@@ -132,6 +139,9 @@ int test_yavas_istemci()
                     yuk_olay o;
                     if (coz(x.yuk.data(), x.yuk.size(), o) && o.tur == 5 && o.komut_no == kisitlayan_no) {
                         kisitlayan_ms = ms(simdi - kisitlayan_bas);
+                        json::Deger a;
+                        sonuc.kisitlayan_uygulandi = json::coz(o.ayrinti, a) && a.bul("sonuc") != nullptr &&
+                                                     a.bul("sonuc")->metin == "uygulandi";
                     }
                 }
             }
@@ -142,7 +152,7 @@ int test_yavas_istemci()
             DOGRULA(d, y.durum == 200, "yavaş istemci varken HTTP yanıtı");
             en_kotu_http = std::max(en_kotu_http, sure);
             sonraki_http += std::chrono::milliseconds(500);
-            if (!kisitlayan_gonderildi && Saat::now() - bas > std::chrono::seconds(5)) {
+            if (!kisitlayan_gonderildi && Saat::now() - bas > std::chrono::seconds(pencere_saniye / 2)) {
                 // EMNİYET: kısıtlayan komut yavaş istemci varken alıcıya ulaşır ve uygulanır.
                 const std::string run = y.json_().bul("run_id")->metin;
                 kisitlayan_bas = Saat::now();
@@ -166,6 +176,11 @@ int test_yavas_istemci()
     const std::uint64_t uretilen_fizik = (s.dunya->dongu_sayisi() - dongu0) / 4;  // her 4. dünya döngüsünde
     const std::uint64_t tikler = s.sunucu->sayaclar().tik - tik0;
     const SunucuSayaclari say = s.sunucu->sayaclar();
+    {
+        const json::Deger e = http(s, "GET", "/api/v1/emniyet", {}, {}).json_();
+        const json::Deger* y = e.bul("yetkili");
+        sonuc.acil_basili = y != nullptr && y->bul("acil_durdurma") != nullptr && y->bul("acil_durdurma")->metin == "basili";
+    }
     // 3) Yavaş istemci okumaya başlar: düşen Ping360 çerçevelerinden sonraki çerçevede bayrak (A3-K41)
     bool bayrak_goruldu = false;
     const auto okuma_bas = Saat::now();
@@ -215,9 +230,28 @@ int test_yavas_istemci()
     DOGRULA(d, static_cast<double>(tikler) / pencere_s > 40.0, "yayın tiki ≈ 50 Hz (A3-K33): " + std::to_string(tikler));
     DOGRULA(d, say.dusen_dizi > 0, "yavaş istemcinin dizi kuyruğu düşürdü (A3-K41)");
     DOGRULA(d, bayrak_goruldu, "düşmeden sonraki çerçevede oncesinde_dusme");
-    DOGRULA(d, kisitlayan_ms >= 0.0 && kisitlayan_ms < 1000.0, "kısıtlayan komut yavaş istemci varken uygulandı");
+    DOGRULA(d, kisitlayan_ms >= 0.0 && kisitlayan_ms < 1000.0, "kısıtlayan komutun sonucu yavaş istemci varken geldi");
+    DOGRULA(d, sonuc.kisitlayan_uygulandi, "kısıtlayan komutun sonucu `uygulandi` (sol #14)");
+    DOGRULA(d, sonuc.acil_basili, "yetkili acil durdurma basılı (sol #14)");
     DOGRULA(d, say.azami_cikis_bayt <= sinir::baski_esigi + sinir::ikili_ileti + 65536, "bağlantı çıkışı sınırlı");
     DOGRULA(d, s.sunucu->yayinci().halka_tasma() == 0, "dünya → A3 halkası taşmadı");
+    return d.hata;
+}
+
+int test_yavas_istemci()
+{
+    YavasSonucu s;
+    return yavas_istemci_kos(false, 10, s);
+}
+
+// Sol #14: alıcı kısıtlayanı reddederse yavaş istemci testi düşer (sonuç ve yetkili durum denetimi).
+int test_yavas_istemci_ret_duser()
+{
+    Denetci d;
+    YavasSonucu s;
+    std::printf("  (aşağıdaki KALDI satırları beklenir: reddeden alıcıyla koşu)\n");
+    const int hata = yavas_istemci_kos(true, 4, s);
+    DOGRULA(d, hata > 0 && !s.kisitlayan_uygulandi && !s.acil_basili, "reddeden alıcıyla test düşmeliydi");
     return d.hata;
 }
 

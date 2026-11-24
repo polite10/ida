@@ -3,6 +3,8 @@
 #include "test_destek.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 namespace ida::a3::test {
@@ -194,6 +196,53 @@ int test_erisim_ws()
     DOGRULA(d, m.yuk.find(jeton) == std::string::npos, "merhabada jeton yok");
     y = gonder(p, "POST /ws HTTP/1.1\r\n" + s.host() + "\r\nContent-Length: 0\r\n\r\n");
     DOGRULA(d, y.durum == 405, "/ws POST 405");
+    return d.hata;
+}
+
+// EMNİYET — A3-K11 (sol #1): statik kök altında simgesel bağ içeren hiçbir yol sunulmaz (kök içi
+// bağ, kök dışı bağ, ara dizin bağı); düz dosyalar sunulur.
+int test_statik_simgesel_bag()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    const fs::path taban = fs::current_path() / "a3_statik_bag_deneme";
+    std::error_code ec;
+    fs::remove_all(taban, ec);
+    const fs::path kok = taban / "kok";
+    fs::create_directories(kok / "panel" / "gercek_alt");
+    fs::create_directories(taban / "dis");
+    auto yaz_dosya = [](const fs::path& p, const char* s) { std::ofstream(p, std::ios::binary) << s; };
+    yaz_dosya(kok / "index.html", "kok");
+    yaz_dosya(kok / "panel" / "a.html", "a");
+    yaz_dosya(kok / "panel" / "gercek_alt" / "x.html", "x");
+    yaz_dosya(taban / "dis" / "gizli.txt", "GIZLI-SIM-VERISI");
+    bool bag_var = true;
+    try {
+        fs::create_symlink("a.html", kok / "panel" / "ic_bag.html");
+        fs::create_symlink(taban / "dis" / "gizli.txt", kok / "panel" / "dis_dosya.txt");
+        fs::create_directory_symlink(taban / "dis", kok / "panel" / "dis_dizin");
+        fs::create_directory_symlink("gercek_alt", kok / "panel" / "alt");
+    } catch (const fs::filesystem_error& h) {
+        bag_var = false;  // Windows'ta simgesel bağ ayrıcalık ister
+        std::printf("  simgesel bağ oluşturulamadı (%s); yalnız düz dosyalar sınanır\n", h.what());
+    }
+    SunucuAyari sa;
+    sa.statik_kok = kok.string();
+    Ortam o({}, sa);
+    auto kod = [&](const std::string& yol) { return o.http(istek("GET", yol, {}, {}, true)); };
+    HttpYanit y = kod("/");
+    DOGRULA(d, y.durum == 200 && y.govde == "kok", "kök dizin dosyası 200");
+    DOGRULA(d, kod("/panel/a.html").durum == 200, "düz dosya 200");
+    DOGRULA(d, kod("/panel/gercek_alt/x.html").durum == 200, "alt dizindeki düz dosya 200");
+    if (bag_var) {
+        DOGRULA(d, kod("/panel/ic_bag.html").durum == 404, "kök içini gösteren bağ 404");
+        y = kod("/panel/dis_dosya.txt");
+        DOGRULA(d, y.durum == 404 && y.govde.find("GIZLI") == std::string::npos, "kök dışı dosya bağı 404");
+        y = kod("/panel/dis_dizin/gizli.txt");
+        DOGRULA(d, y.durum == 404 && y.govde.find("GIZLI") == std::string::npos, "kök dışı dizin bağı (ara dizin) 404");
+        DOGRULA(d, kod("/panel/alt/x.html").durum == 404, "kök içi ara dizin bağı 404");
+    }
+    fs::remove_all(taban, ec);
     return d.hata;
 }
 

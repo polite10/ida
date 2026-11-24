@@ -380,6 +380,10 @@ void SahteDunya::uygula_()
     while (!d.kisitlayan.empty()) {
         const Komut k = d.kisitlayan.front();
         d.kisitlayan.pop_front();
+        if (ayar_.kisitlayani_reddet) {
+            sonuc_(k, false, "gecersiz_durum", {});  // yalnız sınama
+            continue;
+        }
         // W4-K19: kısıtlayan, beklenen_run_id uyuşmasa da uygulanır; yalnız canlı çalıştırma şartı.
         if (!d.run_id || !canli(d.durum)) {
             sonuc_(k, false, "canli_calistirma_yok", {});

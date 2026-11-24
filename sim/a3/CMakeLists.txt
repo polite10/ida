@@ -39,6 +39,7 @@ add_library(ida_a3 STATIC
   src/rastgele.cpp
   src/sema.cpp
   src/soket.cpp
+  src/statik.cpp
   src/sunucu.cpp
   src/yayinci.cpp
   src/zaman.cpp

@@ -10,6 +10,7 @@
 #include "kodlayici.hpp"
 #include "ozet.hpp"
 #include "rastgele.hpp"
+#include "statik.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -267,7 +268,18 @@ struct Cekirdek::Ic {
     std::set<std::uint32_t> istemciler;
     std::uint32_t sonraki_istemci = 1;
     std::map<std::string, Jeton, std::less<>> jetonlar;
-    std::deque<Komut> bekleyen;  // EMNİYET: alıcı doluyken bekletilen kısıtlayanlar (sırayla)
+    // EMNİYET — W4-K22 (a): alıcı doluyken kısıtlayan etkiler sabit boylu, etki başına mandalda
+    // bekler (acil durdurma; tüp başına fiş ve pim; daraltıcı yer istasyonu komutu türü başına
+    // son istek). Anahtar kümesi hazırlıkta sabitlenir; mandal taşamaz. Aynı etkinin yeni isteği
+    // eskisinin yerini alır; eskisinin komut numarası `birlesen`'e girer ve sonucu, mandaldaki
+    // isteğin dünya sonucuyla birlikte bildirilir (sınır dolarsa en eski SONUÇ kaydı atılır).
+    struct Mandal {
+        bool dolu = false;
+        Komut k;
+        std::deque<std::uint32_t> birlesen;
+    };
+    std::map<std::string, Mandal, std::less<>> mandallar;
+    std::map<std::uint32_t, std::deque<std::uint32_t>> birlesik_sonuc;  // iletilen no → birleşenler
     std::uint8_t tavan = 50;     // A3-K37
 
     std::array<RetSayaci, 4> retler{};
@@ -432,6 +444,14 @@ struct Cekirdek::Ic {
                 return false;
             }
             yi_komutlar[ad->metin] = y;
+        }
+        for (const char* m : {"acil_durdurma", "silahlandirma_fisi|0", "silahlandirma_fisi|1", "emniyet_pimi|0", "emniyet_pimi|1"}) {
+            mandallar[m] = Mandal{};
+        }
+        for (const auto& [ad, y] : yi_komutlar) {
+            if (y.sinif == KomutSinifi::daraltici) {
+                mandallar["yi|" + ad] = Mandal{};
+            }
         }
         const KanalTanimi* c = kanal_bul("calistirma/durum");
         const KanalTanimi* bd = kanal_bul("baglanti/durum");
@@ -763,24 +783,14 @@ struct Cekirdek::Ic {
             yaz(b, ret("bulunamadi", "dosya yok"));
             return;
         }
-        std::error_code ec;
-        const std::filesystem::path p = std::filesystem::path(ayar.statik_kok) / std::filesystem::path(goreli);
-        if (!std::filesystem::is_regular_file(p, ec) || ec) {
+        // EMNİYET — A3-K11: açılan dosya kök altında kalır; yolda simgesel bağ/reparse noktası olan
+        // hiçbir dosya sunulmaz (statik.hpp).
+        std::string icerik;
+        if (!statik_oku(ayar.statik_kok, goreli, std::size_t{16} << 20u, icerik)) {
             yaz(b, ret("bulunamadi", "dosya yok"));
             return;
         }
-        const auto boy = std::filesystem::file_size(p, ec);
-        if (ec || boy > (std::uintmax_t{16} << 20u)) {
-            yaz(b, ret("bulunamadi", "dosya yok"));
-            return;
-        }
-        std::ifstream f(p, std::ios::binary);
-        std::string icerik(static_cast<std::size_t>(boy), '\0');
-        if (!f.read(icerik.data(), static_cast<std::streamsize>(boy))) {
-            yaz(b, ret("bulunamadi", "dosya okunamadı"));
-            return;
-        }
-        yaz_ham(b, 200, icerik_turu(p), icerik);
+        yaz_ham(b, 200, icerik_turu(std::filesystem::path(goreli)), icerik);
     }
 
     static bool yol_eslesir(std::string_view kalip, std::string_view yol, std::vector<std::string>& parametreler)
@@ -1338,6 +1348,28 @@ struct Cekirdek::Ic {
                                                             yol == "/api/v1/yer_istasyonu/komut" || yol == "/api/v1/yayin");
     }
 
+    // Doğrulanmamış gövdede biçimden kısıtlayan mı (jeton tüketimi için; alan yoksa ya da tipi
+    // yanlışsa kısıtlayan sayılmaz: jeton tüketilir, kısıtlayan okuma).
+    bool kisitlayan_bicim(std::string_view yol, const json::Deger& g) const
+    {
+        if (yol == "/api/v1/emniyet/degistir") {
+            const json::Deger* gi = g.bul("girdi");
+            const json::Deger* hd = g.bul("hedef_durum");
+            if (gi == nullptr || hd == nullptr || gi->tur != json::Tur::metin || hd->tur != json::Tur::metin) {
+                return false;
+            }
+            return (gi->metin == "acil_durdurma" && hd->metin == "basili") ||
+                   (gi->metin == "silahlandirma_fisi" && hd->metin == "cikarilmis") ||
+                   (gi->metin == "emniyet_pimi" && hd->metin == "takili");
+        }
+        const json::Deger* km = g.bul("komut");
+        if (km == nullptr || km->tur != json::Tur::metin) {
+            return false;
+        }
+        const auto it = yi_komutlar.find(km->metin);
+        return it != yi_komutlar.end() && it->second.sinif == KomutSinifi::daraltici;
+    }
+
     // Kısıtlayan mı (yineleme sınırı istisnası için; asıl ayrım işleyicidedir).
     bool kisitlayan_mi(std::string_view yol, const json::Deger& g) const
     {
@@ -1391,6 +1423,21 @@ struct Cekirdek::Ic {
             erken_ret("gecersiz_istek", "JSON çözülemedi: " + h);
             return;
         }
+        // EMNİYET — A3-K94: kimliği doğrulanmış (Ida-Istemci) ve çözülebilen gevşetme/onaylı istekte
+        // sunulan onay jetonu, sonraki her ret yolundan (şema, kimlik_cakismasi, …) önce burada
+        // tüketilir. Biçimi kısıtlayan istekte jeton yok sayılır ve tüketilmez (A3-K92, K104).
+        std::optional<Jeton> sunulan;
+        if ((uc.yol == "/api/v1/emniyet/degistir" || uc.yol == "/api/v1/yer_istasyonu/komut") && g.nesne_mi() &&
+            !kisitlayan_bicim(uc.yol, g)) {
+            const json::Deger* jet = g.bul("onay_jetonu");
+            if (jet != nullptr && jet->tur == json::Tur::metin) {
+                const auto it = jetonlar.find(jet->metin);
+                if (it != jetonlar.end()) {
+                    sunulan = it->second;
+                    jetonlar.erase(it);
+                }
+            }
+        }
         // EMNİYET — W4-K19: kısıtlayan emniyet isteği ve daraltıcı yer istasyonu komutu
         // `beklenen_run_id` hiç verilmese de kabul edilir. Alan yoksa doğrulama için null konur;
         // istek kısıtlayan değilse şemanın zorunlu alan kuralı aynen uygulanır.
@@ -1434,9 +1481,9 @@ struct Cekirdek::Ic {
         const std::uint32_t no = komut_no_al();
         Yanit y;
         if (uc.yol == "/api/v1/emniyet/degistir") {
-            y = emniyet_degistir(g, istemci, no, simdi);
+            y = emniyet_degistir(g, istemci, no, simdi, sunulan);
         } else if (uc.yol == "/api/v1/yer_istasyonu/komut") {
-            y = yer_istasyonu_komut(g, istemci, no, simdi);
+            y = yer_istasyonu_komut(g, istemci, no, simdi, sunulan);
         } else if (uc.yol == "/api/v1/yayin") {
             tavan = static_cast<std::uint8_t>(g.bul("yayin_tavani_hz")->sayi);
             komut_kaydet(no, istemci, KomutDurum::uygulandi);
@@ -1488,24 +1535,19 @@ struct Cekirdek::Ic {
     {
         k.komut_no = no;
         if (k.kisitlayan) {
-            if (!bekleyen.empty()) {
-                if (bekleyen.size() >= sinir::bekleyen_kisitlayan) {
-                    gunluk("A3: bekleyen kısıtlayan komut sınırı doldu; istek reddedildi (EMNİYET okuması)");
-                    return ret("mesgul", "dünya komut kuyruğu uzun süredir boşalmıyor", {}, no);
-                }
-                bekleyen.push_back(k);
-                komut_kaydet(no, k.istemci_id, KomutDurum::kuyrukta);
+            // EMNİYET — W4-K22 (a): hiçbir sınır yüzünden reddedilmez.
+            if (dolu_mandal() > 0) {
+                mandala_koy(k);
                 return kuyrukta(no);
             }
             const AlimSonucu a = alici.al(k);
             if (a.tur == AlimSonucu::Tur::dolu) {
-                bekleyen.push_back(k);
-                komut_kaydet(no, k.istemci_id, KomutDurum::kuyrukta);
+                mandala_koy(k);
                 return kuyrukta(no);
             }
             return alim_yaniti(a, k, no);
         }
-        if (!bekleyen.empty()) {
+        if (dolu_mandal() > 0) {
             return ret("mesgul", "komut kuyruğu dolu (A3-K59)", {}, no);
         }
         const AlimSonucu a = alici.al(k);
@@ -1615,7 +1657,8 @@ struct Cekirdek::Ic {
         return alici_gonder(k, no);
     }
 
-    Yanit emniyet_degistir(const json::Deger& g, std::uint32_t istemci, std::uint32_t no, Zaman simdi)
+    Yanit emniyet_degistir(const json::Deger& g, std::uint32_t istemci, std::uint32_t no, Zaman simdi,
+                           const std::optional<Jeton>& sunulan)
     {
         Komut k;
         k.tur = KomutTuru::emniyet_degistir;
@@ -1630,16 +1673,9 @@ struct Cekirdek::Ic {
             // tüketilmez); kuyruk doluluğu ve revizyon yüzünden reddedilmez.
             return kisitlayan_gonder(k, no, istemci);  // W4-K19: run_id bağı yok
         }
-        // EMNİYET — A3-K93, K94, K118: gevşeten iki adımlıdır ve revizyon taşır.
-        std::optional<Jeton> sunulan;
+        // EMNİYET — A3-K93, K94, K118: gevşeten iki adımlıdır ve revizyon taşır. Jeton komut_isle'de
+        // tüketildi (tek kullanımlık: ilk kullanımda, kabul ya da ret).
         const json::Deger* jet = g.bul("onay_jetonu");
-        if (jet != nullptr) {
-            const auto it = jetonlar.find(jet->metin);
-            if (it != jetonlar.end()) {
-                sunulan = it->second;
-                jetonlar.erase(it);  // tek kullanımlık: ilk kullanımda (kabul ya da ret) geçersizleşir
-            }
-        }
         const json::Deger* onay = g.bul("onay");
         if (onay == nullptr || !onay->mantik || jet == nullptr) {
             return ret("onay_gerekli", "gevşeten değişiklik onay ve onay jetonu ister (A3-K93)", {}, no);
@@ -1665,7 +1701,8 @@ struct Cekirdek::Ic {
         return alici_gonder(k, no);
     }
 
-    Yanit yer_istasyonu_komut(const json::Deger& g, std::uint32_t istemci, std::uint32_t no, Zaman simdi)
+    Yanit yer_istasyonu_komut(const json::Deger& g, std::uint32_t istemci, std::uint32_t no, Zaman simdi,
+                              const std::optional<Jeton>& sunulan)
     {
         const std::string& komut = g.bul("komut")->metin;
         const json::Deger& par = *g.bul("parametreler");
@@ -1692,15 +1729,7 @@ struct Cekirdek::Ic {
         const bool genisletici = it->second.sinif == KomutSinifi::genisletici;
         if (it->second.onay || genisletici) {
             // EMNİYET — A3-K103, K118: onaylı komut iki adımlıdır; genişletici revizyon taşır.
-            std::optional<Jeton> sunulan;
             const json::Deger* jet = g.bul("onay_jetonu");
-            if (jet != nullptr) {
-                const auto jt = jetonlar.find(jet->metin);
-                if (jt != jetonlar.end()) {
-                    sunulan = jt->second;
-                    jetonlar.erase(jt);
-                }
-            }
             const json::Deger* onay = g.bul("onay");
             if (onay == nullptr || !onay->mantik || jet == nullptr) {
                 return ret("onay_gerekli", "onaylı komut onay ve onay jetonu ister (A3-K103)", {}, no);
@@ -1729,23 +1758,89 @@ struct Cekirdek::Ic {
         return alici_gonder(k, no);
     }
 
+    static std::string etki_anahtari(const Komut& k)
+    {
+        if (k.tur == KomutTuru::yer_istasyonu_komut) {
+            return "yi|" + k.yi_komut;
+        }
+        if (k.girdi == EmniyetGirdisi::acil_durdurma) {
+            return "acil_durdurma";
+        }
+        return std::string(k.girdi == EmniyetGirdisi::silahlandirma_fisi ? "silahlandirma_fisi|" : "emniyet_pimi|") +
+               (k.tup == 1 ? "1" : "0");
+    }
+
+    std::size_t dolu_mandal() const
+    {
+        std::size_t n = 0;
+        for (const auto& [a, m] : mandallar) {
+            (void)a;
+            n += m.dolu ? 1u : 0u;
+        }
+        return n;
+    }
+
+    void mandala_koy(const Komut& k)
+    {
+        const auto it = mandallar.find(etki_anahtari(k));
+        if (it == mandallar.end()) {
+            // Anahtar kümesi sabittir (hazirla); buraya düşmek bir sunucu hatasıdır. Kısıtlayan yön:
+            // etki yine iletilir (alıcı doluysa bir sonraki döngüde).
+            gunluk("A3: bilinmeyen kısıtlayan etki anahtarı");
+            mandallar[etki_anahtari(k)] = Mandal{};
+            mandala_koy(k);
+            return;
+        }
+        Mandal& m = it->second;
+        if (m.dolu) {
+            m.birlesen.push_back(m.k.komut_no);
+            while (m.birlesen.size() > sinir::birlesen_kayit) {
+                komutlar.erase(m.birlesen.front());  // en eski SONUÇ kaydı atılır; etki atılmaz
+                m.birlesen.pop_front();
+            }
+        }
+        m.k = k;
+        m.dolu = true;
+        komut_kaydet(k.komut_no, k.istemci_id, KomutDurum::kuyrukta);
+        say.bekleyen_kisitlayan = dolu_mandal();
+    }
+
     void bekleyenleri_isle()
     {
-        while (!bekleyen.empty()) {
-            const Komut& k = bekleyen.front();
-            const AlimSonucu a = alici.al(k);
+        for (;;) {
+            Mandal* sonraki = nullptr;
+            for (auto& [a, m] : mandallar) {
+                (void)a;
+                if (m.dolu && (sonraki == nullptr || m.k.komut_no < sonraki->k.komut_no)) {
+                    sonraki = &m;
+                }
+            }
+            if (sonraki == nullptr) {
+                break;
+            }
+            const AlimSonucu a = alici.al(sonraki->k);
             if (a.tur == AlimSonucu::Tur::dolu) {
                 break;
             }
+            const std::uint32_t no = sonraki->k.komut_no;
+            std::deque<std::uint32_t> birlesen = std::move(sonraki->birlesen);
+            sonraki->birlesen.clear();
+            sonraki->dolu = false;
             if (a.tur == AlimSonucu::Tur::ret) {
                 // 202 verilmişti: nihai sonuç komut_sonucu olayıyla bildirilir (A3-K57).
                 const std::string kod = hata_http(a.hata_kodu) == 0 ? std::string("sunucu_hatasi") : a.hata_kodu;
-                komut_sonucu_yayinla(k.komut_no, false, false, 0, son_sim_t_ns, std::numeric_limits<std::uint64_t>::max(), kod,
-                                     {}, 1);
+                komut_sonucu_yayinla(no, false, false, 0, son_sim_t_ns, std::numeric_limits<std::uint64_t>::max(), kod, {}, 1);
+                for (const auto b : birlesen) {
+                    komut_sonucu_yayinla(b, false, false, 0, son_sim_t_ns, std::numeric_limits<std::uint64_t>::max(), kod, {}, 1);
+                }
+            } else if (!birlesen.empty()) {
+                birlesik_sonuc[no] = std::move(birlesen);
+                while (birlesik_sonuc.size() > sinir::birlesik_sonuc) {
+                    birlesik_sonuc.erase(birlesik_sonuc.begin());  // en eski sonuç kaydı
+                }
             }
-            bekleyen.pop_front();
         }
-        say.bekleyen_kisitlayan = bekleyen.size();
+        say.bekleyen_kisitlayan = dolu_mandal();
     }
 
     // ---- WebSocket -----------------------------------------------------------------------------
@@ -2391,6 +2486,15 @@ struct Cekirdek::Ic {
                     const std::string kod(reinterpret_cast<const char*>(p + kSonucBaslik), kod_boy);
                     const std::string ayr(reinterpret_cast<const char*>(p + kSonucBaslik + kod_boy), ayr_boy);
                     komut_sonucu_yayinla(no, p[1] != 0, p[2] != 0, adim, t_ns, adim_no, kod, ayr, 0);
+                    // W4-K22 (a): mandalda birleşmiş isteklerin sonucu iletilenin sonucudur.
+                    const auto bs = birlesik_sonuc.find(no);
+                    if (bs != birlesik_sonuc.end()) {
+                        const std::deque<std::uint32_t> birlesen = std::move(bs->second);
+                        birlesik_sonuc.erase(bs);
+                        for (const auto b : birlesen) {
+                            komut_sonucu_yayinla(b, p[1] != 0, p[2] != 0, adim, t_ns, adim_no, kod, ayr, 0);
+                        }
+                    }
                 } else {
                     ++gecersiz_olay;
                 }

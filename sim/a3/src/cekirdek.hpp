@@ -43,7 +43,8 @@ inline constexpr std::size_t komut_gecmisi = 10000;                  // A3-K60
 inline constexpr std::size_t yineleme_kaydi = 10000;                 // A3-K53
 inline constexpr std::size_t onay_jetonu = 1024;                     // bu uygulama
 inline constexpr std::size_t istemci = 1024;                         // bu uygulama
-inline constexpr std::size_t bekleyen_kisitlayan = 65536;            // bu uygulama (EMNİYET okuması)
+inline constexpr std::size_t birlesen_kayit = 64;                    // W4-K22: mandal başına birleşen sonuç kaydı
+inline constexpr std::size_t birlesik_sonuc = 1024;                  // W4-K22: bekleyen birleşik sonuç kaydı
 inline constexpr std::size_t baski_esigi = 256 * 1024;               // A3-K39: bu kadar bekleyen çıkış varsa veri eklenmez
 inline constexpr std::size_t okuma_esigi = std::size_t{4} << 20u;    // çıkış bu kadar birikirse girdi okunmaz
 }  // namespace sinir

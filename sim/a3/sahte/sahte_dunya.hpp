@@ -28,6 +28,7 @@ struct SahteAyar {
     bool is_parcacigi = true;           // false: sınamalar adim() ile elle ilerletir
     bool veri = true;                   // telemetri üret
     std::uint32_t emniyet_rev_baslangic = 1;
+    bool kisitlayani_reddet = false;    // yalnız sınama: kısıtlayanı adım sınırında reddet
 };
 
 // Uygulanan bir komutun izi (sınamalar için).
