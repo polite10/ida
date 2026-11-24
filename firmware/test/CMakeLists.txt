@@ -8,11 +8,15 @@ set(_fw "${PROJECT_SOURCE_DIR}/firmware")
 add_library(ida_fw_saf_host STATIC
   "${_fw}/link/alim.c"
   "${_fw}/bsp/acilis_kaydi.c"
+  "${_fw}/bsp/ecc.c"
+  "${_fw}/bsp/rng.c"
   "${_fw}/app/istatistik.c"
-  "${_fw}/app/tanilama.c"
-  "${_fw}/app/saglik.c")
+  "${_fw}/app/saglik.c"
+  "${_fw}/app/gonderim.c"
+  "${_fw}/app/kapanis.c"
+  "${_fw}/app/kalici.c")
 target_include_directories(ida_fw_saf_host PUBLIC "${_fw}/link" "${_fw}/bsp" "${_fw}/app")
-target_link_libraries(ida_fw_saf_host PUBLIC ida_link ida_core)
+target_link_libraries(ida_fw_saf_host PUBLIC ida_link_ust ida_link ida_core)
 ida_ayar_uygula(ida_fw_saf_host CEKIRDEK)
 
 function(_ida_fw_birim ad)
@@ -26,10 +30,44 @@ endfunction()
 _ida_fw_birim(alim)
 _ida_fw_birim(acilis)
 _ida_fw_birim(istatistik)
-_ida_fw_birim(tanilama)
+_ida_fw_birim(gonderim)
+_ida_fw_birim(gonderim_oturum)
+# Karşı örnek (sol bulgu 1): platformun kapanış kararı olmadan aynı bütünleşik test düşer.
+add_executable(ida_fw_test_gonderim_oturum_karsi test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_karsi PRIVATE IDA_TEST_KAPANIS_YOK=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_karsi PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_karsi CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_karsi_ornek COMMAND ida_fw_test_gonderim_oturum_karsi)
+set_tests_properties(firmware.birim.gonderim_oturum_karsi_ornek PROPERTIES WILL_FAIL TRUE)
+# Karşı örnek (sol bulgu 1, ikinci denetim): çağrı yasağı kapanış kararıyla hemen başlarsa
+# oturum sonu çağrısı çekirdeğe teslim edilmez; silahlı çekirdek testi düşer.
+add_executable(ida_fw_test_gonderim_oturum_eski_sira test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_eski_sira PRIVATE IDA_TEST_ESKI_SIRA=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_eski_sira PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_eski_sira CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_eski_sira_karsi_ornek
+         COMMAND ida_fw_test_gonderim_oturum_eski_sira)
+set_tests_properties(firmware.birim.gonderim_oturum_eski_sira_karsi_ornek PROPERTIES WILL_FAIL TRUE)
+# Karşı örnek (sol 3. denetim): kapanış denetimi yalnız çağrıdan sonra yapılırsa aynı alım
+# bloğundaki RNG hatasından sonra olağan çağrı çekirdeğe ulaşır; test düşer.
+add_executable(ida_fw_test_gonderim_oturum_denetim_sonra test_gonderim_oturum.c)
+target_compile_definitions(ida_fw_test_gonderim_oturum_denetim_sonra PRIVATE IDA_TEST_DENETIM_SONRA=1)
+target_link_libraries(ida_fw_test_gonderim_oturum_denetim_sonra PRIVATE ida_fw_saf_host ida_link
+                      ida_mavlink_uretilen ida_unity)
+ida_ayar_uygula(ida_fw_test_gonderim_oturum_denetim_sonra CEKIRDEK)
+add_test(NAME firmware.birim.gonderim_oturum_denetim_sonra_karsi_ornek
+         COMMAND ida_fw_test_gonderim_oturum_denetim_sonra)
+set_tests_properties(firmware.birim.gonderim_oturum_denetim_sonra_karsi_ornek PROPERTIES WILL_FAIL TRUE)
+_ida_fw_birim(kalici)
+_ida_fw_birim(ecc)
+_ida_fw_birim(rng)
 _ida_fw_birim(saglik)
 
 # Ölçüm bloğu okuyucusunun tutarlılık denetimi (Python, kart gerekmez).
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 add_test(NAME firmware.araclar.olcum_oku
-  COMMAND "${Python3_EXECUTABLE}" -I "${_fw}/araclar/test_olcum_oku.py")
+  COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${_fw}/araclar/test_olcum_oku.py")
+add_test(NAME firmware.araclar.kabul
+  COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${_fw}/araclar/test_kabul.py")
