@@ -143,9 +143,11 @@ public:
         if (k >= 0) {
             return static_cast<long long>(k);
         }
-        if (bekliyor_hatasi(son_hata())) {
+        const int e = son_hata();
+        if (bekliyor_hatasi(e)) {
             return 0;
         }
+        hata_kodu_ = e;
         // W4-K26 (2): yazma hatası soketi kapatmaz; alım tamponunda bekleyen baytlar okunabilir
         // kalır (karşı tarafın son çerçeveleri yazma hatasıyla kaybolmaz). Kapatma sahibinin işi.
         return -1;
@@ -174,7 +176,8 @@ public:
                 eof_ = true;
                 return OkumaSonucu::kapandi;
             }
-            if (!bekliyor_hatasi(son_hata())) {
+            if (const int e = son_hata(); !bekliyor_hatasi(e)) {
+                hata_kodu_ = e;
                 kapat();
                 return OkumaSonucu::kapandi;
             }
@@ -241,11 +244,13 @@ public:
         }
     }
     std::string ad() const override { return ad_; }
+    int son_hata_kodu() const override { return hata_kodu_; }
 
 private:
     Soket s_;
     std::string ad_;
     bool eof_ = false;   // karşı uç FIN gönderdi
+    int hata_kodu_ = 0;  // tanı: son başarısız send/recv'in hata kodu
 };
 
 class TcpDinleyiciGercek final : public TcpDinleyici {

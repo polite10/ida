@@ -11,8 +11,12 @@
 //   sil_akis_sonu_belirlenim  W4-K26 (2): ek = 150 IDA_LOG, ardından FIN (aktarıcı yazma yönünü
 //                             kapatır). Dört teslim biçiminde aynı bitiş nedeni (tampon taşması →
 //                             SESSION_CLOSE(PROTOCOL)) ve sim'in göndermeye karar verdiği aynı dizi.
+//                             Sim kapatınca aktarıcı yeni bağlantıyla sürdürür; koşu tamamlanır.
 //   sil_sifir_seli            W4-K26 (3): ek = kesintisiz 0x00 akışı. Bellek sınırlı, oturum
-//                             protokol hatasıyla biter, koşu asılmadan döner.
+//                             protokol hatasıyla biter; sel sim'in kapanışıyla durur, koşu tamamlanır.
+// FIN ve selde tetikten sonra kartın girdisi dondurulur (sim → kart iletilmez): kartın gördüğü
+// akış teslim biçiminden bağımsızdır. Hiçbir sınama sim'in duvar saati süre sınırlarına dayanmaz
+// (W4-mac-ci Windows CI: kısaltılmış baglanti_bekleme_ns hazırlık oturumunu da kapsıyordu).
 #include "ida/kopru/tasima.hpp"
 #include "ida/sil/kosucu.hpp"
 #include "ida_link/tel.h"
@@ -99,6 +103,15 @@ public:
     std::uint16_t port() const { return din_ ? din_->port() : 0; }
     const std::vector<std::uint8_t>& sim_kart() const { return sim_kart_; }
     bool tetiklendi() const { return tetik_; }
+    std::string tani() const
+    {
+        return "aktarıcı: aşama '" + asama_ + "', sim bağlantısı " + std::to_string(sim_baglanti_) +
+               ", sim → aktarıcı " + std::to_string(sim_okunan_) + " B (karta iletilen " +
+               std::to_string(sim_kart_iletilen_) + " B), kart → aktarıcı " + std::to_string(kart_okunan_) +
+               " B (sim'e yazılan " + std::to_string(kart_sim_yazilan_) + " B), itkili ACTUATOR " +
+               std::to_string(itkili_sayi_) + ", soket hata kodu sim " + std::to_string(sim_hata_) + " kart " +
+               std::to_string(kart_hata_);
+    }
     // Tetikleyen ACTUATOR'ın partisinin TF zamanı (sim zamanı, ns); yoksa −1.
     std::int64_t t_n() const
     {
@@ -121,23 +134,30 @@ private:
         kuyruk_.push_back({std::move(b), son_, fin});
     }
 
-    void tf_izle(const std::uint8_t* p, std::size_t n)
+    // sim → kart yönünün bir çerçevesi: TF izlenir; donukken karta iletilmez. Selde sim'in
+    // SESSION_CLOSE'u görülünce sel durur ve akış (o kapanıştan itibaren) yeniden iletilir.
+    void sim_cercevesi(const std::vector<std::uint8_t>& ham, const ida_link_cerceve_t& c, ida::kopru::Tasima& kart)
     {
-        std::size_t k = 0;
-        while (k < n) {
-            std::size_t tuk = 0;
-            ida_link_cerceve_t c{};
-            const ida_link_rc_t rc = ida_link_al(&sim_alici_, p + k, n - k, &tuk, &c);
-            k += tuk;
-            if (rc != IDA_LINK_CERCEVE) {
-                break;
-            }
-            if (c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME) {
-                mavlink_ida_time_frame_t tf{};
-                (void)ida_link_coz(&c, c.msgid, &tf, sizeof tf);
-                tf_[tf.batch_seq] = tf.t_sim_ns;
-            }
+        if (c.msgid == MAVLINK_MSG_ID_IDA_TIME_FRAME) {
+            mavlink_ida_time_frame_t tf{};
+            (void)ida_link_coz(&c, c.msgid, &tf, sizeof tf);
+            tf_[tf.batch_seq] = tf.t_sim_ns;
         }
+        if (sim_donuk_ && sel_ && c.msgid == MAVLINK_MSG_ID_IDA_SESSION_CLOSE) {
+            sim_donuk_ = false;
+            sel_ = false;
+            kesildi_ = false;
+            asama_ = "sel bitti: sim'in kapanışından itibaren iletiliyor";
+        }
+        if (sim_donuk_) {
+            return;
+        }
+        if (!kart.yaz(ham.data(), ham.size())) {
+            kart_hata_ = kart.son_hata_kodu();
+            asama_ = "karta yazım başarısız";
+            return;
+        }
+        sim_kart_iletilen_ += ham.size();
     }
 
     std::vector<std::uint8_t> ek_baytlari(const mavlink_ida_actuator_t& a)
@@ -250,15 +270,21 @@ private:
         if (!tetik_ && itkili && ++itkili_sayi_ == 5u) {
             tetik_ = true;
             tetik_seq_ = a.batch_seq;
+            // FIN ve selde tetikten sonra kartın girdisi dondurulur (sim → kart iletilmez): kartın
+            // gördüğü akış teslim biçiminden bağımsız kalır (tetik anında sim TF(n)'den sonrasını
+            // göndermemiştir; kilitli adım).
             if (ek_ == Ek::sifir_seli) {
                 kuyruga(std::move(ham), 0);
                 sel_ = true;
                 kesildi_ = true;
+                sim_donuk_ = true;
+                asama_ = "sel";
                 return;
             }
             const bool fin = ek_ == Ek::log_fin;
             teslim_et(std::move(ham), ek_baytlari(a), fin);
             kesildi_ = fin;
+            sim_donuk_ = fin;
             return;
         }
         kuyruga(std::move(ham), 0);
@@ -268,32 +294,55 @@ private:
     {
         std::string hata;
         auto sim = ida::kopru::tcp_baglan(sim_port_, hata);
-        auto kart = din_->kabul(20'000'000, hata);
+        auto kart = din_->kabul(60'000'000, hata);
         if (!sim || !kart) {
+            asama_ = std::string("kurulum başarısız: ") + (sim ? "" : "sim'e bağlanılamadı ") +
+                     (kart ? "" : "kart bağlanmadı ") + hata;
             return;
         }
+        sim_baglanti_ = 1;
+        asama_ = "aktarılıyor";
         std::vector<std::uint8_t> t(65536);
         std::vector<std::uint8_t> sifir(65536, 0);
         std::vector<std::uint8_t> ham;
-        bool sim_kapandi = false;
-        while (!dur_ && !sim_kapandi) {
+        std::vector<std::uint8_t> sim_ham;
+        int bos = 0;
+        while (!dur_) {
             bool is_var = false;
             std::size_t n = 0;
             ida::kopru::OkumaSonucu r = sim->oku(t.data(), t.size(), 0, n);
             if (r == ida::kopru::OkumaSonucu::kapandi) {
+                sim_hata_ = sim->son_hata_kodu();
+                asama_ = "sim bağlantıyı kapattı";
                 break;
             }
             if (r == ida::kopru::OkumaSonucu::tamam) {
                 is_var = true;
+                sim_okunan_ += n;
                 sim_kart_.insert(sim_kart_.end(), t.data(), t.data() + n);
-                tf_izle(t.data(), n);
-                if (!kart->yaz(t.data(), n)) {
-                    break;
+                std::size_t k = 0;
+                while (k < n) {
+                    std::size_t tuk = 0;
+                    ida_link_cerceve_t c{};
+                    const ida_link_rc_t rc = ida_link_al(&sim_alici_, t.data() + k, n - k, &tuk, &c);
+                    sim_ham.insert(sim_ham.end(), t.data() + k, t.data() + k + tuk);
+                    k += tuk;
+                    if (rc != IDA_LINK_CERCEVE) {
+                        break;
+                    }
+                    sim_cercevesi(sim_ham, c, *kart);
+                    sim_ham.clear();
                 }
             }
             r = kart->oku(t.data(), t.size(), 0, n);
+            if (r == ida::kopru::OkumaSonucu::kapandi) {
+                kart_hata_ = kart->son_hata_kodu();
+                asama_ = "kart bağlantıyı kapattı";
+                break;
+            }
             if (r == ida::kopru::OkumaSonucu::tamam) {
                 is_var = true;
+                kart_okunan_ += n;
                 std::size_t k = 0;
                 while (k < n) {
                     std::size_t tuk = 0;
@@ -309,29 +358,65 @@ private:
                 }
             }
             const auto simdi = Saat::now();
+            bool fin_oldu = false;
             while (!kuyruk_.empty() && kuyruk_.front().birak <= simdi) {
                 Parca p = std::move(kuyruk_.front());
                 kuyruk_.pop_front();
                 is_var = true;
-                if (!p.bayt.empty() && !sim->yaz(p.bayt.data(), p.bayt.size())) {
-                    sim_kapandi = true;
-                    break;
+                if (!p.bayt.empty()) {
+                    if (!sim->yaz(p.bayt.data(), p.bayt.size())) {
+                        sim_hata_ = sim->son_hata_kodu();
+                        asama_ = "sim'e yazım başarısız";
+                        return;
+                    }
+                    kart_sim_yazilan_ += p.bayt.size();
                 }
                 if (p.fin) {
-                    // FIN: yazma yönü kapanır; sim kapatana dek (en çok 5 s) okunur.
-                    sim->kapat_duzgun(5'000'000);
-                    sim_kapandi = true;
+                    fin_oldu = true;
                     break;
                 }
             }
-            if (sel_ && !sim_kapandi && kuyruk_.empty()) {
+            if (fin_oldu) {
+                // FIN: yazma yönü kapanır; sim kapatana dek (en çok 30 s) okunur. Sonra sim'in
+                // beklediği yeni bağlantı kurulur (A1-K99: yeni akış) ve aktarım sürer; kartın
+                // girdisi tetikten beri donuktu, yeni akışın ilk baytından itibaren iletilir.
+                asama_ = "FIN gönderildi, sim'in kapatması bekleniyor";
+                sim->kapat_duzgun(30'000'000);
+                sim.reset();
+                for (int i = 0; i < 6000 && !sim && !dur_; ++i) {
+                    sim = ida::kopru::tcp_baglan(sim_port_, hata);
+                    if (!sim) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    }
+                }
+                if (!sim) {
+                    asama_ = "FIN sonrası sim'e yeniden bağlanılamadı: " + hata;
+                    return;
+                }
+                ++sim_baglanti_;
+                (void)ida_link_alici_kur(&sim_alici_, IDA_LINK_ROL_KART);
+                sim_ham.clear();
+                sim_donuk_ = false;
+                kesildi_ = false;
+                asama_ = "FIN sonrası yeni bağlantı";
+                continue;
+            }
+            if (sel_ && kuyruk_.empty()) {
                 const long long w = sim->yaz_biraz(sifir.data(), sifir.size());
                 if (w < 0) {
+                    sim_hata_ = sim->son_hata_kodu();
+                    asama_ = "selde sim'e yazım başarısız";
                     break;
                 }
+                kart_sim_yazilan_ += static_cast<std::uint64_t>(w);
                 is_var = is_var || w > 0;
             }
-            if (!is_var) {
+            // Windows'ta uyku çözünürlüğü kaba (~15,6 ms): boşta önce iş parçacığı sırası bırakılır.
+            if (is_var) {
+                bos = 0;
+            } else if (++bos < 2000) {
+                std::this_thread::yield();
+            } else {
                 std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
         }
@@ -356,6 +441,16 @@ private:
     bool kaydir_ = false;
     bool kesildi_ = false;
     bool sel_ = false;
+    bool sim_donuk_ = false;   // tetikten sonra sim → kart iletilmez (kartın girdisi belirli kalır)
+    // Tanı (kurulamayan oturumda nedeni göstermek için).
+    std::string asama_ = "başlamadı";
+    int sim_baglanti_ = 0;
+    std::uint64_t sim_okunan_ = 0;
+    std::uint64_t sim_kart_iletilen_ = 0;
+    std::uint64_t kart_okunan_ = 0;
+    std::uint64_t kart_sim_yazilan_ = 0;
+    int sim_hata_ = 0;
+    int kart_hata_ = 0;
 };
 
 struct Kosu {
@@ -366,15 +461,36 @@ struct Kosu {
     std::int64_t t_n = -1;
     bool tetik = false;
     double sure_s = 0.0;
+    std::string tani;
 };
 
-Kosu kos(Teslim teslim, Ek ek, double sure_s, std::int64_t baglanti_bekleme_ns)
+// Oturum kurulamadığında ya da ek katılmadığında nedeni yazar (CI günlüğü belirsiz kalmasın).
+void tani_yaz(const Kosu& k)
+{
+    if (k.tetik && k.s.tamam) {
+        return;
+    }
+    std::printf("  TANI: tamam %d, hata '%s', hazırlık oturumu %llu, kurulan oturum %llu, yeniden bağlantı %llu, "
+                "bağlantı kopması %llu, el sıkışmada atılan %llu, kart açılışı %u, son oturum reddi %u, "
+                "karar dizisi %zu B, aktarıcının okuduğu %zu B, %.2f s\n  TANI: %s\n",
+                k.s.tamam ? 1 : 0, k.s.hata.c_str(), static_cast<unsigned long long>(k.s.hazirlik_oturumu),
+                static_cast<unsigned long long>(k.s.sayac.oturum_kurulan),
+                static_cast<unsigned long long>(k.s.yeniden_baglanti),
+                static_cast<unsigned long long>(k.s.baglanti_kopma),
+                static_cast<unsigned long long>(k.s.sayac.el_sikisma_atilan), static_cast<unsigned>(k.s.kart.boot_count),
+                static_cast<unsigned>(k.s.kart.son_oturum_reddi), k.giden.size(), k.sim_kart.size(), k.sure_s,
+                k.tani.c_str());
+}
+
+// baglanti_bekleme_ns varsayılandır (20 s): sim'in el sıkışma süre sınırı hazırlık oturumunu da
+// kapsar ve yavaş koşucuda (Windows CI, hata ayıklama/ASan) yüzlerce ms'yi aşar. Sınamalar bu
+// süreye dayanmaz: FIN'den sonra aktarıcı yeni bağlantıyla sürdürür, sel sim'in kapanışıyla durur.
+Kosu kos(Teslim teslim, Ek ek, double sure_s)
 {
     ida::sunucu::Ayar a;
     a.gunluk = 0;
     a.sure_s = sure_s;
     a.karsi = ida::sunucu::Karsi::tcp;
-    a.baglanti_bekleme_ns = baglanti_bekleme_ns;
     Kosu k;
     a.sinir_kancasi = [&k](const ida::sunucu::Ayar::SinirGozlemi& g) { k.girdi.emplace_back(g.b, g.pwm); };
     a.giden_kancasi = [&k](const std::uint8_t* p, std::size_t n) { k.giden.insert(k.giden.end(), p, p + n); };
@@ -404,7 +520,9 @@ Kosu kos(Teslim teslim, Ek ek, double sure_s, std::int64_t baglanti_bekleme_ns)
         k.sim_kart = ak->sim_kart();
         k.t_n = ak->t_n();
         k.tetik = ak->tetiklendi();
+        k.tani = ak->tani();
     }
+    tani_yaz(k);
     return k;
 }
 
@@ -464,7 +582,7 @@ int test_sil_kisitlayan_alim_ani()
         const char* ad = ek == Ek::esz_guvenli ? "eşzamansız güvenli çıktı" : "kartın SESSION_CLOSE'u";
         std::vector<Kosu> kosular;
         for (const Teslim t : kTeslimler) {
-            kosular.push_back(kos(t, ek, 4.0, 20'000'000'000));
+            kosular.push_back(kos(t, ek, 4.0));
             const Kosu& k = kosular.back();
             const std::uint64_t bs = k.t_n >= 0 ? static_cast<std::uint64_t>(k.t_n / kH) + 4u : 0u;
             const auto* once = girdi_b(k, bs - 1u);
@@ -511,7 +629,7 @@ int test_sil_akis_sonu_belirlenim()
 {
     std::vector<Kosu> kosular;
     for (const Teslim t : kTeslimler) {
-        kosular.push_back(kos(t, Ek::log_fin, 4.0, 300'000'000));
+        kosular.push_back(kos(t, Ek::log_fin, 4.0));
         const Kosu& k = kosular.back();
         const auto kp = kapanislar(k.giden);
         std::printf("  %s: tampon taşması %llu, oturum kopması %llu, bağlantı kopması %llu, kapanışlar %s, "
@@ -524,6 +642,8 @@ int test_sil_akis_sonu_belirlenim()
         dogrula_sa(k.tetik, on + "ek katıldı");
         dogrula_sa(k.s.sayac.sil_tampon_tasma == 1u && std::count(kp.begin(), kp.end(), std::uint8_t{3}) == 1,
                    on + "W4-K26 (2): kuyruktaki LOG taşması FIN'den önce işlendi: SESSION_CLOSE(PROTOCOL)");
+        dogrula_sa(k.s.tamam && k.s.baglanti_kopma == 1u,
+                   on + "FIN bağlantı kaybı olarak kuyruk bitince işlendi; yeni bağlantıyla koşu tamamlandı");
     }
     const Kosu& k0 = kosular.front();
     bool ayni = true;
@@ -538,7 +658,7 @@ int test_sil_akis_sonu_belirlenim()
 
 int test_sil_sifir_seli()
 {
-    const Kosu k = kos(Teslim::ayni_okuma, Ek::sifir_seli, 4.0, 1'000'000'000);
+    const Kosu k = kos(Teslim::ayni_okuma, Ek::sifir_seli, 4.0);
     const auto kp = kapanislar(k.giden);
     std::printf("  sıfır seli: kuyruk taşması %llu, kuyruk en çok %llu B, kapanışlar %s, %.2f s, hata '%s'\n",
                 static_cast<unsigned long long>(k.s.sil_kuyruk_tasma),
@@ -548,7 +668,7 @@ int test_sil_sifir_seli()
     dogrula_sa(k.s.sil_kuyruk_tasma >= 1u && std::count(kp.begin(), kp.end(), std::uint8_t{3}) >= 1,
                "W4-K26 (3): oturum protokol hatasıyla bitti (SESSION_CLOSE(PROTOCOL))");
     dogrula_sa(k.s.sil_kuyruk_en_cok <= (std::uint64_t{1} << 26U) + 65536u, "alım kuyruğu sınırlı (≤ 64 MiB + bir okuma)");
-    dogrula_sa(!k.s.tamam, "koşu asılmadan döndü (el sıkışma zaman aşımıyla)");
+    dogrula_sa(k.s.tamam, "koşu asılmadan sürdü: sel durunca yeni oturum kuruldu ve koşu tamamlandı");
     return 0;
 }
 
