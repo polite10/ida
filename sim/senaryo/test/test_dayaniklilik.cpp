@@ -156,6 +156,41 @@ int test_dayaniklilik(const TestBaglami& tb)
         tek(s + "1" + std::string(50'001, '}') + "\n", "derin satır içi tablo");
     }
     tek(std::string(kAzamiDosyaBoyu + 1, '#'), "dosya boyu sınırı");
+    // macOS CI (host-asan, UBSan): toml++ 3.4.0 `is_non_ascii_horizontal_whitespace`
+    // TOML_UNREACHABLE (marzer/tomlplusplus#295, #190). Tetikleyen girdi bu testin 17. bozuk
+    // dosyasıydı (tohum 20261121): yorumdaki `ğ`'nin bir sayının hemen arkasına kayması.
+    {
+        const std::string ozgun = k_ornek(temel);
+        const auto t = degistir(ozgun, "2.7e-6, 40.3e-6]   # B_n (NED), T [MV]; WMM'den do", "2.7e-6");
+        DOGRULA(d, t.has_value(), "tetikleyen girdi kurulamadı");
+        if (t) {
+            tek(*t, "sayının arkasında ASCII dışı karakter (CI tetikleyicisi)");
+        }
+    }
+    tek("x_a = true\xc5\x9f\n", "mantıksal değerin arkasında ş");
+    tek("\xcc\xaa", "#295: tek başına U+032A");
+    tek("\xcf\xaa", "#295: tek başına U+03EA");
+    tek("x_s = \"\"\"\\\n\xc2\xa7\"\"\"\n", "#190: satır sonu kaçışından sonra §");
+    tek("x_s = \"\"\"\\\xc4\x9f\"\"\"\n", "çok satırlı dizgide kaçıştan sonra ğ");
+    tek("x_\xc3\xa7 = 1\n", "çıplak anahtarda ç");
+    // toml++ 3.4.0 parse_value ön koşulu (TOML_ASSERT_ASSUME(!is_value_terminator)): dizide
+    // değer beklenirken `}` (UBSan'lı ek tohumlarla bulundu: 1, 2, 3, 4).
+    tek("x_a = [8.9, 176.0, }\n", "dizide `}`");
+    tek("x_a = [\n  # yorum\n}\n", "boş dizide `}`");
+    {
+        // Geçerli kullanım daraltılmaz: dizgi ve yorumlarda ASCII dışı karakter, satır sonu
+        // kaçışından sonra ASCII ile başlayan devam satırı.
+        BellekKaynagi k = temel;
+        k.dosyalar[kSenaryo] = *degistir(k_ornek(temel), "ana_tohum = 1",
+                                         "ana_tohum = 1  # yorum: ğüşıöç §\n"
+                                         "x_t = \"ğüşıöç §\"\nx_l = 'ğ'\nx_m = '''\nğ\n'''\n"
+                                         "x_b = \"\"\"\\\n   a ğ   §\"\"\"\n");
+        const CozumSonucu s = senaryo_coz(k, kSenaryo);
+        DOGRULA(d, s.rapor.gecerli && s.cozumlenmis &&
+                       s.cozumlenmis->agac().yol_bul("rastgelelik.x_b") != nullptr &&
+                       s.cozumlenmis->agac().yol_bul("rastgelelik.x_b")->dizgi == "a ğ   §",
+                "dizgi ve yorumlardaki ASCII dışı karakterler kabul edilmeli\n" + bulgu_ozeti(s.rapor));
+    }
     // sol #2: yorumdaki tırnaklar ön taramayı atlatmaz (toml++ iddiası ve gizli derin başlık).
     tek("[x_a] # \"\"\"\n[!]\n# \"\"\"\n", "yorum arkasında geçersiz başlık");
     tek("[x_a] # '''\n[[\nx_b]]\n# '''\n", "yorum arkasında satır sonlu başlık");

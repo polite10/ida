@@ -76,6 +76,153 @@ std::int64_t utf8_hata_satiri(std::string_view s)
     return 0;
 }
 
+// ------------------------------------------------------------------ ASCII dışı karakter ön taraması
+// toml++ 3.4.0'da `impl::is_non_ascii_horizontal_whitespace` tablosunun boşlukları için
+// `TOML_UNREACHABLE`'a düşer (ör. U+00A1–U+0499: `ğ`, `ş`, `ç`, `§`); sanitizer'sız
+// derlemede bu tanımsız davranıştır. Kitaplık bu sınıflandırmayı dizgi ve yorum dışındaki
+// karakterlerde (değer sonu, boşluk atlama, anahtar kaydı) ve çok satırlı temel dizgide ters
+// eğik çizgiden sonra yapar. Upstream hata: marzer/tomlplusplus#295 (ve #190), düzeltme PR #305
+// (v3.5.0); vcpkg'nin sabitlenen taban çizgisinde 3.5.x yoktur. Bu yüzden toml++'a, bu
+// konumlarda ASCII dışı karakter içeren metin verilmez:
+//  - dizgi ve yorum dışında ASCII dışı karakter TOML 1.0'da zaten geçersizdir: A5-K01;
+//  - çok satırlı temel dizgide ters eğik çizgiden (ve satır sonu kaçışında atlanan boşluk ve
+//    satır sonlarından) hemen sonra gelen ve tablonun tanımsız aralığına düşen karakter:
+//    A5-K01 (uygulama sınırı; geçerli TOML'u daraltan tek durum, kısıtlayan yön).
+
+// toml++ 3.4.0 `is_non_ascii_horizontal_whitespace`'in `default: TOML_UNREACHABLE` dalına
+// düşen kod noktaları (üretilmiş tablonun birebir karşılığı).
+bool tomlpp_tanimsiz_bosluk(char32_t c)
+{
+    if (c < 0xA0u || c > 0xFEFFu) {
+        return false;
+    }
+    const std::uint64_t cocuk = (static_cast<std::uint64_t>(c) - 0xA0u) / 0x3FAu;
+    if (((std::uint64_t{1} << cocuk) & 0x7FFFFFFFFFFFF75Eull) != 0) {
+        return false;
+    }
+    if (c == 0xA0u || c == 0x3000u || c == 0xFEFFu) {
+        return false;
+    }
+    return cocuk != 0x05u && cocuk != 0x07u;
+}
+
+// Geçerli UTF-8 metinde (önceden denetlenmiş) i konumundaki kod noktası ve bayt sayısı.
+std::pair<char32_t, std::size_t> kod_noktasi(std::string_view s, std::size_t i)
+{
+    const auto c = static_cast<unsigned char>(s[i]);
+    std::size_t n = 1;
+    char32_t cp = c;
+    if (c >= 0xF0u) {
+        n = 4;
+        cp = c & 0x07u;
+    } else if (c >= 0xE0u) {
+        n = 3;
+        cp = c & 0x0Fu;
+    } else if (c >= 0xC0u) {
+        n = 2;
+        cp = c & 0x1Fu;
+    }
+    for (std::size_t j = 1; j < n && i + j < s.size(); ++j) {
+        cp = (cp << 6) | (static_cast<unsigned char>(s[i + j]) & 0x3Fu);
+    }
+    return {cp, n};
+}
+
+// İlk güvensiz ASCII dışı karakterin satırı; yoksa 0. Metin geçerli UTF-8'dir.
+std::int64_t ascii_disi_guvensiz_satir(std::string_view s)
+{
+    std::int64_t satir = 1;
+    std::size_t i = 0;
+    if (s.size() >= 3 && s.substr(0, 3) == "\xEF\xBB\xBF") {
+        i = 3;  // BOM (toml++ atlar)
+    }
+    auto ileri = [&](std::size_t n) {
+        for (std::size_t k = 0; k < n && i < s.size(); ++k, ++i) {
+            satir += s[i] == '\n' ? 1 : 0;
+        }
+    };
+    while (i < s.size()) {
+        const char c = s[i];
+        if (static_cast<unsigned char>(c) >= 0x80u) {
+            return satir;  // dizgi ve yorum dışında
+        }
+        if (c == '#') {
+            while (i < s.size() && s[i] != '\n') {
+                ++i;
+            }
+            continue;
+        }
+        // Tırnak yalnız bir belirtecin başında dizgi açar (önceki karakter boşluk, satır sonu ya
+        // da `=`, `[`, `{`, `,`, `.`); belirtecin ortasındaki tırnağı toml++ dizgi saymaz ve
+        // arkasındaki karakterleri değer sonu diye sınıflandırır (ör. `0.56a'nın`).
+        const bool dizgi_basi = (c == '\'' || c == '"') &&
+                                (i == 0 || std::string_view(" \t\r\n=[{,.").find(s[i - 1]) != std::string_view::npos ||
+                                 (i == 3 && s.substr(0, 3) == "\xEF\xBB\xBF"));
+        if ((c == '\'' || c == '"') && !dizgi_basi) {
+            ileri(1);
+            continue;
+        }
+        if (c == '\'') {
+            const bool cok = s.substr(i, 3) == "'''";
+            ileri(cok ? 3 : 1);
+            while (i < s.size()) {
+                if (cok ? s.substr(i, 3) == "'''" : s[i] == '\'') {
+                    ileri(cok ? 3 : 1);
+                    while (cok && i < s.size() && s[i] == '\'') {
+                        ileri(1);
+                    }
+                    break;
+                }
+                if (!cok && s[i] == '\n') {
+                    break;  // kapanmamış dizgi: toml++ satır sonunda reddeder
+                }
+                ileri(1);
+            }
+            continue;
+        }
+        if (c == '"') {
+            const bool cok = s.substr(i, 3) == "\"\"\"";
+            ileri(cok ? 3 : 1);
+            while (i < s.size()) {
+                if (cok ? s.substr(i, 3) == "\"\"\"" : s[i] == '"') {
+                    ileri(cok ? 3 : 1);
+                    while (cok && i < s.size() && s[i] == '"') {
+                        ileri(1);
+                    }
+                    break;
+                }
+                if (!cok && s[i] == '\n') {
+                    break;
+                }
+                if (s[i] == '\\') {
+                    ileri(1);
+                    if (cok) {
+                        // Kaçıştan sonraki karakter ve satır sonu kaçışında atlanan boşluk ve
+                        // satır sonlarından sonraki ilk karakter toml++'ta sınıflandırılır.
+                        std::size_t j = i;
+                        while (j < s.size() && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' || s[j] == '\n')) {
+                            ++j;
+                        }
+                        if (j < s.size() && static_cast<unsigned char>(s[j]) >= 0x80u &&
+                            tomlpp_tanimsiz_bosluk(kod_noktasi(s, j).first)) {
+                            ileri(j - i);
+                            return satir;
+                        }
+                    }
+                    if (i < s.size() && static_cast<unsigned char>(s[i]) < 0x80u) {
+                        ileri(1);  // kaçışlı ASCII karakter (ör. \")
+                    }
+                    continue;
+                }
+                ileri(1);
+            }
+            continue;
+        }
+        ileri(1);
+    }
+    return 0;
+}
+
 // ------------------------------------------------------------------ derinlik ön taraması
 // Geçerli TOML için ortaya çıkacak ağacın derinliğinin üst sınırını hesaplar (başlık ve
 // anahtar parçaları + dizi ve satır içi tablo düzeyleri). Geçersiz metinde sonuç anlamsız
@@ -87,7 +234,8 @@ public:
     // En büyük derinlik ve ilk aşıldığı satır.
     std::size_t azami = 0;
     std::int64_t azami_satir = 1;
-    std::int64_t gecersiz_baslik_satiri = 0;  // ilk anahtar karakteri geçersiz başlık
+    std::int64_t gecersiz_baslik_satiri = 0;  // ilk geçersiz yapının satırı (toml++ iddiaları)
+    const char* gecersiz_neden = "";
     // Değer konumundaki dizgi olmayan belirteçler [baş, son) (sayı kurtarma için).
     std::vector<std::pair<std::size_t, std::size_t>> skalerler;
 
@@ -114,6 +262,7 @@ public:
                 if (i_ < s_.size() && !anahtar_basi(s_[i_]) && s_[i_] != ']' &&
                     gecersiz_baslik_satiri == 0) {
                     gecersiz_baslik_satiri = satir_;
+                    gecersiz_neden = "tablo başlığı anahtar karakteriyle başlamıyor";
                 }
                 taban = anahtar_oku() + (dizi_tablo ? 1u : 0u);
                 kaydet(taban);
@@ -319,6 +468,15 @@ private:
                     kaydet(taban + 1);
                     anahtar_bekle = true;
                     continue;
+                } else if (c == '}' && dizide) {
+                    // toml++ 3.4.0 dizide değer beklerken `}` görünce parse_value'nun ön koşulunu
+                    // (TOML_ASSERT_ASSUME(!is_value_terminator)) çiğner: hata ayıklamada süreç
+                    // durur, sürüm derlemesinde tanımsız davranış. Burada reddedilir.
+                    if (gecersiz_baslik_satiri == 0) {
+                        gecersiz_baslik_satiri = satir_;
+                        gecersiz_neden = "dizide değer beklenirken `}`";
+                    }
+                    return;
                 } else if (c == ']' && dizide) {
                     // boş dizi ya da sondaki virgülden sonra kapanış
                 } else {
@@ -636,6 +794,12 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
         b.hata("A5-K01", Konum{dosya_no, s}, kok, "geçerli UTF-8 değil");
         return sonuc;
     }
+    if (const std::int64_t s = ascii_disi_guvensiz_satir(metin); s != 0) {
+        b.hata("A5-K01", Konum{dosya_no, s}, kok,
+               "TOML 1.0 sözdizimi hatası: dizgi ve yorum dışında ASCII olmayan karakter (ya da çok "
+               "satırlı dizgide kaçıştan sonra toml++ 3.4.0'ın güvenle işleyemediği karakter)");
+        return sonuc;
+    }
     // Tek geçişte: ön tarama derinliği ve değer konumundaki belirteçleri verir. toml++'ın
     // okuyamadığı (alt normal, taşan, alt taşan) dilbilgisel olarak geçerli kayan noktalı
     // yazımlar aynı uzunlukta bir yer tutucuyla topluca değiştirilir; değerleri dönüştürmede
@@ -648,7 +812,7 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
         t.tara();
         if (t.gecersiz_baslik_satiri != 0) {
             b.hata("A5-K01", Konum{dosya_no, t.gecersiz_baslik_satiri}, kok,
-                   "TOML 1.0 sözdizimi hatası: tablo başlığı anahtar karakteriyle başlamıyor");
+                   std::string("TOML 1.0 sözdizimi hatası: ") + t.gecersiz_neden);
             return sonuc;
         }
         if (t.azami > kAzamiDerinlik) {
