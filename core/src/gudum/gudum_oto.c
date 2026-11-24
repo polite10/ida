@@ -12,7 +12,11 @@
  * Dikey: derinlik referansı hız ve ivme sınırlı ikinci mertebe modelden geçer (02 §2.4,
  * refModel3'ün sadeleştirilmişi): |w| ≤ dikey_hiz, |ẇ| ≤ GUD_DER_IVME, hedefe durma mesafesiyle
  * yaklaşılır. Hız sınırı kontrolün REF_DEP_RATE'inden büyük olmaz (görev modülü kırpar); böylece
- * kontrolün kendi referans sınırlayıcısı bu referansı gecikmesiz izler. Yüzey hedefinde, araç
+ * kontrolün kendi referans sınırlayıcısı bu referansı gecikmesiz izler. Hız sınırı düşünce (yeni
+ * öğe ya da duraklama hedefi daha yavaşsa) |w| yeni sınıra sıçramaz, ivme sınırıyla iner: geçişte
+ * en çok (|w| − w_yeni)/a süre yeni sınırın üstünde kalır (ivme sınırı hız sınırının önündedir).
+ * Derinleşme kırpması (dalis_yasak, en az irtifa) sürerken referans kırpılmış değerde, sıfır
+ * hızda tutulur (düzeltme turu bulgu 6). Yüzey hedefinde, araç
  * yüzeydeyken ve referans yüzey eşiğine varınca yüzey kipine geçilir (02 §2.4 SURFACE_TRANSIT:
  * dikey kapalı).
  *
@@ -139,6 +143,36 @@ static bool oto_etkin(const ida_core_t *c)
             (gor->mission_state == (uint8_t)IDA_MS_PAUSED));
 }
 
+/* AUTO isteğinin derinlik kırpmasının üst sınırı (m, aşağı +): dalis_yasak'ta bulunulan derinlik
+   (ida_gud_oto_istek), en az irtifada bulunulan derinlik eksi irtifa açığı (ida_gud_irtifa_kisit,
+   AUTO: yükselme). Kırpma yoksa ya da derinlik bilinmiyorsa false. */
+static bool oto_derinlik_siniri(const ida_core_t *c, float *sinir)
+{
+    const ida_gor_t *gor = &c->gor;
+    if (!gor->nav_derinlik_var) {
+        return false;
+    }
+    bool var = false;
+    float s = 0.0f;
+    if (gor->dalis_yasak) {
+        s = gor->nav_derinlik;
+        var = true;
+    }
+    if (gor->irtifa_kisit) {
+        const float acik = ida_prm_f32(&c->prm, IDA_PRM_gor_alt_min) - gor->nav_irtifa;
+        float ust = gor->nav_derinlik - ((acik > 0.0f) ? acik : 0.0f);
+        if (ust < 0.0f) {
+            ust = 0.0f;
+        }
+        if (!var || (ust < s)) {
+            s = ust;
+        }
+        var = true;
+    }
+    *sinir = s;
+    return var;
+}
+
 void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal)
 {
     if (!oto_etkin(c)) {
@@ -176,6 +210,14 @@ void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal)
     }
     const float hedef_d = (h->dikey == (uint8_t)IDA_GOR_HD_YUZEY) ? 0.0f : h->hedef_d;
     ida_gud_ref_adim(&g->ref, hedef_d, h->dikey_hiz, ida_prm_f32(p, IDA_PRM_gud_der_ivme), dt);
+    /* Derinleşme kırpması sürerken (dalis_yasak; en az irtifa) referans eski hedefe doğru
+       ilerlemez: ref.d isteğin kırpılmış değerine, ref.w sıfıra çekilir (düzeltme turu bulgu 6).
+       Kırpma kalkınca referans oradan sıfır hızla, ivme sınırıyla sürer. */
+    float sinir = 0.0f;
+    if (oto_derinlik_siniri(c, &sinir) && (g->ref.d > sinir)) {
+        g->ref.d = sinir;
+        g->ref.w = 0.0f;
+    }
     if ((h->yatay == (uint8_t)IDA_GOR_HY_YOL) && gor->nav_konum_var) {
         float rota = 0.0f;
         float y = 0.0f;

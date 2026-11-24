@@ -139,10 +139,21 @@ static void test_tablo36a_diger_turler(void)
 
 /* ---- Kabul 1: atomik yükleme -------------------------------------------------------------- */
 
-static void depo_esit(const ida_gor_gorev_t *a, const ida_gor_gorev_t *b)
+/* Deponun tamamı (düzeltme turu bulgu 8): yürürlükteki görev, yürütme ve durum alanları, güdüm
+   hedefi ve modülün geri kalanı; yalnız açık yükleme tamponu ve sayaçları değişebilir. */
+static void depo_esit(const ida_gor_t *a, const ida_gor_t *b)
 {
-    TEST_ASSERT_EQUAL_UINT16(a->n, b->n);
-    TEST_ASSERT_EQUAL_MEMORY(a->oge, b->oge, sizeof(a->oge[0]) * a->n);
+    static ida_gor_t x;
+    (void)memcpy(&x, b, sizeof(x));
+    (void)memcpy(x.gv.yuk, a->gv.yuk, sizeof(x.gv.yuk));
+    x.gv.yuk_n = a->gv.yuk_n;
+    x.gv.yuk_alinan = a->gv.yuk_alinan;
+    x.gv.yuk_acik = a->gv.yuk_acik;
+    TEST_ASSERT_EQUAL_UINT8(a->mission_state, b->mission_state);
+    TEST_ASSERT_EQUAL_UINT16(a->mission_item, b->mission_item);
+    TEST_ASSERT_EQUAL_UINT16(a->gv.n, b->gv.n);
+    TEST_ASSERT_EQUAL_MEMORY(a->gv.oge, b->gv.oge, sizeof(a->gv.oge));
+    TEST_ASSERT_EQUAL_MEMORY(a, &x, sizeof(x));
 }
 
 static void test_gecerli_yukleme(void)
@@ -189,8 +200,8 @@ static void test_gecersiz_yuklemeler_depoyu_degistirmez(void)
     g[0] = wp();
     g[1] = gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 2u);
-    ida_gor_gorev_t once;
-    (void)memcpy(&once, &o->g.gv, sizeof(once));
+    static ida_gor_t once;
+    (void)memcpy(&once, &o->g, sizeof(once));
 
     /* (a) sayı: 0 ve 129 */
     gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 0u), (uint16_t)IDA_REASON_OUT_OF_RANGE);
@@ -200,7 +211,7 @@ static void test_gecersiz_yuklemeler_depoyu_degistirmez(void)
     ida_mission_item_t m = wp();
     gd_ret_bekle(gd_oge_gonder(o, &m), (uint16_t)IDA_REASON_OUT_OF_RANGE);
     gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_END, 0u), (uint16_t)IDA_REASON_OUT_OF_RANGE);
-    depo_esit(&once, &o->g.gv);
+    depo_esit(&once, &o->g);
 
     /* (c) tür, (d) aralık, (e) sıra, (f) indis ≥ count: öğe reddi yüklemeyi kapatır; sonraki
        ITEM ve END de reddedilir. */
@@ -228,7 +239,7 @@ static void test_gecersiz_yuklemeler_depoyu_degistirmez(void)
         gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_END, 0u),
                      (uint16_t)IDA_REASON_OUT_OF_RANGE);
         TEST_ASSERT_EQUAL_UINT8(IDA_MS_LOADED, o->g.mission_state);
-        depo_esit(&once, &o->g.gv);
+        depo_esit(&once, &o->g);
     }
     /* (g) yarım yükleme: END sayı tutmuyor */
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 3u));
@@ -238,13 +249,13 @@ static void test_gecersiz_yuklemeler_depoyu_degistirmez(void)
     m.index = 1u;
     gd_kabul_bekle(gd_oge_gonder(o, &m));
     gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_END, 0u), (uint16_t)IDA_REASON_OUT_OF_RANGE);
-    depo_esit(&once, &o->g.gv);
+    depo_esit(&once, &o->g);
     /* Yeniden BEGIN önceki açık yüklemeyi bırakır; yürürlükteki görev END'e kadar değişmez. */
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 2u));
     m.index = 0u;
     gd_kabul_bekle(gd_oge_gonder(o, &m));
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 1u));
-    depo_esit(&once, &o->g.gv);
+    depo_esit(&once, &o->g);
     m.index = 0u;
     m.north_m = 7.0f;
     gd_kabul_bekle(gd_oge_gonder(o, &m));
@@ -410,12 +421,26 @@ static void test_running_paused_gecisleri(void)
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
     gd_ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
-    /* Silahsızlanma (AUTO kipi sürer): PAUSED; yeniden silahlanınca kaldığı öğeden sürer. */
+    /* Silahsızlanma (AUTO kipi sürer): PAUSED, operatör duraklaması gibi (düzeltme turu bulgu 2):
+       yeniden silahlanma tek başına görevi sürdürmez; RESUME ya da SET_MODE(AUTO) gerekir. */
     o->e.armed = false;
     gd_ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
     TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_YOK, o->g.gv.hedef.yatay);
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_ARM, 0u));
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay); /* duraklama noktasında tutar */
+    ctl_bekle(o, (uint8_t)IDA_MCTL_RESUME, (uint16_t)IDA_REASON_NONE);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    /* SET_MODE(AUTO) da sürdürür. */
+    o->e.armed = false;
+    gd_ilerle(o, 100);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_ARM, 0u));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
     gd_ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
     /* START (AUTO): öğe 0'dan yeniden. */
@@ -433,6 +458,110 @@ static void test_running_paused_gecisleri(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_ABORTED, o->g.mission_state);
     TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DEPTH_HOLD, o->e.mode);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+}
+
+/* Düzeltme turu bulgu 2, genel ilke: duraklamadan kendiliğinden çıkış yalnız duraklamanın nedeni
+   çekirdeğin kendi koşuluysa ve o koşul kalktıysa olur. Konum kaybıyla (HOLD) duraklamış görev
+   bu sırada silahsızlanıp yeniden silahlanırsa konum dönünce de sürmez. Silah, çekirdek
+   koşulundan kaynaklanan (HOLD) duraklamada inmedikçe görev kendiliğinden sürer (kontrol). */
+static void test_silahsizlanma_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    uzun_gorev(o);
+    gd_auto(o);
+    gd_ilerle(o, 300);
+    const uint8_t konumsuz = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    /* Kontrol: konum kaybı, HOLD, konum döner: kendiliğinden sürer. */
+    o->gi.gecerlilik = konumsuz;
+    gd_ilerle(o, 300);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 3000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    /* Konum kaybı sırasında silahsızlanma ve yeniden silahlanma. */
+    o->gi.gecerlilik = konumsuz;
+    gd_ilerle(o, 300);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    o->e.armed = false;
+    gd_ilerle(o, 300);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 3000); /* HOLD kalktı, ARM reddi yok */
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_ARM, 0u));
+    gd_ilerle(o, 3000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_AUTO, o->e.mode);
+    ctl_bekle(o, (uint8_t)IDA_MCTL_RESUME, (uint16_t)IDA_REASON_NONE);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* Düzeltme turu bulgu 2: SESSION_START'ta görevin yakaladığı konumlar ve öğenin başlangıç durumu
+   sıfırlanır (kestirim yeniden başlar; eski yerel düzlem noktası kullanılmaz): öğe yeniden
+   başlar, bacak yeni konumdan kurulur, duraklama noktası yeniden yakalanır. */
+static void test_oturum_basi_yakalanan_konumlar(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 100.0f, 0.0f,
+                  0.0f);
+    gd_yukle(o, g, 1u);
+    gd_auto(o);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, o->g.gv.hedef.bas_ne[0]);
+    o->gi.nav_ne[0] = 2.0f;
+    o->gi.nav_ne[1] = 1.0f;
+    gd_ilerle(o, 100);
+    /* Operatör duraklaması: duraklama noktası (2, 1). */
+    ctl_bekle(o, (uint8_t)IDA_MCTL_PAUSE, (uint16_t)IDA_REASON_NONE);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay);
+    TEST_ASSERT_EQUAL_FLOAT(2.0f, o->g.gv.hedef.hedef_ne[0]);
+    /* Oturum yeniden başlar; kestirimin yeni yerel düzleminde araç (50, 50). */
+    ida_gor_oturum_basi(&o->g);
+    o->gi.nav_ne[0] = 50.0f;
+    o->gi.nav_ne[1] = 50.0f;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay);
+    TEST_ASSERT_EQUAL_FLOAT(50.0f, o->g.gv.hedef.hedef_ne[0]);
+    TEST_ASSERT_EQUAL_FLOAT(50.0f, o->g.gv.hedef.hedef_ne[1]);
+    /* Sürdürülünce öğe yeniden başlar: bacak bulunulan konumdan. */
+    ctl_bekle(o, (uint8_t)IDA_MCTL_RESUME, (uint16_t)IDA_REASON_NONE);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_YOL, o->g.gv.hedef.yatay);
+    TEST_ASSERT_EQUAL_FLOAT(50.0f, o->g.gv.hedef.bas_ne[0]);
+    TEST_ASSERT_EQUAL_FLOAT(50.0f, o->g.gv.hedef.bas_ne[1]);
+    TEST_ASSERT_EQUAL_FLOAT(100.0f, o->g.gv.hedef.hedef_ne[0]);
+}
+
+/* Düzeltme turu bulgu 7: engel kalkınca yapılan kendiliğinden PAUSED → RUNNING geçişi de açık
+   yüklemeyi kapatır (yürüyen görev değiştirilemez, A4-K51). */
+static void test_kendiliginden_surme_yuklemeyi_kapatir(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    uzun_gorev(o);
+    gd_auto(o);
+    gd_ilerle(o, 300);
+    o->gi.gecerlilik = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    gd_ilerle(o, 300);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 2u));
+    ida_mission_item_t m = wp();
+    m.index = 0u;
+    gd_kabul_bekle(gd_oge_gonder(o, &m));
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 3000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_FALSE(o->g.gv.yuk_acik);
+    m.index = 1u;
+    gd_ret_bekle(gd_oge_gonder(o, &m), (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_END, 0u), (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MI_HOLD, o->g.gv.oge[0].tur);
 }
 
 static void test_complete_gecisi(void)
@@ -488,6 +617,9 @@ int main(void)
     RUN_TEST(test_scan_ogeleri_yuklenir);
     RUN_TEST(test_idle_ve_loaded_gecisleri);
     RUN_TEST(test_running_paused_gecisleri);
+    RUN_TEST(test_silahsizlanma_kendiliginden_surmez);
+    RUN_TEST(test_oturum_basi_yakalanan_konumlar);
+    RUN_TEST(test_kendiliginden_surme_yuklemeyi_kapatir);
     RUN_TEST(test_complete_gecisi);
     RUN_TEST(test_daraltmali_cagri);
     return UNITY_END();

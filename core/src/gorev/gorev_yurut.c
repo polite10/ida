@@ -10,20 +10,24 @@
  *
  * Engeller (RUNNING ⇄ PAUSED her adımda yeniden değerlendirilir): kip AUTO değil ya da araç
  * silahsız; yatay konum geçersiz; arıza eylemi HOLD ya da üstü (arıza görevin önündedir);
- * operatör duraklaması; ölü hesap yol sınırı (W5-K24: yüzeyde GNSS beklenir). Engel kalkınca
- * görev kaldığı öğeden sürer; operatör duraklaması yalnız RESUME ya da SET_MODE(AUTO) ile kalkar.
+ * operatör duraklaması; ölü hesap yol sınırı (W5-K24: yüzeyde GNSS beklenir). Kendiliğinden
+ * sürme yalnız duraklamanın nedeni çekirdeğin kendi koşuluysa (konum, HOLD, ölü hesap) ve o koşul
+ * kalktıysa olur; silahsızlanma operatör duraklaması gibidir (operator_durdu): yalnız RESUME ya da
+ * SET_MODE(AUTO) kaldırır, ARM tek başına sürdürmez (düzeltme turu bulgu 2). RUNNING'e her geçiş
+ * açık yüklemeyi kapatır.
  *
  * Saatler (02 §2.6, iskelet §4): öğe zaman aşımları ve toplam görev süresi duvar saatinde
  * (öğe süresi yalnız RUNNING iken sayılır); davranış süreleri (DIVE_TO bandı, HOLD süresi)
- * ölçüm zamanında (son zaman çerçevesi).
+ * ölçüm zamanında (son zaman çerçevesi) ve yalnız RUNNING adımlarında (duraklamada birikmez).
  *
- * Öğeler (A1 Tablo 3.6a; bitiş ölçütü / zaman aşımı):
- *   WAYPOINT  yatay uzaklık ≤ p0 ya da bacağın sonu geçildi / KAT·(uzaklık/p1 + |Δd|/w) + PAY
- *   DIVE_TO   |d − depth| ≤ p1, BANT_MS boyunca / KAT·|Δd|/min(p0, REF_DEP_RATE) + PAY
- *   SURFACE   derinlik ≤ YUZEY_D / KAT·d/min(p0, REF_DEP_RATE) + PAY
- *   HOLD      konum ve derinlik p1 içinde olduktan sonra p0 s / p0 + KAT·(uzaklık/LIM_V +
- *             |Δd|/w) + PAY
- *   WAIT_GNSS yükselme: yüzeyde / KAT·d/v_asc + PAY; bekleme: GNSS konumu taze ve istenen fix
+ * Öğeler (A1 Tablo 3.6a; bitiş ölçütü / zaman aşımı; D(x, w) = x/w + w/a, a = GUD_DER_IVME:
+ * ivme sınırlı referansın hızlanma ve yavaşlaması dahil dikey süre):
+ *   WAYPOINT  yatay uzaklık ≤ p0 ya da bacağın sonu geçildi / KAT·(uzaklık/p1 + D(|Δd|, w)) + PAY
+ *   DIVE_TO   |d − depth| ≤ p1, BANT_MS boyunca / KAT·D(|Δd|, min(p0, w)) + BANT_MS + PAY
+ *   SURFACE   derinlik ≤ YUZEY_D / KAT·D(d, min(p0, w)) + PAY
+ *   HOLD      RUNNING'de konum ve derinlik p1 içinde biriken süre ≥ p0 ve araç o an içeride /
+ *             p0 + KAT·(uzaklık/LIM_V + D(|Δd|, w)) + PAY
+ *   WAIT_GNSS yükselme: yüzeyde / KAT·D(d, v_asc) + PAY; bekleme: GNSS konumu taze ve istenen fix
  *             doğrulanabilir / p0
  *   SCAN_*    bu dilimde yürütülmez: başlangıcında görev ABORTED + iptal mandalı (SURFACE)
  * Zaman aşımında görev ABORTED olur ve iptal mandalı (IDA_GOR_K_GOREV_IPTAL) SURFACE ister.
@@ -65,6 +69,14 @@ static int64_t sn_ns(float s)
     const float sinir = 1.0e7f; /* ≈ 116 gün */
     const float x = (s > sinir) ? sinir : s;
     return (int64_t)(x * 1.0e9f);
+}
+
+/* |Δd| yolunun hız sınırı w ve ivme sınırı a ile süresinin üst sınırı (s). */
+static float dikey_sure(float dd, float w, float a)
+{
+    const float w_ = (w > 1.0e-3f) ? w : 1.0e-3f;
+    const float a_ = (a > 1.0e-3f) ? a : 1.0e-3f;
+    return (dd / w_) + (w_ / a_);
 }
 
 static float ref_hizi(const ida_gor_girdi_t *gi)
@@ -150,6 +162,7 @@ static void oge_baslat(ida_gor_t *g, const ida_gor_girdi_t *gi)
     const ida_param_t *p = gi->prm;
     v->oge_basladi = true;
     v->oge_gecen_ns = 0;
+    v->hold_birikim_ns = 0;
     v->bant_say = false;
     v->asama = 0u;
     v->hedef.kusak++;
@@ -166,25 +179,31 @@ static void oge_baslat(ida_gor_t *g, const ida_gor_girdi_t *gi)
     }
     const float yatay = uzaklik(v->oge_hedef_ne, v->oge_ne);
     const float dd = mutlak(o->derinlik - v->oge_d);
+    /* Dikey süre: hız ve ivme sınırlı referansın (gudum_oto.c) |Δd|/w + w/a üst sınırı
+       (hızlanma + yavaşlama; üçgen profil 2√(|Δd|/a) ≤ |Δd|/w + w/a). */
+    const float a_ref = ida_prm_f32(p, IDA_PRM_gud_der_ivme);
     float sure = 0.0f;
     switch (o->tur) {
     case IDA_MI_WAYPOINT:
-        sure = kat * ((yatay / o->p[1]) + (dd / ref)) + pay;
+        sure = kat * ((yatay / o->p[1]) + dikey_sure(dd, ref, a_ref)) + pay;
         break;
-    case IDA_MI_DIVE_TO:
-        sure = kat * (dd / en_az(o->p[0], ref)) + pay;
+    case IDA_MI_DIVE_TO: {
+        /* Bant süresi (BANT_MS) ölçüt gereği en az bir kez geçer (bulgu 5). */
+        const float bant_s = (float)ida_prm_u32(p, IDA_PRM_gor_bant_ms) * 1.0e-3f;
+        sure = kat * dikey_sure(dd, en_az(o->p[0], ref), a_ref) + bant_s + pay;
         break;
+    }
     case IDA_MI_SURFACE:
-        sure = kat * (v->oge_d / en_az(o->p[0], ref)) + pay;
+        sure = kat * dikey_sure(v->oge_d, en_az(o->p[0], ref), a_ref) + pay;
         break;
     case IDA_MI_HOLD: {
         const float lim_v = ida_prm_f32(p, IDA_PRM_kon_lim_v);
         const float v_yatay = (lim_v > 0.05f) ? lim_v : 0.05f;
-        sure = o->p[0] + (kat * ((yatay / v_yatay) + (dd / ref))) + pay;
+        sure = o->p[0] + (kat * ((yatay / v_yatay) + dikey_sure(dd, ref, a_ref))) + pay;
         break;
     }
     case IDA_MI_WAIT_GNSS:
-        sure = kat * (v->oge_d / ida_prm_f32(p, IDA_PRM_gor_yukselme_hizi)) + pay;
+        sure = kat * dikey_sure(v->oge_d, ida_prm_f32(p, IDA_PRM_gor_yukselme_hizi), a_ref) + pay;
         break;
     default:
         /* SCAN_LINES, SCAN_POINT: tarama deseni sonar işleme dilimiyle gelir; bu dilimde
@@ -266,11 +285,19 @@ static bool oge_yurut(ida_gor_t *g, const ida_gor_girdi_t *gi)
             derinlikte = g->nav_derinlik_var && (mutlak(d - o->derinlik) <= o->p[1]);
         }
         const bool icinde = (uzaklik(g->nav_ne, v->oge_hedef_ne) <= o->p[1]) && derinlikte;
-        if (!v->bant_say && icinde) {
-            v->bant_say = true; /* süre ilk kez tolerans içine girilince başlar */
+        /* Süre yalnız RUNNING adımlarında ve tolerans içindeyken birikir (ölçüm zamanında, art
+           arda iki içerideki adım arası); tolerans dışında ve duraklamada birikim durur, sıfırlanmaz.
+           Öğe birikim dolduğunda ve araç o an içerideyse biter (düzeltme turu bulgu 3). */
+        if (!icinde) {
+            v->bant_say = false;
+        } else {
+            if (v->bant_say && (t > v->bant_bas_ns)) {
+                v->hold_birikim_ns += t - v->bant_bas_ns;
+            }
+            v->bant_say = true;
             v->bant_bas_ns = t;
         }
-        bitti = v->bant_say && ((t - v->bant_bas_ns) >= sn_ns(o->p[0]));
+        bitti = icinde && (v->hold_birikim_ns >= sn_ns(o->p[0]));
         break;
     }
     case IDA_MI_WAIT_GNSS:
@@ -348,6 +375,14 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
         v->gorev_bas_ns = now;
     }
     const bool kip_engel = (yetki->mode != (uint8_t)IDA_MODE_AUTO) || !yetki->armed;
+    /* Silah indi (DISARM, SESSION_END, arıza eylemi; bulgu 2): görev operatör duraklaması gibi
+       durur; yeniden silahlanma tek başına sürdürmez, RESUME ya da SET_MODE(AUTO) gerekir
+       (ida_gor_gorev_kip_auto). Adım komutlardan önce koştuğu için aynı çağrıdaki ARM bunu
+       göremeden geçemez; silahsızken verilen RESUME ya da SET_MODE(AUTO) da sonraki adımda
+       yeniden duraklamaya döner. */
+    if (!yetki->armed) {
+        v->operator_durdu = true;
+    }
     /* Ölü hesap yol sınırı (W5-K24): koşan görevde aşılırsa görev duraklar, araç yüzeye çıkıp
        GNSS bekler; taze GNSS konumu beklemeyi bitirir, DR_BEKLE_S aşılırsa görev iptal edilir.
        Bekleme yalnız AUTO'da ve silahlıyken sürer: kipten çıkınca bırakılır (yeniden girişte yol
@@ -380,16 +415,23 @@ void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_gird
             ida_gor_gorev_durak_yakala(g);
             g->mission_state = (uint8_t)IDA_MS_PAUSED;
             v->hedef.kusak++;
-        } else if (v->dr_bekliyor && !v->durak_var) {
+        } else if (!v->durak_var) {
+            /* ölü hesap beklemesinin başı ya da oturum başından sonra (konumlar sıfırlandı):
+               duraklama noktası ilk geçerli konumda yakalanır */
             ida_gor_gorev_durak_yakala(g);
         } else {
             /* duraklama noktası korunur */
         }
         durak_hedefi(g, gi, !kip_engel && !ariza_engel && !konum_engel);
         v->kosuyordu = false;
+        v->bant_say = false; /* davranış süreleri duraklamada birikmez (bulgu 3) */
         return;
     }
     if (ms0 == (uint8_t)IDA_MS_PAUSED) {
+        /* Kendiliğinden sürme: yalnız çekirdeğin kendi koşulu (konum, HOLD, ölü hesap) kalktı;
+           silahsızlanma ve operatör duraklaması burada çözülmez (operator_durdu). Yürüyen görev
+           değiştirilemez: açık yükleme kapanır (A4-K51; bulgu 7). */
+        ida_gor_gorev_yukleme_kapat(g);
         g->mission_state = (uint8_t)IDA_MS_RUNNING;
         v->hedef.kusak++;
     }
@@ -440,21 +482,25 @@ void ida_gor_gorev_ariza(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t n
     if ((ms != (uint8_t)IDA_MS_RUNNING) && (ms != (uint8_t)IDA_MS_PAUSED)) {
         return;
     }
-    if (g->fs_level >= (uint8_t)IDA_FS_SURFACE) {
-        /* SURFACE ve üstü görevi iptal eder (02 §4.3 düşük batarya: görev iptali + SURFACE); iptal
-           mandalı kip AUTO'dan düşse de yüzeye çıkışı sürdürür (EMNİYET). */
-        iptal(g, g->fs_nedenleri);
-        g->gv.kosuyordu = false;
-        ida_gor_ariza_iptal_uygula(g, kip, gun, now_ns);
-    } else if ((g->fs_level >= (uint8_t)IDA_FS_HOLD) && (ms == (uint8_t)IDA_MS_RUNNING)) {
+    if ((g->fs_level >= (uint8_t)IDA_FS_HOLD) && (g->fs_level < (uint8_t)IDA_FS_SURFACE) &&
+        (ms == (uint8_t)IDA_MS_RUNNING)) {
         /* HOLD: görev durur (02 §4.3 EST_DEGRADED "HOLD (görev durur)"); arıza kalkınca sürer. */
         ida_gor_gorev_durak_yakala(g);
         g->mission_state = (uint8_t)IDA_MS_PAUSED;
         g->gv.hedef.yatay = (uint8_t)IDA_GOR_HY_YOK;
         g->gv.hedef.kusak++;
         g->gv.kosuyordu = false;
-    } else {
-        /* arıza eylemi yok ya da WARN */
+        g->gv.bant_say = false; /* davranış süreleri duraklamada birikmez (bulgu 3) */
+        /* Görev artık yürümüyor: AUTO'nun GCS hücreleri DEPTH_HOLD sütunundan (bulgu 1); düzey
+           aynı adımda yeniden hesaplanır, SURFACE'a çıkarsa aşağıda görev iptal edilir. */
+        ida_gor_ariza_yayinla(g, kip, gun, now_ns);
+    }
+    if (g->fs_level >= (uint8_t)IDA_FS_SURFACE) {
+        /* SURFACE ve üstü görevi iptal eder (02 §4.3 düşük batarya: görev iptali + SURFACE); iptal
+           mandalı kip AUTO'dan düşse de yüzeye çıkışı sürdürür (EMNİYET). */
+        iptal(g, g->fs_nedenleri);
+        g->gv.kosuyordu = false;
+        ida_gor_ariza_iptal_uygula(g, kip, gun, now_ns);
     }
 }
 

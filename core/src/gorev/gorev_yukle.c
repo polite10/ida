@@ -15,9 +15,9 @@
  *            yeniden başlatır; AUTO dışında BAD_MODE (görev yalnız AUTO'da yürür; AUTO'ya giriş
  *            SET_MODE(AUTO) ile, o da yüklü görevi başlatır).
  *   PAUSE  — RUNNING → PAUSED (operatör duraklaması: araç duraklama noktasında konum, derinlik ve
- *            yön tutar); başka durumda BAD_MODE.
- *   RESUME — PAUSED ve kip AUTO → RUNNING (öteki engeller sürüyorsa adım yeniden duraklatır);
- *            başka durumda BAD_MODE.
+ *            yön tutar); başka durumda BAD_MODE. Silahsızlanma da operatör duraklaması sayılır.
+ *   RESUME — PAUSED ve kip AUTO → RUNNING (öteki engeller sürüyorsa adım yeniden duraklatır;
+ *            silahsızken verilirse sonraki adım yeniden duraklatır); başka durumda BAD_MODE.
  *   ABORT  — LOADED, RUNNING, PAUSED → ABORTED (operatör iptali: yüzeye çıkış istenmez); başka
  *            durumda BAD_MODE.
  */
@@ -162,6 +162,11 @@ static void yukleme_kapat(ida_gor_gorev_t *v)
     v->yuk_alinan = 0u;
 }
 
+void ida_gor_gorev_yukleme_kapat(ida_gor_t *g)
+{
+    yukleme_kapat(&g->gv);
+}
+
 /* Yürütmenin öğe ve görev izleri (yeni görev ya da baştan başlatma). */
 static void yurutme_sifirla(ida_gor_t *g)
 {
@@ -178,6 +183,7 @@ static void yurutme_sifirla(ida_gor_t *g)
     v->asama = 0u;
     v->oge_gecen_ns = 0;
     v->oge_asim_ns = 0;
+    v->hold_birikim_ns = 0;
     v->hedef.yatay = (uint8_t)IDA_GOR_HY_YOK;
     v->hedef.kusak++;
 }
@@ -274,7 +280,7 @@ static void end_komutu(ida_gor_t *g, ida_cmd_result_t *r)
     v->n = n;
     yukleme_kapat(v);
     yurutme_sifirla(g);
-    v->iptal_nedeni = 0u;
+    /* iptal_nedeni korunur: iptal mandalı sürerken nedeni yalnız FAILSAFE_RESET temizler (bulgu 4) */
     g->mission_state = (uint8_t)IDA_MS_LOADED;
     kabul(r);
 }
@@ -356,12 +362,23 @@ void ida_gor_gorev_komut(ida_gor_t *g, const ida_emn_t *yetki, const ida_cmd_t *
 void ida_gor_gorev_oturum_basi(ida_gor_t *g)
 {
     /* A4-K72: oturum başında açık yükleme kapanır; ölçüm zamanına bağlı izler (bant sayacı,
-       ölü hesap yolunun son konumu, güdüm referansı) geçersizdir. Görev durumu, yürürlükteki
-       görev ve duvar saatindeki süreler korunur. */
+       ölü hesap yolunun son konumu, güdüm referansı) geçersizdir. Kestirim yeniden başladığı
+       için görevin yakaladığı yerel düzlem noktaları da geçersizdir (bulgu 2): öğe başındaki
+       konum, önceki yol noktasının hedefi ve duraklama noktası bırakılır, etkin öğe yeniden
+       başlar (konumlar ilk geçerli seyrüsefer görüntüsünden yeniden yakalanır). Görev durumu,
+       yürürlükteki görev, etkin öğenin indisi ve duvar saatindeki toplam görev süresi korunur. */
     ida_gor_gorev_t *v = &g->gv;
     yukleme_kapat(v);
     v->bant_say = false;
     v->dr_son_var = false;
+    v->oge_basladi = false;
+    v->kosuyordu = false;
+    v->onceki_yol = false;
+    v->durak_var = false;
+    v->asama = 0u;
+    v->oge_gecen_ns = 0;
+    v->hold_birikim_ns = 0;
+    v->hedef.yatay = (uint8_t)IDA_GOR_HY_YOK;
     v->hedef.kusak++;
 }
 
@@ -383,8 +400,8 @@ bool ida_gor_gorev_tutarli(const ida_gor_t *g)
                        b_gecerli(&v->dr_son_var) && b_gecerli(&v->durak_var) &&
                        b_gecerli(&g->nav_irtifa_var) && b_gecerli(&g->gnss_taze) &&
                        b_gecerli(&g->irtifa_kisit);
-    return bools && (v->n <= IDA_GOR_GOREV_AZAMI) && (v->yuk_n <= IDA_GOR_GOREV_AZAMI) &&
-           (v->yuk_alinan <= v->yuk_n) && (g->mission_item <= v->n) &&
+    return bools && (v->hold_birikim_ns >= 0) && (v->n <= IDA_GOR_GOREV_AZAMI) &&
+           (v->yuk_n <= IDA_GOR_GOREV_AZAMI) && (v->yuk_alinan <= v->yuk_n) && (g->mission_item <= v->n) &&
            (v->hedef.yatay <= (uint8_t)IDA_GOR_HY_TUT) &&
            (v->hedef.dikey <= (uint8_t)IDA_GOR_HD_YUZEY) && (v->asama <= 1u);
 }

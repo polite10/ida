@@ -95,13 +95,14 @@ typedef struct {
     /* Yürütme */
     bool oge_basladi;          /* etkin öğenin başlangıcı yapıldı                             */
     bool kosuyordu;            /* önceki adımın sonunda RUNNING (öğe süresi sayılır)          */
-    bool operator_durdu;       /* MISSION_CTL PAUSE                                           */
+    bool operator_durdu;       /* MISSION_CTL PAUSE ya da silahsızlanma: yalnız RESUME ya da
+                                  SET_MODE(AUTO) kaldırır                                     */
     bool dr_bekliyor;          /* ölü hesap yol sınırı: yüzeyde GNSS bekleniyor (W5-K24)      */
     bool iptal_bekliyor;       /* görevin iptal isteği arıza mandalına alınmadı               */
     bool gorev_bas_var;
     bool son_now_var;
     bool onceki_yol;           /* önceki öğe yol noktasıydı: bacak onun hedefinden başlar     */
-    bool bant_say;             /* DIVE_TO bandı / HOLD süresi sayılıyor                       */
+    bool bant_say;             /* DIVE_TO bandı sayılıyor / HOLD'da önceki RUNNING adımı içerideydi */
     bool dr_son_var;
     bool durak_var;            /* duraklama noktası yakalandı                                 */
     uint8_t asama;             /* öğe içi: WAIT_GNSS 0 yükselme, 1 bekleme                     */
@@ -110,7 +111,9 @@ typedef struct {
     int64_t son_now_ns;
     int64_t oge_gecen_ns;      /* duvar: öğede RUNNING geçen süre                             */
     int64_t oge_asim_ns;       /* duvar: öğenin (ya da alt aşamanın) zaman aşımı              */
-    int64_t bant_bas_ns;       /* ölçüm zamanı: bant/bekleme sayacının başı                   */
+    int64_t bant_bas_ns;       /* ölçüm zamanı: DIVE_TO bandının başı; HOLD'da son içerideki
+                                  RUNNING adımının ölçüm zamanı                               */
+    int64_t hold_birikim_ns;   /* ölçüm zamanı: HOLD'da RUNNING ve tolerans içinde biriken süre */
     int64_t dr_bas_ns;         /* duvar: GNSS beklemesinin başı                               */
     float dr_yol;              /* m: GNSS desteği olmadan kat edilen yatay yol                 */
     float dr_son_ne[2];

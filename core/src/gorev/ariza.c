@@ -33,8 +33,8 @@ static const uint8_t ARIZA_TABLOSU[IDA_GOR_K_SAYI][IDA_GOR_KIP_SAYI] = {
     /*                  INIT DIS MAN STB DH  SK  GD  AT */
     /* SIZINTI       */ {N_, W_, S_, S_, S_, S_, S_, S_},
     /* SIZINTI_BAYAT */ {N_, W_, W_, W_, W_, W_, W_, W_},
-    /* GCS_1         */ {N_, N_, H_, H_, W_, W_, H_, N_},
-    /* GCS_2         */ {N_, N_, S_, S_, S_, S_, S_, S_}, /* AUTO: yalnız yüzeyde (aşağıda) */
+    /* GCS_1         */ {N_, N_, H_, H_, W_, W_, H_, N_}, /* AUTO: görev yürürken (aşağıda) */
+    /* GCS_2         */ {N_, N_, S_, S_, S_, S_, S_, S_}, /* AUTO: görev yürürken yalnız yüzeyde */
     /* BATT_DUSUK    */ {N_, W_, W_, W_, W_, W_, W_, S_},
     /* BATT_KRIT     */ {N_, W_, S_, S_, S_, S_, S_, S_},
     /* BATT_KRIT_2   */ {N_, W_, P_, P_, P_, P_, P_, P_},
@@ -334,15 +334,24 @@ uint8_t ida_gor_ariza_duzey(const ida_gor_t *g, uint32_t aktif, uint8_t kip, uin
 {
     uint8_t duzey = (uint8_t)IDA_FS_NONE;
     uint32_t neden = 0u;
+    /* AUTO sütununun GCS hücreleri (GCS_1 yok, GCS_2 su altında yok) yürüyen görevi korur; görev
+       yürümezken (PAUSED: operatör, silahsızlanma, HOLD, ölü hesap) korunacak görev yoktur ve
+       GCS satırları DEPTH_HOLD sütunuyla değerlendirilir (düzeltme turu bulgu 1; EMNİYET). */
+    const bool auto_yuruyen =
+        (kip == (uint8_t)IDA_MODE_AUTO) && (g->mission_state == (uint8_t)IDA_MS_RUNNING);
     for (uint32_t k = 0u; k < (uint32_t)IDA_GOR_K_SAYI; k++) {
         if ((aktif & IDA_GOR_K_BIT(k)) == 0u) {
             continue;
         }
-        uint8_t h = ida_gor_ariza_hucre((uint8_t)k, kip);
-        /* AUTO × GCS_2: "su altında yok; yüzeyde SURFACE" (02 §4.3). Derinlik bilinmiyorsa
-           yüzeyde sayılır (EMNİYET: eylem uygulanır). */
-        if ((k == (uint32_t)IDA_GOR_K_GCS_2) && (kip == (uint8_t)IDA_MODE_AUTO) &&
-            g->nav_derinlik_var && !g->yuzeyde) {
+        const bool gcs = (k == (uint32_t)IDA_GOR_K_GCS_1) || (k == (uint32_t)IDA_GOR_K_GCS_2);
+        const uint8_t sutun = (gcs && (kip == (uint8_t)IDA_MODE_AUTO) && !auto_yuruyen)
+                                  ? (uint8_t)IDA_MODE_DEPTH_HOLD
+                                  : kip;
+        uint8_t h = ida_gor_ariza_hucre((uint8_t)k, sutun);
+        /* AUTO × GCS_2 (görev yürürken): "su altında yok; yüzeyde SURFACE" (02 §4.3). Derinlik
+           bilinmiyorsa yüzeyde sayılır (EMNİYET: eylem uygulanır). */
+        if ((k == (uint32_t)IDA_GOR_K_GCS_2) && auto_yuruyen && g->nav_derinlik_var &&
+            !g->yuzeyde) {
             h = (uint8_t)IDA_FS_NONE;
         }
         if (h >= (uint8_t)IDA_FS_WARN) {

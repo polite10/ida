@@ -85,7 +85,8 @@ static inline bool ida_gor_yatay_gecerli(uint8_t gecerlilik)
 }
 
 /* Etkin koşul kümesi `aktif` ile kip sütunu `kip`te arıza eylemi düzeyi ve nedenleri (saf;
-   bozulma izi ve AUTO × GCS_2 kuralı dahil). nedenler NULL olabilir. */
+   bozulma izi ve AUTO × GCS kuralları dahil: AUTO'da görev RUNNING değilse GCS satırları
+   DEPTH_HOLD sütunuyla). nedenler NULL olabilir. */
 uint8_t ida_gor_ariza_duzey(const ida_gor_t *g, uint32_t aktif, uint8_t kip, uint32_t *nedenler);
 /* Kip komutla değişti: yeni sütunda mandalları kurar ve düzeyi yayınlar (FAILSAFE_CHANGE). */
 void ida_gor_ariza_kip_degisti(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns);
@@ -161,6 +162,8 @@ bool ida_gor_gorev_degisebilir(const ida_gor_t *g);
 void ida_gor_gorev_kip_auto(ida_gor_t *g);
 /* AUTO'dan çıkış: RUNNING → PAUSED (duraklama noktası yakalanır). */
 void ida_gor_gorev_kip_cikis(ida_gor_t *g);
+/* Açık yüklemeyi kapatır (RUNNING'e her geçişte; A4-K51). */
+void ida_gor_gorev_yukleme_kapat(ida_gor_t *g);
 /* Adımın görev kısmı (kip değerlendirmesinden önce): ölü hesap yolu, engeller (RUNNING ⇄
    PAUSED), öğe başlangıcı, bitiş ölçütü, zaman aşımı, güdüm hedefi. */
 void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_girdi_t *gi);

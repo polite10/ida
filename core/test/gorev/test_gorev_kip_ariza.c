@@ -568,7 +568,10 @@ static uint32_t kosul_olustur(ortam_t *o, uint32_t k)
 }
 
 /* Koşul kümesinin kip sütunundaki beklenen düzeyi ve nedenleri (testin kuralları). */
-static void beklenen_hesapla(uint32_t kume, uint8_t bkip, uint8_t *beklenen, uint32_t *nedenler)
+/* gcs_dh: AUTO'da görev yürümüyor (PAUSED; matriste silahsız AUTO): GCS satırları DEPTH_HOLD
+   sütunuyla (düzeltme turu bulgu 1). */
+static void beklenen_hesapla(uint32_t kume, uint8_t bkip, bool gcs_dh, uint8_t *beklenen,
+                             uint32_t *nedenler)
 {
     for (uint32_t j = 0u; j < (uint32_t)IDA_GOR_K_SAYI; j++) {
         if ((kume & IDA_GOR_K_BIT(j)) == 0u) {
@@ -578,7 +581,11 @@ static void beklenen_hesapla(uint32_t kume, uint8_t bkip, uint8_t *beklenen, uin
         if ((j == (uint32_t)IDA_GOR_K_BATT_KRIT_2) && (matris(IDA_GOR_K_BATT_KRIT, bkip) < W_)) {
             continue;
         }
-        const uint8_t h = matris(j, bkip);
+        const bool gcs = (j == (uint32_t)IDA_GOR_K_GCS_1) || (j == (uint32_t)IDA_GOR_K_GCS_2);
+        const uint8_t sutun = (gcs && gcs_dh && (bkip == IDA_MODE_AUTO))
+                                  ? (uint8_t)IDA_MODE_DEPTH_HOLD
+                                  : bkip;
+        const uint8_t h = matris(j, sutun);
         if (h >= W_) {
             *nedenler |= ida_gor_ariza_nedeni((uint8_t)j);
         }
@@ -618,8 +625,7 @@ static void test_md3_her_hucre_bir_vaka(void)
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(IDA_FS_NONE, o->g.fs_level, "sağlıklı ortam");
                 const bool armed0 = o->e.armed;
                 const uint32_t kume = kosul_olustur(o, k);
-                o->now += 1 * MS;
-                adim(o); /* AUTO: iptalin kip düşmesi bir adım sonra (W5-gorev-yurutucu) */
+                vaka_mesaji(msj, k, kip, silahli);
                 /* Beklenen kip: kestirim koşulları INIT'ten çıkarır ve SK'yi DH'ye indirir. */
                 uint8_t bkip = kip;
                 const bool est_kosulu = (k == (uint32_t)IDA_GOR_K_EST_BOZUK) ||
@@ -632,21 +638,41 @@ static void test_md3_her_hucre_bir_vaka(void)
                 if (est_kosulu && (kip == IDA_MODE_STATION_KEEP)) {
                     bkip = (uint8_t)IDA_MODE_DEPTH_HOLD;
                 }
+                /* Silahsız AUTO'da görev durur (PAUSED): GCS satırları DEPTH_HOLD sütunuyla. */
+                const bool gcs_dh = !armed0;
                 uint8_t beklenen = N_;
                 uint32_t nedenler = 0u;
-                beklenen_hesapla(kume, bkip, &beklenen, &nedenler);
+                beklenen_hesapla(kume, bkip, gcs_dh, &beklenen, &nedenler);
                 /* AUTO'da SURFACE ve üstü görevi iptal eder (W5-gorev-yurutucu): iptal mandalı
                    SURFACE ister (nedeni AUTO sütununun nedenleri), görev bitince kip
                    DEPTH_HOLD'a iner (02 §2.6) ve o sütunun hücreleri de etkindir. */
-                if ((bkip == IDA_MODE_AUTO) && (beklenen >= S_)) {
-                    uint8_t b_dh = N_;
-                    uint32_t n_dh = 0u;
-                    beklenen_hesapla(kume, (uint8_t)IDA_MODE_DEPTH_HOLD, &b_dh, &n_dh);
-                    bkip = (uint8_t)IDA_MODE_DEPTH_HOLD;
-                    nedenler |= n_dh;
-                    beklenen = (b_dh > S_) ? b_dh : (uint8_t)S_;
+                const bool iptal = (bkip == IDA_MODE_AUTO) && (beklenen >= S_);
+                uint8_t b_dh = N_;
+                uint32_t n_dh = 0u;
+                if (iptal) {
+                    beklenen_hesapla(kume, (uint8_t)IDA_MODE_DEPTH_HOLD, false, &b_dh, &n_dh);
+                    b_dh = (b_dh > S_) ? b_dh : (uint8_t)S_;
+                    n_dh |= nedenler;
                 }
-                vaka_mesaji(msj, k, kip, silahli);
+                /* Eylem koşulun oluştuğu adımda gelir (düzeltme turu bulgu 8): kosul_olustur'un
+                   son adımı. Tek adımlık koşulda iptalin kip düşmesi henüz yoktur (AUTO sütunu);
+                   çok adımlı koşulda koşul daha önceki bir adımda oluştuysa kip zaten düşmüştür. */
+                if (iptal && (o->e.mode == (uint8_t)IDA_MODE_DEPTH_HOLD)) {
+                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(b_dh, o->g.fs_level, msj);
+                    TEST_ASSERT_EQUAL_HEX32_MESSAGE(n_dh, o->g.fs_nedenleri, msj);
+                } else {
+                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(bkip, o->e.mode, msj);
+                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(beklenen, o->g.fs_level, msj);
+                    TEST_ASSERT_EQUAL_HEX32_MESSAGE(nedenler, o->g.fs_nedenleri, msj);
+                }
+                /* Bir adım sonra: AUTO'da iptalin kip düşmesi (W5-gorev-yurutucu). */
+                o->now += 1 * MS;
+                adim(o);
+                if (iptal) {
+                    bkip = (uint8_t)IDA_MODE_DEPTH_HOLD;
+                    beklenen = b_dh;
+                    nedenler = n_dh;
+                }
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(bkip, o->e.mode, msj);
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(beklenen, o->g.fs_level, msj);
                 TEST_ASSERT_EQUAL_HEX32_MESSAGE(nedenler, o->g.fs_nedenleri, msj);
@@ -666,6 +692,7 @@ static void test_md3_auto_gcs2_yuzeyde(void)
     ortam_t *o = &O;
     ortam_kur(o);
     kip_kur(o, (uint8_t)IDA_MODE_AUTO);
+    o->e.armed = true; /* görev yürür (silahsız AUTO'da görev durur: GCS satırları DH sütunu) */
     o->gi.nav_derinlik = 0.1f;
     o->besle_hb = false;
     ilerle(o, 61000);
@@ -686,6 +713,71 @@ static void test_md3_auto_gcs2_yuzeyde(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r.ack);
     ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+}
+
+static ida_cmd_result_t gorev_ctl(ortam_t *o, uint8_t eylem)
+{
+    ida_cmd_t c;
+    (void)memset(&c, 0, sizeof(c));
+    o->seq++;
+    c.cmd_id = o->seq;
+    c.type = (uint8_t)IDA_CMD_MISSION_CTL;
+    c.u.mission_ctl.action = eylem;
+    ida_cmd_result_t r;
+    (void)memset(&r, 0, sizeof(r));
+    ida_gor_gorev_komut(&o->g, &o->e, &c, &r);
+    return r;
+}
+
+/* AUTO × GCS (düzeltme turu bulgu 1): "su altında GCS kaybına eylem yok" istisnası yalnız görev
+   RUNNING iken geçerlidir; görev PAUSED iken GCS satırları DEPTH_HOLD sütunuyla değerlendirilir
+   (GCS_1 WARN, GCS_2 SURFACE ve görev iptali). Görev yürürken (kontrol) su altında eylem yok. */
+static void test_md3_auto_duraklamada_gcs_dh_sutunu(void)
+{
+    ortam_t *o = &O;
+    /* Kontrol: görev RUNNING, 2 m su altında, HEARTBEAT 120 s yok: eylem yok. */
+    ortam_kur(o);
+    kip_kur(o, (uint8_t)IDA_MODE_AUTO);
+    o->e.armed = true;
+    o->now += 10 * MS;
+    adim(o);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    o->besle_hb = false;
+    ilerle(o, 120000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    /* Görev operatörce duraklatıldı, araç 2 m'de, HEARTBEAT kesilir. */
+    ortam_kur(o);
+    kip_kur(o, (uint8_t)IDA_MODE_AUTO);
+    o->e.armed = true;
+    o->now += 10 * MS;
+    adim(o);
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, gorev_ctl(o, (uint8_t)IDA_MCTL_PAUSE).ack);
+    o->now += 10 * MS;
+    adim(o);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_AUTO, o->e.mode);
+    o->besle_hb = false;
+    ilerle(o, 3500); /* GCS_1: DEPTH_HOLD sütunu WARN */
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FSR_GCS_LOSS, o->g.fs_nedenleri);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    ilerle(o, 57000); /* 60,5 s: GCS_2, DEPTH_HOLD sütunu SURFACE; görev iptal */
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
+    TEST_ASSERT_TRUE((o->g.fs_nedenleri & IDA_FSR_GCS_LOSS) != 0u);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_ABORTED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_DEPTH_HOLD, o->e.mode);
+    ilerle(o, 60000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
+    /* Aynı dizi DEPTH_HOLD'da: aynı eylem. */
+    ortam_kur(o);
+    kip_kur(o, (uint8_t)IDA_MODE_DEPTH_HOLD);
+    o->e.armed = true;
+    o->besle_hb = false;
+    ilerle(o, 3500);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_WARN, o->g.fs_level);
+    ilerle(o, 57000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
 }
 
 /* ---- Mandallar ve FAILSAFE_RESET (3.17) -------------------------------------------------- */
@@ -897,6 +989,7 @@ int main(void)
     RUN_TEST(test_md3_tablo_kaynakla_ayni);
     RUN_TEST(test_md3_her_hucre_bir_vaka);
     RUN_TEST(test_md3_auto_gcs2_yuzeyde);
+    RUN_TEST(test_md3_auto_duraklamada_gcs_dh_sutunu);
     RUN_TEST(test_md3_mandal_ve_failsafe_reset);
     RUN_TEST(test_md3_init_mandal_kurmaz);
     RUN_TEST(test_k1_estop_silahsizlandirmaz);

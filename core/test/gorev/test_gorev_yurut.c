@@ -5,7 +5,8 @@
  * kinematik modelle bir görevin baştan sona yürütülmesi.
  *
  * Zaman aşımlarının beklenen değerleri testte A1 Tablo 3.6a alanlarından ve varsayılan
- * parametrelerden (ASIM_KAT 2, ASIM_PAY_S 60, REF_DEP_RATE 0,25 m/s) hesaplanır.
+ * parametrelerden (ASIM_KAT 2, ASIM_PAY_S 60, BANT_MS 1000, REF_DEP_RATE 0,25 m/s, GUD_DER_IVME
+ * 0,05 m/s²) hesaplanır.
  */
 #include "gorev_duzenek.h"
 #include "gudum/gudum.h"
@@ -20,6 +21,7 @@ static gd_t O;
 
 #define KAT 2.0f
 #define PAY 60.0f
+#define IVME 0.05f /* GUD_DER_IVME: referansın hızlanma + yavaşlama süresi w/a */
 
 static void konum(gd_t *o, float n, float e)
 {
@@ -107,8 +109,9 @@ static void test_waypoint_zaman_asimi_ve_duraklama(void)
     gd_ilerle(o, 200000);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
-    /* KAT·(10 m / 0,5 m/s + 0,1 m / 0,25 m/s) + PAY = 100,8 s; 10 s geçti. */
-    asim_bekle(o, (KAT * ((10.0f / 0.5f) + (0.1f / 0.25f))) + PAY - 10.0f, IDA_FSR_GEOFENCE);
+    /* KAT·(10 m / 0,5 m/s + 0,1 m / 0,25 m/s + W/A) + PAY = 110,8 s; 10 s geçti. */
+    asim_bekle(o, (KAT * ((10.0f / 0.5f) + (0.1f / 0.25f) + (0.25f / IVME))) + PAY - 10.0f,
+               IDA_FSR_GEOFENCE);
     /* İptal mandalını FAILSAFE_RESET kaldırır. */
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_FAILSAFE_RESET, 0u));
     gd_ilerle(o, 100);
@@ -146,10 +149,10 @@ static void test_dive_to_bant_ve_zaman_asimi(void)
     TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
     gd_ilerle(o, 300);
     TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
-    /* Zaman aşımı: |Δd| = 1,9 m, w = 0,2 m/s → KAT·9,5 + PAY = 79 s. */
+    /* Zaman aşımı: |Δd| = 1,9 m, w = 0,2 m/s → KAT·(9,5 + w/a 4) + BANT 1 s + PAY = 88 s. */
     gd_kur(o);
     baslat(o, g, 2u);
-    asim_bekle(o, (KAT * (1.9f / 0.2f)) + PAY, IDA_FSR_GEOFENCE);
+    asim_bekle(o, (KAT * ((1.9f / 0.2f) + (0.2f / IVME))) + 1.0f + PAY, IDA_FSR_GEOFENCE);
 }
 
 static void test_surface_bitis_ve_zaman_asimi(void)
@@ -172,12 +175,12 @@ static void test_surface_bitis_ve_zaman_asimi(void)
     o->gi.nav_derinlik = 0.25f; /* YUZEY_D = 0,3 m */
     gd_ilerle(o, 100);
     TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
-    /* Zaman aşımı: 2 m / 0,25 m/s → KAT·8 + PAY = 76 s. */
+    /* Zaman aşımı: 2 m / 0,25 m/s → KAT·(8 + w/a 5) + PAY = 86 s. */
     gd_kur(o);
     o->gi.nav_derinlik = 2.0f;
     gd_ilerle(o, 100);
     baslat(o, g, 2u);
-    asim_bekle(o, (KAT * (2.0f / 0.25f)) + PAY, IDA_FSR_GEOFENCE);
+    asim_bekle(o, (KAT * ((2.0f / 0.25f) + (0.25f / IVME))) + PAY, IDA_FSR_GEOFENCE);
 }
 
 /* ---- HOLD ---------------------------------------------------------------------------------- */
@@ -202,14 +205,52 @@ static void test_hold_sure_olcum_zamaninda(void)
     gd_ilerle(o, 10000);
     TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
     o->olcum_dondur = false;
-    /* Tolerans dışına çıkmak süreyi sıfırlamaz (süre ilk girişte başlar). */
+    /* Tolerans dışında süre birikmez ve öğe bitmez; birikmiş süre (2,9 s) sıfırlanmaz
+       (düzeltme turu bulgu 3). */
     konum(o, 6.0f, 0.0f);
-    gd_ilerle(o, 2200);
+    gd_ilerle(o, 5000);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    konum(o, 2.5f, 0.0f);
+    gd_ilerle(o, 2000); /* yeniden giriş adımı + 19 × 0,1 s: 4,8 s */
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    gd_ilerle(o, 400);
     TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
-    /* Zaman aşımı: p0 + KAT·(3 m / LIM_V 1 m/s + 0,1 m / 0,25 m/s) + PAY = 71,8 s. */
+    /* Zaman aşımı: p0 + KAT·(3 m / LIM_V 1 m/s + 0,1 m / 0,25 m/s + w/a 5) + PAY = 81,8 s. */
     gd_kur(o);
     baslat(o, g, 2u);
-    asim_bekle(o, 5.0f + (KAT * (3.0f + 0.4f)) + PAY, IDA_FSR_GEOFENCE);
+    asim_bekle(o, 5.0f + (KAT * (3.0f + 0.4f + (0.25f / IVME))) + PAY, IDA_FSR_GEOFENCE);
+}
+
+/* Düzeltme turu bulgu 3: HOLD süresi yalnız RUNNING adımlarında ve araç tolerans içindeyken
+   birikir; duraklamada birikim durur (sıfırlanmaz); öğe ancak birikmiş süre dolduğunda ve araç o
+   an tolerans içindeyse biter. Dizi: 60 s HOLD → 1 s sonra PAUSE → MANUAL'da 200 m uzaklaşma →
+   70 s sonra SET_MODE(AUTO). */
+static void test_hold_suresi_duraklamada_birikmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 60.0f, 5.0f, 0.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
+    baslat(o, g, 2u);
+    gd_ilerle(o, 1000);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_PAUSE));
+    o->e.mode = (uint8_t)IDA_MODE_MANUAL; /* daraltıcı kip (emniyet modülünün (b) adımı) */
+    gd_ilerle(o, 100);
+    konum(o, 200.0f, 0.0f);
+    gd_ilerle(o, 70000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item); /* tolerans dışında bitmez */
+    /* Toleransa dönüş: birikmiş ~1 s'ye 59 s eklenmeli. */
+    konum(o, 0.0f, 0.0f);
+    gd_ilerle(o, 57000);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    gd_ilerle(o, 3000);
+    TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
 }
 
 /* ---- WAIT_GNSS ----------------------------------------------------------------------------- */
@@ -307,6 +348,55 @@ static void test_ariza_sizinti_ve_batarya_gorevi_iptal_eder(void)
     gd_ilerle(o, 5000);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
     TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+}
+
+/* Düzeltme turu bulgu 4: iptal mandalının nedeni yalnız FAILSAFE_RESET'te temizlenir; yeni görevin
+   yüklenmesi (MISSION_END) mandal sürerken nedeni varsayılana (GEOFENCE) çevirmez. */
+static void test_iptal_nedeni_yeni_yuklemede_korunur(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u); /* yüzeyde (0,1 m): AUTO × GCS_2 SURFACE */
+    o->besle_hb = false;
+    gd_ilerle(o, 61000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_ABORTED, o->g.mission_state);
+    o->besle_hb = true;
+    gd_ilerle(o, 300);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FSR_GCS_LOSS, o->g.fs_nedenleri);
+    gd_yukle(o, &UZUN, 1u);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_SURFACE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_HEX32(IDA_FSR_GCS_LOSS, o->g.fs_nedenleri);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_FAILSAFE_RESET, 0u));
+    TEST_ASSERT_EQUAL_UINT32(0u, o->g.gv.iptal_nedeni);
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+}
+
+/* Düzeltme turu bulgu 5: zaman aşımı BANT_MS'i ve ivme sınırlı referansın hızlanma ve
+   yavaşlama süresini (w/a) sayar: ASIM_PAY_S = 0 iken yakın hedefli DIVE_TO bandını tamamlar. */
+static void test_dive_to_yakin_hedef_paysiz(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    gd_param_u32(o, IDA_PRM_gor_asim_pay_s, 0u);
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 1.0f, 0.2f, 0.0f, 0.0f, 0.55f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.55f);
+    o->gi.nav_derinlik = 0.5f; /* hedef bandı (0,55 ± 0,2) içinde; |Δd| = 0,05 m */
+    gd_ilerle(o, 100);
+    baslat(o, g, 2u);
+    gd_ilerle(o, 2000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
+    /* Aşımın süresi: KAT·(|Δd|/w + w/a) + BANT; w = min(p0, REF_DEP_RATE) = 0,25, a = 0,05. */
+    gd_kur(o);
+    gd_param_u32(o, IDA_PRM_gor_asim_pay_s, 0u);
+    o->gi.nav_derinlik = 1.5f; /* bant dışı (|1,5 − 0,55| > 0,2) ve orada kalır */
+    gd_ilerle(o, 100);
+    baslat(o, g, 2u);
+    asim_bekle(o, (KAT * ((0.95f / 0.25f) + (0.25f / 0.05f))) + 1.0f, IDA_FSR_GEOFENCE);
 }
 
 static void test_ariza_konum_kaybi(void)
@@ -529,7 +619,7 @@ static void model_adim(gd_t *o, model_t *m, float dt)
             ida_gud_ilos_integral(&m->y_int, y, 3.0f, 0.2f, dt);
         }
         const float hd = (h->dikey == (uint8_t)IDA_GOR_HD_YUZEY) ? 0.0f : h->hedef_d;
-        ida_gud_ref_adim(&m->ref, hd, h->dikey_hiz, 0.05f, dt);
+        ida_gud_ref_adim(&m->ref, hd, h->dikey_hiz, IVME, dt);
     }
     const float dpsi = ida_aci_sar(yon - o->gi.nav_yon);
     const float lim = 0.35f * dt;
@@ -594,9 +684,12 @@ int main(void)
     RUN_TEST(test_dive_to_bant_ve_zaman_asimi);
     RUN_TEST(test_surface_bitis_ve_zaman_asimi);
     RUN_TEST(test_hold_sure_olcum_zamaninda);
+    RUN_TEST(test_hold_suresi_duraklamada_birikmez);
     RUN_TEST(test_wait_gnss);
     RUN_TEST(test_scan_yurutulmez);
     RUN_TEST(test_ariza_sizinti_ve_batarya_gorevi_iptal_eder);
+    RUN_TEST(test_iptal_nedeni_yeni_yuklemede_korunur);
+    RUN_TEST(test_dive_to_yakin_hedef_paysiz);
     RUN_TEST(test_ariza_konum_kaybi);
     RUN_TEST(test_olu_hesap_yol_siniri);
     RUN_TEST(test_olu_hesap_kipten_cikis);

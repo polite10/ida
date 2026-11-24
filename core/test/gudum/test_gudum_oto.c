@@ -375,6 +375,47 @@ static void test_en_az_irtifa_kirpmasi(void)
     TEST_ASSERT_EQUAL_FLOAT(2.5f, i.derinlik);
 }
 
+/* Düzeltme turu bulgu 6: en az irtifa ya da dalis_yasak kırpması sürerken derinlik referans modeli
+   eski hedefe doğru ilerlemez: ref.d kırpılmış değere, ref.w sıfıra çekilir. Kırpma kalkınca
+   referans kırpılmış değerden sıfır hızla, ivme sınırıyla sürer. */
+static void test_kirpma_referansi_tutar(void)
+{
+    /* dalis_yasak: bulunulan derinlik (1 m), hedef 2 m. */
+    auto_kur();
+    ida_gud_adim(&C.gud, &C);
+    C.gor.dalis_yasak = true;
+    for (int i = 0; i < 1000; i++) {
+        C.cer.tf_t_ns += 10 * DS_MS;
+        ida_gud_adim(&C.gud, &C);
+        TEST_ASSERT_TRUE(C.gud.ref.d <= 1.0f + 1.0e-6f);
+        TEST_ASSERT_TRUE(C.gud.ref.w <= 0.0f);
+    }
+    C.gor.dalis_yasak = false;
+    C.cer.tf_t_ns += 10 * DS_MS;
+    ida_gud_adim(&C.gud, &C);
+    TEST_ASSERT_TRUE(mutlak(C.gud.ref.w) <= (0.05f * 0.01f) + 1.0e-6f);
+    TEST_ASSERT_TRUE(C.gud.ref.d <= 1.0f + 1.0e-4f);
+    /* En az irtifa (AUTO: yükselme): açık 0,2 m → üst sınır 0,8 m. */
+    auto_kur();
+    ida_gud_adim(&C.gud, &C);
+    C.gor.irtifa_kisit = true;
+    C.gor.nav_irtifa_var = true;
+    C.gor.nav_irtifa = 0.1f;
+    for (int i = 0; i < 1000; i++) {
+        C.cer.tf_t_ns += 10 * DS_MS;
+        ida_gud_adim(&C.gud, &C);
+        TEST_ASSERT_TRUE(C.gud.ref.d <= 0.8f + 1.0e-5f);
+        TEST_ASSERT_TRUE(C.gud.ref.w <= 0.0f);
+    }
+    ida_kon_istek_t i;
+    ida_gud_kon_istegi(&C.gud, &C, &i);
+    TEST_ASSERT_FLOAT_WITHIN(1.0e-5f, 0.8f, i.derinlik);
+    C.gor.irtifa_kisit = false;
+    C.cer.tf_t_ns += 10 * DS_MS;
+    ida_gud_adim(&C.gud, &C);
+    TEST_ASSERT_TRUE(mutlak(C.gud.ref.w) <= (0.05f * 0.01f) + 1.0e-6f);
+}
+
 /* ---- md. 6: GUIDED'da 3 s yeni hedef yoksa son hedefte kalınır ---------------------------- */
 
 static void test_guided_sp_zaman_asimi(void)
@@ -467,6 +508,7 @@ int main(void)
     RUN_TEST(test_konum_tutma);
     RUN_TEST(test_auto_istegi_kanallar);
     RUN_TEST(test_en_az_irtifa_kirpmasi);
+    RUN_TEST(test_kirpma_referansi_tutar);
     RUN_TEST(test_guided_sp_zaman_asimi);
     RUN_TEST(test_guided_sp_zaman_asimi_cekirdek_yolu);
     return UNITY_END();
