@@ -583,21 +583,29 @@ static void test_gc23_acma_sonuclari(void)
 
 /* ---- G-Ç49: FIRE sonuçları ---------------------------------------------------------------- */
 
+/* Tek FIRE sonucunu verir; beklenen durumu ve kapanma kaydını doğrular. */
+static void gc49_tek_sonuc(uint8_t sonuc, uint8_t beklenen_durum)
+{
+    silahla(0u);
+    const uint64_t ates = izin_ve_ates(0u, ates_iste(0u));
+    yeni();
+    emn();
+    dz_sonuc(&IN, ates, sonuc, 0);
+    TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
+    TEST_ASSERT_EQUAL_UINT8(beklenen_durum, OUT.fc.state);
+    TEST_ASSERT_TRUE(kapanma_var(0u));
+}
+
 static void test_gc49_fire_sonuclari(void)
 {
     const uint8_t kilit[] = {IDA_EVR_REJ_TUBE_EMPTY, IDA_EVR_EXPIRED_NO_ACK};
     const uint8_t guvenli[] = {IDA_EVR_REJ_SAFE,       IDA_EVR_REJ_EXPIRED,     IDA_EVR_REJ_SESSION,
                                IDA_EVR_DROPPED_GATE,   IDA_EVR_DROPPED_NO_SLOT, IDA_EVR_SESSION_END};
-    for (uint32_t i = 0u; i < (uint32_t)(sizeof(kilit) + sizeof(guvenli)); i++) {
-        silahla(0u);
-        const uint64_t ates = izin_ve_ates(0u, ates_iste(0u));
-        yeni();
-        emn();
-        const bool k = i < (uint32_t)sizeof(kilit);
-        dz_sonuc(&IN, ates, k ? kilit[i] : guvenli[i - (uint32_t)sizeof(kilit)], 0);
-        TEST_ASSERT_EQUAL(IDA_RC_OK, cagir());
-        TEST_ASSERT_EQUAL_UINT8(k ? IDA_FCS_FAULT_LATCHED : IDA_FCS_SAFE, OUT.fc.state);
-        TEST_ASSERT_TRUE(kapanma_var(0u));
+    for (uint32_t i = 0u; i < (uint32_t)sizeof(kilit); i++) {
+        gc49_tek_sonuc(kilit[i], (uint8_t)IDA_FCS_FAULT_LATCHED);
+    }
+    for (uint32_t i = 0u; i < (uint32_t)sizeof(guvenli); i++) {
+        gc49_tek_sonuc(guvenli[i], (uint8_t)IDA_FCS_SAFE);
     }
     /* Sonucu bilinmeyen FIRE → FAULT_LATCHED. */
     silahla(0u);
