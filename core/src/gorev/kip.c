@@ -42,7 +42,7 @@ static const uint8_t KIP_TABLOSU[IDA_GOR_KIP_SAYI][IDA_GOR_OLAY_SAYI] = {
     {KAL, GD, AT, DH, KAL, MAN, STB, DH, SK, KAL},
     /* GUIDED: kestirim bozulması kipi değil arıza eylemini değiştirir (02 §4.3: HOLD). */
     {KAL, GD, AT, KAL, KAL, MAN, STB, DH, SK, KAL},
-    /* AUTO: yürüyen görev yoksa DEPTH_HOLD'a iner (02 §2.6). */
+    /* AUTO: yürüyen ya da duraklamış görev yoksa DEPTH_HOLD'a iner (02 §2.6; W5-gorev-yurutucu). */
     {KAL, GD, AT, KAL, DH, MAN, STB, DH, SK, KAL},
 };
 

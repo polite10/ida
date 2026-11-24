@@ -1,16 +1,17 @@
-# Sonar örnek senaryosu (W4-bagla-sonar): kapalı havuzda batık başlayan İDA-0, Ping1D ve Ping360
-# açık (araç dosyasındaki ping1d0 ve ping360_0), sonar arızaları zaman çizelgesinde.
+# Sonar örnek senaryosu (W4-bagla-sonar, W4-sonar-sahne): kapalı havuzda batık başlayan İDA-0,
+# Ping1D ve Ping360 açık (araç dosyasındaki ping1d0 ve ping360_0), sonar arızaları zaman çizelgesinde.
 # Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0). Birimler SI; açılar radyan; süreler tamsayı ns.
 #
 # Çalıştırma: ida_sim --senaryo scenarios/sonar-havuz.toml --sonar [--a3-port 0] [--sonar-csv <yol>]
 # (`--sonar` olmadan sonar kurulmaz; sim/sunucu/BENIOKU.md "Sonar").
 #
-# Sahne (sim/senaryo/BENIOKU.md "Sonar kurulumu"): havuz duvarları yalnız A7 ağında (havuz_ornek.glb,
-# depoda yok) tanımlıdır ve sonar modeli ağ izlemez; duvarlar atlanmadığı için bu senaryo `--sonar`
-# ile şimdilik REDDEDİLİR (W4-bagla-sonar sol #4 (b); mimar kararı bekleniyor). Sonarlı testler bu
-# dosyayı bellekte açık suya (tek tabanlı `deniz_ornek` statik varlığı) çevirerek koşar
-# (tests/butunleme/test_sonar.cpp). Araç silahlandırılmaz: hafif pozitif yüzerlikle (İDA-0, 04 §2.6) yavaşça
-# yükselir; Ping1D irtifası zamanla büyür.
+# Sahne (sim/senaryo/BENIOKU.md "Sonar kurulumu"): A7 kümesi `havuz` (assets/havuz; üretici
+# viz/arac/model-uret/havuz.py). Sonar havuz_ornek varlığının taban ve dört duvar ağlarını izler
+# (A7-K27: akustik ağ yok, çarpışma kaynak ağları); havuz 25 m × 12,5 m, taban 3 m, REF havuz
+# ortasında su yüzeyinde (araç başlangıçta havuz ortasında). Uygunluk örneği `ornek`in ikili
+# dosyaları yoktur; onu gösteren senaryolar (z1.toml, ornek-havuz.toml) `--sonar` ile A7 hatasıyla
+# reddedilir. Araç silahlandırılmaz: hafif pozitif yüzerlikle (İDA-0, 04 §2.6) yavaşça yükselir;
+# Ping1D irtifası zamanla büyür.
 
 [meta]
 sema_surumu = "1.0"
@@ -29,9 +30,9 @@ etkin = false
 etkin = false
 
 [varliklar]
-kume = "ornek"
+kume = "havuz"
 kume_surumu = 1
-manifest_ozeti = "29063c2d7f89a80e452dfbb66504e9470d5c928d0fcf7dd295497e2b22a22ca4"
+manifest_ozeti = "a6295504703ce7fa01f7a612a92a54a660e3ff660e9758da972d9257ff11a641"
 
 [calistirma]
 kip = "sil"

@@ -21,7 +21,7 @@
 #define S_ IDA_FS_SURFACE
 #define P_ IDA_FS_PASSIVE_SURFACE
 
-_Static_assert(IDA_GOR_K_SAYI == 14, "arıza tablosunun satır sayısı");
+_Static_assert(IDA_GOR_K_SAYI == 17, "arıza tablosunun satır sayısı");
 _Static_assert(IDA_GOR_K_SAYI <= 32, "koşul bitleri uint32_t'ye sığar");
 
 /* Sütunlar kip sırasıyla: INIT, DISARMED, MANUAL, STABILIZE, DEPTH_HOLD, STATION_KEEP, GUIDED,
@@ -33,8 +33,8 @@ static const uint8_t ARIZA_TABLOSU[IDA_GOR_K_SAYI][IDA_GOR_KIP_SAYI] = {
     /*                  INIT DIS MAN STB DH  SK  GD  AT */
     /* SIZINTI       */ {N_, W_, S_, S_, S_, S_, S_, S_},
     /* SIZINTI_BAYAT */ {N_, W_, W_, W_, W_, W_, W_, W_},
-    /* GCS_1         */ {N_, N_, H_, H_, W_, W_, H_, N_},
-    /* GCS_2         */ {N_, N_, S_, S_, S_, S_, S_, S_}, /* AUTO: yalnız yüzeyde (aşağıda) */
+    /* GCS_1         */ {N_, N_, H_, H_, W_, W_, H_, N_}, /* AUTO: görev yürürken (aşağıda) */
+    /* GCS_2         */ {N_, N_, S_, S_, S_, S_, S_, S_}, /* AUTO: görev yürürken yalnız yüzeyde */
     /* BATT_DUSUK    */ {N_, W_, W_, W_, W_, W_, W_, S_},
     /* BATT_KRIT     */ {N_, W_, S_, S_, S_, S_, S_, S_},
     /* BATT_KRIT_2   */ {N_, W_, P_, P_, P_, P_, P_, P_},
@@ -45,6 +45,10 @@ static const uint8_t ARIZA_TABLOSU[IDA_GOR_K_SAYI][IDA_GOR_KIP_SAYI] = {
     /* SAYISAL       */ {N_, W_, P_, P_, P_, P_, P_, P_},
     /* IMU_BAYAT     */ {N_, N_, P_, P_, P_, P_, P_, P_},
     /* PARAM         */ {N_, W_, N_, N_, N_, N_, N_, N_},
+    /* COGRAFI       */ {N_, N_, W_, W_, W_, W_, S_, S_}, /* 02 §4.3; D "—" */
+    /* IRTIFA        */ {N_, N_, W_, W_, W_, W_, W_, W_}, /* eylem güdümde: derinleşme yok,
+                                                            T/G/A'da yükselme (gudum.c) */
+    /* GOREV_IPTAL   */ {N_, W_, S_, S_, S_, S_, S_, S_}, /* görevin iptali: yüzeye çıkış */
 };
 
 /* Koşulun özellikleri: neden biti, mandallı mı, arm reddi gerektirir mi. */
@@ -69,6 +73,10 @@ static const kosul_ozellik_t OZELLIK[IDA_GOR_K_SAYI] = {
     /* SAYISAL        */ {IDA_FSR_NUMERIC, true, true},
     /* IMU_BAYAT      */ {IDA_FSR_IMU_STALE, true, false},
     /* PARAM          */ {IDA_FSR_PARAM, false, true},
+    /* COGRAFI        */ {IDA_FSR_GEOFENCE, true, false},
+    /* IRTIFA         */ {IDA_FSR_ALT_MIN, false, false},
+    /* GOREV_IPTAL    */ {IDA_FSR_GEOFENCE, true, false}, /* neden iptalin kendi nedenidir
+                                                             (ida_gor_ariza_duzey) */
 };
 
 uint8_t ida_gor_ariza_hucre(uint8_t kosul, uint8_t kip)
@@ -268,12 +276,16 @@ void ida_gor_ariza_degerlendir(ida_gor_t *g, const ida_emn_t *yetki, const ida_g
     if (!gi->param_ok) {
         e |= IDA_GOR_K_BIT(IDA_GOR_K_PARAM);
     }
+    e |= ida_gor_gorev_kosullari(g, gi); /* coğrafi sınır, en az irtifa, görev iptali */
     g->etkin = e;
 
     /* Mandal: mandallı koşul, bulunulan kip sütununda bir eylem (≥ WARN) ürettiğinde kurulur
        ve yalnız FAILSAFE_RESET'le temizlenir (02 §4.3 "Temizleme" sütunu). */
     const uint8_t kip = yetki->mode;
     mandallari_kur(g, kip, now);
+    if ((g->mandal & IDA_GOR_K_BIT(IDA_GOR_K_GOREV_IPTAL)) != 0u) {
+        g->gv.iptal_bekliyor = false; /* iptal mandala alındı */
+    }
     /* Tepe, eşik aşımı değerlendirildikten sonra bugünkü sayıya iner; aşım mandala alınamadıysa
        (INIT sütunu) korunur ki INIT'ten çıkınca mandala alınsın (EMNİYET). */
     const bool sizinti_bekliyor = ((e & IDA_GOR_K_BIT(IDA_GOR_K_SIZINTI)) != 0u) &&
@@ -304,26 +316,51 @@ static void mandallari_kur(ida_gor_t *g, uint8_t kip, int64_t now)
 void ida_gor_ariza_kip_degisti(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns)
 {
     mandallari_kur(g, kip, now_ns);
+    if ((g->mandal & IDA_GOR_K_BIT(IDA_GOR_K_GOREV_IPTAL)) != 0u) {
+        g->gv.iptal_bekliyor = false;
+    }
     ida_gor_ariza_yayinla(g, kip, gun, now_ns);
+}
+
+void ida_gor_ariza_iptal_uygula(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns)
+{
+    if (g->gv.iptal_bekliyor) {
+        g->etkin |= IDA_GOR_K_BIT(IDA_GOR_K_GOREV_IPTAL);
+    }
+    ida_gor_ariza_kip_degisti(g, kip, gun, now_ns);
 }
 
 uint8_t ida_gor_ariza_duzey(const ida_gor_t *g, uint32_t aktif, uint8_t kip, uint32_t *nedenler)
 {
     uint8_t duzey = (uint8_t)IDA_FS_NONE;
     uint32_t neden = 0u;
+    /* AUTO sütununun GCS hücreleri (GCS_1 yok, GCS_2 su altında yok) yürüyen görevi korur; görev
+       yürümezken (PAUSED: operatör, silahsızlanma, HOLD, ölü hesap) korunacak görev yoktur ve
+       GCS satırları DEPTH_HOLD sütunuyla değerlendirilir (düzeltme turu bulgu 1; EMNİYET). */
+    const bool auto_yuruyen =
+        (kip == (uint8_t)IDA_MODE_AUTO) && (g->mission_state == (uint8_t)IDA_MS_RUNNING);
     for (uint32_t k = 0u; k < (uint32_t)IDA_GOR_K_SAYI; k++) {
         if ((aktif & IDA_GOR_K_BIT(k)) == 0u) {
             continue;
         }
-        uint8_t h = ida_gor_ariza_hucre((uint8_t)k, kip);
-        /* AUTO × GCS_2: "su altında yok; yüzeyde SURFACE" (02 §4.3). Derinlik bilinmiyorsa
-           yüzeyde sayılır (EMNİYET: eylem uygulanır). */
-        if ((k == (uint32_t)IDA_GOR_K_GCS_2) && (kip == (uint8_t)IDA_MODE_AUTO) &&
-            g->nav_derinlik_var && !g->yuzeyde) {
+        const bool gcs = (k == (uint32_t)IDA_GOR_K_GCS_1) || (k == (uint32_t)IDA_GOR_K_GCS_2);
+        const uint8_t sutun = (gcs && (kip == (uint8_t)IDA_MODE_AUTO) && !auto_yuruyen)
+                                  ? (uint8_t)IDA_MODE_DEPTH_HOLD
+                                  : kip;
+        uint8_t h = ida_gor_ariza_hucre((uint8_t)k, sutun);
+        /* AUTO × GCS_2 (görev yürürken): "su altında yok; yüzeyde SURFACE" (02 §4.3). Derinlik
+           bilinmiyorsa yüzeyde sayılır (EMNİYET: eylem uygulanır). */
+        if ((k == (uint32_t)IDA_GOR_K_GCS_2) && auto_yuruyen && g->nav_derinlik_var &&
+            !g->yuzeyde) {
             h = (uint8_t)IDA_FS_NONE;
         }
         if (h >= (uint8_t)IDA_FS_WARN) {
-            neden |= OZELLIK[k].neden;
+            /* Görevin iptali kendi nedenini taşır (zaman aşımı: GEOFENCE; ölü hesap beklemesi:
+               EST_DEGRADED; arızanın yol açtığı iptal: o arızanın nedenleri). */
+            const uint32_t kn = ((k == (uint32_t)IDA_GOR_K_GOREV_IPTAL) && (g->gv.iptal_nedeni != 0u))
+                                    ? g->gv.iptal_nedeni
+                                    : OZELLIK[k].neden;
+            neden |= kn;
             if (h > duzey) {
                 duzey = h;
             }
@@ -355,6 +392,10 @@ bool ida_gor_ariza_temizlenebilir(const ida_gor_t *g, const ida_emn_t *yetki,
                                   const ida_param_t *p, int64_t now_ns)
 {
     const uint32_t m = g->mandal;
+    if (((m & IDA_GOR_K_BIT(IDA_GOR_K_COGRAFI)) != 0u) &&
+        ((g->etkin & IDA_GOR_K_BIT(IDA_GOR_K_COGRAFI)) != 0u)) {
+        return false; /* coğrafi sınır hâlâ aşılıyor */
+    }
     if ((m & IDA_GOR_K_BIT(IDA_GOR_K_SIZINTI)) != 0u) {
         /* 02 §4.3: devre dışı + FAILSAFE_RESET; ayrıca son taze örnek kuru olmalı. */
         if (yetki->armed || !sizinti_taze(g, p, now_ns)) {

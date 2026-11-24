@@ -27,7 +27,7 @@ enum ida_gor_olay {
     IDA_GOR_OLAY_GUIDED,              /* SET_MODE(GUIDED) (genişletici)                      */
     IDA_GOR_OLAY_AUTO,                /* SET_MODE(AUTO) (genişletici)                        */
     IDA_GOR_OLAY_KONUM_YOK,           /* konum geçersiz (W3-K5)                              */
-    IDA_GOR_OLAY_GOREV_YOK,           /* AUTO'da yürüyen görev yok                           */
+    IDA_GOR_OLAY_GOREV_YOK,           /* AUTO'da yürüyen ya da duraklamış görev yok          */
     IDA_GOR_OLAY_DARALT_MANUAL,       /* NARROW_MODE → MANUAL                                */
     IDA_GOR_OLAY_DARALT_STABILIZE,
     IDA_GOR_OLAY_DARALT_DEPTH_HOLD,
@@ -65,6 +65,11 @@ enum ida_gor_kosul {
     IDA_GOR_K_SAYISAL,       /* kestirim FAULT: sayısal çökme, beklemesiz (mandallı)        */
     IDA_GOR_K_IMU_BAYAT,     /* A4-K39 bayatlığı (mandallı)                                 */
     IDA_GOR_K_PARAM,         /* geçerli parametre kümesi yok (A4-K78)                       */
+    IDA_GOR_K_COGRAFI,       /* coğrafi sınır: yatay yarıçap ya da toplam görev süresi
+                                (02 §4.3; mandallı)                                         */
+    IDA_GOR_K_IRTIFA,        /* en az irtifa: nav.altitude < ALT_MIN (02 §4.3; otomatik)     */
+    IDA_GOR_K_GOREV_IPTAL,   /* görevin kendi iptali (zaman aşımı, yürütülemez öğe, ölü hesap
+                                beklemesi, AUTO'da SURFACE ve üstü arıza): SURFACE (mandallı) */
     IDA_GOR_K_SAYI
 };
 
@@ -80,7 +85,8 @@ static inline bool ida_gor_yatay_gecerli(uint8_t gecerlilik)
 }
 
 /* Etkin koşul kümesi `aktif` ile kip sütunu `kip`te arıza eylemi düzeyi ve nedenleri (saf;
-   bozulma izi ve AUTO × GCS_2 kuralı dahil). nedenler NULL olabilir. */
+   bozulma izi ve AUTO × GCS kuralları dahil: AUTO'da görev RUNNING değilse GCS satırları
+   DEPTH_HOLD sütunuyla). nedenler NULL olabilir. */
 uint8_t ida_gor_ariza_duzey(const ida_gor_t *g, uint32_t aktif, uint8_t kip, uint32_t *nedenler);
 /* Kip komutla değişti: yeni sütunda mandalları kurar ve düzeyi yayınlar (FAILSAFE_CHANGE). */
 void ida_gor_ariza_kip_degisti(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns);
@@ -109,6 +115,14 @@ typedef struct {
     float nav_derinlik;      /* m (yalnız IDA_KES_G_DERINLIK iken kullanılır)               */
     float nav_yon;           /* rad (yalnız IDA_KES_G_YON iken)                             */
     float nav_ne[2];         /* m (yalnız IDA_KES_G_KONUM iken)                             */
+    /* W5-gorev-yurutucu */
+    int64_t t_olcum_ns;      /* son kabul edilen zaman çerçevesinin ölçüm zamanı (davranış
+                                süreleri; 02 §2.6)                                          */
+    bool irtifa_var;         /* nav.altitude biliniyor (≥ 0)                                */
+    float irtifa;            /* m, dibe                                                     */
+    bool gnss_taze;          /* GNSS konumu füzyonlandı ve T_GNSS_STALE içinde (kestirim)    */
+    int32_t orijin_lat_e7;   /* nav orijini (GLOBAL öğelerin yerel düzlemi)                  */
+    int32_t orijin_lon_e7;
     const ida_param_t *prm;
 } ida_gor_girdi_t;
 
@@ -130,5 +144,37 @@ void ida_gor_ariza_yayinla(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t
 /* FAILSAFE_RESET'in temizleme koşulu: bütün mandallı koşullar temizlenebiliyorsa true. */
 bool ida_gor_ariza_temizlenebilir(const ida_gor_t *g, const ida_emn_t *yetki,
                                   const ida_param_t *prm, int64_t now_ns);
+/* Görevin bekleyen iptal isteğini aynı adımda mandala alır ve düzeyi yeniden yayımlar. */
+void ida_gor_ariza_iptal_uygula(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns);
+
+/* ---- Görev: yükleme ve komutlar (gorev_yukle.c), yürütme (gorev_yurut.c) ------------------ */
+
+/* A1 Tablo 3.6a'nın bütün koşulları (A4-K51): tür, çerçeve, konum alanları, derinlik, p[i]. */
+bool ida_gor_oge_gecerli(const ida_mission_item_t *m);
+/* MISSION_BEGIN, MISSION_ITEM, MISSION_END, MISSION_CTL (tablo 3.17). */
+void ida_gor_gorev_komut(ida_gor_t *g, const ida_emn_t *yetki, const ida_cmd_t *cmd,
+                         ida_cmd_result_t *r);
+/* Görevin değiştirilebildiği durum (A4-K51): IDLE, LOADED, PAUSED, COMPLETE, ABORTED ya da HOLD
+   arıza eylemi sürerken. */
+bool ida_gor_gorev_degisebilir(const ida_gor_t *g);
+/* AUTO'ya giriş ya da yeniden giriş kabul edildi: LOADED → RUNNING (öğe 0), PAUSED → RUNNING.
+   Açık yükleme kapanır (yürüyen görev değiştirilemez). */
+void ida_gor_gorev_kip_auto(ida_gor_t *g);
+/* AUTO'dan çıkış: RUNNING → PAUSED (duraklama noktası yakalanır). */
+void ida_gor_gorev_kip_cikis(ida_gor_t *g);
+/* Açık yüklemeyi kapatır (RUNNING'e her geçişte; A4-K51). */
+void ida_gor_gorev_yukleme_kapat(ida_gor_t *g);
+/* Adımın görev kısmı (kip değerlendirmesinden önce): ölü hesap yolu, engeller (RUNNING ⇄
+   PAUSED), öğe başlangıcı, bitiş ölçütü, zaman aşımı, güdüm hedefi. */
+void ida_gor_gorev_adim(ida_gor_t *g, const ida_emn_t *yetki, const ida_gor_girdi_t *gi);
+/* Arıza değerlendirmesinden sonra (arıza görevin önündedir): HOLD → PAUSED; SURFACE ve üstü →
+   ABORTED (iptal mandalı aynı adımda). */
+void ida_gor_gorev_ariza(ida_gor_t *g, uint8_t kip, ida_gunluk_t *gun, int64_t now_ns);
+/* Coğrafi sınır, en az irtifa ve iptal koşullarının bitleri (ariza.c). */
+uint32_t ida_gor_gorev_kosullari(const ida_gor_t *g, const ida_gor_girdi_t *gi);
+void ida_gor_gorev_oturum_basi(ida_gor_t *g);
+bool ida_gor_gorev_tutarli(const ida_gor_t *g);
+/* Duraklama noktası: bulunulan konum, derinlik ve yön (son adımın seyrüsefer görüntüsü). */
+void ida_gor_gorev_durak_yakala(ida_gor_t *g);
 
 #endif /* IDA_CORE_GOREV_IC_H */

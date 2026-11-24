@@ -6,11 +6,12 @@ Fizik durumundan ve sahneden zaman damgalı Ping1D ve Ping360 kayıtları ürete
 |---|---|
 | `include/ida/sonar/akustik.hpp` | Ses hızı (UNESCO/Chen–Millero, Mackenzie, sabit) ve soğurma; sensör kümesi de kullanır (W4-K1) |
 | `include/ida/sonar/sahne.hpp` | `Sahne` arayüzü (ışın–sahne kesişimi), `CozumselSahne` (havuz kutusu, düzlem, küre, kutu, silindir; hareketli gövde), A7 akustik malzeme alanları |
+| `include/ida/sonar/ag_sahnesi.hpp` | `AgSahnesi` (W4-sonar-sahne): A7 üçgen ağlarından sahne; gövde başına sınır kutusu ağacı, su yüzeyi, A5 hedef kinematiği |
 | `include/ida/sonar/ayarlar.hpp` | A5 alan adlarıyla ayarlar; cihaz yapılandırması (A5'te yok, aşağıda) |
 | `include/ida/sonar/olcum.hpp` | `SonarOlcumu` = sensör kümesinin `OlcumBasligi` + A4 yükü (+ A3/A6 alanları) |
 | `include/ida/sonar/sonar_kumesi.hpp` | `SonarKumesi`: `kur`, `adim`, `bosalt`/`siradaki`, `*_yapilandir`, `arm`/`disarm`/`active` |
 | `src/demet.*` | Işın demeti, saçıcı hücreleri, biriktirme, darbe/alıcı çekirdeği |
-| `test/` | CTest `sim.sonar.*` (28 test; `test_duzeltme.cpp` sol incelemesinin karşı örnekleri) |
+| `test/` | CTest `sim.sonar.*` (33 test; `test_duzeltme.cpp` sol incelemesinin karşı örnekleri; `test_ag.cpp` ağlı sahne) |
 
 ## Arayüz kararı: ayrı `SonarKumesi`
 
@@ -80,3 +81,14 @@ Bağlamanın sol incelemesinden (W4-bagla-sonar sol #1, #2, #5) üç ekleme:
 - **Sabit bellek (W4-K27 (5)):** ping hesabının çalışma tamponları (`yog`, `tvg`, `yum`, ışın demetinin tabloları ve biriktirme dizileri), kuyruk ve kayıt yük tamponlarının havuzu (sonar başına 34 × 1 200 B) `kur`da ayrılır; arıza zincirinin kopyaları (`son_cikti`, donma) önceden ayrılmış tamponlara yazılır. `geri_al` + `adim` + `bosalt(t, cikti, azami)` düzeni bellek ayırmaz (`ida_sim` bunu kullanır; `tests/butunleme` `sonar_ayirma` sınar). Havuz boşalırsa `SonarSayaclari::tampon_yetersiz` sayılır. Bilinen kalan ayırmalar: `gilbert_elliott` deseninin geçiş anları dizisi (`ge_anlar`) koşu boyunca büyür; koşu sırasında `arm` (koşullu arıza başlangıcı) ayırır; `ping360_yapilandir` daha büyük bir satıra geçerse demet tamponları büyür.
 - **Ping360 otomatik darbe:** `ping360_darbe_us` 4 · T_s'yi 1–1000 µs'ye kırpar (örnek periyodu 10 000'i aşınca, ör. `--ping360-ornek 200` ile `sp` = 13 332, darbe 1 333 µs yerine 1 000 µs); açık aralık dışı değer `kur`da reddedilir (değişmedi).
 - **Ping1D en kısa aralığı:** `ping1d_en_kisa_aralik_ns` sunucunun A1 `A_sensör` ön denetimine girdi verir.
+
+## Ağlı sahne (W4-sonar-sahne)
+
+`AgSahnesi` `Sahne` arayüzünü A7 üçgen ağlarıyla uygular; `ida_sim`'in sahnesi budur (`senaryo::sonar_kur`; `sim/senaryo/BENIOKU.md`). Su yüzeyi z = 0 sonsuz düzlemidir; ağlı her gövdenin (statik sahne varlığı, hedefler) sınır kutusu ağacı gövde çerçevesinde `govde_ekle`'de bir kez kurulur (yüzey alanı sezgisiyle bölme, 24 düzeyden sonra ortanca bölme; sıralama anahtarı (ağırlık merkezi, sıra) tam sıradır, yapı belirlenimcidir). Gezinmede çocuklar bölme ekseninde ışın yönüne göre sıralanır; bulunan isabetten öteki kutular atlanır. Hareketli gövdede ağaç yeniden kurulmaz: ışın `t_ns` anındaki gövde çerçevesine çevrilir. Hareket A5 §3.10'un belirlenimci türleridir (`sabit`, `sabit_hiz`: konum + v t, `sinus`: konum + A sin(2π t / P + φ); evre tamsayı kalanla); `govde_pozu_kur` dışarıdan sürmeye açıktır.
+
+- **Kesişim:** Möller–Trumbore (iki yüzlü; barisentrik pay 10⁻⁹, ortak kenarda sızıntı yok), yığıt sabit boyutlu (64); `kesis` bellek ayırmaz ve durum değiştirmez (W4-K27 (5); `tests/butunleme` `sonar_ayirma` ağlı havuzla 0 bekler).
+- **Maliyet (ölçüm, bu Mac, release, tek iş parçacığı; ayrı bir kıyas programıyla):** havuz (60 üçgen) içinden ışın başına ≈ 77 ns (çözümsel havuz kutusu ≈ 31 ns). Ping başına 5 000 ışın ≈ 0,4 ms. Tahmin değil ölçümdür, ama yalnız kesişim çağrısınındır; sonar adımının bütünü `tests/butunleme` `sonar_hil_olcum`'da ölçülür.
+- **Eşitlik:** aynı uzaklıkta küçük sıralı üçgen; gövdeler arasında önce eklenen (su yüzeyi önce). Sonuç ağacın yapısından bağımsızdır.
+- **Saçıcı hücreleri (iskelet §8):** üçgenler gövdede eş düzlemli kümelere ayrılır (normal 10⁻⁶, düzlem uzaklığı 0,1 mm nicemlemesi); `Vurus::yuzey` küme numarası, hücre indisi kümenin sabit iki düzlem eksenindeki gövde koordinatlarından (iki üçgene bölünmüş duvar tek ızgara). Su yüzeyinde NED (x, y).
+- **Kalite kademesi (K16, Ö11):** ağ çözünürlüğü kısılmaz (sahne kademeden bağımsız); kısılabilen ışın sayısıdır (sade kademede A5-K78'in 5 000'i; tam kademe bu dilimde yürütülmez).
+- **Sınama:** `ag_kaba_kuvvet` (ağaç = bütün üçgenlerin taranması), `ag_esitlik`, `ag_hareket`, `ag_hucre`, `ag_cozumsel` (aynı havuz çözümsel kutu ve ağ olarak: Ping360 duvar tepeleri ve Ping1D mesafesi aynı kutuda).

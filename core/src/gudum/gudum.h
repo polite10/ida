@@ -23,6 +23,13 @@
  * daraltmadan sonra gelen GUIDED_SP geçerli yeni hedeftir. EMNİYET: silinen hedefe kendiliğinden dönülmez; araç görev modülünün tutma
  * hedefinde kalır ve kontrol referansını bulunulan durumdan yeniden kurar (silinen hedef
  * kontrolün iptal bitini kurar, IDA_EMN_IPTAL_KON).
+ *
+ * GUD_SP_ASIM_MS (02 §2.6, 3 s) yeni GUIDED_SP gelmezse hız türü kanallar bulunulan derinliği,
+ * yönü ve konumu tutmaya çevrilir (son hedefte kalma).
+ *
+ * AUTO (W5-gorev-yurutucu; gudum_oto.c): görev yürütücüsünün hedefi (ida_gor_hedef_t) ILOS yol
+ * takibi, konum tutma ve hız/ivme sınırlı derinlik referansıyla aynı istek kanallarına yazılır;
+ * arıza eylemi HOLD ve üstündeyken yazılmaz. En az irtifa kırpması isteğin son adımıdır.
  */
 #ifndef IDA_CORE_GUDUM_H
 #define IDA_CORE_GUDUM_H
@@ -48,6 +55,12 @@
 #define IDA_GUD_YATAY_KONUM    1u
 #define IDA_GUD_YATAY_HIZ      2u
 
+/* Derinlik referans modeli (02 §2.4): hız ve ivme sınırlı ikinci mertebe. */
+typedef struct {
+    float d;               /* m, referans derinlik                                          */
+    float w;               /* m/s, referansın hızı (aşağı +)                                */
+} ida_gud_ref_t;
+
 typedef struct {
     uint8_t dikey;         /* IDA_GUD_DIKEY_*                                               */
     uint8_t yon_turu;      /* IDA_GUD_YON_*                                                 */
@@ -61,7 +74,44 @@ typedef struct {
     float yon_hizi;        /* rad/s, gövde r                                                */
     float konum_ne[2];     /* m, NED                                                        */
     float hiz_ne[2];       /* m/s, NED                                                      */
+    /* GUIDED_SP tazeliği (02 §2.6: GUD_SP_ASIM_MS yeni hedef yoksa son hedefte kalınır) */
+    bool sp_var;           /* hız türü kanal saklı ve süre sayılıyor                        */
+    int64_t sp_son_ns;     /* son kabul edilen GUIDED_SP'nin now_w'si                        */
+    /* AUTO: görev yürütücüsünün hedefinin güdümü (W5-gorev-yurutucu; gudum_oto.c) */
+    bool oto_var;          /* referans ve ILOS durumu kuruldu                               */
+    bool t_var;
+    uint32_t oto_kusak;    /* görev hedefinin kuşağı (değişince ILOS integrali sıfırlanır)  */
+    int64_t t_son_ns;      /* ölçüm zamanı (son zaman çerçevesi)                            */
+    ida_gud_ref_t ref;     /* derinlik referansı                                            */
+    float y_int;           /* m, ILOS çapraz hata integrali                                 */
 } ida_gud_t;
+
+/* ---- AUTO güdümü (gudum_oto.c; saf işlevler birim testi için açık) ---------------------- */
+
+/* Referans modelinin bir adımı: |w| ≤ w_max (başlangıçta öyleyse), |Δw| ≤ a_max·dt; hedefe
+   durma mesafesiyle (w² ≤ 2·a_max·|e|) yaklaşır. dt ≤ 0 ise değişmez. */
+void ida_gud_ref_adim(ida_gud_ref_t *r, float hedef, float w_max, float a_max, float dt);
+/* ILOS (Caharija vd. 2016; Fossen ve Pettersen 2014): bas → hedef doğrusuna göre istenen rota
+   χ_d = α − atan((y + σ·y_int)/Δ). capraz: çapraz hata y (m, yolun sağı +); boyuna: bacak
+   boyunca ilerleme (m). Bacak 1 cm'den kısaysa false (rota hedefe doğrudur). */
+bool ida_gud_ilos(const float bas[2], const float hedef[2], const float p[2], float delta,
+                  float sigma, float y_int, float *rota, float *capraz, float *boyuna);
+/* ILOS integrali: ẏ_int = Δ·y / ((y + σ·y_int)² + Δ²). */
+void ida_gud_ilos_integral(float *y_int, float capraz, float delta, float sigma, float dt);
+/* AUTO'nun yatay isteği (saf): NED hız isteği ve yön isteği. YOL: ILOS rotasında h->hiz ×
+   max(0, cos(rota − yön)); TUT: hız = kp·(hedef − konum), yön h->yon. */
+void ida_gud_oto_yatay(const ida_gor_hedef_t *h, const float p[2], float yon, float y_int,
+                       float delta, float sigma, float kp, float hiz_ne[2], float *yon_ist);
+/* ida_gud_adim'in AUTO kısmı: etkinken (AUTO, silahlı, arıza eylemi HOLD'dan hafif, görev
+   hedefi var) referans modeli ve ILOS integrali ölçüm zamanıyla ilerler; değilse ya da iptal
+   biti kuruluyken durum bırakılır (yeniden etkinleşince ölçülen derinlikten kurulur). */
+void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal);
+/* ida_gud_kon_istegi'nin AUTO kısmı: istek (ida_gor_istek) üzerine yön, yatay ve dikey kanallar
+   yazılır; yüzey hedefinde yüzeyde yüzey kipine geçilir. */
+void ida_gud_oto_istek(const ida_gud_t *g, const ida_core_t *c, ida_kon_istek_t *i);
+/* En az irtifa (02 §4.3): koşul etkinken derinleşme yok; T/G/A kiplerinde (DEPTH_HOLD,
+   STATION_KEEP, GUIDED, AUTO) derinlik hedefi irtifa açığı kadar yukarı çekilir. */
+void ida_gud_irtifa_kisit(const ida_core_t *c, ida_kon_istek_t *i);
 
 void ida_gud_kur(ida_gud_t *g);
 void ida_gud_oturum_basi(ida_gud_t *g);
