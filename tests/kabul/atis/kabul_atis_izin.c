@@ -535,20 +535,55 @@ static void t_gc16_diger_tup(void)
     }
 }
 
+/* FC_ABORT'un etkisi (W5-K23): atış dizisinin iptali; silahı indirmez. Çağrının sonunda açık
+   sayılan izin yok (model ve dış durum), dış durum PERMIT_OPEN ya da FIRE_PENDING değil, o
+   çağrıda genişletici olay yok ve önceden açık sayılan her izin için SAFETY_CLOSE çıktı. Önceden
+   silahlıysa ARMED kalabilir (FC_DISARM'dan farkı). */
+static void abort_etkisi_dogrula(const char *ne, const bool *izin_once)
+{
+    const ida_out_t *o = ka_out();
+    /* FIRE_PENDING yalnız daha önce çıkmış bir FIRE'ın sonucu hâlâ bekleniyorsa (A4 §3.16 tanımı;
+       çıkmış FIRE geri alınamaz). */
+    KA_DOGRULA(o->fc.state != IDA_FCS_PERMIT_OPEN &&
+                   (o->fc.state != IDA_FCS_FIRE_PENDING || ka_onceki_fire_sonucu_bekleniyor()),
+               "%s çağrısının sonunda fc.state %s: atış dizisi iptal edilmedi (W5-K23, G-Ç06, G-Ç32)", ne,
+               ka_durum_adi(o->fc.state));
+    KA_DOGRULA(!ka_genisletici_olay_var(o), "%s çağrısında genişletici olay (W5-K23, G-Ç06)", ne);
+    for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+        KA_DOGRULA(!izin_once[t] || ka_kapanma_var(o, (uint8_t)t),
+                   "%s: açık izinli tüp %u için SAFETY_CLOSE yok (W5-K23: SAFETY_CLOSE(ALL); G-Ç06, G-Ç32)", ne, t);
+        KA_DOGRULA(!ka_model_izin_acik((uint8_t)t, ka_simdi()),
+                   "%s çağrısının sonunda tüp %u'nun izni çekirdekçe açık sayılıyor (W5-K23)", ne, t);
+    }
+}
+
 static void t_gc32_butun_tuplere(void)
 {
     ka_hazir(2, 0u);
     (void)ka_izin_iste(0u, ADIM);
     ida_in_t *in = ka_girdi();
+    bool izin_once[IDA_PORT_N_TUBE];
+    for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+        izin_once[t] = ka_model_izin_acik((uint8_t)t, in->now_w.ns);
+    }
     uint32_t x = ka_fc(in, (uint8_t)IDA_FC_ABORT, 1u);
     (*ka_son_komut(in)).u.fc.arg0 = 7u;
     (void)ka_cagir();
     KA_SONUC(x, IDA_ACK_ACCEPTED, IDA_REASON_NONE, "FC_ABORT(tüp 1, arg0 7)");
-    KA_DOGRULA(durum() == IDA_FCS_SAFE, "FC_ABORT(tüp 1) tüp 0'ın yetkisini kaldırmadı: fc.state %s (G-Ç32, W5-K7: bütün tüplere)",
-               ka_durum_adi(durum()));
+    /* Tüp 1'e yazılmış (ve alanı bozuk) FC_ABORT tüp 0'ın iznini de kapatır (W5-K7: bütün
+       tüplere). SAFETY_OPEN(tüp 0)'ın APPLIED sonucu bu çağrıda gelir: izin alıcıda açıktır ve
+       çağrının sonunda çekirdekçe açık sayılmamalıdır. */
+    abort_etkisi_dogrula("FC_ABORT(tüp 1)", izin_once);
+    KA_DOGRULA(ka_kapanma_var(ka_out(), 0u), "FC_ABORT(tüp 1): tüp 0'ın izni için SAFETY_CLOSE yok (W5-K7, W5-K23)");
+    /* Yeni bir kabul edilmiş FC_FIRE olmadan izin yeniden açılmaz ve atış olmaz (W5-K23). Yetkinin
+       kesildiği düzenek modelinde de denetlenir (G-Ç21, G-Ç47). */
     for (int k = 0; k < 60; ++k) {
         (void)ka_adim();
-        KA_DOGRULA(ka_olay_say(ka_out(), (uint8_t)IDA_EVT_FIRE, -1) == 0, "FC_ABORT sonrası FIRE (G-Ç32)");
+        KA_DOGRULA(ka_olay_say(ka_out(), (uint8_t)IDA_EVT_FIRE, -1) == 0, "FC_ABORT sonrası FIRE (G-Ç32, W5-K23)");
+        KA_DOGRULA(ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_OPEN, -1) == 0,
+                   "FC_ABORT sonrası yeni FC_FIRE olmadan SAFETY_OPEN (W5-K23)");
+        KA_DOGRULA(durum() != IDA_FCS_PERMIT_OPEN && durum() != IDA_FCS_FIRE_PENDING,
+                   "FC_ABORT sonrası yeni FC_FIRE olmadan fc.state %s (W5-K23)", ka_durum_adi(durum()));
     }
 }
 
@@ -569,6 +604,10 @@ static void t_gc06_etki(void)
             ka_ayar.tup[0] = tup_eksik(IDA_TUBE_PIN_OUT);
         }
         ida_in_t *in = d == E_RED_ABORT ? ka_girdi_seq(kc_son_seq()) : ka_girdi();
+        bool izin_once[IDA_PORT_N_TUBE];
+        for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
+            izin_once[t] = ka_model_izin_acik((uint8_t)t, in->now_w.ns);
+        }
         if (d == E_FCDISARM) {
             (void)ka_mandal(in, (uint8_t)IDA_NARROW_FC_DISARM);
         } else if (d == E_FCABORT || d == E_RED_ABORT) {
@@ -579,8 +618,13 @@ static void t_gc06_etki(void)
         }
         (void)ka_cagir();
         KA_DOGRULA(!ka_genisletici_olay_var(ka_out()), "%s: genişletici olay (G-Ç06)", ad[d]);
-        KA_DOGRULA(durum() != IDA_FCS_ARMED && durum() != IDA_FCS_PERMIT_OPEN,
-                   "%s çağrısının sonunda fc.state %s: daraltma uygulanmadı (G-Ç06, G-Ç19)", ad[d], ka_durum_adi(durum()));
+        if (d == E_FCABORT || d == E_RED_ABORT) {
+            /* W5-K23: FC_ABORT silahı indirmez; atış dizisini iptal eder (ARMED kalabilir). */
+            abort_etkisi_dogrula(ad[d], izin_once);
+        } else {
+            KA_DOGRULA(durum() != IDA_FCS_ARMED && durum() != IDA_FCS_PERMIT_OPEN,
+                       "%s çağrısının sonunda fc.state %s: daraltma uygulanmadı (G-Ç06, G-Ç19)", ad[d], ka_durum_adi(durum()));
+        }
         KA_DOGRULA(ka_kapanma_var(ka_out(), 0u), "%s: açık izin varken SAFETY_CLOSE(tüp 0) yok (G-Ç06)", ad[d]);
         if (d == E_OTURUM) {
             ka_ayar.link_state = (uint8_t)IDA_LINK_NONE;
@@ -824,8 +868,10 @@ static void t_gc20_dolu_celiskisi_reset(void)
     KA_SONUC(r, IDA_ACK_ACCEPTED, IDA_REASON_NONE, "çelişki kalkınca FC_RESET");
     KA_DOGRULA(durum() == IDA_FCS_SAFE, "çelişki kalkınca FC_RESET sonrası fc.state %s, SAFE bekleniyordu (G-Ç20)",
                ka_durum_adi(durum()));
-    KA_DOGRULA(!ka_genisletici_olay_var(ka_out()) && !ka_out()->armed,
-               "FC_RESET izin açtı ya da silahlandırdı (G-Ç20)");
+    /* "Silahlandırmaz" atış kontrol durumunu söyler (fc.state SAFE; ARMED değil); aracın armed
+       bayrağı (ARM / DISARM, A4 §3.17 ARM satırı) hazırlıkta kurulmuştur ve G-Ç20'nin konusu
+       değildir. */
+    KA_DOGRULA(!ka_genisletici_olay_var(ka_out()), "FC_RESET izin açtı (G-Ç20)");
 }
 
 static void t_gc02_durum_eslemesi(void)

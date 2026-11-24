@@ -1012,6 +1012,18 @@ static bool model_fire_bekliyor(void)
     return false;
 }
 
+bool ka_onceki_fire_sonucu_bekleniyor(void)
+{
+    for (size_t k = 0; k < g_bekleyen_n; ++k) {
+        const ka_olay_t *o = olay_ref(g_bekleyen[k].i);
+        if (o != NULL && o->e.event_id == g_bekleyen[k].id && o->e.kind == IDA_EVT_FIRE && !o->teslim_edildi &&
+            !o->bilinmeyen && o->cagri < g_cagri) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void open_kaydet(unsigned tube, size_t mutlak)
 {
     if (K.open_n[tube] < KA_TUP_OPEN) {

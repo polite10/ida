@@ -258,6 +258,11 @@ bool ka_model_bayat(void);
 /* Model (G-Ç11): tüpün izni duvar saati now'da çekirdekçe açık sayılabilir mi (APPLIED alınmış,
    olayı çıkaran çağrının now_w'sinden hold_ns dolmamış, sonradan kapatılmamış SAFETY_OPEN). */
 bool ka_model_izin_acik(uint8_t tube, int64_t now);
+/* Model (A4 §3.16 FIRE_PENDING): son çağrıdan ÖNCEKİ bir çağrıda çıkmış ve sonucu henüz kabul
+   edilen bir çağrıda verilmemiş FIRE var mı. FC_ABORT çıkmış bir FIRE'ı geri alamaz (W5-K23
+   bekleyen FIRE isteklerini iptal eder); böyle bir FIRE'ın sonucu beklenirken dış durum §3.16'nın
+   tanımıyla FIRE_PENDING'dir. */
+bool ka_onceki_fire_sonucu_bekleniyor(void);
 
 /* Değişmez denetimlerini kapat/aç (yalnız bilerek tutarsız alıcı davranışı kuran testler). */
 void ka_degismez_ac(bool acik);

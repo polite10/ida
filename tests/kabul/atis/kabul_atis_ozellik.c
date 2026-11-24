@@ -356,25 +356,48 @@ static void adim(const profil_t *p)
     }
     /* (e) Daraltıcı komutun etkisi (yalnız ACCEPTED sonucu değil). */
     if (!nul) {
-        bool fcdar = (in->narrow.mask & (IDA_NARROW_FC_DISARM | IDA_NARROW_FC_ABORT)) != 0u;
+        bool fcdisarm = (in->narrow.mask & IDA_NARROW_FC_DISARM) != 0u;
+        bool fcabort = (in->narrow.mask & IDA_NARROW_FC_ABORT) != 0u;
         unsigned nc = in->n_cmds < IDA_PORT_MAX_CMDS ? in->n_cmds : IDA_PORT_MAX_CMDS;
         for (unsigned j = 0; j < nc; ++j) {
-            if (in->cmds[j].type == IDA_CMD_FC && (in->cmds[j].u.fc.op == IDA_FC_DISARM || in->cmds[j].u.fc.op == IDA_FC_ABORT)) {
-                fcdar = true;
+            if (in->cmds[j].type == IDA_CMD_FC && in->cmds[j].u.fc.op == IDA_FC_DISARM) {
+                fcdisarm = true;
+            }
+            if (in->cmds[j].type == IDA_CMD_FC && in->cmds[j].u.fc.op == IDA_FC_ABORT) {
+                fcabort = true;
             }
         }
-        if (fcdar) {
-            /* FC_DISARM / FC_ABORT her tüpe ve her dönüş kodunda uygulanır: çağrı sonunda ARMED ya
-               da PERMIT_OPEN yok ve çekirdekçe açık sayılan her izin aynı çağrıda kapatılır
-               (W5-K7, W5-K8, G-Ç06, G-Ç19, G-Ç32). */
-            KA_DOGRULA(ka_out()->fc.state != IDA_FCS_ARMED && ka_out()->fc.state != IDA_FCS_PERMIT_OPEN,
-                       "FC_DISARM/FC_ABORT çağrısının sonunda fc.state %s (değişmez (e); W5-K7, G-Ç06)",
-                       ka_durum_adi(ka_out()->fc.state));
+        const ida_out_t *so = ka_out();
+        if (fcdisarm) {
+            /* FC_DISARM her tüpe ve her dönüş kodunda uygulanır: çağrı sonunda ARMED ya da
+               PERMIT_OPEN yok (W5-K7, W5-K8, W5-K23, G-Ç06, G-Ç19, G-Ç32). */
+            KA_DOGRULA(so->fc.state != IDA_FCS_ARMED && so->fc.state != IDA_FCS_PERMIT_OPEN,
+                       "FC_DISARM çağrısının sonunda fc.state %s (değişmez (e); W5-K7, G-Ç06)", ka_durum_adi(so->fc.state));
+        } else if (fcabort) {
+            /* FC_ABORT atış dizisini iptal eder, silahı indirmez (W5-K23): çağrı sonunda
+               PERMIT_OPEN yok; önceden silahlıysa ARMED kalabilir. FIRE_PENDING yalnız daha önce
+               çıkmış bir FIRE'ın sonucu hâlâ bekleniyorsa (A4 §3.16 tanımı; çıkmış FIRE geri
+               alınamaz; W5-K23'ün iptal ettiği bekleyen FIRE isteğidir). */
+            KA_DOGRULA(so->fc.state != IDA_FCS_PERMIT_OPEN &&
+                           (so->fc.state != IDA_FCS_FIRE_PENDING || ka_onceki_fire_sonucu_bekleniyor()),
+                       "FC_ABORT çağrısının sonunda fc.state %s (değişmez (e); W5-K23, W5-K7, G-Ç06)",
+                       ka_durum_adi(so->fc.state));
+        }
+        if (fcdisarm || fcabort) {
+            /* İkisi de bütün tüplere uygulanır: o çağrıda genişletici olay yok, çekirdekçe açık
+               sayılan her izin aynı çağrıda kapatılır ve çağrı sonunda açık sayılan izin kalmaz
+               (W5-K8, W5-K23, G-Ç06, G-Ç19). Sonraki çağrılarda yeni bir kabul edilmiş FC_FIRE
+               olmadan SAFETY_OPEN/FIRE olmaması düzeneğin yetki modelinde denetlenir (G-Ç21). */
+            KA_DOGRULA(!ka_genisletici_olay_var(so), "FC_DISARM/FC_ABORT çağrısında genişletici olay (dönüş %d; W5-K23, G-Ç06)",
+                       (int)rc);
             for (unsigned t = 0; t < IDA_PORT_N_TUBE; ++t) {
-                KA_DOGRULA(!izin_once[t] || ka_kapanma_var(ka_out(), (uint8_t)t),
+                KA_DOGRULA(!izin_once[t] || ka_kapanma_var(so, (uint8_t)t),
                            "FC_DISARM/FC_ABORT çağrısında açık izinli tüp %u için SAFETY_CLOSE yok (dönüş %d; değişmez (e); "
-                           "W5-K8, G-Ç19)",
+                           "W5-K8, W5-K23, G-Ç19)",
                            t, (int)rc);
+                KA_DOGRULA(!ka_model_izin_acik((uint8_t)t, in->now_w.ns),
+                           "FC_DISARM/FC_ABORT çağrısının sonunda tüp %u'nun izni çekirdekçe açık sayılıyor (dönüş %d; W5-K23)", t,
+                           (int)rc);
             }
         }
         /* Kip mandalı: kabul edilen çağrının sonunda kip atış izni kümesinin ({GUIDED}; W5-K15)

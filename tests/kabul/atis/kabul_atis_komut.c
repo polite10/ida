@@ -43,6 +43,8 @@ typedef struct {
     bool estop;
     bool imu_bayat;
     bool kilit;
+    bool imu_lag;      /* IMU_LAG mandalı (A4-K37; engel biti 12) */
+    bool imu_red;      /* çağrı IMU_REJECTED döndü (A4-K103) */
     uint8_t durum;
     bool tup_engel[IDA_PORT_N_TUBE];
 } kosul_t;
@@ -61,17 +63,29 @@ static void kosul_maskeden(const ida_out_t *o, kosul_t *k)
     k->estop = (m & IDA_FCI_ESTOP) != 0u;
     k->imu_bayat = (m & IDA_FCI_IMU_STALE) != 0u;
     k->kilit = (m & IDA_FCI_FAULT_LATCHED) != 0u;
+    k->imu_lag = (m & IDA_FCI_IMU_LAG) != 0u;
     k->durum = o->fc.state;
     k->tup_engel[0] = (m & (IDA_FCI_PLUG_T0 | IDA_FCI_PIN_T0 | IDA_FCI_EMPTY_T0 | IDA_FCI_RESULT_PENDING)) != 0u;
     k->tup_engel[1] = (m & (IDA_FCI_PLUG_T1 | IDA_FCI_PIN_T1 | IDA_FCI_EMPTY_T1 | IDA_FCI_RESULT_PENDING)) != 0u;
 }
 
-/* A4 §3.17 FC satırlarının sırasıyla beklenen neden (NONE = ACCEPTED). */
+/* A4 §3.17'nin sırasıyla beklenen neden (NONE = ACCEPTED). Daraltmasız, yinelenmeyen kimlikli
+   tek komut: (1) ve (2)'nin NARROWED'ı tutmaz. (2) genişleticide (A4-K104: FC_ARM, FC_FIRE,
+   FC_RESET, FC_TEST_ENTER) IMU_REJECTED > IMU_LAG komutun kendi satırından önce gelir (4.14,
+   A4-K103, A4-K108); (3) komutun kendi satırı, satırdaki sırayla. */
 static uint16_t kural(uint8_t op, uint8_t tube, const kosul_t *k)
 {
     if (op == IDA_FC_TEST_EXIT) {
         return IDA_REASON_NONE;
     }
+    /* (2): FC_TEST_EXIT dışındaki dört işlem genişleticidir. */
+    if (k->imu_red) {
+        return IDA_REASON_IMU_REJECTED;
+    }
+    if (k->imu_lag) {
+        return IDA_REASON_IMU_LAG;
+    }
+    /* (3) */
     if (!k->oturum) {
         return IDA_REASON_SESSION;
     }
@@ -112,13 +126,15 @@ static void fc_kurali_sina(uint8_t op, uint8_t tube, const char *ne)
     ka_ayar.heartbeat = hb;
     uint32_t id = ka_fc(in, op, tube);
     bool oturum_yok = in->plat.link_state != IDA_LINK_RUNNING;
-    (void)ka_cagir();
+    ida_rc_t rc = ka_cagir();
     kosul_t sonra;
     kosul_maskeden(ka_out(), &sonra);
     if (oturum_yok) {
         once.oturum = false;
         sonra.oturum = false;
     }
+    once.imu_red = rc == IDA_RC_IMU_REJECTED;
+    sonra.imu_red = once.imu_red;
     uint16_t b1 = kural(op, tube, &once);
     uint16_t b2 = kural(op, tube, &sonra);
     const ida_cmd_result_t *r = ka_sonuc(id);
@@ -143,9 +159,10 @@ static void bes_komut(const char *ne)
         fc_kurali_sina(oplar[i], 0u, ne);
         uint8_t s = ka_out()->fc.state;
         if (s != IDA_FCS_SAFE) {
-            /* Bir komut kabul edilip durum değiştiyse (ör. ARM, TEST) güvenli duruma dön. */
+            /* Bir komut kabul edilip durum değiştiyse (ör. ARM, TEST) güvenli duruma dön. Silahı
+               indiren FC_DISARM'dır; FC_ABORT ARMED'de ARMED bırakır (W5-K23). */
             ida_in_t *in = ka_girdi();
-            (void)ka_mandal(in, (uint8_t)IDA_NARROW_FC_ABORT);
+            (void)ka_mandal(in, (uint8_t)IDA_NARROW_FC_DISARM);
             if (s == IDA_FCS_TEST) {
                 (void)ka_fc(in, (uint8_t)IDA_FC_TEST_EXIT, 0u);
             }
