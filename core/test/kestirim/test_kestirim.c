@@ -1,6 +1,9 @@
 /*
  * test_kestirim.c — W3 kestirim dilim 1 kabulü (docs/gorevler/W3-kestirim.md, Kabul 1–5) ve
- * modülün birim sınamaları.
+ * modülün birim sınamaları. W5 kestirim-yatay (dilim 2: yatay hız, konum, irtifa, düzey) kabulü
+ * ve birim sınamaları test_kestirim_yatay.inc dosyasındadır ve bu dosyanın düzeneğini (yer
+ * gerçeği, duyarga üretimi, koşu) kullanır; yatay yardım duyargaları (GNSS, DVL, Ping1D)
+ * varsayılan olarak kapalıdır, dilim 1 testlerinin girdisi değişmemiştir.
  *
  * Yer gerçeği bu dosyada üretilir (double; sabit tohum): senaryo fonksiyonu Euler açılarını
  * ve konumu verir, türevler merkezi farkla alınır. Duyargalar İDA-0 düzenindedir (IMU 200 Hz,
@@ -36,6 +39,13 @@ void tearDown(void) {}
 static const double B_N[3] = {25.6e-6, 2.7e-6, 40.3e-6}; /* havuz senaryosu, T (NED) */
 static const double L_IMU[3] = {0.0, 0.0, -0.03};
 static const double L_BARO[3] = {-0.19, 0.0, -0.03};
+/* Yatay yardım duyargalarının montajları (scenarios/ida0.toml; kestirim_param.def varsayılanları). */
+static const double L_GNSS[3] = {-0.05, 0.0, -0.22};
+static const double L_DVL[3] = {0.05, 0.0, 0.14};
+static const double L_PING[3] = {-0.08, 0.08, 0.14};
+/* Senaryo orijini (scenarios/ornek-havuz.toml; ORIJIN_LAT / ORIJIN_LON varsayılanı): 41° K, 29° D. */
+#define ORJ_LAT_E7 410000000
+#define ORJ_LON_E7 290000000
 
 /* ---- Yer gerçeği ------------------------------------------------------------------------- */
 
@@ -157,6 +167,27 @@ typedef struct {
     double bayrak_bas, bayrak_son; /* IMU SATURATED bayraklı */
     double bayrak_gyro;       /* sıfırdan farklıysa bayraklı örneğin jiroskop x değeri, rad/s */
     double imu_gec1_bas, imu_gec1, imu_gec2_bas, imu_gec2; /* IMU t_meas gecikmesi, s */
+    /* ---- W5 kestirim-yatay: yatay yardım duyargaları (varsayılan kapalı) ---- */
+    bool gnss, dvl, ping;
+    double s_gnss;        /* m, yatay eksen başına 1σ (varyansın %90'ı τ = 60 s Gauss–Markov) */
+    double s_gnss_v;      /* m/s, eksen başına beyaz */
+    double gnss_edinim;   /* s; anten sudan çıktıktan sonra ilk fix'e kadar */
+    double gnss_kes_bas, gnss_kes_son; /* akış yok */
+    double gnss_sicra_bas, gnss_sicra_son, gnss_sicra; /* kuzeye eklenen konum sıçraması, m */
+    double gnss_tek;      /* > 0: yalnız bu andan sonraki ilk örnek gönderilir */
+    double gnss_fix_bas, gnss_fix_son; /* fix_type 2B'ye düşer (örnek gelir, kalite kötü) */
+    double s_dvl;         /* m/s, DVL eksen başına 1σ; kovaryans köşegeni olarak bildirilir */
+    double dvl_olcek;     /* ölçek hatası (oran) */
+    double dvl_kilit_bas, dvl_kilit_son; /* kilit yok: VEL_VALID = 0, irtifa −1 */
+    double dvl_flap_bas, dvl_flap_son, dvl_flap_yari; /* kilit yarı periyotla gidip gelir, s */
+    double dvl_kes_bas, dvl_kes_son;     /* akış yok */
+    double dvl_ayk_bas, dvl_ayk_son, dvl_ayk; /* DVL x eksenine eklenen aykırı değer, m/s */
+    double dvl_tek;       /* > 0: yalnız bu andan sonraki ilk örnek gönderilir */
+    double dvl_hz;        /* ping hızı (5 ya da 10) */
+    bool yardim_hizli;    /* GNSS ve DVL her çağrıda, gecikmesiz (seyreltme sınaması) */
+    double taban;         /* m; düz dibin derinliği */
+    double l_gnss[3], l_dvl[3], l_ping[3]; /* montaj kolları, m (gövde) */
+    double dvl_e[3];      /* DVL montajı, sensör → gövde, ZYX (roll, pitch, yaw), rad */
 } kosu_ayar_t;
 
 typedef struct {
@@ -166,6 +197,14 @@ typedef struct {
     uint32_t imu_seq, mag_seq, baro_seq, imu1_seq, baro1_seq;
     uint32_t baro_ozel_n;
     int64_t t_ns;
+    uint32_t gnss_seq, dvl_seq, ping_seq;
+    ds_rastgele_t ry;     /* yatay yardım duyargalarının gürültü akışı (dilim 1 akışını bozmaz) */
+    double gm[2];         /* GNSS Gauss–Markov durumu (birim varyans) */
+    double gm_t;          /* son GNSS çekilişinin zamanı, s */
+    bool gm_var;
+    double anten_su_t;    /* antenin en son su altında görüldüğü an, s */
+    bool gnss_tek_bitti, dvl_tek_bitti;
+    double gnss_son_ne[2]; /* son GNSS örneğinin anten konumu hatası (m; tanı) */
 } kosu_t;
 
 static const int64_t T0_NS = 2000 * DS_MS; /* senaryo t = 0 */
@@ -175,6 +214,11 @@ static void kosu_kur(kosu_t *k, const kosu_ayar_t *a)
     (void)memset(k, 0, sizeof(*k));
     k->a = *a;
     k->r.s = a->tohum;
+    k->ry.s = a->tohum ^ 0x9E3779B9u;
+    if (k->ry.s == 0u) {
+        k->ry.s = 1u;
+    }
+    k->anten_su_t = -1.0e9;
     k->t_ns = T0_NS;
 }
 
@@ -233,6 +277,278 @@ static void imu_uret(kosu_t *k, int64_t ti, ida_imu_sample_t *o)
         o->imu.gyro[i] = (float)(w[i] + k->a.bg[i] + k->a.s_gyro * gauss(&k->r));
         o->imu.accel[i] = (float)(fo[i] + c2[i] + c3[i] + k->a.ba[i] + k->a.s_acc * gauss(&k->r));
     }
+}
+
+
+/* ---- Yatay yardım duyargaları (W5 kestirim-yatay) ---------------------------------------- */
+
+/* WGS-84: orijine göre NED konumundan enlem ve boylam (rad). Sim'in sensör kümesindeki
+   dönüşümle aynı yöntem (ECEF üzerinden, tam); çekirdeğin ikinci mertebe yerel düzlem
+   formülünden (ida_kes_gnss_ne) bağımsızdır. */
+static void ned_enlem_boylam(double n, double e, double d, double *enlem, double *boylam)
+{
+    const double a = 6378137.0;
+    const double f = 1.0 / 298.257223563;
+    const double e2 = f * (2.0 - f);
+    const double lat0 = (double)ORJ_LAT_E7 * 1.0e-7 * PI_D / 180.0;
+    const double lon0 = (double)ORJ_LON_E7 * 1.0e-7 * PI_D / 180.0;
+    const double se = sin(lat0), ce = cos(lat0), sb = sin(lon0), cb = cos(lon0);
+    const double n0 = a / sqrt(1.0 - e2 * se * se);
+    const double x0 = n0 * ce * cb, y0 = n0 * ce * sb, z0 = n0 * (1.0 - e2) * se;
+    const double x = x0 - se * cb * n - sb * e - ce * cb * d;
+    const double y = y0 - se * sb * n + cb * e - ce * sb * d;
+    const double z = z0 + ce * n - se * d;
+    const double p = sqrt(x * x + y * y);
+    double lat = atan2(z, p * (1.0 - e2));
+    for (int i = 0; i < 8; i++) {
+        const double s = sin(lat);
+        const double nn = a / sqrt(1.0 - e2 * s * s);
+        const double h = p / cos(lat) - nn;
+        lat = atan2(z, p * (1.0 - e2 * nn / (nn + h)));
+    }
+    *enlem = lat;
+    *boylam = atan2(y, x);
+}
+
+static int32_t e7(double rad)
+{
+    return (int32_t)llround(rad * 180.0 / PI_D * 1.0e7);
+}
+
+/* ZYX Euler (roll, pitch, yaw) dönüş matrisi. */
+static void rot_e(const double e[3], double r[3][3])
+{
+    poz_t p;
+    (void)memset(&p, 0, sizeof(p));
+    p.roll = e[0];
+    p.pitch = e[1];
+    p.yaw = e[2];
+    rot(&p, r);
+}
+
+/* Periyodik örnek: ölçüm zamanı tm = k·per + ofs, teslimi tm + gec. Bu çağrıya (T − 5 ms, T]
+   düşen bir teslim varsa true ve *tm. per ≥ 5 ms. */
+static bool izgara(int64_t T, int64_t per, int64_t ofs, int64_t gec, int64_t *tm)
+{
+    const int64_t x = T - gec - ofs;
+    if (x < 0) {
+        return false;
+    }
+    const int64_t kk = x / per;
+    *tm = kk * per + ofs;
+    return (x - kk * per) < T_ADIM_NS;
+}
+
+static void govde_hizi(senaryo_f s, double t, const double l[3], double vb[3])
+{
+    /* Kol ucundaki noktanın dibe göre hızı, gövde çerçevesinde: Rᵀ v + ω × l. */
+    poz_t q;
+    s(t, &q);
+    double r[3][3], v[3], w[3], c[3];
+    rot(&q, r);
+    hiz(s, t, v);
+    omega(s, t, w);
+    carp_t(r, v, vb);
+    capraz(w, l, c);
+    for (int i = 0; i < 3; i++) {
+        vb[i] += c[i];
+    }
+}
+
+static void gnss_uret(kosu_t *k, ida_in_t *in, uint8_t *n, int64_t T)
+{
+    const kosu_ayar_t *a = &k->a;
+    int64_t tm = 0;
+    const bool var = a->yardim_hizli ? true : izgara(T, 200 * DS_MS, 3 * DS_MS, 120 * DS_MS, &tm);
+    if (a->yardim_hizli) {
+        tm = T;
+    }
+    if (!var) {
+        return;
+    }
+    const double t = ns_t(tm);
+    poz_t q;
+    a->sen(t, &q);
+    double r[3][3], rl[3];
+    rot(&q, r);
+    carp(r, a->l_gnss, rl);
+    /* Anten üstündeki su 3 cm'yi aşarsa çözüm yoktur (sim: w50); sudan çıkınca ilk fix
+       gnss_edinim sonra gelir. Çözümsüz örnek VALID = 0 taşır ve kapıdan geçmez: üretilmez. */
+    if ((q.d + rl[2]) > 0.03) {
+        k->anten_su_t = t;
+    }
+    if ((t - k->anten_su_t) < a->gnss_edinim) {
+        return;
+    }
+    if (aralikta(t, a->gnss_kes_bas, a->gnss_kes_son)) {
+        return;
+    }
+    if (a->gnss_tek > 0.0) {
+        if ((t < a->gnss_tek) || k->gnss_tek_bitti) {
+            return;
+        }
+        k->gnss_tek_bitti = true;
+    }
+    /* Hata: varyansın %90'ı Gauss–Markov (τ = 60 s), %10'u beyaz (sim/sensor GnssAyar). */
+    if (!k->gm_var) {
+        k->gm[0] = gauss(&k->ry);
+        k->gm[1] = gauss(&k->ry);
+        k->gm_var = true;
+        k->gm_t = t;
+    }
+    const double phi = exp(-(t - k->gm_t) / 60.0);
+    k->gm_t = t;
+    double ne[2];
+    for (int i = 0; i < 2; i++) {
+        k->gm[i] = phi * k->gm[i] + sqrt(1.0 - phi * phi) * gauss(&k->ry);
+        ne[i] = a->s_gnss * (sqrt(0.9) * k->gm[i] + sqrt(0.1) * gauss(&k->ry));
+    }
+    if (aralikta(t, a->gnss_sicra_bas, a->gnss_sicra_son)) {
+        ne[0] += a->gnss_sicra;
+    }
+    k->gnss_son_ne[0] = ne[0];
+    k->gnss_son_ne[1] = ne[1];
+    double v[3], w[3], c[3], cn[3];
+    hiz(a->sen, t, v);
+    omega(a->sen, t, w);
+    capraz(w, a->l_gnss, c);
+    carp(r, c, cn);
+    double enlem = 0.0, boylam = 0.0;
+    ned_enlem_boylam(q.n + rl[0] + ne[0], q.e + rl[1] + ne[1], q.d + rl[2], &enlem, &boylam);
+    ida_sample_t *o = &in->samples[(*n)++];
+    (void)memset(o, 0, sizeof(*o));
+    o->hdr.t_meas.ns = tm;
+    o->hdr.t_rx.ns = T;
+    o->hdr.seq = ++k->gnss_seq;
+    o->hdr.flags = (uint16_t)IDA_HF_VALID;
+    o->hdr.type = (uint8_t)IDA_SENS_GNSS;
+    o->u.gnss.lat_e7 = e7(enlem);
+    o->u.gnss.lon_e7 = e7(boylam);
+    o->u.gnss.alt_mm = (int32_t)llround(-(q.d + rl[2]) * 1000.0);
+    for (int i = 0; i < 3; i++) {
+        o->u.gnss.vel_ned[i] = (float)(v[i] + cn[i] + a->s_gnss_v * gauss(&k->ry));
+    }
+    o->u.gnss.eph = (float)a->s_gnss;
+    o->u.gnss.epv = (float)(1.5 * a->s_gnss);
+    o->u.gnss.fix_type = aralikta(t, a->gnss_fix_bas, a->gnss_fix_son) ? (uint8_t)IDA_GNSS_FIX_2D
+                                                                        : (uint8_t)IDA_GNSS_FIX_3D;
+    o->u.gnss.n_sv = 14u;
+}
+
+static void dvl_uret(kosu_t *k, ida_in_t *in, uint8_t *n, int64_t T)
+{
+    const kosu_ayar_t *a = &k->a;
+    const int64_t per = (a->dvl_hz > 7.0) ? (100 * DS_MS) : (200 * DS_MS);
+    int64_t tm = 0;
+    const bool var = a->yardim_hizli ? true : izgara(T, per, 7 * DS_MS, 30 * DS_MS, &tm);
+    if (a->yardim_hizli) {
+        tm = T;
+    }
+    if (!var) {
+        return;
+    }
+    const double t = ns_t(tm);
+    if (aralikta(t, a->dvl_kes_bas, a->dvl_kes_son)) {
+        return;
+    }
+    if (a->dvl_tek > 0.0) {
+        if ((t < a->dvl_tek) || k->dvl_tek_bitti) {
+            return;
+        }
+        k->dvl_tek_bitti = true;
+    }
+    bool kilit = !aralikta(t, a->dvl_kilit_bas, a->dvl_kilit_son);
+    if (aralikta(t, a->dvl_flap_bas, a->dvl_flap_son)) {
+        const long evre = (long)floor((t - a->dvl_flap_bas) / a->dvl_flap_yari);
+        kilit = (evre % 2L) == 1L; /* ilk yarı periyot kilitsiz */
+    }
+    poz_t q;
+    a->sen(t, &q);
+    double r[3][3], rl[3], vb[3], m[3][3], vd[3];
+    rot(&q, r);
+    carp(r, a->l_dvl, rl);
+    govde_hizi(a->sen, t, a->l_dvl, vb);
+    rot_e(a->dvl_e, m);
+    carp_t(m, vb, vd); /* gövde → DVL çerçevesi */
+    const double irtifa = a->taban - (q.d + rl[2]);
+    ida_sample_t *o = &in->samples[(*n)++];
+    (void)memset(o, 0, sizeof(*o));
+    o->hdr.t_meas.ns = tm;
+    o->hdr.t_rx.ns = T;
+    o->hdr.seq = ++k->dvl_seq;
+    o->hdr.flags = (uint16_t)IDA_HF_VALID;
+    o->hdr.type = (uint8_t)IDA_SENS_DVL;
+    o->u.dvl.dvl_flags = (uint8_t)IDA_DVL_TRACK_BOTTOM;
+    o->u.dvl.altitude = -1.0f;
+    for (int i = 0; i < 4; i++) {
+        o->u.dvl.beam_dist[i] = -1.0f;
+    }
+    if (!kilit) {
+        return;
+    }
+    for (int i = 0; i < 3; i++) {
+        o->u.dvl.vel[i] = (float)((1.0 + a->dvl_olcek) * vd[i] + a->s_dvl * gauss(&k->ry));
+    }
+    if (aralikta(t, a->dvl_ayk_bas, a->dvl_ayk_son)) {
+        o->u.dvl.vel[0] += (float)a->dvl_ayk;
+    }
+    o->u.dvl.dvl_flags = (uint8_t)(IDA_DVL_TRACK_BOTTOM | IDA_DVL_VEL_VALID);
+    if (a->s_dvl > 0.0) {
+        o->u.dvl.cov[0] = (float)(a->s_dvl * a->s_dvl);
+        o->u.dvl.cov[3] = (float)(a->s_dvl * a->s_dvl);
+        o->u.dvl.cov[5] = (float)(a->s_dvl * a->s_dvl);
+        o->u.dvl.dvl_flags = (uint8_t)(o->u.dvl.dvl_flags | IDA_DVL_COV_PRESENT);
+    }
+    o->u.dvl.fom = (float)a->s_dvl;
+    o->u.dvl.altitude = (float)irtifa;
+    o->u.dvl.beam_valid = 0x0Fu;
+    for (int i = 0; i < 4; i++) {
+        o->u.dvl.beam_dist[i] = (float)(irtifa / cos(0.39269908169872414));
+    }
+}
+
+static void ping_uret(kosu_t *k, ida_in_t *in, uint8_t *n, int64_t T)
+{
+    const kosu_ayar_t *a = &k->a;
+    int64_t tm = 0;
+    if (!izgara(T, 100 * DS_MS, 9 * DS_MS, 20 * DS_MS, &tm)) {
+        return;
+    }
+    const double t = ns_t(tm);
+    poz_t q;
+    a->sen(t, &q);
+    double r[3][3], rl[3];
+    rot(&q, r);
+    carp(r, a->l_ping, rl);
+    ida_sample_t *o = &in->samples[(*n)++];
+    (void)memset(o, 0, sizeof(*o));
+    o->hdr.t_meas.ns = tm;
+    o->hdr.t_rx.ns = T;
+    o->hdr.seq = ++k->ping_seq;
+    o->hdr.flags = (uint16_t)IDA_HF_VALID;
+    o->hdr.type = (uint8_t)IDA_SENS_PING1D;
+    /* Işın gövde +z ekseninde; düz dipte ışın boyunca menzil = düşey mesafe / cos(eğim). */
+    o->u.ping1d.distance = (float)((a->taban - (q.d + rl[2])) / r[2][2]);
+    o->u.ping1d.scan_start = 0.0f;
+    o->u.ping1d.scan_length = 50.0f;
+    o->u.ping1d.ping_number = k->ping_seq;
+    o->u.ping1d.confidence = 100u;
+}
+
+static void yardim_ekle(kosu_t *k, ida_in_t *in)
+{
+    uint8_t n = in->n_samples;
+    const int64_t T = k->t_ns;
+    if (k->a.gnss) {
+        gnss_uret(k, in, &n, T);
+    }
+    if (k->a.dvl) {
+        dvl_uret(k, in, &n, T);
+    }
+    if (k->a.ping) {
+        ping_uret(k, in, &n, T);
+    }
+    in->n_samples = n;
 }
 
 /* Bir sonraki partinin girdisi (çağrı başına 5 ms). */
@@ -351,12 +667,15 @@ static void girdi_kur(kosu_t *k, ida_in_t *in)
         }
     }
     in->n_samples = n;
+    yardim_ekle(k, in);
 }
 
 /* ---- Hata ölçümü ------------------------------------------------------------------------- */
 
 typedef struct {
     double roll, pitch, yaw, derinlik, vd;
+    double pn, pe, ph; /* yatay konum hatası: kuzey, doğu, büyüklük (m) */
+    double vn, ve, vh; /* yatay hız hatası (m/s) */
 } hata_t;
 
 static double sar(double a)
@@ -392,6 +711,12 @@ static void nav_hatasi(const kosu_t *k, const ida_nav_out_t *nav, hata_t *h)
     h->yaw = fabs(sar(yaw - p.yaw));
     h->derinlik = fabs((double)nav->depth - p.d);
     h->vd = fabs((double)nav->v_ned[2] - v[2]);
+    h->pn = fabs((double)nav->p_ned[0] - p.n);
+    h->pe = fabs((double)nav->p_ned[1] - p.e);
+    h->ph = sqrt(h->pn * h->pn + h->pe * h->pe);
+    h->vn = fabs((double)nav->v_ned[0] - v[0]);
+    h->ve = fabs((double)nav->v_ned[1] - v[1]);
+    h->vh = sqrt(h->vn * h->vn + h->ve * h->ve);
 }
 
 static void en_buyuk(hata_t *m, const hata_t *h)
@@ -401,6 +726,12 @@ static void en_buyuk(hata_t *m, const hata_t *h)
     m->yaw = (h->yaw > m->yaw) ? h->yaw : m->yaw;
     m->derinlik = (h->derinlik > m->derinlik) ? h->derinlik : m->derinlik;
     m->vd = (h->vd > m->vd) ? h->vd : m->vd;
+    m->pn = (h->pn > m->pn) ? h->pn : m->pn;
+    m->pe = (h->pe > m->pe) ? h->pe : m->pe;
+    m->ph = (h->ph > m->ph) ? h->ph : m->ph;
+    m->vn = (h->vn > m->vn) ? h->vn : m->vn;
+    m->ve = (h->ve > m->ve) ? h->ve : m->ve;
+    m->vh = (h->vh > m->vh) ? h->vh : m->vh;
 }
 
 static bool nav_sonlu(const ida_nav_out_t *n)
@@ -557,6 +888,30 @@ static kosu_ayar_t ayar_temel(senaryo_f s, uint32_t tohum)
     a.mag_olcek_bas = a.mag_olcek_son = -1.0;
     a.inst1_bas = a.inst1_son = -1.0;
     a.bayrak_bas = a.bayrak_son = -1.0;
+    /* Yatay yardım duyargaları kapalı; büyüklükler sim/sensor profil varsayılanlarından:
+       GNSS neo_m9n CEP 2 m → eksen başına σ = 2/√(2 ln 2)·√(12/n_sv) ≈ 1,5 m (n_sv ≈ 15),
+       hız σ 0,05 m/s, teslim gecikmesi 120 ms, 5 Hz; DVL a50 ışın σ₀ 1 mm/s → yatay eksen
+       ≈ 2 mm/s, uzun dönem ölçek sınırı %1,01 (3σ) → 1σ %0,34. */
+    a.s_gnss = 1.5;
+    a.s_gnss_v = 0.05;
+    a.gnss_edinim = 2.0;
+    a.gnss_kes_bas = a.gnss_kes_son = -1.0;
+    a.gnss_sicra_bas = a.gnss_sicra_son = -1.0;
+    a.gnss_fix_bas = a.gnss_fix_son = -1.0;
+    a.s_dvl = 2.0e-3;
+    a.dvl_olcek = 0.0034;
+    a.dvl_kilit_bas = a.dvl_kilit_son = -1.0;
+    a.dvl_flap_bas = a.dvl_flap_son = -1.0;
+    a.dvl_flap_yari = 1.0;
+    a.dvl_kes_bas = a.dvl_kes_son = -1.0;
+    a.dvl_ayk_bas = a.dvl_ayk_son = -1.0;
+    a.dvl_hz = 5.0;
+    a.taban = 30.0;
+    for (int i = 0; i < 3; i++) {
+        a.l_gnss[i] = L_GNSS[i];
+        a.l_dvl[i] = L_DVL[i];
+        a.l_ping[i] = L_PING[i];
+    }
     return a;
 }
 
@@ -1149,6 +1504,8 @@ static void test_b9_hizalama_tasma(void)
     TEST_ASSERT_EQUAL_UINT32(0u, C.kes.n_cokme);
 }
 
+#include "test_kestirim_yatay.inc"
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -1171,5 +1528,6 @@ int main(void)
     RUN_TEST(test_b7_cikis_belirsizligi);
     RUN_TEST(test_b8_gecikmeli_imu_zamani);
     RUN_TEST(test_b9_hizalama_tasma);
+    yatay_testleri();
     return UNITY_END();
 }
