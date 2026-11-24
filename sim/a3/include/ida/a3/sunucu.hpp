@@ -52,6 +52,8 @@ struct SunucuSayaclari {
     std::uint64_t azami_bellek_tahmini = 0; // bağlantı kuyruklarının toplam bayt tavanı (gözlenen)
     std::uint64_t tik = 0;                  // yayın tiki sayısı
     std::uint64_t azami_asim_govde_bayti = 0;  // sınırı aşan gövdede başlıktan sonra okunan en çok bayt (A3-K51)
+    std::uint64_t yer_acmak_icin_kapatilan = 0;  // HTTP bağlantı sınırında yer açmak için kapatılan
+    std::uint64_t baskida_one_alinan = 0;        // çıkış baskısında öne alınıp işlenen kısıtlayan istek
 };
 
 class Sunucu {

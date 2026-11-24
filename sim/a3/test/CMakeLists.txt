@@ -34,12 +34,15 @@ set(_ida_a3_testleri
   # ölçüm ve dayanıklılık (kabul 4, 6)
   yavas_istemci yavas_istemci_ret_duser rastgele_cekirdek rastgele_ayristirici cok_baglanti
   # sol #4-#11, #13
-  hz_aralik_disi govde_okuma_butcesi pipeline_baski head_sonra_get chunked_bozuk ws_en_kisa_uzunluk baslatma_hatasi uyandirma_eslesmesi olay_gecmisi_cok_bayt)
+  hz_aralik_disi govde_okuma_butcesi pipeline_baski head_sonra_get chunked_bozuk ws_en_kisa_uzunluk baslatma_hatasi uyandirma_eslesmesi olay_gecmisi_cok_bayt
+  # sol W4-a3-2 #1-#3
+  baglanti_siniri_emniyet baski_altinda_emniyet baski_altinda_emniyet_soket jeton_erken_ret_tablo statik_harf_duyarli)
 foreach(_ad IN LISTS _ida_a3_testleri)
   add_test(NAME sim.a3.${_ad} COMMAND ida_a3_test ${_ad})
 endforeach()
 # Ağır testler aynı anda koşmaz (soket ve zamanlama ölçümü).
-set_tests_properties(sim.a3.yavas_istemci sim.a3.yavas_istemci_ret_duser sim.a3.cok_baglanti sim.a3.erisim_http PROPERTIES RUN_SERIAL TRUE)
+set_tests_properties(sim.a3.yavas_istemci sim.a3.yavas_istemci_ret_duser sim.a3.cok_baglanti sim.a3.erisim_http
+  sim.a3.baski_altinda_emniyet_soket PROPERTIES RUN_SERIAL TRUE)
 
 # A3-K02: döngü arabirimi dışı adres verilince program dinlemez ve hata koduyla çıkar.
 add_test(NAME sim.a3.sahte_dongu_disi COMMAND ida_a3_sahte --adres 0.0.0.0 --port 0 --sure 1)

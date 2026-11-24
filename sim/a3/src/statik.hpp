@@ -4,9 +4,12 @@
 // yol sunulmaz — bağ kök içini gösterse de. Denetim açılan tanıtıcı üzerinde yapılır (denetim ile
 // açma arasında yarış yok):
 //   POSIX:   kökten başlayarak her bileşen `openat(..., O_NOFOLLOW)` ile açılır; son bileşen düzenli dosya.
-//   Windows: dosya açılır, `GetFinalPathNameByHandleW` ile gerçek yolu alınır ve kökün gerçek yolu +
-//            istenen göreli yolla birebir (büyük/küçük harf duyarsız) karşılaştırılır; herhangi bir
-//            bileşendeki reparse noktası gerçek yolu değiştireceğinden reddedilir.
+//   Windows: kökün gerçek yolu (`\\?\` önekli; ad normalleştirmesi yok) tabanında her bileşen
+//            sırayla `FILE_FLAG_OPEN_REPARSE_POINT` ile açılır (reparse noktası izlenmez); son dosya
+//            dahil reparse özniteliği taşıyan bileşen reddedilir. Açılan ara dizinler
+//            `FILE_SHARE_DELETE` verilmeden okuma sonuna dek tutulur: tutulan bileşen yeniden
+//            adlandırılamaz ya da silinemez, yol denetimden sonra başka yere çevrilemez. Metin
+//            karşılaştırması (harf duyarsız) kök üyeliğinin kanıtı sayılmaz (sol W4-a3-2 #1).
 #pragma once
 
 #include <cstddef>

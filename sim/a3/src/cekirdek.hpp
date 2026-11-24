@@ -47,6 +47,9 @@ inline constexpr std::size_t birlesen_kayit = 64;                    // W4-K22: 
 inline constexpr std::size_t birlesik_sonuc = 1024;                  // W4-K22: bekleyen birleşik sonuç kaydı
 inline constexpr std::size_t baski_esigi = 256 * 1024;               // A3-K39: bu kadar bekleyen çıkış varsa veri eklenmez
 inline constexpr std::size_t okuma_esigi = std::size_t{4} << 20u;    // çıkış bu kadar birikirse girdi okunmaz
+// Çıkış baskısı altında da okunacak en çok girdi (bu uygulama): kısıtlayan emniyet istekleri baskıda
+// da ayrıştırılır (sol W4-a3-2 #2 b); kısıtlayan istek gövdesi bunun çok altındadır.
+inline constexpr std::size_t baski_girdi = std::size_t{64} << 10u;
 }  // namespace sinir
 
 namespace sure {
@@ -55,7 +58,7 @@ inline constexpr auto ping = std::chrono::seconds(5);                 // A3-K46
 inline constexpr auto canlilik = std::chrono::seconds(15);            // A3-K46
 inline constexpr auto onay_jetonu = std::chrono::seconds(10);         // A3-K94
 inline constexpr auto yineleme = std::chrono::minutes(10);            // A3-K53
-inline constexpr auto baslik = std::chrono::seconds(10);              // bu uygulama
+inline constexpr auto baslik = std::chrono::seconds(2);               // bu uygulama (döngü arabirimi; sol W4-a3-2 #2 a)
 inline constexpr auto govde = std::chrono::seconds(30);               // bu uygulama
 inline constexpr auto bosta = std::chrono::seconds(30);               // bu uygulama (HTTP keep-alive)
 inline constexpr auto kapanis = std::chrono::seconds(5);              // bu uygulama: kapanırken çıkışı okumayan karşı taraf

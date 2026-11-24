@@ -1,6 +1,7 @@
 // statik.cpp — bkz. statik.hpp.
 #include "statik.hpp"
 
+#include <memory>
 #include <vector>
 
 #if defined(_WIN32)
@@ -66,6 +67,16 @@ struct Tanitici {
     }
 };
 
+// Bileşen açılışı: reparse noktası izlenmez (FILE_FLAG_OPEN_REPARSE_POINT); dizin açmak için
+// FILE_FLAG_BACKUP_SEMANTICS (yalnız ara bileşenlerde; son bileşen dizinse açılış başarısız olur);
+// silme paylaşımı verilmez (tutulduğu sürece yeniden adlandırma/silme yok).
+HANDLE bilesen_ac(const std::wstring& yol, bool dizin)
+{
+    const DWORD bayrak = FILE_FLAG_OPEN_REPARSE_POINT | (dizin ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL);
+    return CreateFileW(yol.c_str(), dizin ? FILE_READ_ATTRIBUTES : GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                       OPEN_EXISTING, bayrak, nullptr);
+}
+
 bool gercek_yol(HANDLE h, std::wstring& yol)
 {
     const DWORD n = GetFinalPathNameByHandleW(h, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
@@ -108,28 +119,41 @@ bool statik_oku(const std::string& kok, const std::string& goreli, std::size_t a
     if (!gercek_yol(k.h, kok_gercek)) {
         return false;
     }
-    std::wstring beklenen = kok_gercek;
-    std::wstring tam = genis(kok);
-    for (const auto& b : parca) {
-        beklenen += L'\\';
-        beklenen += genis(b);
-        tam += L'\\';
-        tam += genis(b);
+    // Kökün gerçek yolu `\\?\` önekiyle gelir: sonraki açılışlarda Win32 ad normalleştirmesi
+    // (sondaki nokta/boşluk kırpma, aygıt adları) yapılmaz, bileşen adı birebir açılır.
+    if (kok_gercek.rfind(L"\\\\?\\", 0) != 0) {
+        return false;
     }
-    Tanitici f(CreateFileW(tam.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (f.h == INVALID_HANDLE_VALUE) {
+    // Kök tutamağı da silme paylaşımı olmadan yeniden açılıp tutulur (kök dizini yer değiştiremez).
+    std::wstring tam = kok_gercek;
+    std::vector<std::unique_ptr<Tanitici>> tutulan;
+    tutulan.push_back(std::make_unique<Tanitici>(bilesen_ac(tam, true)));
+    for (std::size_t i = 0; i < parca.size(); ++i) {
+        if (tutulan.back()->h == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+        BY_HANDLE_FILE_INFORMATION ust{};
+        if (GetFileInformationByHandle(tutulan.back()->h, &ust) == 0 || (ust.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+            (i > 0 && (ust.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)) {
+            return false;  // ara bileşen dizin değil ya da reparse noktası (bağ, junction)
+        }
+        const std::wstring ad = genis(parca[i]);
+        if (ad.empty()) {
+            return false;
+        }
+        tam += L'\\';
+        tam += ad;
+        const bool son = i + 1 == parca.size();
+        tutulan.push_back(std::make_unique<Tanitici>(bilesen_ac(tam, !son)));
+    }
+    Tanitici& f = *tutulan.back();
+    if (f.h == INVALID_HANDLE_VALUE || GetFileType(f.h) != FILE_TYPE_DISK) {
         return false;
     }
     BY_HANDLE_FILE_INFORMATION bilgi{};
     if (GetFileInformationByHandle(f.h, &bilgi) == 0 || (bilgi.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
         (bilgi.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-        return false;
-    }
-    std::wstring dosya_gercek;
-    if (!gercek_yol(f.h, dosya_gercek) || dosya_gercek.size() != beklenen.size() ||
-        CompareStringOrdinal(dosya_gercek.c_str(), static_cast<int>(dosya_gercek.size()), beklenen.c_str(),
-                             static_cast<int>(beklenen.size()), TRUE) != CSTR_EQUAL) {
-        return false;  // yolda reparse noktası (bağ, junction) var ya da kök dışına çıkıyor
+        return false;  // son dosya dizin ya da reparse noktası (simgesel bağ dahil): 404
     }
     const unsigned long long boy =
         (static_cast<unsigned long long>(bilgi.nFileSizeHigh) << 32u) | static_cast<unsigned long long>(bilgi.nFileSizeLow);

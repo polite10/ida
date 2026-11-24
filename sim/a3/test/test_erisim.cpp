@@ -3,6 +3,7 @@
 #include "test_destek.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -241,6 +242,60 @@ int test_statik_simgesel_bag()
         y = kod("/panel/dis_dizin/gizli.txt");
         DOGRULA(d, y.durum == 404 && y.govde.find("GIZLI") == std::string::npos, "kök dışı dizin bağı (ara dizin) 404");
         DOGRULA(d, kod("/panel/alt/x.html").durum == 404, "kök içi ara dizin bağı 404");
+    }
+    fs::remove_all(taban, ec);
+    return d.hata;
+}
+
+// sol W4-a3-2 #1: harfe duyarlı üst dizinde ayrı `web` ve `WEB`; statik kök `web`;
+// `web/panel/x.txt` bağı `WEB/panel/x.txt`'yi gösterir. Gerçek yol beklenen yoldan yalnız harf
+// büyüklüğünde ayrılır; sunulmamalı (404). Windows'ta üst dizin `fsutil file setCaseSensitiveInfo`
+// ile harfe duyarlı yapılır; yapılamazsa (ya da dosya sistemi harfe duyarsızsa) bu bölüm atlanır ve
+// atlandığı yazdırılır.
+int test_statik_harf_duyarli()
+{
+    namespace fs = std::filesystem;
+    Denetci d;
+    const fs::path taban = fs::current_path() / "a3_statik_harf_deneme";
+    std::error_code ec;
+    fs::remove_all(taban, ec);
+    fs::create_directories(taban);
+#if defined(_WIN32)
+    {
+        const std::string komut = "fsutil.exe file setCaseSensitiveInfo \"" + taban.string() + "\" enable >NUL 2>&1";
+        const int r = std::system(komut.c_str());
+        std::printf("  fsutil setCaseSensitiveInfo: %d\n", r);
+    }
+#endif
+    fs::create_directories(taban / "web" / "panel");
+    const bool ayri = fs::create_directory(taban / "WEB", ec) && !ec;
+    if (ayri) {
+        fs::create_directories(taban / "WEB" / "panel");
+    }
+    std::ofstream(taban / "web" / "panel" / "duz.txt", std::ios::binary) << "duz";
+    bool ayri_dogrulandi = false;
+    if (ayri) {
+        std::ofstream(taban / "WEB" / "panel" / "x.txt", std::ios::binary) << "DIS-WEB-GIZLI";
+        ayri_dogrulandi = !fs::exists(taban / "web" / "panel" / "x.txt");
+    }
+    bool bag_var = false;
+    if (ayri_dogrulandi) {
+        try {
+            fs::create_symlink(taban / "WEB" / "panel" / "x.txt", taban / "web" / "panel" / "x.txt");
+            bag_var = true;
+        } catch (const fs::filesystem_error& h) {
+            std::printf("  simgesel bağ oluşturulamadı (%s)\n", h.what());
+        }
+    }
+    SunucuAyari sa;
+    sa.statik_kok = (taban / "web").string();
+    Ortam o({}, sa);
+    DOGRULA(d, o.http(istek("GET", "/panel/duz.txt", {}, {}, true)).durum == 200, "düz dosya 200");
+    if (bag_var) {
+        const HttpYanit y = o.http(istek("GET", "/panel/x.txt", {}, {}, true));
+        DOGRULA(d, y.durum == 404 && y.govde.find("GIZLI") == std::string::npos, "WEB'i gösteren bağ 404");
+    } else {
+        std::printf("  ATLANDI: harfe duyarlı ayrı web/WEB dizinleri ya da bağ oluşturulamadı; karşı örnek koşmadı\n");
     }
     fs::remove_all(taban, ec);
     return d.hata;

@@ -55,6 +55,11 @@ int test_ws_en_kisa_uzunluk();
 int test_baslatma_hatasi();
 int test_uyandirma_eslesmesi();
 int test_olay_gecmisi_cok_bayt();
+int test_baglanti_siniri_emniyet();
+int test_baski_altinda_emniyet();
+int test_baski_altinda_emniyet_soket();
+int test_jeton_erken_ret_tablo();
+int test_statik_harf_duyarli();
 int uyum_ornekleri_yaz(const char* yol);
 }  // namespace ida::a3::test
 
@@ -103,6 +108,11 @@ int main(int argc, char** argv)
         {"rastgele_cekirdek", test_rastgele_cekirdek},
         {"rastgele_ayristirici", test_rastgele_ayristirici},
         {"cok_baglanti", test_cok_baglanti},
+        {"baglanti_siniri_emniyet", test_baglanti_siniri_emniyet},
+        {"baski_altinda_emniyet", test_baski_altinda_emniyet},
+        {"baski_altinda_emniyet_soket", test_baski_altinda_emniyet_soket},
+        {"jeton_erken_ret_tablo", test_jeton_erken_ret_tablo},
+        {"statik_harf_duyarli", test_statik_harf_duyarli},
         {"hz_aralik_disi", test_hz_aralik_disi},
         {"govde_okuma_butcesi", test_govde_okuma_butcesi},
         {"pipeline_baski", test_pipeline_baski},
