@@ -58,6 +58,16 @@ public:
                        std::int64_t t_ns, double hucre_kenari, Vurus& v) const = 0;
     virtual std::size_t malzeme_sayisi() const = 0;
     virtual const AkustikMalzeme& malzeme(std::uint16_t indis) const = 0;
+    // (kuzey, doğu) noktasında, `t_ns` anında su yüzeyinin NED z'si. Sade kademede ortalama
+    // yüzey düzlemi z = 0'dır (05 §2.4.1); dalgalı yüzey (tam kademe) bunu geçersiz kılar.
+    // Dönüştürücü z > yüzey ise suda sayılır (sol #1; 05 §4).
+    virtual double su_yuzeyi_z(double kuzey, double dogu, std::int64_t t_ns) const
+    {
+        (void)kuzey;
+        (void)dogu;
+        (void)t_ns;
+        return 0.0;
+    }
 };
 
 // ---------------------------------------------------------------- çözümsel sahne

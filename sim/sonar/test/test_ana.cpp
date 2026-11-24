@@ -24,6 +24,15 @@ int test_ariza_desenleri();
 int test_kurulum_hatalari();
 int test_w4k1_sensor_kumesi();
 int test_sure();
+int test_sol1_havada();
+int test_sol2_ping1d_pencere();
+int test_sol3_soguma_frekans();
+int test_sol4_motor();
+int test_sol5_pencere_kenari();
+int test_sol5_cekirdek_birim();
+int test_sol6_saat_kaymasi();
+int test_sol7_darbe_suresi();
+int test_sol8_gecerlilik_alani();
 
 }  // namespace ida::sonar::test
 
@@ -54,6 +63,15 @@ int main(int argc, char** argv)
         {"kurulum_hatalari", test_kurulum_hatalari},
         {"w4k1_sensor_kumesi", test_w4k1_sensor_kumesi},
         {"sure", test_sure},
+        {"sol1_havada", test_sol1_havada},
+        {"sol2_ping1d_pencere", test_sol2_ping1d_pencere},
+        {"sol3_soguma_frekans", test_sol3_soguma_frekans},
+        {"sol4_motor", test_sol4_motor},
+        {"sol5_pencere_kenari", test_sol5_pencere_kenari},
+        {"sol5_cekirdek_birim", test_sol5_cekirdek_birim},
+        {"sol6_saat_kaymasi", test_sol6_saat_kaymasi},
+        {"sol7_darbe_suresi", test_sol7_darbe_suresi},
+        {"sol8_gecerlilik_alani", test_sol8_gecerlilik_alani},
     };
     if (argc < 2) {
         std::printf("kullanım: %s <test>\n", argv[0]);

@@ -42,6 +42,7 @@ constexpr double kP360Lmin = -95.0;    // dB
 constexpr double kP360Lmaks = -15.0;   // dB
 constexpr double kP360Kazanc[3] = {-6.0, 0.0, 6.0};   // gain 0/1/2, dB [T]
 constexpr double kYakinAlanM = 1.0;    // yakın alan bandı (05 §2.4.4 md. 2: 0,75–1 m)
+constexpr std::uint16_t kP360DarbeAzamiUs = 1000;   // ping-protocol Ping360 `transducer`: 1–1000 µs
 constexpr int kP360BaslikBayti = 24;   // ping-protocol device_data: başlık 8 + alan 14 + sağlama 2 [T]
 
 // ---------------------------------------------------------------- Ping1D modeli sabitleri
@@ -87,6 +88,9 @@ std::string ping360_denetle(const Ping360Yapilandirmasi& y)
     if (y.sample_period < 80 || y.sample_period > 40000) return "sample_period 80–40000 olmalı (05 §2.4.5)";
     if (y.transmit_frequency_khz < 500 || y.transmit_frequency_khz > 1000) {
         return "transmit_frequency_khz 500–1000 olmalı (05 §2.4.5)";
+    }
+    if (y.transmit_duration_us > kP360DarbeAzamiUs) {
+        return "transmit_duration_us 0 (otomatik) ya da 1–1000 µs olmalı (ping-protocol Ping360 transducer)";
     }
     if (y.gain > 2) return "gain 0–2 olmalı";
     if (y.baslangic_grad > 399 || y.bitis_grad > 399) return "açılar 0–399 gradyan olmalı";
@@ -136,8 +140,16 @@ struct SonarKumesi::Ic {
         Akis olcum_akisi;     // gürültü tabanı ve yakın alan bandı
         double alfa = 0.0;    // dB/m
         std::uint64_t ornek = 0;          // 64 bitlik ping/örnek sayacı (A5-K110 n)
-        std::int64_t sonraki_tx = -1;     // -1: ilk adımda
-        std::int64_t son_bitis = 0;       // son pingin fiziksel bitişi
+        std::int64_t sonraki_tx = -1;     // -1: ilk adımda; adım sınırı
+        // Cihaz zamanlaması (sol #6): kayma = 1 + ppm · 10⁻⁶. `t_ideal` son gönderimin cihazdaki
+        // (yuvarlanmamış) anı; `t_ideal_sonraki` sonraki gönderiminki; adım sınırına en yakın
+        // sınırla bağlanır. Gönderim önceki kaydın üretiminden önce olamazsa ideal an o sınıra
+        // yeniden demirlenir.
+        double kayma = 1.0;
+        std::int64_t t_ideal = -1;
+        std::int64_t t_ideal_sonraki = 0;
+        std::int64_t son_sure = 0;        // son pingin gönderimden fiziksel bitişe süresi
+        int aci_tx = 0;                   // son gönderimin açısı (kafa bir sonraki harekete dek burada)
         std::optional<Bekleyen> bekleyen;
         // Ping360
         Ping360Yapilandirmasi p360{};
@@ -191,6 +203,40 @@ struct SonarKumesi::Ic {
     }
 
     // ------------------------------------------------------------ zamanlama
+    std::int64_t olcekle(const SonarDurumu& s, std::int64_t sure) const
+    {
+        return static_cast<std::int64_t>(std::llround(static_cast<double>(sure) * s.kayma));
+    }
+    // En yakın adım sınırı, yarıda yukarı (sensör kümesinin örnekleme kuralı; 05 §2.2).
+    std::int64_t en_yakin_sinir(std::int64_t t) const
+    {
+        const std::int64_t h = ayar.adim_ns;
+        return ((t + h / 2) / h) * h;
+    }
+    // Dönüştürücü su içinde mi (sol #1; 05 §4): NED z, yüzeyin altında (kesin büyük).
+    bool suda(const ic::DemetGirdisi& g) const
+    {
+        return g.konum[2] > sahne->su_yuzeyi_z(g.konum[0], g.konum[1], g.t_ns);
+    }
+    // Su içindeyse ışın izler; havadaysa geometrik eko yok (ham enerji 0).
+    bool izle(const ic::DemetGirdisi& g)
+    {
+        if (suda(g)) {
+            demet.izle(g, ds);
+            say.isin += ds.isin;
+            return true;
+        }
+        ds.ham.assign(static_cast<std::size_t>(std::max(1, g.n_kutu)), 0.0);
+        ds.isin = 0;
+        ds.isabet = 0;
+        ++say.havada;
+        return false;
+    }
+    double frekans_sogurmasi(double f_hz) const
+    {
+        const auto& su = ayar.ortam.su;
+        return sogurma_db_m(f_hz, su.sicaklik_c, su.tuzluluk, 0.0, su.ph);
+    }
     std::int64_t ping360_dinleme(const Ping360Yapilandirmasi& y) const
     {
         return static_cast<std::int64_t>(y.n_samples) * y.sample_period * 25;
@@ -268,7 +314,12 @@ struct SonarKumesi::Ic {
             s.aci = s.p360.baslangic_grad;
             s.sektor_p = 0;
             s.yon = 1;
+            // Soğurma yeni frekanstan; A5'ten açık sabit verilmişse o korunur (sol #3).
+            if (!std::get<Ping360Ayar>(s.a.ayar).sogurma) {
+                s.alfa = frekans_sogurmasi(1e3 * static_cast<double>(s.p360.transmit_frequency_khz));
+            }
         }
+        s.aci_tx = s.aci;
         const Ping360Yapilandirmasi& y = s.p360;
         const auto& p = std::get<Ping360Ayar>(s.a.ayar);
         const double t_s = static_cast<double>(y.sample_period) * 25e-9;
@@ -290,8 +341,7 @@ struct SonarKumesi::Ic {
         g.t_s = t_s;
         g.n_kutu = y.n_samples;
         g.darbe_s = static_cast<double>(tx_us) * 1e-6;
-        demet.izle(g, ds);
-        say.isin += ds.isin;
+        izle(g);
 
         std::vector<double> yog;
         benek_ve_gurultu(s, s.ornek, ds.ham, p.gurultu_tabani, p.yakin_alan_genligi, 0.0, t_s, yog);
@@ -322,16 +372,17 @@ struct SonarKumesi::Ic {
             o.tani.isin = ds.isin;
             o.tani.isabet = ds.isabet;
         }
-        const std::int64_t bitis = t + ping360_dinleme(y) + p.islem_suresi_ns + ping360_iletim(s, y);
+        const std::int64_t sure = olcekle(s, ping360_dinleme(y) + p.islem_suresi_ns + ping360_iletim(s, y));
+        const std::int64_t bitis = t + sure;
         SonarOlcumu k;
         k.hdr = baslik(s, t, t, bitis);
         if (doymus) k.hdr.flags = static_cast<std::uint16_t>(k.hdr.flags | sensor::kBayrakDoymus);
         k.yuk = std::move(o);
         s.bekleyen = Bekleyen{std::max(ust_sinir(bitis, ayar.adim_ns), t + ayar.adim_ns), std::move(k)};
-        s.son_bitis = bitis;
-        const int onceki = s.aci;
+        s.son_sure = sure;
         s.aci = sonraki_aci(s);
-        s.sonraki_tx = ust_sinir(bitis + y.bekleme_ns + motor(s, grad_farki(onceki, s.aci)), ayar.adim_ns);
+        s.t_ideal_sonraki = s.t_ideal + sure + olcekle(s, y.bekleme_ns + motor(s, grad_farki(s.aci_tx, s.aci)));
+        s.sonraki_tx = en_yakin_sinir(s.t_ideal_sonraki);
     }
 
     void ping1d_at(SonarDurumu& s, const fizik::DurumAnlik& d, std::int64_t t)
@@ -361,8 +412,7 @@ struct SonarKumesi::Ic {
         g.t_s = t_s;
         g.n_kutu = nk;
         g.darbe_s = t_s;   // darbe ≈ bir kutu [T]
-        demet.izle(g, ds);
-        say.isin += ds.isin;
+        const bool sudaki = izle(g);
 
         std::vector<double> yog;
         benek_ve_gurultu(s, s.ornek, ds.ham, kP1dGurultu, 0.0, tau0, t_s, yog);
@@ -404,7 +454,7 @@ struct SonarKumesi::Ic {
         const double snr_db = snr_tepe > 0.0 ? 10.0 * std::log10(snr_tepe) : -1e9;
         bool var = false;
         double mesafe = 0.0;
-        if (snr_db >= kP1dSnrAsgariDb && tepe > 0.0) {
+        if (sudaki && snr_db >= kP1dSnrAsgariDb && tepe > 0.0) {
             const double esik = tepe * std::pow(10.0, kP1dEsikDb / 10.0);
             for (std::size_t i = 0; i < yum.size(); ++i) {
                 if (yum[i] >= esik) {
@@ -430,19 +480,24 @@ struct SonarKumesi::Ic {
             o.tani.isabet = ds.isabet;
         }
         const std::int64_t dinleme = ns(2.0 * (w.scan_start + w.scan_length) / c);
-        const std::int64_t bitis = t + dinleme + p.islem_suresi_ns;
+        const std::int64_t sure = olcekle(s, dinleme + p.islem_suresi_ns);
+        const std::int64_t bitis = t + sure;
         SonarOlcumu k;
         k.hdr = baslik(s, t_meas, t, bitis);
         if (!var) k.hdr.flags = 0;
         k.yuk = std::move(o);
         s.bekleyen = Bekleyen{std::max(ust_sinir(bitis, ayar.adim_ns), t + ayar.adim_ns), std::move(k)};
-        s.son_bitis = bitis;
-        s.sonraki_tx = ust_sinir(t + std::max(p.ping_araligi_ns, dinleme + p.islem_suresi_ns), ayar.adim_ns);
+        s.son_sure = sure;
+        s.t_ideal_sonraki = s.t_ideal + olcekle(s, std::max(p.ping_araligi_ns, dinleme + p.islem_suresi_ns));
+        s.sonraki_tx = en_yakin_sinir(s.t_ideal_sonraki);
         // Otomatik menzil (05 §2.4.6 [T]): pencere son mesafenin `oto_menzil_carpani` katı;
         // eko yoksa pencere iki katına çıkar.
         if (s.p1d.otomatik && !s.p1d_yeni) {
             double l = var ? p.oto_menzil_carpani * mesafe : 2.0 * s.p1d.scan_length;
-            l = std::clamp(l, kP1dAsgariMenzil, kP1dAzamiMenzil - s.p1d.scan_start);
+            // Kalan menzil (> 0: pencere doğrulanmıştır) asgari uzunluktan kısaysa asgari de
+            // ona iner; her durumda lo ≤ hi (sol #2).
+            const double hi = kP1dAzamiMenzil - s.p1d.scan_start;
+            l = std::clamp(l, std::min(kP1dAsgariMenzil, hi), hi);
             s.p1d.scan_length = l;
         }
     }
@@ -630,6 +685,9 @@ KurulumSonucu SonarKumesi::kur(const SonarKumesiAyari& ayar, std::shared_ptr<con
     }
     const SesHizi sh = ortam_ses_hizi(su.sicaklik_c, su.tuzluluk, su.ses_hizi, 0.0, su.yogunluk,
                                       ayar.ortam.yercekimi);
+    if (sh.dislama) {
+        s.uyarilar.emplace_back(ses_hizi_uyarisi(sh));   // sol #8: reddedilmez, bildirilir
+    }
     for (std::size_t i = 0; i < ayar.sonarlar.size(); ++i) {
         const SonarAyari& a = ayar.sonarlar[i];
         const std::string on = "arac.sensorler." + a.ad + ": ";
@@ -656,6 +714,10 @@ KurulumSonucu SonarKumesi::kur(const SonarKumesiAyari& ayar, std::shared_ptr<con
             return s;
         }
         if (!a.etkin) continue;
+        if (!std::isfinite(a.saat_kaymasi_ppm) || std::abs(a.saat_kaymasi_ppm) >= 1e5) {
+            s.hata = on + "saat_kaymasi_ppm geçersiz";
+            return s;
+        }
         if (a.inst > 3) {
             s.hata = on + "inst 0–3 olmalı (A4-K30, A1 §3.4)";
             return s;
@@ -707,6 +769,7 @@ KurulumSonucu SonarKumesi::kur(const SonarKumesiAyari& ayar, std::shared_ptr<con
         d.a = a;
         d.a.montaj.yonelim = ic::normalle(a.montaj.yonelim);
         d.ping1d = a.tur == SensorTuru::ping1d;
+        d.kayma = 1.0 + a.saat_kaymasi_ppm * 1e-6;
         d.isin_akisi = Akis(ayar.ana_tohum, "sensor/" + a.ad + "/sonar_isin");
         d.benek_akisi = Akis(ayar.ana_tohum, "sensor/" + a.ad + "/sonar_hucre");
         d.olcum_akisi = Akis(ayar.ana_tohum, "sensor/" + a.ad + "/olcum");
@@ -718,6 +781,7 @@ KurulumSonucu SonarKumesi::kur(const SonarKumesiAyari& ayar, std::shared_ptr<con
             const auto& p = std::get<Ping360Ayar>(a.ayar);
             d.p360 = std::get<Ping360Yapilandirmasi>(a.yapilandirma);
             d.aci = d.p360.baslangic_grad;
+            d.aci_tx = d.aci;
             d.alfa = p.sogurma ? *p.sogurma
                                : sogurma_db_m(1e3 * d.p360.transmit_frequency_khz, su.sicaklik_c, su.tuzluluk,
                                               0.0, su.ph);
@@ -753,6 +817,7 @@ AdimSonucu SonarKumesi::adim(const fizik::DurumAnlik& d, std::uint64_t adim_no)
         }
         if (s.sonraki_tx < 0) s.sonraki_tx = t;
         if (!s.bekleyen && t >= s.sonraki_tx) {
+            s.t_ideal = (s.t_ideal >= 0 && t == s.sonraki_tx) ? s.t_ideal_sonraki : t;
             if (s.ping1d) {
                 c.ping1d_at(s, d, t);
             } else {
@@ -790,10 +855,11 @@ bool SonarKumesi::ping360_yapilandir(const std::string& ad, const Ping360Yapilan
         if (s.a.ad != ad || s.ping1d) continue;
         s.p360_yeni = y;
         // Süren ping tamamlanır; kafa yeni başlangıca döner (05 §2.4.5).
-        if (s.sonraki_tx >= 0) {
-            const int fark = grad_farki(s.aci, y.baslangic_grad);
+        if (s.t_ideal >= 0) {
+            const int fark = grad_farki(s.aci_tx, y.baslangic_grad);
             const std::int64_t t_min = c.ilk ? 0 : c.t_son + c.ayar.adim_ns;
-            s.sonraki_tx = std::max(ust_sinir(s.son_bitis + y.bekleme_ns + c.motor(s, fark), c.ayar.adim_ns), t_min);
+            s.t_ideal_sonraki = s.t_ideal + s.son_sure + c.olcekle(s, y.bekleme_ns + c.motor(s, fark));
+            s.sonraki_tx = std::max(c.en_yakin_sinir(s.t_ideal_sonraki), t_min);
         }
         return true;
     }

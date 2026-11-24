@@ -39,7 +39,15 @@ enum class SesHiziKaynagi { sabit, chen_millero, mackenzie };
 struct SesHizi {
     double c = 0.0;                                   // m/s
     SesHiziKaynagi kaynak = SesHiziKaynagi::sabit;
+    // Girdi formülün geçerlilik alanının dışında: sonuç doğrulanmamış dışdeğerlemedir
+    // (reddedilmez; A5'in ortam aralığı daha geniştir, W4-K18/sol #8). Alanlar:
+    //  - Mackenzie (1981): 2–30 °C, 25–40 ‰, 0–8000 m.
+    //  - UNESCO (Chen–Millero 1977; Fofonoff ve Millard 1983): 0–40 °C, 0–40 ‰, 0–1000 bar.
+    bool dislama = false;
 };
+
+// `dislama` için kurulum uyarısının metni (boş: alan içinde).
+const char* ses_hizi_uyarisi(const SesHizi& s);
 
 // Deniz suyu ayrımının tuzluluk eşiği (‰).
 inline constexpr double kDenizSuyuEsigiPpt = 25.0;

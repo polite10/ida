@@ -62,15 +62,30 @@ SesHizi ortam_ses_hizi(double sicaklik_c, double tuzluluk, const std::optional<d
                        double z_m, double yogunluk, double yercekimi)
 {
     if (sabit) {
-        return {*sabit, SesHiziKaynagi::sabit};
+        return {*sabit, SesHiziKaynagi::sabit, false};
     }
     const double s_ppt = tuzluluk * 1000.0;
     const double z = z_m > 0.0 ? z_m : 0.0;
+    auto icinde = [](double x, double lo, double hi) { return x >= lo && x <= hi; };
     if (s_ppt >= kDenizSuyuEsigiPpt) {
-        return {ses_hizi_mackenzie(sicaklik_c, s_ppt, z), SesHiziKaynagi::mackenzie};
+        const bool alan = icinde(sicaklik_c, 2.0, 30.0) && icinde(s_ppt, 25.0, 40.0) && icinde(z, 0.0, 8000.0);
+        return {ses_hizi_mackenzie(sicaklik_c, s_ppt, z), SesHiziKaynagi::mackenzie, !alan};
     }
     const double p_bar = yogunluk * yercekimi * z * 1e-5;
-    return {ses_hizi_chen_millero(sicaklik_c, s_ppt, p_bar), SesHiziKaynagi::chen_millero};
+    const bool alan = icinde(sicaklik_c, 0.0, 40.0) && icinde(s_ppt, 0.0, 40.0) && icinde(p_bar, 0.0, 1000.0);
+    return {ses_hizi_chen_millero(sicaklik_c, s_ppt, p_bar), SesHiziKaynagi::chen_millero, !alan};
+}
+
+const char* ses_hizi_uyarisi(const SesHizi& s)
+{
+    if (!s.dislama) {
+        return "";
+    }
+    return s.kaynak == SesHiziKaynagi::mackenzie
+               ? "ortam.su: ses hızı Mackenzie (1981) geçerlilik alanı (2–30 °C, 25–40 ‰, 0–8000 m) dışında; "
+                 "doğrulanmamış dışdeğerleme"
+               : "ortam.su: ses hızı UNESCO/Chen–Millero geçerlilik alanı (0–40 °C, 0–40 ‰, 0–1000 bar) dışında; "
+                 "doğrulanmamış dışdeğerleme";
 }
 
 double sogurma_db_m(double f_hz, double t_c, double tuzluluk, double z_m, double ph)

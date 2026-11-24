@@ -97,7 +97,7 @@ int test_menzil_yasasi()
     // (soğurmasız); kalan fark yalnız kayan nokta yuvarlamasıdır.
     auto a = kume_ayari({ping360(p360_yap(311))});
     std::get<Ping360Ayar>(a.sonarlar[0].ayar).sogurma = 0.0;
-    const Yorunge y = durgun({0.0, 0.0, 0.0});
+    const Yorunge y = durgun({0.0, 0.0, 1.0});
     const double e2 = toplam(p360(ilk_ping(a, duvar(2.0, beton()), y)).tani.ham);
     const double e4 = toplam(p360(ilk_ping(a, duvar(4.0, beton()), y)).tani.ham);
     DOGRULA(d, e2 > 0.0, "duvar dönüşü var");
@@ -120,7 +120,7 @@ int test_menzil_yasasi()
 int test_malzeme()
 {
     Denetci d;
-    const Yorunge y = durgun({0.0, 0.0, 0.0});
+    const Yorunge y = durgun({0.0, 0.0, 1.0});
     auto a = kume_ayari({ping360(p360_yap(311))});
     // Geri saçılım katsayısı μ enerjiyle doğrusal (σ_bs = μ f(θ)).
     const double e1 = toplam(p360(ilk_ping(a, duvar(3.0, beton(0.02)), y)).tani.ham);
@@ -129,7 +129,7 @@ int test_malzeme()
     // Geliş yasası: aynı geometride cos1 / lambert_cos2 = 1 / cos θ_geliş (ışın başına). Araç
     // duvar normaline 60° döndürülür; düşey açıklık θ_geliş'i büyütür: oran [1/cos 58°,
     // 1/(cos 28,2° · cos 62°)] aralığında.
-    const Yorunge y60 = durgun({0.0, 0.0, 0.0}, euler_q(0.0, 0.0, 60.0 * kDerece));
+    const Yorunge y60 = durgun({0.0, 0.0, 1.0}, euler_q(0.0, 0.0, 60.0 * kDerece));
     const double el = toplam(p360(ilk_ping(a, duvar(3.0, beton(0.02, GelisYasasi::lambert_cos2)), y60)).tani.ham);
     const double ec = toplam(p360(ilk_ping(a, duvar(3.0, beton(0.02, GelisYasasi::cos1)), y60)).tani.ham);
     const double oran = ec / el;

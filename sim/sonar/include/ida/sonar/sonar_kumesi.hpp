@@ -45,6 +45,7 @@ struct SonarSayaclari {
     std::uint64_t donma_onceki_cikti_yok = 0;
     std::uint64_t ping = 0;                // atılan ping (bütün sonarlar)
     std::uint64_t isin = 0;                // izlenen ışın
+    std::uint64_t havada = 0;              // dönüştürücü havadayken atılan ping (05 §4; eko yok)
 };
 
 class SonarKumesi {

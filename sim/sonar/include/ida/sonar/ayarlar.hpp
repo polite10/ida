@@ -57,7 +57,8 @@ struct Ping360Ayar {                      // profil ping360 (A5 §3.6)
 struct Ping360Yapilandirmasi {
     std::uint16_t n_samples = 1200;          // 200–1200 (A1 §3.4, A5-K78)
     std::uint16_t sample_period = 2222;      // 25 ns birimi, 80–40 000 (05 §2.4.5 varsayılanı, 50 m)
-    std::uint16_t transmit_duration_us = 0;  // 0: 4 · T_s, µs'ye yuvarlanmış [T] (MP7 §3 md.4)
+    std::uint16_t transmit_duration_us = 0;  // 0: 4 · T_s, µs'ye yuvarlanmış [T] (MP7 §3 md.4);
+                                             // açık değer 1–1000 µs (ping-protocol `transducer`)
     std::uint16_t transmit_frequency_khz = 750;   // 500–1000
     std::uint8_t gain = 1;                   // 0 düşük, 1 olağan, 2 yüksek
     std::uint16_t baslangic_grad = 0;        // 0–399
@@ -80,6 +81,11 @@ struct SonarAyari {                          // arac.sensorler.<ad> (tur ping1d 
     std::uint8_t inst = 0;
     std::string profil;                      // "ping1d" ya da "ping360"
     bool etkin = true;
+    // A5 `saat_kaymasi_ppm` (A5-K41 yalnız IMU'da yasaklar): cihaz zamanlamasının (ping aralığı,
+    // dinleme, işlem, iletim, bekleme, motor) gerçek süresi (1 + ppm · 10⁻⁶) katıdır; ideal
+    // gönderim anları birikimsiz hesaplanıp en yakın adım sınırına bağlanır (sensör kümesinin
+    // kuralı; sol #6). Kutu zaman ekseni nominaldir (A1-K52).
+    double saat_kaymasi_ppm = 0.0;
     Montaj montaj{};                         // A5-K89: Ping1D ışın ekseni sensör +z; Ping360
                                              // dönme ekseni +z, 0 gradyan +x
     std::variant<Ping1dAyar, Ping360Ayar> ayar{Ping360Ayar{}};

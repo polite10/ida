@@ -51,22 +51,82 @@ Desen Desen::tam_genislikten(double yatay_3db_rad, double dusey_3db_rad)
     return {0.5 * yatay_3db_rad / kSincSkala, 0.5 * dusey_3db_rad / kSincSkala};
 }
 
-void Demet::izle(const DemetGirdisi& g, DemetSonucu& s)
+namespace {
+
+int cekirdek_yari_genisligi(double darbe_s, double dt)
 {
-    const int n = std::max(1, g.n_kutu);
+    return std::max(0, static_cast<int>(std::lround(darbe_s / dt)));
+}
+
+}  // namespace
+
+double dinleme_sonu(double tau0, double t_s, int n_kutu, double darbe_s)
+{
+    const double dt = t_s / 4.0;
+    const int hw = cekirdek_yari_genisligi(darbe_s, dt);
+    return tau0 + static_cast<double>(std::max(1, n_kutu)) * t_s + static_cast<double>(hw + 1) * dt;
+}
+
+void biriktir(const std::vector<Katki>& katkilar, double tau0, double t_s, int n_kutu, double darbe_s,
+              BiriktirmeTamponu& tampon, std::vector<double>& ham)
+{
+    const int n = std::max(1, n_kutu);
     const std::size_t nf = static_cast<std::size_t>(4 * n);
-    const double dt = g.t_s / 4.0;
+    const double dt = t_s / 4.0;
     // Darbe/alıcı çekirdeği (05 §2.4.4): dikdörtgen zarf ⊗ alıcı süzgeci = üçgen, sıfır fazlı
     // (tepe gerçek gecikmede [T]; MP7 §3 md.4); sade kademede karesi.
-    const int hw = std::max(0, static_cast<int>(std::lround(g.darbe_s / dt)));
-    cekirdek_.assign(static_cast<std::size_t>(2 * hw + 1), 0.0);
+    const int hw = cekirdek_yari_genisligi(darbe_s, dt);
+    const std::size_t uhw = static_cast<std::size_t>(hw);
+    tampon.cekirdek.assign(2 * uhw + 1, 0.0);
     for (int m = -hw; m <= hw; ++m) {
         const double h = 1.0 - std::abs(static_cast<double>(m)) / static_cast<double>(hw + 1);
-        cekirdek_[static_cast<std::size_t>(m + hw)] = h * h;
+        tampon.cekirdek[static_cast<std::size_t>(m + hw)] = h * h;
     }
+    // Genişletilmiş ince dizi: [−hw, nf + hw); indis kayması hw.
+    const std::size_t ne = nf + 2 * uhw;
+    tampon.ince.assign(ne, 0.0);
+    for (const Katki& k : katkilar) {
+        if (!(k.enerji > 0.0)) {
+            continue;
+        }
+        const double fpos = (k.tau - tau0) / dt - 0.5 + static_cast<double>(hw);
+        const double fl = std::floor(fpos);
+        if (fl < -1.0 || fl >= static_cast<double>(ne)) {
+            continue;
+        }
+        const long long k0 = static_cast<long long>(fl);
+        const double a = fpos - fl;
+        if (k0 >= 0) {
+            tampon.ince[static_cast<std::size_t>(k0)] += (1.0 - a) * k.enerji;
+        }
+        if (k0 + 1 < static_cast<long long>(ne)) {
+            tampon.ince[static_cast<std::size_t>(k0 + 1)] += a * k.enerji;
+        }
+    }
+    // Evrişim yalnız pencere içindeki ince örnekler için: [hw, hw + nf).
+    tampon.evr.assign(nf, 0.0);
+    for (std::size_t i = 0; i < ne; ++i) {
+        const double x = tampon.ince[i];
+        if (x == 0.0) {
+            continue;
+        }
+        // Çıkış t (pencere içi indis), kaynak i: t + hw − i ∈ [0, 2hw].
+        const std::size_t t_lo = i >= 2 * uhw ? i - 2 * uhw : 0u;
+        const std::size_t t_hi = std::min(nf - 1, i);
+        for (std::size_t t = t_lo; t <= t_hi; ++t) {
+            tampon.evr[t] += tampon.cekirdek[t + 2 * uhw - i] * x;
+        }
+    }
+    ham.assign(static_cast<std::size_t>(n), 0.0);
+    for (std::size_t i = 0; i < static_cast<std::size_t>(n); ++i) {
+        ham[i] = 0.25 * (tampon.evr[4 * i] + tampon.evr[4 * i + 1] + tampon.evr[4 * i + 2] + tampon.evr[4 * i + 3]);
+    }
+}
+
+void Demet::izle(const DemetGirdisi& g, DemetSonucu& s)
+{
     // Dinlenen en uzak menzil (çekirdek payıyla).
-    const double tau_son = g.tau0 + static_cast<double>(n) * g.t_s + static_cast<double>(hw + 1) * dt;
-    const double r_maks = 0.5 * g.c * tau_son;
+    const double r_maks = 0.5 * g.c * dinleme_sonu(g.tau0, g.t_s, g.n_kutu, g.darbe_s);
 
     const Desen& p = g.desen;
     const double wh = p.teta0;
@@ -135,42 +195,13 @@ void Demet::izle(const DemetGirdisi& g, DemetSonucu& s)
 
     // Hücre: genlik √(Σw), enerji Σw, gecikme enerji ağırlıklı ortalama (iskelet §8). Sade
     // kademede faz yoktur; hücreler eşevresiz (enerji) toplanır. Ekleme sırası = ışın sırası.
-    ince_.assign(nf, 0.0);
+    katkilar_.clear();
     for (const Hucre& c : hucreler_) {
-        if (!(c.sw > 0.0)) {
-            continue;
-        }
-        const double tau = c.swt / c.sw;
-        const double fpos = (tau - g.tau0) / dt - 0.5;
-        const double fl = std::floor(fpos);
-        if (fl < -1.0 || fl >= static_cast<double>(nf)) {
-            continue;
-        }
-        const long long k0 = static_cast<long long>(fl);
-        const double a = fpos - fl;
-        if (k0 >= 0) {
-            ince_[static_cast<std::size_t>(k0)] += (1.0 - a) * c.sw;
-        }
-        if (k0 + 1 < static_cast<long long>(nf)) {
-            ince_[static_cast<std::size_t>(k0 + 1)] += a * c.sw;
+        if (c.sw > 0.0) {
+            katkilar_.push_back({c.swt / c.sw, c.sw});
         }
     }
-    evr_.assign(nf, 0.0);
-    for (std::size_t i = 0; i < nf; ++i) {
-        const double x = ince_[i];
-        if (x == 0.0) {
-            continue;
-        }
-        const std::size_t lo = i >= static_cast<std::size_t>(hw) ? i - static_cast<std::size_t>(hw) : 0u;
-        const std::size_t hi = std::min(nf - 1, i + static_cast<std::size_t>(hw));
-        for (std::size_t t = lo; t <= hi; ++t) {
-            evr_[t] += cekirdek_[t + static_cast<std::size_t>(hw) - i] * x;
-        }
-    }
-    s.ham.assign(static_cast<std::size_t>(n), 0.0);
-    for (std::size_t i = 0; i < static_cast<std::size_t>(n); ++i) {
-        s.ham[i] = 0.25 * (evr_[4 * i] + evr_[4 * i + 1] + evr_[4 * i + 2] + evr_[4 * i + 3]);
-    }
+    biriktir(katkilar_, g.tau0, g.t_s, g.n_kutu, g.darbe_s, tampon_, s.ham);
     s.isin = static_cast<std::uint32_t>(nr);
     s.isabet = isabet;
 }

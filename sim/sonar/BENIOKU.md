@@ -10,7 +10,7 @@ Fizik durumundan ve sahneden zaman damgalı Ping1D ve Ping360 kayıtları ürete
 | `include/ida/sonar/olcum.hpp` | `SonarOlcumu` = sensör kümesinin `OlcumBasligi` + A4 yükü (+ A3/A6 alanları) |
 | `include/ida/sonar/sonar_kumesi.hpp` | `SonarKumesi`: `kur`, `adim`, `bosalt`/`siradaki`, `*_yapilandir`, `arm`/`disarm`/`active` |
 | `src/demet.*` | Işın demeti, saçıcı hücreleri, biriktirme, darbe/alıcı çekirdeği |
-| `test/` | CTest `sim.sonar.*` (19 test) |
+| `test/` | CTest `sim.sonar.*` (28 test; `test_duzeltme.cpp` sol incelemesinin karşı örnekleri) |
 
 ## Arayüz kararı: ayrı `SonarKumesi`
 
@@ -21,11 +21,12 @@ Sonar modelleri `SensorKumesi`'ne eklenmedi; ayrı bir `SonarKumesi` sınıfı y
 - **Işın demeti:** ayrılabilir sinc deseni `B = sinc(θ/θ0) sinc(φ/φ0)`, tek yönlü −3 dB genişlikleri Ping360 2° × 25°, Ping1D 25° × 25° (05 §2.4.2 [T]); koni ana lob. Açı uzayında katmanlı titreşimli `nh × nv` ızgarası, `dΩ = Δθ Δφ cos φ`; titreşim `sensor/<ad>/sonar_isin` akışından (`n` = ping sayacı, `c2` = ışın numarası, 24 bit; 05 §2.6). Ping başına 5 000 ışın (A5-K78).
 - **Yol:** yalnız doğrudan yol. Işın ağırlığı `w = B⁴ σ_bs dΩ 10^(−2αr/10) / (r² cos θ)`, `σ_bs = μ cos²θ` (`lambert_cos2`) ya da `μ cos θ` (`cos1`), `cos θ ≥ 0,05` (05 §2.4.2).
 - **Saçıcı kuralı (iskelet §8):** yüzey gövdeye sabit, kenarı 1 cm hücrelere bölünür (`Sahne::kesis` hücre indisini verir); hücreye düşen ışınların enerjileri toplanır, gecikme enerji ağırlıklı ortalamadır; sade kademede hücreler eşevresiz (enerji) toplanır. Işın sayısı iki katına çıkınca enerji büyümez (`sim.sonar.enerji_isin_sayisi`).
-- **Biriktirme ve çekirdek:** ince ızgara `T_s/4`, doğrusal kesirli gecikme; darbe ⊗ alıcı süzgeci = üçgen (yarı genişlik darbe süresi, sıfır fazlı [T]); sade kademede çekirdeğin karesi; kutuya indirgeme (MP7 §3 md. 4).
+- **Biriktirme ve çekirdek:** ince ızgara `T_s/4`, doğrusal kesirli gecikme; darbe ⊗ alıcı süzgeci = üçgen (yarı genişlik darbe süresi, sıfır fazlı [T]); sade kademede çekirdeğin karesi; kutuya indirgeme (MP7 §3 md. 4). İnce dizi çekirdek desteği kadar iki yönde genişletilir; pencerenin hemen dışındaki ekonun taşan kısmı pencereye düşer, pencere evrişimden sonra kırpılır (sol #5).
+- **Havadaki dönüştürücü (05 §4; sol #1):** dönüştürücü su yüzeyinin altında değilse (NED `z ≤ Sahne::su_yuzeyi_z`; sade kademede yüzey z = 0) ışın izlenmez: Ping360 yalnız gürültü tabanı, Ping1D güven 0 ve `VALID` = 0. Tam sınır (z = 0) havada sayılır. `SonarSayaclari::havada` sayar.
 - **Benek ve gürültü:** kutu başına ortalaması 1 olan üstel çarpan (05 §2.4.3; anahtar `(gerçekleşim = tohum, ping, kutu)`, akış `sensor/<ad>/sonar_hucre`); gürültü tabanı `gurultu_tabani · Exp(1)` ve ilk 1 m'de `yakin_alan_genligi · Exp(1)` (akış `sensor/<ad>/olcum`).
 - **Alıcı zinciri (Ping360):** `L = 10 log Ĩ + tvg_a log r + 2αr + G(gain)`; `u8 = clamp(round((L − L_min) · 255 / (L_maks − L_min)))`; 255'i aşan kutu varsa `DOYMUS` bayrağı.
-- **Ping1D algılama [S]:** TVG'li profil 5 kutuluk ortalamayla yumuşatılır; tepe SNR'si ≥ 10 dB ise yumuşatılmış tepenin −3 dB'sini aşan ilk kutunun merkezi mesafedir; güven SNR 10 → 40 dB arası 0 → 100. Eko yoksa `VALID` = 0, güven 0, `t_meas = t_tx`. Otomatik menzil: pencere son mesafenin `oto_menzil_carpani` katı (en az 0,5 m), eko yoksa iki katı.
-- **Ses hızı:** sahne boyunca tek değer, yüzeyde değerlendirilir (05 §2.4.1: kırılma ihmal [T]). Ping1D mesafeyi bu ses hızıyla verir (cihazın ses hızı ayarı A5'te yok; DVL `c_ayar` gibi ideal değer).
+- **Ping1D algılama [S]:** TVG'li profil 5 kutuluk ortalamayla yumuşatılır; tepe SNR'si ≥ 10 dB ise yumuşatılmış tepenin −3 dB'sini aşan ilk kutunun merkezi mesafedir; güven SNR 10 → 40 dB arası 0 → 100. Eko yoksa `VALID` = 0, güven 0, `t_meas = t_tx`. Otomatik menzil: pencere son mesafenin `oto_menzil_carpani` katı (en az 0,5 m; kalan menzil 0,5 m'den kısaysa kalan menzil), eko yoksa iki katı; pencere 100 m'yi aşmaz.
+- **Ses hızı:** sahne boyunca tek değer, yüzeyde değerlendirilir (05 §2.4.1: kırılma ihmal [T]). Formülün geçerlilik alanı dışındaki ortam reddedilmez; `SesHizi::dislama` kurulur ve `kur` "doğrulanmamış dışdeğerleme" uyarısı döndürür (sonar ve sensör kümesi; sol #8). Alanlar: Mackenzie 2–30 °C, 25–40 ‰, 0–8000 m; UNESCO 0–40 °C, 0–40 ‰, 0–1000 bar. Ping1D mesafeyi bu ses hızıyla verir (cihazın ses hızı ayarı A5'te yok; DVL `c_ayar` gibi ideal değer).
 
 ### Model sabitleri (A5 §8 md. 4: model sabitler, sürümüyle A6'ya yazılır; `model_surumu` = 1)
 
@@ -36,7 +37,7 @@ Hepsi tahmindir [T]/[K]; ölçüm değildir.
 | Ping360 `L_min`, `L_maks` | −95, −15 dB | Havuz duvarı ≈ 200, taban 10–90 (u8) |
 | Ping360 kazanç ofseti | gain 0/1/2 → −6/0/+6 dB | Cihaz eğrisi bilinmiyor |
 | Ping360 iletim baytı | 24 + n | ping-protocol `device_data` (başlık 8 + alan 14 + sağlama 2); doğrulanmadı |
-| Ping360 varsayılan darbe | 4 · T_s (µs'ye yuvarlanır) | MP7 §3 md. 4 |
+| Ping360 varsayılan darbe | 4 · T_s (µs'ye yuvarlanır) | MP7 §3 md. 4; açık değer 1–1000 µs (ping-protocol Ping360 `transducer`; sol #7) |
 | Yakın alan bandı | 1,0 m | 05 §2.4.4 md. 2 (0,75–1 m) |
 | Ping1D gürültü tabanı | Ĩ_n = 10⁻⁹ | |
 | Ping1D u8 | −95, −25 dB (TVG 20 log r) | Havuz tabanı tepesi ≈ 200 (benek tepeleri 255) |
@@ -48,12 +49,13 @@ Hepsi tahmindir [T]/[K]; ölçüm değildir.
 
 - Gönderim `t_tx` bir adım sınırıdır; geometri o adımın durumu ve sahne pozlarıyla hesaplanır (dur-ve-atla).
 - Kayıt fiziksel bitişin (`t_tx + T_dinleme + T_işlem + T_iletim`) üst adım sınırında üretilir; `t_hazir` = o sınır, `t_teslim = max(fiziksel bitiş, t_hazir)` (W4-K9).
-- Ping360: `t_meas = t_tx`; `T_dinleme = n · sp · 25 ns`; sonraki gönderim `üst_sınır(bitiş + T_delay + T_motor)`, `T_motor = t_m0 + |Δaçı| · t_grad` (Δ = 0 ise 0). Tam turda açı sarar; sektörde uca varınca orada durur ve yön değiştirir [T].
-- Ping1D: `t_meas = t_tx + tx_offset_ns` (yansıma anı), `T_dinleme = 2 (scan_start + scan_length) / c`; ping aralığı `max(ping_araligi_ns, T_dinleme + T_işlem)`, üst adım sınırına.
+- **Gönderim anları (sol #6):** cihazın ideal gönderim anları birikimsiz hesaplanır (`T_{k+1} = T_k + T_ping · (1 + saat_kaymasi_ppm · 10⁻⁶)`) ve en yakın adım sınırına bağlanır (yarıda yukarı; sensör kümesinin kuralı). Gönderim önceki kaydın üretiminden önce olamaz; geciken gönderimde ideal an o sınıra yeniden demirlenir. Kayma cihaz sürelerinin hepsine uygulanır; kutu zaman ekseni nominaldir.
+- Ping360: `t_meas = t_tx`; `T_dinleme = n · sp · 25 ns`; `T_ping = T_dinleme + T_işlem + T_iletim + T_delay + T_motor`, `T_motor = t_m0 + |Δaçı| · t_grad` (Δ = 0 ise 0); Δ son gönderimin açısından sonraki açıya (yeniden yapılandırmada yeni başlangıca; sol #4). Tam turda açı sarar; sektörde uca varınca orada durur ve yön değiştirir [T].
+- Ping1D: `t_meas = t_tx + tx_offset_ns` (yansıma anı), `T_dinleme = 2 (scan_start + scan_length) / c`; ping aralığı `max(ping_araligi_ns, T_dinleme + T_işlem)`.
 
 ## Cihaz yapılandırması (A5'te ve A1'de yok)
 
-A5-K48 Ping360 menzilini ve örnek sayısını "kartın yapılandırması" sayar; A1 (AB-024 satırı) yapılandırmanın A5'te olduğunu yazar ve yapılandırma komutu taşımaz. İki sözleşmede de yolu olmadığı için bu dilimde yapılandırma kurulumun alanıdır (`SonarAyari::yapilandirma`) ve `SonarKumesi::ping360_yapilandir` / `ping1d_yapilandir` ile değişir (05 §2.4.5 komut tablosu: süren ping tamamlanır, en yeni bekleyen geçerli olur, aralık dışı reddedilir). Varsayılan Ping360 yapılandırması 05 §2.4.5'in 50 m'sidir (1 200 örnek, `sp` = 2 222, 1 gradyan adım).
+A5-K48 Ping360 menzilini ve örnek sayısını "kartın yapılandırması" sayar; A1 (AB-024 satırı) yapılandırmanın A5'te olduğunu yazar ve yapılandırma komutu taşımaz. İki sözleşmede de yolu olmadığı için bu dilimde yapılandırma kurulumun alanıdır (`SonarAyari::yapilandirma`) ve `SonarKumesi::ping360_yapilandir` / `ping1d_yapilandir` ile değişir (05 §2.4.5 komut tablosu: süren ping tamamlanır, en yeni bekleyen geçerli olur, aralık dışı reddedilir). Yeni frekansta soğurma yeniden hesaplanır; A5'ten açık `sogurma` verilmişse o korunur (sol #3). Not: ping-protocol `auto_transmit` `num_steps` için 1–10, `delay` için 0–100 ms verir; bu dilim tek ping kipini de kapsayan soyut yapılandırmada `adim_grad` 1–200'ü kabul eder. Varsayılan Ping360 yapılandırması 05 §2.4.5'in 50 m'sidir (1 200 örnek, `sp` = 2 222, 1 gradyan adım).
 
 ## Arızalar
 

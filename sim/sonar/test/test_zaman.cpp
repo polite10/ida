@@ -67,14 +67,21 @@ int test_zaman_ping360()
         const int beklenen_aci[] = {10, 14, 18, 20, 16, 12, 10, 14, 18, 20};
         const std::int64_t td = 1200LL * 311 * 25;
         const std::int64_t iletim = static_cast<std::int64_t>(std::llround((24.0 + 1200.0) * 10.0 / 115200.0 * 1e9));
+        // İdeal gönderim anları birikimsiz: T_{i+1} = T_i + T_ping; gönderim en yakın adım
+        // sınırında, önceki kaydın üretiminden önce değil; geciken gönderimde ideal an yeniden
+        // demirlenir (sol #6 düzeltmesi).
+        auto yakin = [](std::int64_t t) { return ((t + kAdim / 2) / kAdim) * kAdim; };
+        std::int64_t ideal = 0;
         for (std::size_t i = 0; i < v.size() && i < 10; ++i) {
             DOGRULA(d, p360(v[i]).angle_grad == beklenen_aci[i], "sektör açısı " + std::to_string(i));
             const std::int64_t bitis = v[i].hdr.t_tx_ns + td + 3'000'000 + iletim;
             DOGRULA(d, v[i].hdr.t_hazir_ns == ust(bitis), "üretim fiziksel bitişin üst sınırında");
+            if (v[i].hdr.t_tx_ns != yakin(ideal)) ideal = v[i].hdr.t_tx_ns;
             if (i + 1 < v.size() && i + 1 < 10) {
                 const int fark = std::abs(beklenen_aci[i + 1] - beklenen_aci[i]);
                 const std::int64_t motor = 2'000'000 + fark * 100'000;
-                DOGRULA(d, v[i + 1].hdr.t_tx_ns == ust(bitis + 5'000'000 + motor),
+                ideal += td + 3'000'000 + iletim + 5'000'000 + motor;
+                DOGRULA(d, v[i + 1].hdr.t_tx_ns == std::max(yakin(ideal), ust(bitis)),
                         "T_ping = T_motor + T_dinleme + T_işlem + T_iletim + T_delay");
             }
         }

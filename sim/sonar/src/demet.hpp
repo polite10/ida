@@ -59,6 +59,29 @@ struct DemetSonucu {
     std::uint32_t isabet = 0;
 };
 
+// Bir saçıcı hücresinin katkısı: iki yönlü gecikme (s) ve enerji.
+struct Katki {
+    double tau = 0.0;
+    double enerji = 0.0;
+};
+
+struct BiriktirmeTamponu {
+    std::vector<double> ince;
+    std::vector<double> evr;
+    std::vector<double> cekirdek;
+};
+
+// Katkıları kutulara biriktirir (05 §2.4.4): ince ızgara T_s/4, doğrusal kesirli gecikme;
+// darbe ⊗ alıcı süzgeci = üçgen (yarı genişlik darbe süresi, sıfır fazlı), sade kademede karesi;
+// kutuya indirgeme (4 ince örneğin ortalaması). İnce dizi çekirdek desteği kadar iki yönde
+// genişletilir: pencerenin hemen dışındaki ekonun taşan kısmı da pencereye düşer; pencere
+// evrişimden sonra kırpılır (sol #5).
+void biriktir(const std::vector<Katki>& katkilar, double tau0, double t_s, int n_kutu, double darbe_s,
+              BiriktirmeTamponu& tampon, std::vector<double>& ham);
+
+// Dinlenen en uzak iki yönlü süre (çekirdek payıyla), s.
+double dinleme_sonu(double tau0, double t_s, int n_kutu, double darbe_s);
+
 // Yeniden kullanılan çalışma tamponları (ping başına ayırma yapmamak için).
 class Demet {
 public:
@@ -72,9 +95,8 @@ private:
     };
     std::vector<std::int32_t> tablo_;
     std::vector<Hucre> hucreler_;
-    std::vector<double> ince_;
-    std::vector<double> evr_;
-    std::vector<double> cekirdek_;
+    std::vector<Katki> katkilar_;
+    BiriktirmeTamponu tampon_;
 };
 
 }  // namespace ida::sonar::ic

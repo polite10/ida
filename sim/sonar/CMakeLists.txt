@@ -37,7 +37,8 @@ add_executable(ida_sonar_test
   test/test_rastgele.cpp
   test/test_ariza.cpp
   test/test_kurulum.cpp
-  test/test_sure.cpp)
+  test/test_sure.cpp
+  test/test_duzeltme.cpp)
 target_include_directories(ida_sonar_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ida_sonar_test PRIVATE ida_sonar)
 ida_sonar_ayar(ida_sonar_test)
@@ -61,7 +62,17 @@ set(_ida_sonar_testleri
   ariza_desenleri
   kurulum_hatalari
   w4k1_sensor_kumesi       # kabul 7
-  sure)                    # kabul 8 (ölçüm; eşik yok)
+  sure                     # kabul 8 (ölçüm; eşik yok)
+  # sol incelemesinin karşı örnekleri (docs/gorevler/inceleme/W4-sonar-sol.md)
+  sol1_havada
+  sol2_ping1d_pencere
+  sol3_soguma_frekans
+  sol4_motor
+  sol5_pencere_kenari
+  sol5_cekirdek_birim
+  sol6_saat_kaymasi
+  sol7_darbe_suresi
+  sol8_gecerlilik_alani)
 foreach(_ad IN LISTS _ida_sonar_testleri)
   add_test(NAME sim.sonar.${_ad} COMMAND ida_sonar_test ${_ad})
 endforeach()
