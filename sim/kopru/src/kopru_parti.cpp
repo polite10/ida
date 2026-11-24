@@ -797,7 +797,8 @@ std::size_t Kopru::Ic::komut_yaz(Komut& k)
 
 void Kopru::Ic::dar_hizmet()
 {
-    if (durum != OturumDurumu::kosuyor) {
+    // W4-duraklat (A1-K41): duran kipte üye gönderimi yok; bekleyen daraltıcı kip kalkınca yazılır.
+    if (durum != OturumDurumu::kosuyor || duran) {
         return;
     }
     for (std::size_t t = 0; t < dar_bekleyen.size(); ++t) {
@@ -833,7 +834,8 @@ std::uint32_t Kopru::Ic::komut_ekle(Komut k)
         ++dar_komut_bekleyen;   // A1-K106 (1): sonraki fizik sınırında revizyon artar
         const auto t = static_cast<std::size_t>(k.dar_tur);
         dar_doldur(t);
-        if (!dar_bu_pencerede[t] && dar_kova[t] >= 1.0 && !dar_bekleyen[t]) {
+        // W4-duraklat (A1-K41): duran kipte tele yazılmaz; tür başına bekler (birleştirilir, düşmez).
+        if (!duran && !dar_bu_pencerede[t] && dar_kova[t] >= 1.0 && !dar_bekleyen[t]) {
             dar_kova[t] -= 1.0;
             pen_kritik += komut_yaz(k);   // kritik üye: t_hazır'da yazılır (A1-K35, K39)
             dar_bu_pencerede[t] = true;

@@ -309,6 +309,9 @@ struct Kopru::Ic {
     std::array<std::int64_t, 2> izin_bitis{};
     std::vector<EmniyetAtama> atama_bekleyen;
     std::uint32_t dar_komut_bekleyen = 0;
+    // W4-duraklat: sınırın duran kipi (Kopru::duraklatma_ayarla). true iken üye gönderimi yok
+    // (daraltıcı bekler) ve SAFETY_CLOSE yuva sınırını beklemez.
+    bool duran = false;
     // W4-K4: her revizyonda emniyet girdilerinin (acil durdurma, fiş, pim) yetkili değeri;
     // bit 0 estop, bit 1–2 fiş takılı, bit 3–4 pim çıkık. Son 256 revizyon.
     std::map<std::uint32_t, RevDurum> rev_girdi;
@@ -380,7 +383,7 @@ struct Kopru::Ic {
     void pencere_ac(std::int64_t t_onceki);
     void rev_artir();
     void izin_kapat(int tup);
-    // Emniyet adımlarının ortak kodu (sinir_isle ve emniyet_artimli; W4-K27 (1)).
+    // Emniyet adımlarının kodu (sinir_isle'nin iki kipi; W4-duraklat).
     bool kisitla(const EmniyetAtama& at, bool& degisti);
     bool operator_kisitla(const EmniyetAtama& at, OperatorSonucu& o);
     OperatorSonucu operator_gevset(const EmniyetAtama& at, bool kisitlama_hakim, std::uint32_t rev_bas);

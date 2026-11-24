@@ -562,7 +562,7 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t 
     karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
 }
 
-// ---- Emniyet adımlarının ortak kodu: sinir_isle ve emniyet_artimli (W4-bagla-a3; W4-K27 (1)) ----
+// ---- Emniyet adımlarının kodu (sinir_isle; ilerleyen ve duran kip aynı yol, W4-duraklat) ----
 
 static bool gevseten_mi(const EmniyetAtama& at)
 {
@@ -614,8 +614,8 @@ bool Kopru::Ic::operator_kisitla(const EmniyetAtama& at, OperatorSonucu& o)
     return true;
 }
 
-// Operatörün gevşeten isteği (A3-K95 (4), K117 (6), K118). `kisitlama_hakim`: bu sınırda revizyon
-// 1–3. adımlarda arttı (artımlı işlemde yok: W4-K27 (1)); `rev_bas`: o durumda kodu ayırmak için.
+// Operatörün gevşeten isteği (A3-K95 (4), K117 (6), K118). `kisitlama_hakim`: bu sınır işleminde
+// (duran kipte: bu turda) revizyon 1–3. adımlarda arttı; `rev_bas`: o durumda kodu ayırmak için.
 OperatorSonucu Kopru::Ic::operator_gevset(const EmniyetAtama& at, bool kisitlama_hakim, std::uint32_t rev_bas)
 {
     OperatorSonucu o{at.operator_kimligi, AtamaSonucu::uygulandi, false, false, 0};
@@ -675,25 +675,8 @@ void Kopru::Ic::estop_isle()
     estop_onceki = emn.acil_durdurma;
 }
 
-std::size_t Kopru::emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc)
-{
-    Ic& i = *ic_;
-    std::size_t k = 0;
-    // A1-K85 sırası: önce kısıtlayanlar (hepsi), sonra gevşetenler (her biri taşıdığı revizyona göre).
-    for (std::size_t j = 0; j < n; ++j) {
-        OperatorSonucu o;
-        if (a[j].operator_kimligi != 0u && i.operator_kisitla(a[j], o)) {
-            sonuc[k++] = o;
-        }
-    }
-    for (std::size_t j = 0; j < n; ++j) {
-        if (a[j].operator_kimligi != 0u && gevseten_mi(a[j])) {
-            sonuc[k++] = i.operator_gevset(a[j], false, i.emn.emniyet_revizyonu);
-        }
-    }
-    i.estop_isle();
-    return k;
-}
+void Kopru::duraklatma_ayarla(bool duran) { ic_->duran = duran; }
+bool Kopru::duran_kip() const { return ic_->duran; }
 
 void Kopru::emniyet_ata(const EmniyetAtama& a) { ic_->atama_bekleyen.push_back(a); }
 
@@ -890,13 +873,19 @@ KisitSonucu Kopru::sil_kisitlayan_uygula(std::uint64_t adim_no)
     return k;
 }
 
+// Fizik sınırının tek işlevi (W4-duraklat; W4-K28 (2); EMNİYET). İlerleyen kipte sınır bir kez
+// işlenir; duran kipte (`i.duran`) aynı sınır aynı sırayla yeniden işlenir: A1-K85'in beş adımı
+// burada, iki kipte de aynı koddur. Kipin bu işlevdeki farkları yalnız şunlardır: (a) üye gönderimi
+// (dar_hizmet) duran kipte yapılmaz (A1-K41; dar_hizmet kendisi denetler); (b) 3. adımda
+// SAFETY_CLOSE, yuvasının (ileri) sınırını beklemez (A1-K87, A3-K95). Senaryonun zaman çizelgesi,
+// fizik adımı ve sim zamanı çağıranındır (duran kipte verilmez, ilerlemez).
 SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
 {
     Ic& i = *ic_;
     i.duvar = duvar_ns;
     const std::int64_t t = static_cast<std::int64_t>(adim_no) * kH;
     SinirSonucu s;
-    i.dar_hizmet();   // bekleyen daraltıcılar kova izin verince (A1-K61, K119)
+    i.dar_hizmet();   // bekleyen daraltıcılar kova izin verince (A1-K61, K119); duran kipte yok
     const std::uint32_t rev_bas = i.emn.emniyet_revizyonu;
     const bool doymus_bas = i.say.emniyet_rev_doydu;
 
@@ -937,8 +926,7 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
     if (kisit) {
         i.rev_artir();
     }
-    // Operatörün kısıtlayan istekleri (W4-bagla-a3): istek başına bir işlem (A3-K92, K117 (1));
-    // artımlı işlemle (`emniyet_artimli`) aynı kod.
+    // Operatörün kısıtlayan istekleri (W4-bagla-a3): istek başına bir işlem (A3-K92, K117 (1)).
     for (const EmniyetAtama& at : i.atama_bekleyen) {
         OperatorSonucu o;
         if (at.operator_kimligi != 0u && i.operator_kisitla(at, o)) {
@@ -946,10 +934,13 @@ SinirSonucu Kopru::sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns)
         }
     }
 
-    // (3) Kart olayları: SAFETY_CLOSE, SAFETY_OPEN, FIRE; her türde event_id sırasıyla.
+    // (3) Kart olayları: SAFETY_CLOSE, SAFETY_OPEN, FIRE; her türde event_id sırasıyla. Duran kipte
+    // SAFETY_CLOSE (kısıtlayan; A1-K87) ileri bir yuvanın sınırına bağlı olsa da bu turda uygulanır:
+    // duraklatma sürdükçe o sınıra ulaşılmaz (A3-K95: emniyet işlemi beklemez). Genişletici olaylar
+    // kendi sınırlarını bekler (kısıtlayan yön; son geçerlilikleri dolarsa REJ_EXPIRED).
     std::vector<BekleyenOlay> bu;
     for (auto it = i.olay_bekleyen.begin(); it != i.olay_bekleyen.end();) {
-        if (it->adim <= adim_no) {
+        if (it->adim <= adim_no || (i.duran && it->ev.kind == IDA_EVT_SAFETY_CLOSE)) {
             bu.push_back(*it);
             it = i.olay_bekleyen.erase(it);
         } else {
