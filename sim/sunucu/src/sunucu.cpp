@@ -10,7 +10,9 @@
 #include "ida/kopru/param_blogu.hpp"
 #include "ida/kopru/tasima.hpp"
 #include "ida/senaryo/senaryo.hpp"
+#include "ida/senaryo/sonar_yukleyici.hpp"
 #include "ida/sensor/sensor_kumesi.hpp"
+#include "ida/sonar/sonar_kumesi.hpp"
 #include "senaryo_plani.hpp"
 #include "yardimci.hpp"
 
@@ -571,6 +573,15 @@ private:
     fizik::AracParametreleri arac_;
     fizik::Dunya dn_;
     sensor::SensorKumesi kume_;
+    // W4-bagla-sonar: yalnız Ayar::sonar_acik ile kurulur (yoksa null; koşu bu iş öncesiyle aynı).
+    std::optional<senaryo::SonarKurulumu> sonar_kurulum_;
+    std::unique_ptr<sonar::SonarKumesi> sonar_;
+    std::vector<sonar::SonarOlcumu> sonar_olcumler_;
+    bool sonar_hedefi(const std::string& ad) const;
+    bool sonar_kur_();
+    void sonar_adimi(std::int64_t t);
+    void sonar_csv_ekle(const sonar::SonarOlcumu& o);
+    void a3_sonar_yayinla();
     std::unique_ptr<kopru::Kopru> k_;
     std::unique_ptr<kopru::Tasima> tas_;
     std::unique_ptr<kopru::TcpDinleyici> din_;
@@ -1166,6 +1177,16 @@ bool Calistirici::dosya_plani()
         s_.hata_turu = HataTuru::senaryo_yurutulemez;
         return false;
     }
+    if (a_.sonar_acik) {
+        // W4-bagla-sonar: sonar kurulumu da yalnız doğrulanmış senaryodan (sensor_kur ile aynı kural);
+        // A7 manifesti çözümleyiciyle aynı kaynaktan.
+        sonar_kurulum_ = senaryo::sonar_kur(*cs.cozumlenmis, *kaynak, &hata);
+        if (!sonar_kurulum_) {
+            s_.hata = "senaryo bu dilimde yürütülemez: sonar: " + hata;
+            s_.hata_turu = HataTuru::senaryo_yurutulemez;
+            return false;
+        }
+    }
     auto kullanim = [&](const std::string& m) {
         s_.hata = m;
         s_.hata_turu = HataTuru::kullanim;
@@ -1222,14 +1243,27 @@ bool Calistirici::plan_hazirla(const sensor::SensorKumesiAyari& sa)
     // Koşullu arızaların ön denetimi ayrı, geçici bir kümede yapılır (sol #2): canlı kümede arıza
     // kimliği tüketilmez (`disarm` kaydı silmez; sonraki `arm` "kimlik tekil değil" derdi).
     std::unique_ptr<sensor::SensorKumesi> gecici;
+    std::unique_ptr<sonar::SonarKumesi> gecici_sonar;
     for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
         const PlanOlayi& o = plan_.olaylar[i];
         if (o.tur != PlanOlayTuru::sensor) {
             continue;
         }
         sensor::ArmSonucu r;
+        const bool sonar_ariza = sonar_hedefi(o.ariza.hedef);   // W4-bagla-sonar kapsam 6
         if (o.zaman_ns) {
-            r = kume_.arm(o.ariza);   // zamanlı: canlı kümede; başlangıç ve bitişi küme yürütür
+            // zamanlı: canlı kümede; başlangıç ve bitişi küme yürütür. Sonar hedefi sonar kümesinde
+            // (desteklenmeyen tür burada açık hatayla reddedilir; sessiz atlama yok).
+            r = sonar_ariza ? sonar_->arm(o.ariza) : kume_.arm(o.ariza);
+        } else if (sonar_ariza) {
+            if (!gecici_sonar) {
+                gecici_sonar = std::make_unique<sonar::SonarKumesi>();
+                if (!gecici_sonar->kur(sonar_kurulum_->ayar, sonar_kurulum_->sahne).tamam) {
+                    s_.hata = "koşullu sonar arızalarının ön denetimi: geçici küme kurulamadı";
+                    return false;
+                }
+            }
+            r = gecici_sonar->arm(o.ariza);
         } else {
             if (!gecici) {
                 gecici = std::make_unique<sensor::SensorKumesi>();
@@ -1357,7 +1391,7 @@ void Calistirici::plan_sinir(std::uint64_t b)
             if (!o.zaman_ns) {
                 sensor::SensorArizasi f = o.ariza;
                 f.zaman_ns = t;
-                const sensor::ArmSonucu r = kume_.arm(f);
+                const sensor::ArmSonucu r = sonar_hedefi(f.hedef) ? sonar_->arm(f) : kume_.arm(f);
                 if (!r.tamam) {
                     // Ön denetimden geçtiği için beklenmez; nedeni olduğu gibi yazılır.
                     const bool hedef = r.hata.find("hedef") != std::string::npos;
@@ -1485,6 +1519,8 @@ bool Calistirici::sinir_on(std::uint64_t b)
     gozlem_.pwm = pwm;
     gozlem_.itici_carpani = carpanlar;
     gozlem_.acil_durdurma = estop_bu_adim_;
+    gozlem_.konum = dn_.durum().konum_n;
+    gozlem_.yonelim = dn_.durum().yonelim;
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -1502,7 +1538,157 @@ bool Calistirici::sinir_on(std::uint64_t b)
         k_->olcum_ekle(o);
     }
     evre_[kEvreKodlama] += gercek() - e3;
+    if (sonar_) {
+        // W4-bagla-sonar: sonar kümesi aynı sınırda, aynı teslim kuralıyla (t_teslim ≤ t; W4-K9);
+        // rastgelelik kendi A5 Ek D akışlarından (öteki sensörlerin dizisi değişmez).
+        // Süre (duvar; ölçüm): adım (ping hesabı) + boşaltma + köprüye verme.
+        const std::uint64_t ping_once = sonar_->sayaclar().ping;
+        const std::int64_t s0 = gercek();
+        if (sonar_->adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
+            s_.hata = "sonar kümesi adımı başarısız";
+            return false;
+        }
+        sonar_adimi(t);
+        const std::int64_t ns = gercek() - s0;
+        s_.sonar_adim_toplam_ns += ns;
+        s_.sonar_adim_en_uzun_ns = std::max(s_.sonar_adim_en_uzun_ns, ns);
+        if (sonar_->sayaclar().ping != ping_once) {
+            ++s_.sonar_adim_ping_sinir;
+            if (s_.sonar_adim_ping_ns.size() < s_.sonar_adim_ping_ns.capacity()) {
+                s_.sonar_adim_ping_ns.push_back(ns);   // yer önceden ayrıldı: döngüde ayırma yok
+            }
+        }
+    }
     return true;
+}
+
+bool Calistirici::sonar_hedefi(const std::string& ad) const
+{
+    if (!sonar_ || !sonar_kurulum_) {
+        return false;
+    }
+    for (const sonar::SonarAyari& a : sonar_kurulum_->ayar.sonarlar) {
+        if (a.etkin && a.ad == ad) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Sonar kümesinin kurulumu (sensör kümesinden sonra, plan hazırlığından önce). false: s_ hatalı.
+bool Calistirici::sonar_kur_()
+{
+    if (sonar_kurulum_->etkin_sayisi == 0u) {
+        // Senaryoda etkin sonar yok: küme kurulmaz, koşu sonarsız koşuyla bayt bayt aynıdır.
+        s_.sonar_uyarilari.emplace_back("--sonar verildi ama senaryoda etkin sonar yok");
+        s_.senaryo_uyarilari.push_back(s_.sonar_uyarilari.back());
+        sonar_kurulum_.reset();
+        return true;
+    }
+    sonar::SonarKumesiAyari& ay = sonar_kurulum_->ayar;
+    ay.adim_ns = kH;
+    for (sonar::SonarAyari& x : ay.sonarlar) {
+        if (auto* y = std::get_if<sonar::Ping360Yapilandirmasi>(&x.yapilandirma)) {
+            // Kalite kademesi (K16, Ö11; W4-K18 (c)): kurulum alanının kısılması. Menzil korunur:
+            // örnek periyodu örnek sayısıyla ters orantılı (A1-K52 r = c · n · sp · 25 ns / 2).
+            if (a_.ping360_ornek > 0) {
+                const double sp = static_cast<double>(y->sample_period) * static_cast<double>(y->n_samples) /
+                                  static_cast<double>(a_.ping360_ornek);
+                y->n_samples = static_cast<std::uint16_t>(a_.ping360_ornek);
+                y->sample_period = static_cast<std::uint16_t>(std::clamp(std::llround(sp), 80LL, 40000LL));
+            }
+            y->bekleme_ns = static_cast<std::int64_t>(std::llround(a_.ping360_bekleme_ms * 1e6));
+        }
+    }
+    sonar_ = std::make_unique<sonar::SonarKumesi>();
+    const sensor::KurulumSonucu r = sonar_->kur(ay, sonar_kurulum_->sahne);
+    if (!r.tamam) {
+        s_.hata = "senaryo bu dilimde yürütülemez: sonar kümesi: " + r.hata;
+        s_.hata_turu = HataTuru::senaryo_yurutulemez;
+        sonar_.reset();
+        return false;
+    }
+    s_.sonar_acik = true;
+    for (const std::string& u : sonar_kurulum_->uyarilar) {
+        s_.sonar_uyarilari.push_back(u);
+    }
+    for (const std::string& u : r.uyarilar) {
+        s_.sonar_uyarilari.push_back("sonar kümesi: " + u);
+    }
+    for (const std::string& u : s_.sonar_uyarilari) {
+        s_.senaryo_uyarilari.push_back(u);
+    }
+    sonar_olcumler_.reserve(16);
+    const auto n_sinir = static_cast<std::size_t>(plan_.sure_ns / kH);
+    s_.sonar_adim_ping_ns.reserve(std::min<std::size_t>(n_sinir + 1u, std::size_t{1} << 20U));
+    if (!a_.sonar_csv_yolu.empty()) {
+        s_.sonar_csv =
+            "tur,sensor_id,inst,seq,t_meas_ns,t_tx_ns,t_hazir_ns,t_teslim_ns,flags,ariza_maskesi,mesafe_m,guven,"
+            "scan_start,scan_length,ping_number,tx_offset_ns,aci_grad,n_ornek,ornek_periyodu,darbe_suresi_us,"
+            "frekans_khz,kazanc,veri_n,veri_crc32\n";
+    }
+    return true;
+}
+
+// Sınırın sonar kayıtları: boşaltma (t_teslim ≤ t), köprüye verme (Ping1D kritik, Ping360 toplu).
+void Calistirici::sonar_adimi(std::int64_t t)
+{
+    sonar_olcumler_.clear();
+    sonar_->bosalt(t, sonar_olcumler_);
+    for (const sonar::SonarOlcumu& o : sonar_olcumler_) {
+        if (a_.sonar_kancasi) {
+            a_.sonar_kancasi(o);
+        }
+        if (const auto* p = std::get_if<sonar::Ping1dOlcumu>(&o.yuk)) {
+            kopru::Ping1dVerisi v;
+            v.distance = p->distance;
+            v.scan_start = p->scan_start;
+            v.scan_length = p->scan_length;
+            v.ping_number = p->ping_number;
+            v.tx_offset_ns = p->tx_offset_ns;
+            v.confidence = p->confidence;
+            k_->ping1d_ekle(o.hdr, v);
+            ++s_.sonar_ping1d;
+        } else if (const auto* q = std::get_if<sonar::Ping360Olcumu>(&o.yuk)) {
+            kopru::Ping360Verisi v;
+            v.angle_grad = q->angle_grad;
+            v.n_samples = static_cast<std::uint16_t>(q->data.size());
+            v.sample_period = q->sample_period;
+            v.tx_duration_us = q->tx_duration_us;
+            v.tx_freq_khz = q->tx_freq_khz;
+            v.gain = q->gain;
+            v.data = q->data.data();
+            k_->ping360_ekle(o.hdr, v);
+            ++s_.sonar_ping360;
+        }
+        if (!a_.sonar_csv_yolu.empty()) {
+            sonar_csv_ekle(o);
+        }
+    }
+}
+
+void Calistirici::sonar_csv_ekle(const sonar::SonarOlcumu& o)
+{
+    const sensor::OlcumBasligi& h = o.hdr;
+    std::string& c = s_.sonar_csv;
+    const unsigned long long t_tx = h.t_tx_ns == sensor::kTxYok ? 0ULL : static_cast<unsigned long long>(h.t_tx_ns);
+    if (const auto* p = std::get_if<sonar::Ping1dOlcumu>(&o.yuk)) {
+        ekle(c, "ping1d,%u,%u,%u,%lld,%llu,%lld,%lld,%u,%u,%.9g,%u,%.9g,%.9g,%u,%u,,,,,,,%zu,%08x\n",
+             static_cast<unsigned>(h.sensor_id), static_cast<unsigned>(h.inst), h.seq, static_cast<long long>(h.t_meas_ns),
+             t_tx, static_cast<long long>(h.t_hazir_ns), static_cast<long long>(h.t_teslim_ns),
+             static_cast<unsigned>(h.flags), h.ariza_maskesi, static_cast<double>(p->distance),
+             static_cast<unsigned>(p->confidence), static_cast<double>(p->scan_start), static_cast<double>(p->scan_length),
+             p->ping_number, p->tx_offset_ns, p->profil.size(),
+             kopru::crc32_iso_hdlc(p->profil.data(), p->profil.size()));
+    } else if (const auto* q = std::get_if<sonar::Ping360Olcumu>(&o.yuk)) {
+        ekle(c, "ping360,%u,%u,%u,%lld,%llu,%lld,%lld,%u,%u,,,,,,,%u,%u,%u,%u,%u,%u,%zu,%08x\n",
+             static_cast<unsigned>(h.sensor_id), static_cast<unsigned>(h.inst), h.seq, static_cast<long long>(h.t_meas_ns),
+             t_tx, static_cast<long long>(h.t_hazir_ns), static_cast<long long>(h.t_teslim_ns),
+             static_cast<unsigned>(h.flags), h.ariza_maskesi, static_cast<unsigned>(q->angle_grad),
+             static_cast<unsigned>(q->n_samples), static_cast<unsigned>(q->sample_period),
+             static_cast<unsigned>(q->tx_duration_us), static_cast<unsigned>(q->tx_freq_khz),
+             static_cast<unsigned>(q->gain), q->data.size(), kopru::crc32_iso_hdlc(q->data.data(), q->data.size()));
+    }
 }
 
 void Calistirici::adim_sonrasi(std::uint64_t b)
@@ -1984,6 +2170,7 @@ void Calistirici::a3_anlik_guncelle()
     p.gercek_zamani_kacirdi = a3_rt_kacirdi_;
     p.gecerlilik_nedenleri = a3_gecerlilik_;
     p.durum_rev = a3d_.durum_rev;
+    p.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar: 0 kapali, 1 sade
     if (k_) {
         const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
         p.emniyet_rev = e.emniyet_revizyonu;
@@ -2806,7 +2993,7 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.tekrar_guvencesi = 0;   // kayıt (A6) yok: güvence yok
     c.kademe_gorunum = 0;
     c.kademe_kamera = 0;
-    c.kademe_sonar = 0;
+    c.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar (A3 §3.4: 0 kapali, 1 sade)
     c.kademe_kayit = 0;
     c.a1_oturum = k_ ? a1_oturum_kodu(k_->durum(), !tas_ && a_.kip == Kip::hil && a3b::canli(a3d_.durum)) : 255u;
     c.son_komut_no = a3_son_komut_no_;   // dünyaya ulaşan en büyük komut numarası (okuma; rapor)
@@ -2863,6 +3050,13 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     g.emniyet_rev_doydu = s.emniyet_rev_doydu ? 1u : 0u;
     const sensor::Sayaclar ks = kume_.sayaclar();
     g.sensor_kuyruk_tasma = ks.kuyruk_tasma;
+    // W4-bagla-sonar: A1 Tablo 3.11a Ping360 sayaçları ve sonar kuyruğu (05 §4). `sonar_gec` 0:
+    // sonar bu dilimde dünya iş parçacığında eşzamanlı hesaplanır, sonucu geç kalamaz.
+    g.ping360_seyreltildi = s.ping360_seyreltildi;
+    g.ping360_gecikme_en_buyuk = s.ping360_gecikme_en_buyuk;
+    if (sonar_) {
+        g.sonar_kuyruk_dolu = sonar_->sayaclar().kuyruk_tasma;
+    }
     g.donma_onceki_cikti_yok = ks.donma_onceki_cikti_yok;
     g.atama_celiskisi = s_.atama_celiskileri.size();
     g.gevsetme_reddedildi = s.gevsetme_reddedildi;
@@ -2955,6 +3149,44 @@ void Calistirici::a3_sensor_yayinla()
     }
 }
 
+// Sonar kanalları (W4-bagla-sonar; A3 §3.3 kanal 30, 31): sınırda teslim edilen, karta verilen
+// kayıtların aynısı (arıza zinciri sonrası). Zaman anlamı `gonderim` (A3-K26): Ping360 t_meas
+// (gönderim anı, A1-K53), Ping1D t_meas − tx_offset_ns (A1-K54). Satır ve profil baytları
+// kaydın kendi tamponundan (`span`) kodlanır: bu hizmette bellek ayrılmaz (W4-K27 (5)).
+// `parti_step_seq` öteki sensör kanallarındaki gibi "yok" (köprü kaydın partisini dışa vermez;
+// Ping360'ın teslim partisi HEAD'in partisidir ve yayın anında henüz belli değildir).
+void Calistirici::a3_sonar_yayinla()
+{
+    for (const sonar::SonarOlcumu& o : sonar_olcumler_) {
+        if (const auto* q = std::get_if<sonar::Ping360Olcumu>(&o.yuk)) {
+            a3::yuk_ping360 y;
+            olcum_basligi(y, o.hdr);
+            y.aci_grad = q->angle_grad;
+            y.n_ornek = static_cast<std::uint16_t>(q->data.size());
+            y.ornek_periyodu = q->sample_period;
+            y.darbe_suresi_us = q->tx_duration_us;
+            y.frekans_khz = q->tx_freq_khz;
+            y.kazanc = q->gain;
+            y.kademe = q->kademe;
+            y.ses_hizi_mps = q->ses_hizi_mps;
+            y.ornekler = std::span<const std::uint8_t>(q->data.data(), q->data.size());
+            const std::int64_t t = o.hdr.t_meas_ns;
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sonar_ping360>(t, y); });
+        } else if (const auto* p = std::get_if<sonar::Ping1dOlcumu>(&o.yuk)) {
+            a3::yuk_ping1d y;
+            olcum_basligi(y, o.hdr);
+            if ((o.hdr.flags & sensor::kBayrakGecerli) != 0u) {
+                y.mesafe_m = p->distance;   // geçersizse "yok" (NaN; A3 §3.4)
+            }
+            y.guven = static_cast<float>(p->confidence) / 100.0F;   // A3 [0, 1]; A1 %
+            y.kademe = p->kademe;
+            y.profil = std::span<const std::uint8_t>(p->profil.data(), p->profil.size());
+            const std::int64_t t = o.hdr.t_meas_ns - static_cast<std::int64_t>(p->tx_offset_ns);
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sonar_ping1d>(t, y); });
+        }
+    }
+}
+
 // Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu).
 void Calistirici::a3_yayinla(std::uint64_t b)
 {
@@ -2965,6 +3197,9 @@ void Calistirici::a3_yayinla(std::uint64_t b)
     a3_oturum_izle();
     a3_gecerlilik(b);
     a3_sensor_yayinla();
+    if (sonar_) {
+        a3_sonar_yayinla();
+    }
     if (b % kHizliSinir == 0u) {
         const fizik::DurumAnlik& d = dn_.durum();
         std::array<a3::yuk_fizik_durum_govdeler, 1> govde{};
@@ -3174,6 +3409,22 @@ Sonuc Calistirici::kos_ic()
 {
     // ---- Senaryo: A5 dosyası ya da yerleşik ----
     s_.kip = a_.kip;
+    if (a_.sonar_acik && a_.senaryo_dosyasi.empty()) {
+        // W4-bagla-sonar: sahne senaryonun ortamındandır; yerleşik senaryoda tanım yok (uydurulmaz).
+        s_.hata = "--sonar yalnız senaryo dosyasıyla kullanılabilir (sahne senaryonun ortam tanımından)";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
+    if (!a_.sonar_acik && (a_.ping360_ornek != 0 || a_.ping360_bekleme_ms != 0.0 || !a_.sonar_csv_yolu.empty())) {
+        s_.hata = "--ping360-ornek, --ping360-bekleme-ms ve --sonar-csv --sonar ister";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
+    if (a_.sonar_acik && (a_.ping360_ornek != 0 && (a_.ping360_ornek < 200 || a_.ping360_ornek > 1200))) {
+        s_.hata = "--ping360-ornek 200–1200 olmalı (A1 §3.4)";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
     if (!a_.senaryo_dosyasi.empty()) {
         if (!dosya_plani()) {
             return s_;
@@ -3240,6 +3491,9 @@ Sonuc Calistirici::kos_ic()
     const sensor::KurulumSonucu ks = kume_.kur(sa);
     if (!ks.tamam) {
         s_.hata = "sensör kümesi: " + ks.hata;
+        return s_;
+    }
+    if (sonar_kurulum_ && !sonar_kur_()) {
         return s_;
     }
     if (!plan_hazirla(sa)) {
@@ -3703,6 +3957,22 @@ Sonuc Calistirici::kos_ic()
         if (!f) {
             s_.hata = "CSV yazılamadı: " + a_.csv_yolu;
             return s_;
+        }
+    }
+    if (sonar_) {
+        const sonar::SonarSayaclari sc = sonar_->sayaclar();
+        s_.sonar_ping = sc.ping;
+        s_.sonar_isin = sc.isin;
+        s_.sonar_havada = sc.havada;
+        s_.sonar_kayip = sc.kayip;
+        s_.sonar_kuyruk_tasma = sc.kuyruk_tasma;
+        if (!a_.sonar_csv_yolu.empty()) {
+            std::ofstream f(a_.sonar_csv_yolu, std::ios::binary);
+            f.write(s_.sonar_csv.data(), static_cast<std::streamsize>(s_.sonar_csv.size()));
+            if (!f) {
+                s_.hata = "sonar CSV'si yazılamadı: " + a_.sonar_csv_yolu;
+                return s_;
+            }
         }
     }
     s_.tamam = s_.hata.empty();

@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 namespace {
 
@@ -33,6 +35,11 @@ void kullanim()
         "                           adresi standart çıktıya bir kez yazılır (A3-K05)\n"
         "  --a3-kok <dizin>         A3: panellerin derleme çıktısı (web/dist)\n"
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
+        "  --sonar                  senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
+        "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla)\n"
+        "  --ping360-ornek <n>      sonar: Ping360 örnek sayısı 200–1200, menzil korunur (varsayılan 1200)\n"
+        "  --ping360-bekleme-ms <ms>  sonar: Ping360 pingleri arası bekleme (satır hızının kısılması)\n"
+        "  --sonar-csv <yol>        sonar: teslim edilen sonar kayıtlarının CSV'si\n"
         "çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo (doğrulama raporu\n"
         "standart hataya), 4 senaryo bu dilimde yürütülemez\n");
 }
@@ -201,6 +208,26 @@ int main(int argc, char** argv)
             a.a3_kok = deger();
         } else if (s == "--a3-bekle") {
             a.a3_bekle = true;
+        } else if (s == "--sonar") {
+            a.sonar_acik = true;
+        } else if (s == "--ping360-ornek") {
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 200.0, 1200.0, x)) {
+                std::fprintf(stderr, "ida_sim: --ping360-ornek 200–1200 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.ping360_ornek = static_cast<int>(x);
+        } else if (s == "--ping360-bekleme-ms") {
+            const std::string v = deger();
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 10000.0, x)) {
+                std::fprintf(stderr, "ida_sim: --ping360-bekleme-ms 0–10000 ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.ping360_bekleme_ms = x;
+        } else if (s == "--sonar-csv") {
+            a.sonar_csv_yolu = deger();
         } else if (s == "--yardim" || s == "-h") {
             kullanim();
             return 0;
@@ -312,6 +339,26 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(s.a3_komut), static_cast<unsigned long long>(s.a3_yayin_cagrisi),
                          1e-3 * static_cast<double>(s.a3_cagri_en_kotu_ns), 1e-3 * static_cast<double>(s.a3_sinir_en_kotu_ns),
                          static_cast<unsigned long long>(s.a3_halka_tasma));
+        }
+        if (s.sonar_acik) {
+            std::vector<std::int64_t> p = s.sonar_adim_ping_ns;
+            std::sort(p.begin(), p.end());
+            const auto yuzde = [&](double q) {
+                return p.empty() ? 0.0 : 1e-3 * static_cast<double>(p[std::min(p.size() - 1u, static_cast<std::size_t>(q * static_cast<double>(p.size())))]);
+            };
+            std::fprintf(stderr,
+                         "ida_sim: sonar: Ping1D %llu, Ping360 %llu kayıt (ping %llu, havada %llu, kayıp %llu); köprü: Ping360 "
+                         "satır %llu, çerçeve %llu, seyreltme %llu, en büyük teslim gecikmesi %llu periyot, oturumla atılan %llu, "
+                         "Ping1D üye %llu; parti en büyük %llu B / %llu üye; sonar adımı (dünya, duvar; ölçüm): en uzun %.1f µs, "
+                         "ping sınırlarında p50/p99 %.1f/%.1f µs\n",
+                         static_cast<unsigned long long>(s.sonar_ping1d), static_cast<unsigned long long>(s.sonar_ping360),
+                         static_cast<unsigned long long>(s.sonar_ping), static_cast<unsigned long long>(s.sonar_havada),
+                         static_cast<unsigned long long>(s.sonar_kayip), static_cast<unsigned long long>(c.ping360_satir),
+                         static_cast<unsigned long long>(c.ping360_cerceve), static_cast<unsigned long long>(c.ping360_seyreltildi),
+                         static_cast<unsigned long long>(c.ping360_gecikme_en_buyuk),
+                         static_cast<unsigned long long>(c.ping360_oturum_atilan), static_cast<unsigned long long>(c.ping1d_uye),
+                         static_cast<unsigned long long>(c.parti_bayt_en_buyuk), static_cast<unsigned long long>(c.parti_uye_en_buyuk),
+                         1e-3 * static_cast<double>(s.sonar_adim_en_uzun_ns), yuzde(0.5), yuzde(0.99));
         }
         if (a.senaryo == "z1" && a.senaryo_dosyasi.empty()) {
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",

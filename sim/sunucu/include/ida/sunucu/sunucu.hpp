@@ -20,6 +20,7 @@
 #include "ida/kopru/kopru.hpp"
 #include "ida/kopru/tasima.hpp"
 #include "ida/port.h"
+#include "ida/sonar/olcum.hpp"
 
 #include <array>
 #include <cstdint>
@@ -125,6 +126,8 @@ struct Ayar {
         std::array<double, 8> pwm{};           // fiziğe verilen
         std::array<double, 8> itici_carpani{}; // etkin itici arızalarının çarpımı (1: arıza yok)
         bool acil_durdurma = false;
+        std::array<double, 3> konum{};         // W4-bagla-sonar: yer gerçeği O_b konumu (NED), sınır b
+        std::array<double, 4> yonelim{1.0, 0.0, 0.0, 0.0};   // gövdeden NED'e (w, x, y, z)
     };
     std::function<void(const SinirGozlemi&)> sinir_kancasi;
     // Yalnız sınama (W4-K26 (2)): sim'in karşı tarafa göndermeye karar verdiği baytlar (taşımaya
@@ -157,6 +160,24 @@ struct Ayar {
     // Yalnız sınama (W4-K28 (3)): sim tarafının A1 taşımasını sarmalar (ör. kısmi yazım veren sahte
     // taşıma). Taşıma kurulunca (süreç içi, sözde uçbirim, seri; TCP'de bağlantı kabul edilince) çağrılır.
     std::function<std::unique_ptr<kopru::Tasima>(std::unique_ptr<kopru::Tasima>)> tasima_sarmalayici;
+
+    // ---- Sonar (W4-bagla-sonar) ----
+    // Kapalıyken (varsayılan) sonar kümesi kurulmaz; koşu bu iş öncesiyle bayt bayt aynıdır. Açıkken
+    // (`--sonar`) senaryo dosyasının sonarları (A5 arac.sensorler, tur ping1d/ping360; sahne
+    // senaryonun ortamından, `senaryo::sonar_kur`) kurulur, ölçümler A1'den karta (köprü: Ping1D
+    // kritik üye, Ping360 A1-K49 parçalaması) ve A3 açıksa `sonar/ping1d`, `sonar/ping360`
+    // kanallarından yayınlanır. Yalnız senaryo dosyasıyla (yerleşik senaryoda sahne tanımı yok).
+    // Neden varsayılan kapalı (mimar onayına): scenarios/z1.toml araç dosyasından (ida0.toml) iki
+    // etkin sonar alır; varsayılan açık olsaydı Z1/Z2 taban çizgisinin A1 akışı değişirdi.
+    bool sonar_acik = false;
+    // Kalite kademesi (K16, Ö11): Ping360 tarama yapılandırması A5'te ve A1'de yok (W4-K18 (c));
+    // kurulum alanının komut satırından kısılması. 0: modelin varsayılanı (1 200 örnek; A5-K78).
+    // 200–1200: örnek sayısı, menzil korunarak (örnek periyodu orantılı).
+    int ping360_ornek = 0;
+    double ping360_bekleme_ms = 0.0;   // pingler arası bekleme (satır hızının kısılması), ≥ 0
+    std::string sonar_csv_yolu;        // boşsa yazılmaz: sonar kayıtları (arıza zinciri sonrası)
+    // Yalnız sınama: sınırda teslim edilen her sonar kaydı (köprüye verilmeden önce).
+    std::function<void(const sonar::SonarOlcumu&)> sonar_kancasi;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -323,6 +344,17 @@ struct Sonuc {
     std::uint64_t a3_kayit_atilan = 0;         // kayıt tamponu dolduğu için Sonuc'a yazılmayan kayıt
     // W4-K27 (2) (EMNİYET): önce teslim edilmiş işlenmemiş bir kısıtlayan yüzünden reddedilen gevşetme.
     std::uint64_t a3_sira_korumasi = 0;
+    // ---- Sonar (W4-bagla-sonar) ----
+    bool sonar_acik = false;
+    std::uint64_t sonar_ping1d = 0, sonar_ping360 = 0;   // teslim edilen kayıt (arıza zinciri sonrası)
+    std::uint64_t sonar_ping = 0, sonar_isin = 0, sonar_havada = 0, sonar_kayip = 0, sonar_kuyruk_tasma = 0;
+    // Dünya iş parçacığında sonar adımı + boşaltma + köprüye verme, bir sınırdaki süre (duvar; ölçüm).
+    std::int64_t sonar_adim_en_uzun_ns = 0;
+    std::int64_t sonar_adim_toplam_ns = 0;
+    std::uint64_t sonar_adim_ping_sinir = 0;             // en az bir ping atılan sınır
+    std::vector<std::int64_t> sonar_adim_ping_ns;        // ping atılan sınırların süreleri (ölçüm; sıralı değil)
+    std::vector<std::string> sonar_uyarilari;
+    std::string sonar_csv;
 };
 
 Sonuc kos(const Ayar& ayar);
