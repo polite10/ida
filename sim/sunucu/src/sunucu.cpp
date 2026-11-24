@@ -202,14 +202,15 @@ private:
         evre_[kEvreYaz] += gercek() - e0;
     }
 
-    // EMNİYET (W4-K28 (3), W4-K25 (5)): köprünün bekleyen çıkışını (ör. SESSION_CLOSE) mutlak süre
-    // sınırına (`son`, gercek() ölçeğinde) dek tamamlar. Kısmi ya da 0 yazımda karşı tarafın
-    // baytları okunmaya devam eder (iki yönün tamponları dolup kilitlenmesin) ve 1 ms sonra
-    // yeniden denenir. Süre dolarsa ya da bağlantı koparsa açıkça sonuçlanır: sayılır, günlüğe
+    // EMNİYET (W4-K28 (3), W4-K25 (5); W4-bagla-a3 sol-3 #2, #3; w4-mac-ci sol 3. denetim #3):
+    // köprünün bekleyen çıkışını (ör. SESSION_CLOSE) mutlak süre sınırına (`son`, gercek()
+    // ölçeğinde) dek tamamlar. Kısmi ya da 0 yazımda karşı tarafın baytları okunmaya devam eder
+    // (iki yönün tamponları dolup kilitlenmesin) ve 1 ms sonra yeniden denenir. Süre dolarsa,
+    // bağlantı koparsa ya da SIL'de yazma hatası olduysa açıkça sonuçlanır: sayılır, günlüğe
     // yazılır, false döner (çağıran yine kapatır). true: hepsi yazıldı ve (seri portta) işletim
-    // sisteminin gönderim kuyruğu da boşaldı (W4-K28 sol-3 #3: uygulama tamponunun boşalması
-    // telin boşalması sayılmaz). Taşıma yoksa yapılacak iş yoktur (true). Son tarih her turda
-    // denetlenir; tur sınırlıdır (pompa'nın okuma işi HIL'de de sınırlı: sol-3 #2).
+    // sisteminin gönderim kuyruğu da boşaldı (uygulama tamponunun boşalması telin boşalması
+    // sayılmaz). Taşıma yoksa yapılacak iş yoktur (true). Son tarih her turda denetlenir; tur
+    // sınırlıdır (pompa'nın okuma işi HIL'de de sınırlı).
     bool cikisi_bitir(std::int64_t son)
     {
         if (!tas_) {
@@ -229,7 +230,7 @@ private:
                 sure_uyu(kMs);
             }
         }
-        if (!tas_) {
+        if (!tas_ || sil_yazma_bitti_) {
             ++s_.kapanis_yazim_eksik;
             return false;
         }
@@ -241,10 +242,11 @@ private:
         return true;
     }
 
-    // Koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta durdurma, ön denetim ya da
-    // hazırlık kalması, bağlantı beklemesinin iptali): oturum açıksa (hazir, kosuyor)
-    // SESSION_CLOSE(SHUTDOWN) sıraya girer; bekleyen çıkış mutlak süre sınırıyla tamamlanır;
-    // sonra taşıma düzgün kapanır.
+    // Oturum kurulamadan ya da koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta
+    // durdurma, ön denetim ya da hazırlık kalması, bağlantı beklemesinin iptali; A1-K21): oturum
+    // açıksa (hazir, kosuyor) SESSION_CLOSE(SHUTDOWN) sıraya girer (köprüde oturum biter: izinler
+    // kapanır, iticiler nötr); bekleyen çıkış mutlak süre sınırıyla tamamlanır; sonra taşıma
+    // düzgün kapanır.
     void erken_kapanis()
     {
         if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
@@ -350,8 +352,14 @@ private:
 
     // SIL: alım kuyruğunu akış sırasıyla köprüye verir; dur() doğru olunca o çerçevede durur ve
     // kalan baytlar kuyrukta kalır. En çok `azami` bayt verilir (W4-K26 (3): tüketim sınırı
-    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır). Kuyruk bitti
-    // ve akış kapandıysa (bekleyen hâlâ veri istiyorsa) bağlantı kaybı burada işlenir. Dönüş: dur().
+    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır).
+    // Genel kural (EMNİYET, sol 3. denetim #1): alım kuyruğundaki her olayın (bayt tüketimi ve
+    // köprünün çerçeve kararları, W4-K14 tampon taşması, bekleme bütçesinin aşımı, akışın sonu)
+    // kararı akıştaki konum sırasıyla verilir; aynı turda görülen iki olaydan akışta önce olan önce
+    // karara bağlanır. Akışın sonu (EOF) son bayttan sonradır: yalnız kuyruk bittiğinde, bekleyen
+    // hâlâ veri istiyorsa ve bu beslemenin bütçesi tükenmemişse işlenir (bütçe tam son baytta
+    // bittiyse önce çağıranın bütçe kararı verilir). Yazma hatasının kendi kararı yoktur (çıktı
+    // atılır; W4-K26 (2)). Dönüş: dur().
     bool sil_besle(const std::function<bool()>& dur, std::uint64_t azami = UINT64_MAX)
     {
         std::uint64_t verilen = 0;
@@ -371,7 +379,7 @@ private:
             sil_gelen_k_ = 0;
         }
         const bool tamam = dur();
-        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty()) {
+        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty() && verilen < azami) {
             baglanti_koptu("taşıma kapandı (karşı uç kapattı)");
         }
         return tamam;
@@ -405,10 +413,12 @@ private:
         }
     }
 
-    bool baglanti_kabul();
+    // Bekleme sonucu: tamam; oturum bitti (çağıran yeniden kurar, özyineleme yok); hata (s_.hata).
+    enum class Bekleme { tamam, oturum_bitti, hata };
+    bool baglanti_kabul(std::int64_t son_mutlak = std::numeric_limits<std::int64_t>::max());
     bool oturum_kur();
-    bool hazirlik();
-    bool yuva_bekle(std::uint32_t seq);
+    Bekleme hazirlik(std::int64_t son_mutlak);
+    Bekleme yuva_bekle(std::uint32_t seq, std::int64_t son_mutlak = std::numeric_limits<std::int64_t>::max());
     bool dosya_plani();
     bool plan_hazirla(const sensor::SensorKumesiAyari& sa);
     void plan_sinir(std::uint64_t b);
@@ -522,6 +532,10 @@ private:
     static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
     // W4-K28 (3): kapanışta bekleyen çıkışın tamamlanması için mutlak süre sınırı.
     static constexpr std::int64_t kKapanisYazimNs = 500'000'000;
+    // Sol 3. denetim #2: bir oturum kurma işleminde en çok hazırlık denemesi (tahmin; olağan
+    // hazırlık bir denemede biter, yeniden açılış ve kopmalar için pay).
+    static constexpr int kHazirlikDenemeAzami = 5;
+    std::uint64_t oturum_kur_derinlik_ = 0;
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
@@ -706,15 +720,18 @@ void Calistirici::baglanti_bakim()
     k_->el_sikisma_baslat(duvar());
 }
 
-bool Calistirici::baglanti_kabul()
+bool Calistirici::baglanti_kabul(std::int64_t son_mutlak)
 {
     if (a_.karsi != Karsi::tcp || !din_) {
         return tas_ != nullptr;
     }
     std::string hata;
+    // Bekleme kendi payını alır; süren bir hazırlık işleminin mutlak son tarihini aşmaz.
+    const std::int64_t pay = std::max<std::int64_t>(0, std::min(a_.baglanti_bekleme_ns, son_mutlak - gercek()));
     if (yay_ != nullptr) {
-        // W4-K27 (4): bağlantı beklenirken de çalıştırma denetimi işlenir (100 ms dilimler).
-        for (std::int64_t kalan = a_.baglanti_bekleme_ns / 1000; kalan > 0 && !tas_; kalan -= 100'000) {
+        // W4-K27 (4): bağlantı beklenirken de çalıştırma denetimi işlenir (100 ms dilimler; toplam
+        // aynı pay). Kabul edilmiş durdurma kazanır.
+        for (std::int64_t kalan = pay / 1000; kalan > 0 && !tas_; kalan -= 100'000) {
             if (a3_hazirlik_durdu()) {
                 s_.hata = "hazırlanırken durduruldu";
                 return false;
@@ -722,7 +739,7 @@ bool Calistirici::baglanti_kabul()
             tas_ = din_->kabul(std::min<std::int64_t>(kalan, 100'000), hata);
         }
     } else {
-        tas_ = din_->kabul(a_.baglanti_bekleme_ns / 1000, hata);
+        tas_ = din_->kabul(pay / 1000, hata);
     }
     if (!tas_) {
         s_.hata = "SIL koşucusu bağlanmadı: " + hata;
@@ -742,10 +759,31 @@ bool Calistirici::oturum_kur()
     // kendi payını alır (baglanti_kabul), el sıkışma kabulden sonra; hazırlık oturumunun süresi
     // sınıra girmez (kendi sınırı hazirlik_azami_ns), çalıştırma oturumunun el sıkışması
     // hazırlıktan sonra yeniden pay alır. SIL'de bu beklemelerde sim zamanı ilerlemez (W4-K25 (1)).
+    //
+    // Sol 3. denetim #2 (EMNİYET): yeniden kurma özyinelemesizdir. Hazırlık ya da yuva beklemesi
+    // oturumun bittiğini döndürür (Bekleme::oturum_bitti); yeniden kurma bu döngüde yürür.
+    // Bir hazırlık işlemi başlayınca mutlak son tarihi (hazirlik_azami_ns) yeniden bağlantılar
+    // boyunca korunur ve bütün iç beklemelere taşınır (aşama payı onu aşamaz); hazırlık denemesi
+    // de kHazirlikDenemeAzami ile sınırlıdır. Hazırlık tamamlanınca çalıştırma oturumunun el
+    // sıkışması kendi payını alır.
+    ++oturum_kur_derinlik_;
+    s_.oturum_kur_derinlik_en_cok = std::max<std::uint64_t>(s_.oturum_kur_derinlik_en_cok, oturum_kur_derinlik_);
+    struct Derinlik {
+        std::uint64_t& d;
+        ~Derinlik() { --d; }
+    } derinlik{oturum_kur_derinlik_};
+    constexpr std::int64_t kSonsuz = std::numeric_limits<std::int64_t>::max();
+    std::int64_t hazirlik_son = kSonsuz;   // süren hazırlık işleminin mutlak son tarihi
+    bool hazirlik_suruyor = false;
+    int hazirlik_deneme = 0;
+    const auto pay = [&](std::int64_t p) {
+        const std::int64_t s = gercek() + p;
+        return hazirlik_suruyor ? std::min(s, hazirlik_son) : s;
+    };
     if (!tas_ && !baglanti_kabul()) {
         return false;
     }
-    std::int64_t son = gercek() + a_.baglanti_bekleme_ns;
+    std::int64_t son = pay(a_.baglanti_bekleme_ns);
     // SIL (A1-K121 (iv), K23): oturum köprüde bittiyse el sıkışma orada başlamıştır (giden
     // kuyrukta varsa SESSION_CLOSE, ardından SIM_HELLO): yeniden başlatılmaz. Böylece kapanış
     // çerçevesi silinmez ve el sıkışma tek SIM_HELLO'yla tamamlanır.
@@ -774,25 +812,50 @@ bool Calistirici::oturum_kur()
         }
         if (k_->durum() == kopru::OturumDurumu::kosuyor) {
             if (k_->hazirlik_gerekli()) {
-                if (!hazirlik()) {
+                if (hazirlik_deneme >= kHazirlikDenemeAzami) {
+                    s_.hata = "hazırlık oturumu " + std::to_string(hazirlik_deneme) + " denemede tamamlanamadı";
                     return false;
                 }
+                ++hazirlik_deneme;
+                if (!hazirlik_suruyor) {
+                    hazirlik_suruyor = true;
+                    if (hazirlik_son == kSonsuz) {
+                        hazirlik_son = gercek() + a_.hazirlik_azami_ns;
+                    }
+                }
+                const Bekleme r = hazirlik(hazirlik_son);
+                if (r == Bekleme::hata) {
+                    return false;
+                }
+                if (r == Bekleme::oturum_bitti) {
+                    // Hazırlık oturumu koptu: aynı hazırlık işlemi, aynı mutlak son tarihle sürer.
+                    if (tas_ && k_->durum() != kopru::OturumDurumu::el_sikisma) {
+                        k_->el_sikisma_baslat(duvar());
+                    }
+                    son = pay(a_.baglanti_bekleme_ns);
+                    continue;   // taşıma yoksa yeni bağlantı döngünün sonunda kabul edilir
+                }
+                hazirlik_suruyor = false;
                 k_->el_sikisma_baslat(duvar());
-                son = gercek() + a_.baglanti_bekleme_ns;   // çalıştırma oturumunun el sıkışması
+                son = pay(a_.baglanti_bekleme_ns);   // çalıştırma oturumunun el sıkışması
                 continue;
             }
             return true;
         }
         if (!tas_) {
             ++s_.yeniden_baglanti;
-            if (!baglanti_kabul()) {
+            if (!baglanti_kabul(hazirlik_suruyor ? hazirlik_son : kSonsuz)) {
+                if (hazirlik_suruyor && gercek() >= hazirlik_son) {
+                    s_.hata = "hazırlık oturumu süre sınırını aştı";
+                }
                 return false;
             }
             k_->el_sikisma_baslat(duvar());
-            son = gercek() + a_.baglanti_bekleme_ns;   // yeni bağlantının el sıkışması
+            son = pay(a_.baglanti_bekleme_ns);   // yeni bağlantının el sıkışması
         }
         if (gercek() > son) {
-            s_.hata = "el sıkışma zaman aşımı";
+            s_.hata = hazirlik_suruyor && son >= hazirlik_son ? "hazırlık oturumu süre sınırını aştı"
+                                                              : "el sıkışma zaman aşımı";
             return false;
         }
     }
@@ -801,13 +864,22 @@ bool Calistirici::oturum_kur()
 // A1-K19: hazırlık oturumu: fizik yürütülmez, yalnız TF; her parametre için PARAM_SET, sonra
 // PARAM_COMMIT ve PARAM_SAVE (kaynak 250); hepsi kabul edilir, kart bloğu kaydeder ve
 // param_blob_crc beklenene eşit olunca RUN_END. Ardından REBOOT'lu yeni el sıkışma gelir.
-bool Calistirici::hazirlik()
+// Dönüş: tamam (RUN_END gönderildi); oturum_bitti (hazırlık oturumu koptu; çağıran aynı mutlak
+// son tarihle yeniden kurar); hata (s_.hata). Gözetim: en çok 8000 periyot (sim zamanı 40 s), SIL'de
+// her yuva T_SIL (duvar) ve hazırlık işleminin mutlak son tarihi `son_mutlak` (duvar; yeniden
+// bağlantılar boyunca korunur, yavaş yanıt veren ya da tekrar tekrar kapanan kartla asılma yok).
+Calistirici::Bekleme Calistirici::hazirlik(std::int64_t son_mutlak)
 {
     ++s_.hazirlik_oturumu;
     gunluk(1, "parametre bloğu uyuşmuyor: hazırlık oturumu (A1-K19)");
     std::int64_t t_h = 0;
     const std::int64_t eski_duvar = sil_duvar_;
     sil_duvar_ = 0;
+    struct DuvarGeri {
+        std::int64_t& d;
+        std::int64_t eski;
+        ~DuvarGeri() { d = eski; }
+    } duvar_geri{sil_duvar_, eski_duvar};
     std::vector<std::uint32_t> idler;
     for (const kopru::ParamDegeri& p : pb_.tumu) {
         idler.push_back(k_->komut_param_set(p.id, p.type, p.bits, t_h, 250));
@@ -815,18 +887,16 @@ bool Calistirici::hazirlik()
     idler.push_back(k_->komut_basit(kCmdParamCommit, 0, t_h, 250));
     idler.push_back(k_->komut_basit(kCmdParamSave, 0, t_h, 250));
     bool tamam = false;
-    // Gözetim: en çok 8000 periyot (sim zamanı 40 s), SIL'de her yuva T_SIL (duvar), toplamda
-    // hazirlik_azami_ns (duvar; yavaş yanıt veren kartla asılma olmasın).
-    const std::int64_t bas = gercek();
     for (int n = 0; n < 8000 && !tamam; ++n) {
-        // Kabul edilmiş durdurma önce (W4-K27 (4), W4-K28 (3)): durdurma kazanır; sonra hazırlığın
-        // kendi süre sınırı. İki erken dönüşün kapanışı (SESSION_CLOSE) kos()'taki erken_kapanis'te.
+        // Kabul edilmiş durdurma önce (W4-K27 (4), W4-K28 (3)): durdurma kazanır (Bekleme::hata;
+        // s_.hata kos()'un durdurma dalında temizlenir); sonra hazırlığın mutlak son tarihi. Erken
+        // dönüşlerin kapanışı (SESSION_CLOSE) kos()'taki erken_kapanis'te.
         if (a3_hazirlik_durdu()) {
-            return false;   // W4-K27 (4): hazırlık oturumu yarıda bırakılır
+            return Bekleme::hata;   // W4-K27 (4): hazırlık oturumu yarıda bırakılır
         }
-        if (gercek() - bas > a_.hazirlik_azami_ns) {
+        if (gercek() > son_mutlak) {
             s_.hata = "hazırlık oturumu süre sınırını aştı";
-            return false;
+            return Bekleme::hata;
         }
         t_h += kP;
         if (a_.kip == Kip::sil) {
@@ -837,12 +907,13 @@ bool Calistirici::hazirlik()
         const std::optional<std::uint32_t> seq = k_->parti_kapat(t_h, duvar());
         yaz();
         if (!seq) {
-            s_.hata = "hazırlık oturumu koptu";
-            return false;
+            gunluk(1, "hazırlık oturumu koptu; yeniden kuruluyor");
+            return Bekleme::oturum_bitti;
         }
         if (a_.kip == Kip::sil) {
-            if (!yuva_bekle(*seq)) {
-                return false;
+            const Bekleme r = yuva_bekle(*seq, son_mutlak);
+            if (r != Bekleme::tamam) {
+                return r;
             }
         } else {
             pompa(0);
@@ -857,7 +928,7 @@ bool Calistirici::hazirlik()
             if (r->ack != kAckAccepted) {
                 s_.hata = "hazırlık: komut reddedildi (cmd_id " + std::to_string(id) + ", neden " +
                           std::to_string(r->reason) + ")";
-                return false;
+                return Bekleme::hata;
             }
         }
         const kopru::KartDurum& d = k_->kart().durum;
@@ -865,18 +936,19 @@ bool Calistirici::hazirlik()
     }
     if (!tamam) {
         s_.hata = "hazırlık oturumu tamamlanmadı (param_blob_crc eşleşmedi)";
-        return false;
+        return Bekleme::hata;
     }
     k_->oturum_kapat(kCloseRunEnd, duvar());
     yaz();
     pompa(0);
     k_->kip_ayarla(a_.kip == Kip::sil ? kopru::CalistirmaKipi::sil : kopru::CalistirmaKipi::hil_1x);
-    sil_duvar_ = eski_duvar;
-    return true;
+    return Bekleme::tamam;
 }
 
-// SIL kilitli adım (A1-K121 (ii), K76): yuva tamamlanana kadar bekler.
-bool Calistirici::yuva_bekle(std::uint32_t seq)
+// SIL kilitli adım (A1-K121 (ii), K76): yuva tamamlanana kadar bekler. Oturum biterse (karşı
+// taraf kapattı, protokol hatası, T_SIL) yeniden kurmaz: Bekleme::oturum_bitti döner (çağıran
+// kurar; özyineleme yok). son_mutlak: süren hazırlık işleminin mutlak son tarihi (duvar).
+Calistirici::Bekleme Calistirici::yuva_bekle(std::uint32_t seq, std::int64_t son_mutlak)
 {
     const auto bas = Saat::now();
     // Alım kuyruğu yalnız burada (ve el sıkışmada) işlenir; yuva tamamlanınca ya da oturum
@@ -899,21 +971,25 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
             k_->protokol_hatasi(duvar());
         }
         if (k_->yuva_tamam(seq)) {
-            return true;
+            return Bekleme::tamam;
         }
         if (k_->durum() != kopru::OturumDurumu::kosuyor) {
-            // Oturum bitti (karşı taraf kapattı): yeniden kurulur; bu yuva kaçırılır.
+            // Oturum bitti (karşı taraf kapattı): çağıran yeniden kurar; bu yuva kaçırılır.
             gunluk(1, "oturum bitti (parti " + std::to_string(seq) + "); yeniden kuruluyor");
             ++s_.yeniden_baglanti;
-            return oturum_kur();
+            return Bekleme::oturum_bitti;
         }
         pompa(1000);
+        if (gercek() > son_mutlak) {
+            s_.hata = "hazırlık oturumu süre sınırını aştı";
+            return Bekleme::hata;
+        }
         if (Saat::now() - bas > std::chrono::nanoseconds(a_.t_sil_ns)) {
             k_->sil_gozetimi_doldu(duvar());   // A1-K76
             gunluk(1, "T_SIL doldu (parti " + std::to_string(seq) + ")");
             if (ic_) {
                 s_.hata = "süreç içi karşı taraf yanıt vermedi";
-                return false;
+                return Bekleme::hata;
             }
             if (tas_) {
                 tas_->kapat_duzgun(kKapanisBosaltmaUs);   // W4-K25 (5)
@@ -921,7 +997,7 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
             }
             sil_gelen_temizle();
             ++s_.yeniden_baglanti;
-            return oturum_kur();
+            return Bekleme::oturum_bitti;
         }
     }
 }
@@ -3217,8 +3293,10 @@ Sonuc Calistirici::kos()
         }
     }
     if (!kuruldu) {
-        // EMNİYET (W4-K28 (3); sol-2 #6): bütün erken bitişlerde oturum açıksa SESSION_CLOSE
-        // tamamen yazılır (mutlak süre sınırıyla) ve taşıma düzgün kapanır.
+        // EMNİYET (W4-K28 (3); sol-2 #6; w4-mac-ci sol 3. denetim #3, A1-K21): bütün erken
+        // bitişlerde (hazırlıkta durdurma, hazırlıkta süre sınırı ya da komut reddi, bağlantı
+        // beklemesinin iptali) oturum açıksa SESSION_CLOSE tamamen yazılır (mutlak süre sınırıyla)
+        // ve taşıma düzgün kapanır.
         erken_kapanis();
         s_.sayac = k_->sayaclar();
         s_.kart = k_->kart();
@@ -3328,8 +3406,11 @@ Sonuc Calistirici::kos()
             satir_ekle(b, gon);
             evre_[kEvreSatir] += gercek() - e_s;
             if (a_.kip == Kip::sil) {
-                if (gon && !yuva_bekle(seq)) {
-                    break;
+                if (gon) {
+                    const Bekleme r = yuva_bekle(seq);
+                    if (r == Bekleme::hata || (r == Bekleme::oturum_bitti && !oturum_kur())) {
+                        break;
+                    }
                 }
                 satirlari_tamamla(gon ? 1u : 0u);   // W4-K14: önceki satır ACTUATOR(n)'den sonra
             }
