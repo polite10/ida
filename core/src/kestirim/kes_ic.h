@@ -86,6 +86,7 @@ typedef struct {
     float konum_sicra;
     uint32_t n_iyi;
     uint32_t n_reset;
+    uint32_t n_red;      /* KES_N_RED: ardışık retten sonra kaynak kuşkulu */
     int64_t ok_ns;
     int64_t dvl_stale_ns;
     int64_t gnss_stale_ns;
@@ -111,8 +112,10 @@ void ida_kes_ayar_oku(const ida_core_t *c, ida_kes_ayar_t *a);
    başına bir örnek) seyreltilir: yoksa kuyruk sürekli dolu kalır, boşalan yeri her çağrıda
    sıralamada önce gelen tür alır ve öteki türler hiç füzyonlanmaz; kartın adım süresi de
    büyür. Seyreltilen örnek akışı canlı sayar ama füzyonlanmaz. Bu aralıklarla ve D ≤ 200 ms
-   ile bekleyen ölçüm sayısı kuyruk boylarını aşmaz (manyetometre ≤ 25 + basınç ≤ 12 ≤ 32 + pay
-   yok: en uç hızlarda taşan örnek atılır ve sayılır; DVL ≤ 5 + GNSS ≤ 3 ≤ 8). */
+   ile bekleyen ölçüm sayısı kuyruk boylarını aşmaz: manyetometre ≤ 200/8 = 25, basınç ≤
+   200/18 → 12, toplam 37 ≤ IDA_KES_OLC_N = 40 (testte çağrı sonunda 36 ölçüldü); DVL ≤ 5 + GNSS ≤ 3 = 8 ≤
+   IDA_KES_YOLC_N. Teslimi geciken örnekler bekleme süresini uzatmaz (ufka göre geç kalan
+   atılır); bütçe yüzünden ufuk geride kalırsa taşan örnek atılır ve sayılır (n_tasma). */
 #define IDA_KES_MAG_ARALIK_NS   8000000 /* ≤ 125 Hz */
 #define IDA_KES_BARO_ARALIK_NS 18000000 /* ≤ ≈ 55 Hz */
 #define IDA_KES_GNSS_ARALIK_NS 90000000 /* ≤ ≈ 11 Hz */

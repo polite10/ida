@@ -19,9 +19,25 @@
  * iyi örnekten sonra füzyonlanır (tek örnek kestirimi de geçerliliği de değiştirmez).
  * Nitelendirme sürerken iyi olmayan bir örnek sayımı baştan başlatır. Nitelikli kaynakta iyi
  * olmayan örnek yalnız atlanır (tek bir kayıp ping kaynağı düşürmez); iyi örnekler arasındaki
- * boşluk bayatlık sınırını aşarsa nitelik düşer ve sayım baştan başlar. Kapıdan (yᵀ S⁻¹ y ≤ γ;
- * vektör bütün olarak) geçemeyen ölçüm füzyonlanmaz ve desteği yenilemez; KES_N_RESET ardışık
- * rette durum ölçüme sıfırlanır (geri dönüş yolu).
+ * boşluk bayatlık sınırını aşarsa nitelik düşer ve sayım baştan başlar.
+ *
+ * Kapı, ret ve sıfırlama (W5 düzeltme turu; inceleme bulgu 1, 2, 4). IDA_EST_OK silahlanmanın ön
+ * koşuludur: hiçbir sıfırlama OK'u korumaz ve destek üretmez.
+ *   - Kapıdan (yᵀ S⁻¹ y ≤ γ; vektör bütün olarak) geçemeyen ölçüm füzyonlanmaz ve desteği
+ *     yenilemez. Destek yalnız kapıdan geçen örnekten gelir.
+ *   - Ret izi (red_*; duvar saati, KES_RED_MS kuralı) ilk rette başlar ve yalnız kabul edilen
+ *     örnekte ya da sıfırlamada temizlenir; kaynağın yeniden nitelenmesi onu silmez.
+ *   - KES_N_RED ardışık ret kaynağı "kuşkulu" yapar (kusku_*): ilgili geçerlilik süre dolmadan,
+ *     örnek sayısıyla düşer. Kuşkuyu yalnız kapıdan geçen örnek kaldırır; sıfırlama kaldırmaz.
+ *   - KES_N_RESET (> KES_N_RED) ardışık rette durum ölçüme sıfırlanır (geri dönüş yolu).
+ *     Sıfırlama: OK adayını siler (KES_OK_MS baştan), desteği YENİLEMEZ, kaynağı kuşkulu
+ *     bırakır (geçerlilik ancak sonraki, kapıdan geçen örnekle döner). Mutlak başvuru yokken
+ *     (taze ve kuşkusuz GNSS konum desteği yok) yapılan hız sıfırlaması yatay konumu da
+ *     geçersiz kılar: ret dizisi boyunca konum yanlış hızla tümlenmiştir; konum yeniden ancak
+ *     GNSS'ten kurulunca geçerli olur. İlk fix'le konum kurulumu da bir sıfırlamadır.
+ * Destek zamanı ölçümün zamanı değil füzyon anının duvar saatidir (inceleme bulgu 6; dilim 1 ile
+ * aynı kalıp): ölçüm zamanına göre bayatlık sınırı T_*_STALE'den en çok kuyruk gecikmesi
+ * (ufuk gecikmesi D ≤ 200 ms; bütçe ertelerse birkaç çağrı daha) ve taşıma süresi kadar uzar.
  */
 #include "kestirim/kes_ic.h"
 
@@ -227,6 +243,54 @@ static void hiz_destegi(ida_kes_t *k, int64_t t_ns)
     k->hiz_fuz_ns = t_ns;
 }
 
+/* Mutlak başvuru: GNSS konumu taze (son kabul edilen fix T_GNSS_STALE içinde, duvar saati) ve
+   konum kapısı kuşku altında değil. */
+static bool gnss_konum_taze(const ida_kes_t *k, const ida_kes_ayar_t *a)
+{
+    return k->konum_var && !k->kusku_gnss_p && k->akis_gnss.destek_var &&
+           ((a->now_ns - k->akis_gnss.destek_ns) <= a->gnss_stale_ns);
+}
+
+/* Geri dönüş yolunun hız sıfırlaması (dosya başı "Kapı, ret ve sıfırlama"): OK adayı silinir;
+   mutlak başvuru yoksa yatay konum da geçersiz olur (yeniden GNSS'ten kurulana kadar). Destek
+   üretmez. */
+static void hiz_geri_donus(ida_kes_t *k, const ida_kes_ayar_t *a, ida_v3_t v, uint32_t n_eks,
+                           float var, float t_ret)
+{
+    hiz_sifirla(k, v, n_eks, var, t_ret);
+    k->ok_aday_var = false;
+    if (!gnss_konum_taze(k, a)) {
+        k->konum_var = false;
+    }
+}
+
+/* Konumun GNSS'e sıfırlanması (ilk kurulum ve geri dönüş yolu): OK adayı silinir; destek
+   üretmez, konum kapısı sonraki kabul edilen fix'e kadar kuşkuludur. */
+static void konum_geri_donus(ida_kes_t *k, float n, float e, float var)
+{
+    konum_sifirla(k, n, e, var);
+    k->konum_var = true;
+    k->ok_aday_var = false;
+    k->kusku_gnss_p = true;
+}
+
+/* Kapı kararının izi (nitelikli örnekte). Kabul: ret izi ve kuşku kalkar. Ret: iz başlar ya da
+   sürer; ardışık ret KES_N_RED'e varınca kaynak kuşkulu olur. */
+static void kapi_isle(ida_kes_red_t *red, bool *kusku, ida_kes_nit_t *nit, bool kabul,
+                      const ida_kes_ayar_t *a, int64_t t_ns)
+{
+    red_isle(red, !kabul, a->now_ns);
+    if (kabul) {
+        nit->red_n = 0u;
+        *kusku = false;
+        return;
+    }
+    nit_ret(nit, t_ns);
+    if ((uint32_t)nit->red_n >= a->n_red) {
+        *kusku = true;
+    }
+}
+
 /* ---- Ölçüm modelleri (öngörü ve Jacobian; birim testi sayısal türevle karşılaştırır) ------ */
 
 void ida_kes_dvl_model(const ida_kes_nominal_t *x, ida_v3_t w_ham, ida_v3_t l, float hb[3],
@@ -355,15 +419,23 @@ void ida_kes_dvl_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yol
     const float fom = o->v[9];
     const float irtifa = o->v[10];
     const uint8_t gerek = (uint8_t)(IDA_KES_YB_HIZ | IDA_KES_YB_DIP);
+    /* Sensörün bildirdiği kovaryansın en büyük köşegeni DVL_FOM_MAX²'yi aşıyorsa örnek bilgi
+       taşımaz (inceleme bulgu 5): beyazlatma NIS'i ≈ 0 yapar, örnek kapıdan geçer ve hiçbir şey
+       düzeltmeden desteği yenilerdi. FOM ile aynı eşik: ikisi de hız hatasının 1σ ölçüsüdür.
+       Karşılaştırmalar NaN'da yanlıştır (örnek iyi sayılmaz). */
+    const float kov_max = a->dvl_fom_max * a->dvl_fom_max;
+    const bool kov_iyi = ((o->bayrak & IDA_KES_YB_KOV) == 0u) ||
+                         ((o->v[3] <= kov_max) && (o->v[6] <= kov_max) && (o->v[8] <= kov_max));
     const bool iyi = ((o->bayrak & IDA_KES_YB_KULLANILMAZ) == 0u) && ((o->bayrak & gerek) == gerek) &&
-                     (fom <= a->dvl_fom_max) && (irtifa >= a->dvl_alt_min);
+                     (fom <= a->dvl_fom_max) && (irtifa >= a->dvl_alt_min) && kov_iyi;
     if (!iyi) {
         nit_kotu(&k->nit_dvl, a->n_iyi);
         return;
     }
     if (!nit_iyi(&k->nit_dvl, o->t_ns, a->dvl_stale_ns, a->n_iyi)) {
-        red_isle(&k->red_dvl, false, a->now_ns);
-        return; /* henüz nitelikli değil: füzyon yok */
+        /* Henüz nitelikli değil: füzyon yok. Süren ret izi ve kuşku korunur (inceleme bulgu 4):
+           onları yalnız kabul edilen örnek (ret izini ayrıca sıfırlama) temizler. */
+        return;
     }
     const ida_m3_t m_dvl = ida_q_dcm(ida_kes_q_euler(a->e_dvl.x, a->e_dvl.y, a->e_dvl.z));
     const ida_v3_t zd = {o->v[0], o->v[1], o->v[2]};
@@ -429,16 +501,16 @@ void ida_kes_dvl_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yol
     }
     float dx[N];
     const bool kabul = vektor_fuzyon(k, &q, dx);
-    red_isle(&k->red_dvl, !kabul, a->now_ns);
+    k->kapi_dvl_var = true;
+    k->kapi_dvl_ns = a->now_ns;
+    kapi_isle(&k->red_dvl, &k->kusku_dvl, &k->nit_dvl, kabul, a, o->t_ns);
     if (kabul) {
-        k->nit_dvl.red_n = 0u;
         k->akis_dvl.destek_var = true;
         k->akis_dvl.destek_ns = a->now_ns;
         hiz_destegi(k, o->t_ns);
         return;
     }
     k->n_dvl_red++;
-    nit_ret(&k->nit_dvl, o->t_ns);
     if ((uint32_t)k->nit_dvl.red_n >= a->n_reset) {
         /* Geri dönüş yolu: KES_N_RESET ardışık nitelikli örnek kapıdan geçemedi. Hız DVL'e
            sıfırlanır: v = R̂ (z_b − ω̂ × l). Varyans: R_b'nin en büyük köşegeni + tutum
@@ -455,12 +527,10 @@ void ida_kes_dvl_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yol
         }
         const float zn = ida_v3_norm(zb);
         const float t_ret = ida_kes_ns_s(o->t_ns - k->nit_dvl.red_bas_ns);
-        hiz_sifirla(k, v_yeni, 3u, rmax + zn * zn * pth, t_ret);
+        hiz_geri_donus(k, a, v_yeni, 3u, rmax + zn * zn * pth, t_ret);
         k->nit_dvl.red_n = 0u;
         red_isle(&k->red_dvl, false, a->now_ns);
-        k->akis_dvl.destek_var = true;
-        k->akis_dvl.destek_ns = a->now_ns;
-        hiz_destegi(k, o->t_ns);
+        k->kusku_dvl = true; /* destek yok: geçerlilik sonraki, kapıdan geçen örnekle döner */
     }
 }
 
@@ -488,11 +558,13 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
         return;
     }
     if (!nit_iyi(&k->nit_gnss, o->t_ns, a->gnss_stale_ns, a->n_iyi)) {
-        red_isle(&k->red_gnss_p, false, a->now_ns);
-        red_isle(&k->red_gnss_v, false, a->now_ns);
+        /* Fix henüz kabul edilmedi (02 §2.3.4: ardışık iyi örnek). Ardışık ret sayımı baştan
+           başlar; süren ret izleri ve kuşku korunur (inceleme bulgu 4). */
         k->nit_gnss_v.red_n = 0u;
-        return; /* fix henüz kabul edilmedi (02 §2.3.4: ardışık iyi örnek) */
+        return;
     }
+    k->kapi_gnss_var = true;
+    k->kapi_gnss_ns = a->now_ns;
     const float sg = (eph > a->r_gnss_p) ? eph : a->r_gnss_p; /* σ_g */
     const float vg = sg * sg;
 
@@ -511,26 +583,22 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
         sifirla(q.h[2]);
         float dx[N];
         const bool kabul = vektor_fuzyon(k, &q, dx);
-        red_isle(&k->red_gnss_v, !kabul, a->now_ns);
+        kapi_isle(&k->red_gnss_v, &k->kusku_gnss_v, &k->nit_gnss_v, kabul, a, o->t_ns);
         if (kabul) {
-            k->nit_gnss_v.red_n = 0u;
             k->gnss_hiz_destek_var = true;
             k->gnss_hiz_destek_ns = a->now_ns;
             hiz_destegi(k, o->t_ns);
         } else {
             k->n_gnss_red++;
-            nit_ret(&k->nit_gnss_v, o->t_ns);
             if ((uint32_t)k->nit_gnss_v.red_n >= a->n_reset) {
                 /* Geri dönüş yolu (02 §2.3.4): KES_N_RESET ardışık iyi örneğin hızı kapıdan
                    geçemedi; yatay hız GNSS hızına sıfırlanır: v_NE = v_a − (R̂ (ω̂ × l_a))_NE. */
                 const ida_v3_t v_yeni = {k->xh.v.x + q.y[0], k->xh.v.y + q.y[1], k->xh.v.z};
                 const float t_ret = ida_kes_ns_s(o->t_ns - k->nit_gnss_v.red_bas_ns);
-                hiz_sifirla(k, v_yeni, 2u, a->r_gnss_v * a->r_gnss_v, t_ret);
+                hiz_geri_donus(k, a, v_yeni, 2u, a->r_gnss_v * a->r_gnss_v, t_ret);
                 k->nit_gnss_v.red_n = 0u;
                 red_isle(&k->red_gnss_v, false, a->now_ns);
-                k->gnss_hiz_destek_var = true;
-                k->gnss_hiz_destek_ns = a->now_ns;
-                hiz_destegi(k, o->t_ns);
+                k->kusku_gnss_v = true; /* destek yok: sonraki, kapıdan geçen örneğe kadar */
             }
         }
     }
@@ -542,14 +610,12 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
     const float zn = ne[0] - (hp[0] - k->xh.p.x); /* O_b'nin ölçülen konumu (p = p_a − R l_a) */
     const float ze = ne[1] - (hp[1] - k->xh.p.y);
     if (!k->konum_var) {
-        /* İlk kabul edilen fix: konum kapısız kurulur (hizalamadaki yatay konum bir kabuldür,
-           ölçüm değildir). */
-        konum_sifirla(k, zn, ze, vg);
-        k->konum_var = true;
+        /* Konum bilinmiyor (hizalamadaki yatay konum bir kabuldür; orijin değişti; başvurusuz
+           hız sıfırlaması yapıldı): nitelikli fix konumu kapısız kurar. Bu bir sıfırlamadır:
+           destek üretmez; konum sonraki, kapıdan geçen fix'le geçerli olur. */
+        konum_geri_donus(k, zn, ze, vg);
         k->nit_gnss.red_n = 0u;
         red_isle(&k->red_gnss_p, false, a->now_ns);
-        k->akis_gnss.destek_var = true;
-        k->akis_gnss.destek_ns = a->now_ns;
         return;
     }
     q.m = 2u;
@@ -566,9 +632,8 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
     sifirla(q.h[2]);
     float dx[N];
     const bool kabul = vektor_fuzyon(k, &q, dx);
-    red_isle(&k->red_gnss_p, !kabul, a->now_ns);
+    kapi_isle(&k->red_gnss_p, &k->kusku_gnss_p, &k->nit_gnss, kabul, a, o->t_ns);
     if (kabul) {
-        k->nit_gnss.red_n = 0u;
         /* Varyans tabanı: yatay konum, alıcının bildirdiği doğruluktan iyi sayılmaz. */
         for (uint32_t i = 0u; i < 2u; i++) {
             if (k->P[IDA_KES_IP + i][IDA_KES_IP + i] < vg) {
@@ -589,15 +654,13 @@ void ida_kes_gnss_fuzyon(ida_kes_t *k, const ida_kes_ayar_t *a, const ida_kes_yo
         return;
     }
     k->n_gnss_red++;
-    nit_ret(&k->nit_gnss, o->t_ns);
     if ((uint32_t)k->nit_gnss.red_n >= a->n_reset) {
         /* Sıfırlama (02 §2.3.4): kalite KES_N_RESET ardışık örnek boyunca iyi ama konum kapıdan
-           geçemiyor. Hızın kendi kapısı ve kendi sıfırlaması yukarıdadır (aynı sayı kuralı). */
-        konum_sifirla(k, zn, ze, vg);
+           geçemiyor. Hızın kendi kapısı ve kendi sıfırlaması yukarıdadır (aynı sayı kuralı).
+           Destek üretmez; konum sonraki, kapıdan geçen fix'le geçerli olur. */
+        konum_geri_donus(k, zn, ze, vg);
         ida_kes_P_duzelt(k->P);
         k->nit_gnss.red_n = 0u;
         red_isle(&k->red_gnss_p, false, a->now_ns);
-        k->akis_gnss.destek_var = true;
-        k->akis_gnss.destek_ns = a->now_ns;
     }
 }

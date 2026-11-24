@@ -29,7 +29,8 @@
 
 #define IDA_KES_N     15u /* hata durumu boyutu */
 #define IDA_KES_IMU_N 48u /* IMU halkası: D en çok 200 ms = 40 kayıt (200 Hz) + pay */
-#define IDA_KES_OLC_N 32u /* bekleyen ölçüm kuyruğu (manyetometre, basınç; seyreltilmiş) */
+#define IDA_KES_OLC_N 40u /* bekleyen ölçüm kuyruğu (manyetometre, basınç; seyreltilmiş): D = 200 ms
+                             ve en kısa aralıklarda 25 + 12 = 37 kayıt + pay (kes_ic.h) */
 #define IDA_KES_YOLC_N 8u /* bekleyen yatay yardım ölçümü kuyruğu (DVL, GNSS; seyreltilmiş) */
 
 /* Hata durumu dizinleri. */
@@ -45,7 +46,8 @@
 #define IDA_KES_G_YON       0x02u /* yön (manyetometre taze ve tutarlı)            */
 #define IDA_KES_G_DERINLIK  0x04u /* derinlik (basınç taze, kalibre ve tutarlı)    */
 #define IDA_KES_G_DIKEY_HIZ 0x08u /* dikey hız (derinlikle aynı destek)            */
-#define IDA_KES_G_YATAY_HIZ 0x10u /* yatay hız (DVL ya da GNSS hızı taze, tutarlı)  */
+#define IDA_KES_G_YATAY_HIZ 0x10u /* yatay hız (bir kaynak destekliyor; etkin hiçbir kaynak
+                                     ret altında değil)                             */
 #define IDA_KES_G_KONUM     0x20u /* yatay konum (GNSS'ten kuruldu, σ sınır içinde) */
 
 /* Nominal durum (02 §2.3.1): p (NED, O_b), v, q (gövde → NED), b_g, b_a. */
@@ -129,7 +131,9 @@ typedef struct {
 /* Bir sensör akışının izi (A4-K36). Akış tazeliği: son kullanılabilir örneğin alım yaşı ve
    ölçüm zamanının ilerlemesi (1 s pencerede Δt_meas / Δt_rx ≥ 0,5; 02 §4.1). Ölçüm desteği:
    son füzyonlanan (bütün kapılardan geçen) ölçümün duvar zamanı; geç, taşmada düşen ya da
-   kapıda elenen örnek desteği yenilemez. */
+   kapıda elenen örnek desteği yenilemez; sıfırlama da yenilemez (yatay kaynaklarda). Destek
+   zamanı ölçümün değil füzyon anının zamanıdır: ölçüm zamanına göre bayatlık sınırı en çok kuyruk
+   gecikmesi (ufuk gecikmesi D ≤ 200 ms) ve taşıma süresi kadar uzar (inceleme bulgu 6). */
 typedef struct {
     bool var;
     int64_t rx_ns;
@@ -222,7 +226,8 @@ typedef struct {
     /* ---- Yatay hız, konum ve irtifa (W5 kestirim-yatay) ---------------------------------- */
     ida_kes_yolc_t yolc[IDA_KES_YOLC_N];
     uint8_t yolc_n;
-    bool konum_var;     /* yatay konum hizalamadan beri en az bir kez GNSS'ten kuruldu       */
+    bool konum_var;     /* yatay konum GNSS'ten kuruldu ve o günden beri bilinir sayılıyor;
+                           hizalama, orijin değişimi ve başvurusuz hız sıfırlaması düşürür      */
     bool dvl_kuy_var;   /* seyreltme: kuyruğa alınan son örneğin ölçüm zamanı (tür başına)    */
     int64_t dvl_kuy_ns;
     bool gnss_kuy_var;
@@ -239,9 +244,22 @@ typedef struct {
     ida_kes_akis_t akis_ping; /* yalnız canlılık (irtifa)                                   */
     bool gnss_hiz_destek_var; /* füzyonlanan GNSS hızı (duvar zamanı)                       */
     int64_t gnss_hiz_destek_ns;
-    ida_kes_red_t red_dvl;
-    ida_kes_red_t red_gnss_p;
+    ida_kes_red_t red_dvl;    /* ret izleri: yalnız kabul edilen örnekte ya da sıfırlamada      */
+    ida_kes_red_t red_gnss_p; /* temizlenir (yeniden nitelendirme silmez)                       */
     ida_kes_red_t red_gnss_v;
+    /* Kuşku: kaynak KES_N_RED ardışık ret aldı ya da durum ona sıfırlandı; yalnız kapıdan geçen
+       örnek kaldırır. Kuşkulu kaynak desteklemez; etkinken yatay hız geçerliliğini düşürür
+       (kusku_gnss_p: konum geçerliliğini). */
+    bool kusku_dvl;
+    bool kusku_gnss_p;
+    bool kusku_gnss_v;
+    /* Son kapı kararının (kabul ya da ret; nitelikli örnekte) duvar zamanı: kaynak "etkin"
+       (canlı ve nitelikli) sayılırken tazeliği buradan okunur. GNSS'te hız ve konum kapıları
+       aynı örnekte çalışır. */
+    bool kapi_dvl_var;
+    int64_t kapi_dvl_ns;
+    bool kapi_gnss_var;
+    int64_t kapi_gnss_ns;
     bool hiz_fuz_var;   /* son yatay hız füzyonunun ölçüm zamanı (ölü hesap büyümesi)        */
     int64_t hiz_fuz_ns;
     bool ok_aday_var;   /* OK koşullarının kesintisiz sağlandığı sürenin başı (duvar zamanı) */
@@ -253,7 +271,8 @@ typedef struct {
     bool irt_ping_var;
     float irt_ping;     /* m, Ping1D ışını boyunca mesafe                                    */
     float irtifa;       /* m; bilinmiyorsa −1 (nav.altitude)                                 */
-    int32_t orj_lat_e7; /* nav için orijin (ORIJIN_LAT / ORIJIN_LON'un son okunan değeri)    */
+    int32_t orj_lat_e7; /* nav için orijin (ORIJIN_LAT / ORIJIN_LON'un son okunan değeri);
+                           değişirse konum geçersiz olur ve yeniden GNSS'ten kurulur           */
     int32_t orj_lon_e7;
     uint32_t n_seyrek;  /* en kısa aralıktan sık geldiği için kuyruğa alınmayan örnek        */
     uint32_t n_dvl_red; /* kapıda reddedilen DVL                                             */

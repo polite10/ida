@@ -10,7 +10,7 @@
  * her çağrıda okunur.
  *
  * 0x0234 ve sonrası W5 kestirim-yatay işinindir (DVL, GNSS, Ping1D; yatay hız ve konum; düzey
- * histerezisi). Montajlar scenarios/ida0.toml'dan, orijin scenarios/ornek-havuz.toml'dandır;
+ * histerezisi). Grup koşulu (ida_kes_param_grup): KES_N_RED < KES_N_RESET. Montajlar scenarios/ida0.toml'dan, orijin scenarios/ornek-havuz.toml'dandır;
  * başka orijinli senaryo ORIJIN_LAT ve ORIJIN_LON'u kendi (kimlik, değer) çiftleriyle verir
  * (A4 Bölüm 10, A5'ten beklenen md. 3 ve 4). Gürültü, eşik, sayı ve süreler TAHMİNDİR.
  */
@@ -105,7 +105,10 @@ IDA_PARAM(0x024Bu, DR_ORAN,      F32, B, 0.0f,     1.0f,     0.02f,     dr_oran)
 IDA_PARAM(0x024Cu, SIG_HVEL,     F32, B, 0.01f,    10.0f,    0.2f,      sig_hvel)     /* m/s; üstü yatay hız geçersiz */
 IDA_PARAM(0x024Du, KONUM_SICRA,  F32, B, 0.1f,     1000.0f,  2.0f,      konum_sicra)  /* m; üstü düzeltme çıkışa sıçrama olarak */
 IDA_PARAM(0x024Eu, KES_N_IYI,    U32, B, 2u,       50u,      5u,        kes_n_iyi)    /* kullanımdan önce ardışık iyi örnek */
-IDA_PARAM(0x024Fu, KES_N_RESET,  U32, B, 2u,       100u,     10u,       kes_n_reset)  /* ardışık kapı reddinden sonra sıfırlama */
+IDA_PARAM(0x024Fu, KES_N_RESET,  U32, B, 3u,       100u,     10u,       kes_n_reset)  /* ardışık kapı reddinden sonra sıfırlama; > KES_N_RED */
 IDA_PARAM(0x0250u, KES_OK_MS,    U32, B, 100u,     60000u,   2000u,     kes_ok_ms)    /* OK'tan önce koşulların kesintisiz süresi (duvar) */
 IDA_PARAM(0x0251u, T_DVL_STALE,  U32, B, 100u,     10000u,   1000u,     t_dvl_stale)  /* ms, 02 §4.1; Ping1D irtifası da */
 IDA_PARAM(0x0252u, T_GNSS_STALE, U32, B, 100u,     10000u,   1000u,     t_gnss_stale) /* ms, 02 §4.1 */
+/* W5 düzeltme turu (inceleme bulgu 1): ardışık ret, ilgili geçerliliği süre (KES_RED_MS) dolmadan
+   örnek sayısıyla da düşürür. Grup koşulu (ida_kes_param_grup): KES_N_RED < KES_N_RESET. */
+IDA_PARAM(0x0253u, KES_N_RED,    U32, B, 2u,       50u,      3u,        kes_n_red)    /* ardışık kapı reddinden sonra kaynak kuşkulu (geçerlilik düşer) */

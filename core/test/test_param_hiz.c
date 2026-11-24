@@ -359,10 +359,12 @@ static void test_sema_ozeti_tablodan_turer(void)
    W5-kestirim-yatay (2026-11-24): kestirim şemasına 31 parametre eklendi (0x0234–0x0252; ikisi
    I32); 190 parametre. Önceki değerler 0x34065414A77F8846, 2 426 B, 1 296 B idi. Yeni değerler
    çekirdekten bağımsız bir hesapla (.def dosyalarından kanonik metin, SHA-256'nın ilk 8 baytı
-   küçük uçlu) bulundu; aynı hesap önceki şemada eski altın değerleri veriyor. */
-#define ALTIN_OZET UINT64_C(0xC0C86286048EBFF0)
-#define ALTIN_METIN 2917u
-#define ALTIN_BLOK 1544u
+   küçük uçlu) bulundu; aynı hesap önceki şemada eski altın değerleri veriyor.
+   W5-kestirim-yatay düzeltme turu (2026-11-24): KES_N_RED eklendi (0x0253, U32); 191 parametre.
+   Önceki değerler 0xC0C86286048EBFF0, 2 917 B, 1 544 B idi; yenileri aynı bağımsız hesapla. */
+#define ALTIN_OZET UINT64_C(0xA4B1E4F1ECAADCBB)
+#define ALTIN_METIN 2933u
+#define ALTIN_BLOK 1552u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \
