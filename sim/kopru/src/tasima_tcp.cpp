@@ -26,6 +26,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <string>
 
@@ -141,17 +143,20 @@ public:
         if (k >= 0) {
             return static_cast<long long>(k);
         }
-        if (bekliyor_hatasi(son_hata())) {
+        const int e = son_hata();
+        if (bekliyor_hatasi(e)) {
             return 0;
         }
-        kapat();
+        hata_kodu_ = e;
+        // W4-K26 (2): yazma hatası soketi kapatmaz; alım tamponunda bekleyen baytlar okunabilir
+        // kalır (karşı tarafın son çerçeveleri yazma hatasıyla kaybolmaz). Kapatma sahibinin işi.
         return -1;
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
     {
         okunan = 0;
-        if (s_ == kGecersiz) {
+        if (s_ == kGecersiz || eof_) {
             return OkumaSonucu::kapandi;
         }
         const std::size_t istek = std::min<std::size_t>(n, std::size_t{1} << 20U);
@@ -165,7 +170,14 @@ public:
                 okunan = static_cast<std::size_t>(k);
                 return OkumaSonucu::tamam;
             }
-            if (k == 0 || !bekliyor_hatasi(son_hata())) {
+            if (k == 0) {
+                // W4-K26 (2): karşı uç yazma yönünü kapattı (FIN). Soket açık kalır: sim'in
+                // yazımı ve düzgün kapanışı sürebilir; kapatma sahibinin işi.
+                eof_ = true;
+                return OkumaSonucu::kapandi;
+            }
+            if (const int e = son_hata(); !bekliyor_hatasi(e)) {
+                hata_kodu_ = e;
                 kapat();
                 return OkumaSonucu::kapandi;
             }
@@ -186,6 +198,44 @@ public:
 
     void giris_bosalt() override {}
     bool acik() const override { return s_ != kGecersiz; }
+    // W4-K25 (5): shutdown(SHUT_WR / SD_SEND), karşı taraf kapatana (recv = 0) ya da hataya ya
+    // da süre sınırına dek oku-at, sonra kapat. Okunmamış veriyle close: XNU tcp_disconnect
+    // bağlantıyı düşürür (RST); Winsock'ta düzgün kapanış sırası shutdown + recv + closesocket.
+    void kapat_duzgun(std::int64_t sure_us) override
+    {
+        if (s_ == kGecersiz) {
+            return;
+        }
+#if defined(_WIN32)
+        (void)::shutdown(s_, SD_SEND);
+#else
+        (void)::shutdown(s_, SHUT_WR);
+#endif
+        const auto son = std::chrono::steady_clock::now() + std::chrono::microseconds(std::max<std::int64_t>(sure_us, 0));
+        std::array<char, 4096> t{};
+        for (;;) {
+#if defined(_WIN32)
+            const int k = ::recv(s_, t.data(), static_cast<int>(t.size()), 0);
+#else
+            const ssize_t k = ::recv(s_, t.data(), t.size(), 0);
+#endif
+            if (k == 0 || (k < 0 && !bekliyor_hatasi(son_hata()))) {
+                break;      // karşı taraf kapattı ya da hata
+            }
+            // W4-K26 (3): mutlak son tarih her turda (okunan atılır; sürekli veri asılma yapmaz).
+            const auto kalan = std::chrono::duration_cast<std::chrono::microseconds>(son - std::chrono::steady_clock::now());
+            if (kalan.count() <= 0) {
+                break;
+            }
+            if (k > 0) {
+                continue;   // atılır (işlenmez)
+            }
+            if (bekle(s_, false, kalan.count()) <= 0) {
+                break;      // süre sınırı: asılma yok
+            }
+        }
+        kapat();
+    }
     void kapat() override
     {
         if (s_ != kGecersiz) {
@@ -194,10 +244,13 @@ public:
         }
     }
     std::string ad() const override { return ad_; }
+    int son_hata_kodu() const override { return hata_kodu_; }
 
 private:
     Soket s_;
     std::string ad_;
+    bool eof_ = false;   // karşı uç FIN gönderdi
+    int hata_kodu_ = 0;  // tanı: son başarısız send/recv'in hata kodu
 };
 
 class TcpDinleyiciGercek final : public TcpDinleyici {

@@ -19,6 +19,7 @@
 #include "ida_link/tel.h"
 #include "ida/sunucu/sunucu.hpp"
 #include "zincir.hpp"
+#include "../../sim/kopru/test/zamanlama_olcutu.hpp"   // W4-K24: ortak zamanlama yardımcısı
 
 #include <algorithm>
 #include <atomic>
@@ -681,9 +682,11 @@ int test_hil_cikarma_takma()
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
     dogrula(s.tamam, "koşu tamamlandı " + s.hata);
     dogrula(s.baglanti_kopma == 1u, "bağlantı kaybı görüldü (" + std::to_string(s.baglanti_kopma) + ")");
-    dogrula(s.port_acma_denemesi >= 2u && s.port_acildi == 1u,
-            "port 1 s aralıkla yeniden açılmaya çalışıldı (deneme " + std::to_string(s.port_acma_denemesi) +
-                ", açıldı " + std::to_string(s.port_acildi) + ")");
+    dogrula(s.port_acildi == 1u, "port yeniden açıldı (" + std::to_string(s.port_acildi) + ")");
+    // ZAMANLAMA (W4-K24): deneme sayısı 1 s'lik duvar saati aralıklarına bağlı.
+    dogrula(ida::test::zamanlama(s.port_acma_denemesi >= 2u, "hil_cikarma_takma.port_acma_denemesi",
+                                 "1 s aralıkla deneme " + std::to_string(s.port_acma_denemesi) + " (≥ 2)"),
+            "port 1 s aralıkla yeniden açılmaya çalışıldı (zamanlama)");
     dogrula((s.sayac.calistirma_gecersiz & ida::kopru::kGecPlanlanmamisBitis) != 0u, "çalıştırma geçersiz (A1-K79)");
     // Satırlar: fizik kesintisiz (her kontrol periyodunda bir satır).
     bool kesintisiz = !s.satirlar.empty();
@@ -717,14 +720,21 @@ int test_hil_cikarma_takma()
     dogrula(kesinti > 300u && notr_disi == 0u, "kesintide iticiler nötr (" + std::to_string(notr_disi) + " nötr dışı satır)");
     dogrula(sess_once != 0u && sess_sonra != 0u && sess_sonra != sess_once,
             "yeni oturum (sess " + std::to_string(sess_once) + " → " + std::to_string(sess_sonra) + ")");
-    dogrula(sonra > 0u && sonra_yanit == sonra, "takıldıktan sonra yanıtlar uygulanıyor (" + std::to_string(sonra_yanit) +
-                                                     "/" + std::to_string(sonra) + ")");
+    dogrula(sonra > 0u && sonra_yanit > 0u, "takıldıktan sonra yanıtlar uygulanıyor (" + std::to_string(sonra_yanit) +
+                                                "/" + std::to_string(sonra) + ")");
+    // ZAMANLAMA (W4-K24): her yanıtın yuvasına gerçek zamanda yetişmesi.
+    dogrula(ida::test::zamanlama(sonra_yanit == sonra, "hil_cikarma_takma.yanit_hepsi",
+                                 std::to_string(sonra_yanit) + "/" + std::to_string(sonra) + " satırda yanıt"),
+            "takıldıktan sonra her satırda yanıt (zamanlama)");
     return 0;
 }
 
 }  // namespace
 
 int senaryo_testi(const std::string& ad, int argc, char** argv);   // test_senaryo.cpp
+int sil_belirlenim_testi(const std::string& ad, int argc, char** argv);   // test_sil_belirlenim.cpp
+int sil_alim_testi(const std::string& ad, int argc, char** argv);   // test_sil_alim.cpp
+int a3_testi(const std::string& ad, int argc, char** argv);   // test_a3.cpp (W4-bagla-a3)
 
 int main(int argc, char** argv)
 {
@@ -734,6 +744,18 @@ int main(int argc, char** argv)
     }
     const std::string ad = argv[1];
     if (const int r = senaryo_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = sil_alim_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = sil_belirlenim_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = a3_testi(ad, argc, argv); r >= 0) {
         std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
         return r == 0 ? 0 : 1;
     }

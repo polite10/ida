@@ -16,7 +16,9 @@
 // sınırıysa parti kapanır.
 #pragma once
 
+#include "ida/a3/komut.hpp"
 #include "ida/kopru/kopru.hpp"
+#include "ida/kopru/tasima.hpp"
 #include "ida/port.h"
 
 #include <array>
@@ -91,7 +93,20 @@ struct Ayar {
     bool csv_uret = true;
     int gunluk = 1;                 // 0 sessiz, 1 özet, 2 ayrıntı (stderr)
     std::int64_t t_sil_ns = 5'000'000'000;   // A1-K76 T_SIL (duvar)
+    // Bağlantı bekleme ve el sıkışma süre sınırı (duvar): her aşama kendi payını alır (bağlantının
+    // kabulü; hazırlık oturumunun el sıkışması; çalıştırma oturumunun el sıkışması). Hazırlık
+    // oturumunun kendi süresi buna girmez (W4-K26 mimar kararı; hedef Windows düşük donanımlı, K16).
     std::int64_t baglanti_bekleme_ns = 20'000'000'000;
+    // Hazırlık oturumunun (A1-K19) duvar saati üst sınırı; aşılırsa koşu hatayla biter. 600 s bir
+    // tahmindir (ölçülmedi): olağan hazırlık SIL'de saniyeler, HIL'de en çok 8000 periyot (40 s) sürer.
+    std::int64_t hazirlik_azami_ns = 600'000'000'000;
+    // Sol 4. denetim #2 (EMNİYET): bir oturum kurma işleminin (ilk kurulum ya da koşu ortasında
+    // yeniden kurma; hazırlık gerekip gerekmediğinden bağımsız) mutlak duvar süresi ve en çok
+    // denemesi (bağlantı kabulleri ve el sıkışma başlangıçları). Aşılırsa koşu hatayla ve ortak
+    // güvenli kapanışla biter. Varsayılanlar tahmindir (ölçülmedi): 900 s hazırlığın 600 s'sini ve
+    // el sıkışmaları kapsar; 32 deneme beş hazırlık denemesine ve yeniden bağlantılara pay bırakır.
+    std::int64_t kurma_azami_ns = 900'000'000'000;
+    int kurma_deneme_azami = 32;
     // pty (kartsız sınama; sol #8): aygıtın kalkması ve geri takılması. cikarma anında sözde
     // uçbirimin ana ucu kapatılır (işletim sistemi aygıtın kalktığını bildirir); takma anından
     // sonraki ilk yeniden açma denemesi yeni bir sözde uçbirim açar. < 0: yok.
@@ -112,10 +127,36 @@ struct Ayar {
         bool acil_durdurma = false;
     };
     std::function<void(const SinirGozlemi&)> sinir_kancasi;
+    // Yalnız sınama (W4-K26 (2)): sim'in karşı tarafa göndermeye karar verdiği baytlar (taşımaya
+    // verilmeden önce, yazım başarısız olsa da), sırayla.
+    std::function<void(const std::uint8_t*, std::size_t)> giden_kancasi;
     std::function<void(const sensor::Olcum& o)> olcum_kancasi;
     // Yalnız sınama: görev iletileri sonuç beklenmeden (sınır başına bir) gönderilir; köprünün ve
     // kartın dönüştürücüsünün alanları taşıdığını sınamak için (çekirdek görevi desteklemese de).
     bool gorev_beklemeden = false;
+
+    // ---- A3 sunucusu (W4-bagla-a3; docs/sozlesmeler/A3-web.md) ----
+    // Kapalıyken (varsayılan) sunucu hiç başlamaz ve koşu bugünkü davranışla bayt bayt aynıdır.
+    bool a3_acik = false;
+    std::uint16_t a3_port = 47100;  // A3-K01; 0: işletim sistemi atar
+    std::string a3_kok;             // panellerin derleme çıktısı (web/dist); boşsa statik yollar 404
+    // true: çalıştırma `yuklendi`'de bekler, panelden `calistirma/baslat` ile başlar (A3-K62).
+    // false: çalıştırma kendiliğinden başlar (komut satırındaki koşunun davranışı).
+    bool a3_bekle = false;
+    // Açılış adresi (A3-K05) bir kez verilir; program standart çıktıya yazar.
+    std::function<void(const std::string& adres)> a3_acilis;
+    // Koşu bitince sunucunun son çerçeveleri yayınlaması için beklenen duvar süresi (s).
+    double a3_kapanis_bekleme_s = 0.2;
+    // Yalnız sınama: sunucu dinlemeye başladı (port, erişim jetonu).
+    std::function<void(std::uint16_t port, const std::string& jeton)> a3_hazir;
+    // Yalnız sınama: her fizik sınırının başında (dünya iş parçacığı), A3 komutları çekilmeden
+    // önce; hazırlık yoklamalarında ve `a3_bekle`'de `yuklendi` beklemesinde (b = 0) de çağrılır. Sınama komut alıcısına doğrudan istek verebilir.
+    std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
+    // Yalnız sınama: A1 bayt akışı (sim → karşı taraf: true; karşı taraf → sim: false).
+    std::function<void(bool sim_giden, const std::uint8_t* p, std::size_t n)> a1_bayt_kancasi;
+    // Yalnız sınama (W4-K28 (3)): sim tarafının A1 taşımasını sarmalar (ör. kısmi yazım veren sahte
+    // taşıma). Taşıma kurulunca (süreç içi, sözde uçbirim, seri; TCP'de bağlantı kabul edilince) çağrılır.
+    std::function<std::unique_ptr<kopru::Tasima>(std::unique_ptr<kopru::Tasima>)> tasima_sarmalayici;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -172,7 +213,21 @@ struct OlaySonucu {
     std::string kimlik;
     std::string sonuc;               // uygulandi | reddedildi | uygulanmadi
     std::int64_t t_ns = -1;          // uygulandığı/reddedildiği sınır; uygulanmadi'da çalıştırma sonu
-    std::string neden;               // gevsetme_reddedildi, desteklenmiyor, hedef_yok, kosul_saglanmadi
+    std::string neden;               // gevsetme_reddedildi, desteklenmiyor, hedef_yok, kosul_saglanmadi;
+                                     // A3 komutunda A3 §3.9 hata kodu
+    // W4-bagla-a3 kapsam 4: kaynak. "senaryo" (zaman çizelgesi; kimlik olay kimliği) ya da "a3"
+    // (panel komutu; kimlik "a3/<komut_no>/<tür>").
+    std::string kaynak = "senaryo";
+};
+
+// Yetkili emniyet girdisi değişimi (A3-K96; kaynak "senaryo" ya da "operator").
+struct EmniyetDegisimi {
+    std::int64_t t_ns = 0;
+    std::string alan;                // acil_durdurma | silahlandirma_fisi.f1 | … | emniyet_pimi.f2
+    bool onceki = false, sonraki = false;   // true: basılı / takılı
+    std::string kaynak;
+    std::uint32_t komut_no = 0;      // operatörde A3 komut numarası
+    std::uint32_t emniyet_rev = 0;   // değişimin uygulandığı sınırdan sonraki revizyon
 };
 struct AtamaCeliskisi {
     std::int64_t t_ns = 0;
@@ -239,14 +294,42 @@ struct Sonuc {
     std::uint64_t port_acma_denemesi = 0;      // 1 s aralıklı yeniden açma denemeleri
     std::uint64_t port_acildi = 0;
     std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
+    std::uint64_t kapanis_yazim_eksik = 0;     // W4-K28 (3): kapanış çıkışı süre sınırında yazılamadı
+    std::uint64_t sil_kuyruk_en_cok = 0;       // W4-K26 (3): SIL alım kuyruğunun en büyük boyu (B)
+    std::uint64_t oturum_kur_derinlik_en_cok = 0;   // sol 3. denetim #2: oturum_kur iç içe çağrı derinliği (1 beklenir)
+    // Sol 4. denetim #1, #3 (EMNİYET): kapanışta yerel daraltma (CSV'nin son satır tanımından ayrı).
+    bool kapanis_daraltildi = false;        // ortak kapanışta daraltma yapıldı
+    bool kapanis_oncesi_itki = false;       // daraltmadan önce yürürlükte itki komutu vardı
+    bool kapanis_oncesi_izin = false;       // daraltmadan önce bir tüpün izni açıktı
+    bool kapanis_izin_acik = false;         // daraltmadan sonra bir tüpün izni açık (false beklenir)
+    bool kapanis_itki_yururlukte = false;   // daraltmadan sonra yürürlükte itki (false beklenir)
+    std::uint64_t kapanis_istisna = 0;      // kapanış koruyucusunda yutulan istisna
+    std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL bekleme tüketim sınırı (akış konumunda) aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;
     std::uint64_t karsi_gecerli_red = 0;
     std::string evre_ozeti;                    // HIL: döngü evrelerinin ölçümü (duvar)       // VALID olduğu halde reddedilen örnek (0 olmalı)
+    // ---- A3 (W4-bagla-a3) ----
+    std::string calistirma_sonu;               // A3 açıkken: bitti | durduruldu | hata
+    std::vector<EmniyetDegisimi> emniyet_degisimleri;   // A3 açıkken
+    std::uint64_t a3_yayin_cagrisi = 0;        // Yayinci çağrısı (dünya iş parçacığı)
+    std::int64_t a3_cagri_en_kotu_ns = 0;      // tek çağrının en uzun süresi (duvar; ölçüm)
+    // W4-K27 (5): dünya tarafındaki BÜTÜN A3 hizmetinin (istek çekme, karar, yayın hazırlığı ve
+    // yayın; köprü çağrıları dahil) bir sınırdaki en uzun süresi.
+    std::int64_t a3_sinir_en_kotu_ns = 0;
+    std::uint64_t a3_halka_tasma = 0;          // A3-K38
+    std::uint64_t a3_komut = 0;                // dünyaya ulaşan A3 komutu
+    std::uint64_t a3_kayit_atilan = 0;         // kayıt tamponu dolduğu için Sonuc'a yazılmayan kayıt
+    // W4-K27 (2) (EMNİYET): önce teslim edilmiş işlenmemiş bir kısıtlayan yüzünden reddedilen gevşetme.
+    std::uint64_t a3_sira_korumasi = 0;
 };
 
 Sonuc kos(const Ayar& ayar);
+
+// Yalnız sınama (W4-K27 (5)): çağıran iş parçacığı dünya tarafındaki A3 hizmetinin içindeyken
+// (köprü ve fizik çağrıları hariç) sıfırdan büyük; bellek ayırma sayacı kancaları için.
+int a3_ayirma_sayilir() noexcept;
 
 const char* csv_basligi();
 

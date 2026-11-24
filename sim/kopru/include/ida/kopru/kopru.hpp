@@ -28,6 +28,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -92,6 +93,7 @@ struct Sayaclar {
     std::uint64_t yanit_ret_eski_uretim = 0;
     std::uint64_t yanit_iptal_esz = 0;
     std::uint64_t esz_guvenli_uygulanan = 0;
+    std::uint64_t sil_kisit_erken = 0;          // W4-K26 (1): SIL bekleme noktasında erken uygulanan eşzamansız çıktı grubu
     std::uint64_t komut_suresi_doldu = 0;
     std::uint64_t olay_alinan = 0;
     std::uint64_t olay_gec = 0;
@@ -115,6 +117,7 @@ struct Sayaclar {
     std::uint64_t kritik_erteleme = 0;           // A1-K113: kayan kritik üye
     std::uint64_t kritik_erteleme_en_buyuk = 0;  // en büyük kayma (parti)
     std::uint64_t eszamansiz_ilk_parti_oncesi = 0;  // W4-K6: uygulandı, A1-K79'a sayılmadı
+    std::uint64_t esz_birlesen = 0;  // W4-K27 (3): daha yeni bir eşzamansız çıktıyla geçersiz kılınan (beklerken)
     // Tanı (yinelenemeyen 0x20 gözlemi): A1-K79'a sayılan ilk dört eşzamansız güvenli çıktı.
     struct EszKaydi {
         std::uint64_t adim = 0;            // uygulandığı fizik sınırı
@@ -182,6 +185,7 @@ struct KartNav {
     std::int64_t t_ns = 0;
     std::uint32_t batch_seq = 0;
     std::array<float, 3> p_ned{};
+    std::array<float, 3> v_ned{};    // W4-bagla-a3: A3 kart/durum.v_n için
     std::array<float, 4> q_nb{1.0F, 0.0F, 0.0F, 0.0F};
     float depth = 0.0F;
     std::uint8_t est_level = 0;
@@ -204,6 +208,9 @@ struct KartSayaclari {
                   sample_dup_dropped = 0, narrow_from_rejected = 0, imu_rejected = 0, imu_gap = 0,
                   bad_input = 0, dup_seq = 0, old_seq = 0, cmd_rejected = 0, widen_blocked = 0,
                   evres_ignored = 0, event_unknown = 0, step_miss = 0;
+    // W4-bagla-a3: A3 kart/cekirdek_sayaclari'nın öteki alanları (aynı çerçeveden).
+    std::uint32_t bg_bad_input = 0, wall_backstep = 0, det_rejected = 0, ping360_rejected = 0, bg_dropped = 0,
+                  bg_slice_mismatch = 0, log_dropped = 0;
 };
 
 struct KartBilgisi {
@@ -222,6 +229,7 @@ struct KartBilgisi {
     std::uint8_t fc_state = 0;
     std::uint32_t fc_inhibit_mask = 0;
     std::uint8_t fc_son_olay_sonucu = 0;
+    std::uint64_t fc_son_olay_kimligi = 0;       // IDA_FC_STATUS.last_event_id (W4-bagla-a3)
 };
 
 // Bir komutun sonucu. `yerel` = true: sonucu sim kendisi verdi (oturum yok, birleştirildi,
@@ -231,6 +239,7 @@ struct KomutSonucu {
     std::uint16_t reason = 0;    // IDAW_REASON
     std::uint8_t kind = 0;       // IDAW_RES_KIND
     std::uint32_t value_bits = 0;
+    std::uint8_t param_type = 0;  // IDAW_PARAM_TYPE (kind = PARAM_VALUE ve kabulde; W4-bagla-a3)
     std::uint32_t save_crc = 0;
     bool yerel = false;
     std::int64_t t_ns = 0;       // sonucun alındığı/verildiği sim zamanı
@@ -247,11 +256,41 @@ struct GuidedHedef {
     float yaw_rate = 0.0F;
 };
 
-// Senaryonun emniyet ataması: verilen alanlar sonraki fizik sınırında uygulanır.
+// Emniyet ataması: verilen alanlar sonraki fizik sınırında, A1-K85 sırasıyla uygulanır.
+//
+// Senaryo ataması (`operator_kimligi` = 0; A5-K63): bir sınırdaki kısıtlayan atamaların tümü tek
+// işlemdir, gevşetenlerin tümü tek işlemdir (A3-K117 (2), (6)).
+// Operatör isteği (`operator_kimligi` ≠ 0; A3 paneli, W4-bagla-a3): aynı yol, ama her istek ayrı
+// işlemdir (A3-K117 (1), (6)) ve sonucu `SinirSonucu::operator_sonuclari`'nda döner. Kısıtlayan
+// istek revizyon istemez ve her durumda uygulanır (durum değişmese de revizyon bir artar;
+// A3-K92). Gevşeten istek A1-K85 / A3-K95 (4)'e göre değerlendirilir: revizyon bu sınırda 1–3.
+// adımlarda arttıysa `kisitlama_hakim`; doyduysa `rev_doydu`; senaryonun gevşetmelerinden sonra,
+// taşıdığı `beklenen_rev` güncel değilse `rev_uyusmuyor`. Bir operatör isteği tek alan taşır.
 struct EmniyetAtama {
     std::optional<bool> acil_durdurma;            // true: basılı
     std::array<std::optional<bool>, 2> fis{};     // true: takılı
     std::array<std::optional<bool>, 2> pim{};     // true: takılı
+    std::uint32_t operator_kimligi = 0;           // 0: senaryo; ≠ 0: A3 komut_no
+    std::optional<std::uint32_t> beklenen_rev;    // operatörün gevşeten isteği (A3-K118)
+};
+
+// Operatör emniyet isteğinin sınırdaki sonucu (W4-bagla-a3).
+enum class AtamaSonucu : std::uint8_t { uygulandi, kisitlama_hakim, rev_uyusmuyor, rev_doydu };
+struct OperatorSonucu {
+    std::uint32_t kimlik = 0;
+    AtamaSonucu sonuc = AtamaSonucu::uygulandi;
+    bool kisitlayan = false;
+    bool degisti = false;          // yetkili durum değişti (uygulandıysa)
+    std::uint32_t rev_sonra = 0;   // işlemden sonraki revizyon
+};
+
+// Sim'in karttan gelen bir tek seferlik olay için verdiği karar (A1-K82…K88; A3-K98 için).
+struct OlayKarari {
+    std::uint64_t event_id = 0;
+    std::uint8_t kind = 255;       // IDA_EVT_*; bilinmiyorsa 255
+    std::uint8_t tube = 255;       // 0, 1; ikisi ya da bilinmiyor 255
+    std::uint8_t sonuc = 0;        // IDA_EVR_*
+    std::int64_t t_apply_ns = 0;
 };
 
 // Kartın bir partiye verdiği olağan yanıt (IDA_ACTUATOR; A1-K109'dan geçmiş).
@@ -279,6 +318,16 @@ struct SinirSonucu {
     bool gevsetme_reddedildi = false;
     std::uint32_t rev_adim_basi = 0;
     std::uint32_t rev_adim3_sonu = 0;
+    // Operatör emniyet isteklerinin (EmniyetAtama::operator_kimligi ≠ 0) sonuçları, işlenme
+    // sırasıyla (W4-bagla-a3). Senaryo atamaları buraya girmez.
+    std::vector<OperatorSonucu> operator_sonuclari;
+};
+
+// W4-K26 (1): SIL'de bekleme noktasında işlenen kısıtlayan çerçevelerin erken uygulaması.
+struct KisitSonucu {
+    bool degisti = false;             // yürürlükteki komut ya da izinler değişti
+    bool notr = true;
+    std::array<double, 8> pwm_us{};   // yürürlükteki komut (nötrde ESC nötrü)
 };
 
 // Görev öğesi (A1 Tablo 3.6a; A5-K55): IDA_CMD_MISSION_ITEM alanları.
@@ -307,6 +356,11 @@ public:
     // Yeni el sıkışma (A1-K12): yeni nonce, SIM_HELLO; o ana kadar alınan baytlar atılır.
     void el_sikisma_baslat(std::int64_t duvar_ns);
     void al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns);
+    // SIL kilitli adım (A1-K121, K102): al() gibi, ama her teslim edilen çerçeveden sonra dur()
+    // doğruysa o çerçevenin son baytında durur. Dönüş: tüketilen bayt sayısı (yarım çerçeve
+    // ayrıştırıcıda tutulur ve tüketilmiş sayılır). Kalan baytları çağıran saklar ve sonra verir:
+    // böylece çerçevelerin işlendiği an geliş zamanına değil akıştaki sırasına bağlı olur.
+    std::size_t al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns, const std::function<bool()>& dur);
     // Zamana bağlı işler: SIM_HELLO yinelemesi (T_hello), canlılık (T_canlı), T_bağ (yalnız
     // HIL), T_hazır, T_reboot.
     void zamanla(std::int64_t duvar_ns);
@@ -315,6 +369,9 @@ public:
     // Taşıma kapandı (SIL TCP, aygıt kalktı; A1-K23, K99) ya da SIL gözetimi doldu (A1-K76).
     void akis_kapandi(std::int64_t duvar_ns);
     void sil_gozetimi_doldu(std::int64_t duvar_ns);
+    // W4-K26 (3): karşı taraf kilitli adımı bozan sınırsız bir akış gönderdi (SIL alım sınırları):
+    // oturum varsa SESSION_CLOSE(PROTOCOL) ile biter ve yeni el sıkışma başlar (A1-K23).
+    void protokol_hatasi(std::int64_t duvar_ns);
     // Çalıştırma kipini değiştirir (hazırlık oturumundan sonra; A1-K19). Oturum yokken.
     void kip_ayarla(CalistirmaKipi kip);
 
@@ -348,6 +405,14 @@ public:
 
     // ---- Fizik sınırı (A1-K85) ----
     SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
+    // W4-K26 (1) (EMNİYET, yalnız SIL; HIL'de etkisiz): sınır adim_no'nun yuva beklemesinde
+    // işlenen kısıtlayan çerçevelerin (oturum sonu, eşzamansız güvenli çıktı) etkisini fizik o
+    // sınırdan ilerlemeden uygular; dönen komut aynı adımın itici girdisidir.
+    KisitSonucu sil_kisitlayan_uygula(std::uint64_t adim_no);
+    // Sol 4. denetim #3 (EMNİYET; SIL ve HIL): kapanışta yerel daraltma. Oturum sonunun bekleyen
+    // daraltması (sil_kisitlayan_uygula'nın oturum sonu dalıyla aynı yardımcı) hemen uygulanır;
+    // açık izinler kapatılır, yürürlükteki itki silinir. Yeni kart çıktısı tüketmez, fizik ilerletmez.
+    KisitSonucu kapanis_daralt();
 
     // A1-K108 (sol #6): sim, a_n'de başlayan fizik adımını W(a_n)'den sonra hesapladı. Ortak
     // sayaç ve A1-K79 geçersizlik yolu.
@@ -363,6 +428,28 @@ public:
     bool acil_durdurma() const;
     bool tup_dolu(int tup) const;
     bool izin_acik(int tup) const;
+    // W4-bagla-a3 (A3 atis/durum, emniyet/girdiler; yalnız okuma):
+    std::int64_t izin_bitis_ns(int tup) const;    // süreli iznin bitiş sim anı; izin yoksa −1
+    std::uint32_t emniyet_revizyonu() const;
+    bool emniyet_rev_doydu() const;
+    // Son çağrıdan beri verilen tek seferlik olay kararları (A3-K98); `v`'ye eklenir, iç liste
+    // boşalır (en çok 1024 bekler; fazlası en eskiden atılır, sayaç `olay_karari_atilan`).
+    void olay_kararlari_al(std::vector<OlayKarari>& v);
+    std::uint64_t olay_karari_atilan() const;
+    // HIL'de kullanıcı duraklatması (A1-K41, K79): çalıştırma zamanlama bakımından geçersiz.
+    void hil_duraklatma_bildir();
+    // W4-K27 (1) (EMNİYET): duraklatılmış sınırda operatör emniyet istekleri, sınır yeniden
+    // işlenmeden, yalnız emniyet adımlarıyla (sinir_isle'nin kodu) artımlı işlenir: önce
+    // kısıtlayanlar (koşulsuz, istek başına revizyon), sonra gevşetenler (`beklenen_rev` güncel
+    // revizyona eşitse); acil durdurmanın etkinleşmesi/kalkması W4-K3'e göre işlenir. Senaryo
+    // atamaları ve bekleyen atamalar bu işleme girmez; parti, olay ve sürekli çıktı işlenmez.
+    // `sonuc` en az n öğe; dönüş yazılan sonuç sayısı. Bellek ayırmaz.
+    std::size_t emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc);
+    // W4-K27 (3): bekleyen eşzamansız güvenli çıktı sayısı (en çok 1).
+    std::size_t esz_bekleyen_sayisi() const;
+    // Yürürlükte (nötr dışı olabilecek) itki komutu var mı (A1-K74–K77); oturum sonunda silinmesi
+    // sonraki sınıra bekliyorsa da true (fiziğe hâlâ o komut gider).
+    bool itki_yururlukte() const;
 
     // ---- Komutlar (A1 §3.6, §4.5) ----
     // Dönüş: cmd_id. t_ns komutun verildiği sim anı (t_hazır).

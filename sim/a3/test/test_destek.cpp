@@ -490,4 +490,18 @@ std::string CanliSunucu::host() const { return "Host: 127.0.0.1:" + std::to_stri
 
 std::string CanliSunucu::yetki() const { return "Authorization: Bearer " + sunucu->jeton(); }
 
+bool ortam_var(const char* ad)
+{
+#if defined(_MSC_VER)
+    char* v = nullptr;
+    std::size_t n = 0;
+    const bool var = _dupenv_s(&v, &n, ad) == 0 && v != nullptr && v[0] != '\0';
+    std::free(v);
+    return var;
+#else
+    const char* v = std::getenv(ad);
+    return v != nullptr && v[0] != '\0';
+#endif
+}
+
 }  // namespace ida::a3::test

@@ -1,0 +1,22 @@
+Upstream commit (merged): https://github.com/marzer/tomlplusplus/commit/e4bcc150894a3d0fc9e115263bc573aa1394b1ae
+Pull request: https://github.com/marzer/tomlplusplus/pull/301
+Title: Fix precondition violation in parse_key when parsing '[[[' table headers
+Content: the include/ part of that commit, unchanged (tests/, toml.hpp single header and
+tooling hunks omitted; they are not installed by this port).
+
+diff --git a/include/toml++/impl/parser.inl b/include/toml++/impl/parser.inl
+index 89682f28..f9b03c8e 100644
+--- a/include/toml++/impl/parser.inl
++++ b/include/toml++/impl/parser.inl
+@@ -3157,6 +3157,11 @@ TOML_IMPL_NAMESPACE_START
+ 				if (*cp == U']')
+ 					set_error_and_return_default("tables with blank bare keys are explicitly prohibited"sv);
+ 
++				if (!is_bare_key_character(*cp) && !is_string_delimiter(*cp))
++					set_error_and_return_default("expected bare key starting character or string delimiter, saw '"sv,
++												 to_sv(*cp),
++												 "'"sv);
++
+ 				// get the actual key
+ 				start_recording();
+ 				parse_key();

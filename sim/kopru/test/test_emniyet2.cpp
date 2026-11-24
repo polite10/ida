@@ -113,6 +113,49 @@ int test_emniyet_izin_acik()
     return d.hata;
 }
 
+// Sol 4. denetim #3 (EMNİYET): izin açık ve itki nötr dışıyken oturum kapanır. oturum_kapat
+// daraltmayı yalnız bayraklara bırakır (sonraki sınır); kapanis_daralt izinleri hemen kapatır ve
+// yürürlükteki itkiyi siler (SIL ve HIL 1x), fizik ilerletmeden ve yeni kart çıktısı tüketmeden.
+int test_kapanis_daralt()
+{
+    Denetci d;
+    for (const CalistirmaKipi kip : {CalistirmaKipi::sil, CalistirmaKipi::hil_1x}) {
+        const std::string ad = kip == CalistirmaKipi::sil ? "SIL: " : "HIL 1x: ";
+        KopruAyari a;
+        a.kip = kip;
+        SahteDuzenek z(a);
+        DOGRULA(d, z.el_sikis(), ad + "el sıkışma");
+        gevsek_hazirla(z);
+        const std::uint32_t rev = z.k.dis_durum().emniyet.emniyet_revizyonu;
+        std::uint64_t acma = 0;
+        int asama = 0;
+        z.sk.tf_kancasi = [&](const SahteKart::Tf& tf) {
+            if (asama == 1) {
+                acma = z.sk.olay(IDAW_EVENT_KIND_SAFETY_OPEN, 0, tf.seq, tf.t, rev);
+                z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600), 1);
+                asama = 2;
+            } else {
+                z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600));
+            }
+        };
+        asama = 1;
+        for (int n = 0; n < 4; ++n) {
+            (void)z.periyot();
+        }
+        DOGRULA(d, sonuc_bul(z.sk, acma) == IDA_EVR_APPLIED && z.k.izin_acik(0) && z.k.itki_yururlukte(),
+                ad + "düzenek: izin açık, itki yürürlükte");
+        z.k.oturum_kapat(static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN), z.t);
+        DOGRULA(d, z.k.izin_acik(0), ad + "oturum_kapat yalnız bayrak bırakır (izin sonraki sınıra dek açık)");
+        const std::uint64_t alinan = z.k.sayaclar().rx_frames;
+        const KisitSonucu k = z.k.kapanis_daralt();
+        DOGRULA(d, k.degisti && k.notr && k.pwm_us[0] == 1500.0, ad + "kapanis_daralt: itki nötr");
+        DOGRULA(d, !z.k.izin_acik(0) && !z.k.izin_acik(1) && !z.k.itki_yururlukte(),
+                ad + "kapanis_daralt: izinler kapalı, yürürlükte itki yok");
+        DOGRULA(d, z.k.sayaclar().rx_frames == alinan, ad + "yeni kart çıktısı tüketilmedi");
+    }
+    return d.hata;
+}
+
 // #2 (EMNİYET): reddedilen yinelenen yanıt olayın yetki dayanağını değiştirmez. İlk yanıt
 // güvenli (IS_SAFE, silahsız), ikinci (daha yeni out_seq) silahlı: FIRE reddedilir.
 int test_yinelenen_yanit_olay()

@@ -150,6 +150,62 @@ int test_eszamansiz_guvenli()
     return d.hata;
 }
 
+// W4-K26 (1) (EMNİYET): SIL'de bekleme noktasında işlenen eşzamansız güvenli çıktı ve oturum
+// sonu, sil_kisitlayan_uygula ile aynı sınırda yürürlüğe girer; HIL'de çağrı etkisizdir ve
+// A1-K78/K23 olağan yoluyla (alımdan sonraki ilk sınır) uygulanır.
+int test_sil_kisit_erken()
+{
+    Denetci d;
+    std::array<std::uint16_t, 8> notr{};
+    notr.fill(1500);
+    const auto bayrak = static_cast<std::uint16_t>(IDAW_ACT_FLAGS_THR_VALID | IDAW_ACT_FLAGS_IS_SAFE |
+                                                   IDAW_ACT_FLAGS_SRC_TICK | IDAW_ACT_FLAGS_ASYNC);
+    for (const CalistirmaKipi kip : {CalistirmaKipi::sil, CalistirmaKipi::hil_1x}) {
+        const bool sil = kip == CalistirmaKipi::sil;
+        const std::string ad = sil ? "SIL: " : "HIL 1x: ";
+        KopruAyari a;
+        a.kip = kip;
+        SahteDuzenek z(a);
+        z.sk.pwm.fill(1600);   // yürürlükteki komut nötr değil
+        DOGRULA(d, z.el_sikis(), ad + "el sıkışma");
+        for (int n = 0; n < 5; ++n) {
+            (void)z.periyot();
+        }
+        const std::uint32_t son = z.k.son_parti();
+        z.sk.yanit(son, bayrak, notr);
+        alisveris(z.k, z.sk, z.t);
+        const KisitSonucu k = z.k.sil_kisitlayan_uygula(z.sinir);
+        if (sil) {
+            DOGRULA(d, k.degisti && !k.notr && k.pwm_us[0] == 1500.0,
+                    ad + "eşzamansız güvenli çıktı bekleme noktasının sınırında yürürlükte");
+            DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u && z.k.sayaclar().yanit_iptal_esz == 2u,
+                    ad + "A1-K78 iptali aynı anda (" + s(z.k.sayaclar().yanit_iptal_esz) + ")");
+        } else {
+            DOGRULA(d, !k.degisti && z.k.sayaclar().esz_guvenli_uygulanan == 0u, ad + "sil_kisitlayan_uygula etkisiz");
+            z.sinir_ilerle();
+            DOGRULA(d, z.k.sayaclar().esz_guvenli_uygulanan == 1u && z.k.sayaclar().yanit_iptal_esz == 2u &&
+                           z.sinirlar[z.sinir].pwm_us[0] == 1500.0,
+                    ad + "A1-K78: alımdan sonraki ilk sınırda uygulandı");
+        }
+        // Kartın SESSION_CLOSE'u (A1-K23).
+        mavlink_ida_session_close_t c{};
+        c.sess = z.k.sess();
+        c.reason = static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SAFE_STATE);
+        z.sk.yaz(MAVLINK_MSG_ID_IDA_SESSION_CLOSE, c);
+        alisveris(z.k, z.sk, z.t);
+        DOGRULA(d, z.k.sayaclar().oturum_kopma == 1u, ad + "oturum bitti (sahte kartla yeni oturum hemen kurulur)");
+        const KisitSonucu k2 = z.k.sil_kisitlayan_uygula(z.sinir);
+        if (sil) {
+            DOGRULA(d, k2.degisti && k2.notr, ad + "oturum sonu: iticiler bekleme noktasının sınırında nötr, izinler kapalı");
+        } else {
+            DOGRULA(d, !k2.degisti, ad + "oturum sonu: sil_kisitlayan_uygula etkisiz");
+            z.sinir_ilerle();
+            DOGRULA(d, z.sinirlar[z.sinir].notr, ad + "A1-K23: sonraki sınırdan itibaren nötr");
+        }
+    }
+    return d.hata;
+}
+
 // W4-K6: ilk parti kapanmadan (batch_seq = 0) gelen eşzamansız güvenli çıktı uygulanır ama
 // A1-K79 geçersizliğine sayılmaz; parti kapandıktan sonra gelen sayılır, batch_seq = 0 iddia
 // etse de.

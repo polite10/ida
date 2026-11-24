@@ -51,7 +51,8 @@ add_executable(ida_kopru_test
   test/test_emniyet3.cpp
   test/test_parti.cpp
   test/test_emniyet2.cpp
-  test/test_tasima.cpp)
+  test/test_tasima.cpp
+  test/test_operator.cpp)
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
 target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
 ida_kopru_ayar(ida_kopru_test)
@@ -110,9 +111,19 @@ set(_ida_kopru_testleri
   canlilik_bekleyen_yineleme  # W4-K15 ek (7) canlılık
   canlilik_dogrulanan_kume  # W4-K15 ek (7) canlılık
   canlilik_aninda  # W4-K15 ek (7) canlılık
+  tcp_kapat_duzgun_sinirli  # W4-K26 (3)
+  sil_kisit_erken  # W4-K26 (1) EMNİYET
+  kapanis_daralt  # sol 4. denetim #3 EMNİYET
   bellek_tasima
   tcp_tasima
-  pty_tasima)
+  pty_tasima
+  seri_cikis_bosalt  # W4-K28 sol-3 #3 EMNİYET: seri gönderim kuyruğu son tarihle boşaltılır
+  operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
+  operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
+  operator_artimli  # W4-K27 (1) EMNİYET: duraklatmada artımlı emniyet işlemi
+  esz_sinirli  # W4-K27 (3): bekleyen eşzamansız çıktı sınırlı
+  esz_ilk_parti_oncesi  # W4-K28 (3) EMNİYET: ilk parti öncesi muafiyet belleği sabit
+)
 foreach(_ad IN LISTS _ida_kopru_testleri)
   add_test(NAME sim.kopru.${_ad} COMMAND ida_kopru_test ${_ad})
 endforeach()

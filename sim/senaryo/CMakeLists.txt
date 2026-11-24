@@ -109,6 +109,7 @@ set(_ida_senaryo_testleri
   yeniden_yukleme          # A5-K02
   rapor_bicimi             # A5-K90–K95
   dayaniklilik             # 10 000 bozulmuş dosya, sabit tohum
+  unicode_belirtecler      # 200 000 kısa girdi: TOML belirteçleri + toml++ 3.4.0 tanımsız aralıkları
   cozumleme_suresi         # ölçüm (eşik yok)
   # dilim 2: fizik yükleyici
   fizik_yukleyici          # çözümlenmiş senaryo → ida::fizik yapıları; Dunya::kur

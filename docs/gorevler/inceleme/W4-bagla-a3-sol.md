@@ -1,0 +1,33 @@
+# sol incelemesi: sunucu
+
+## Hüküm
+
+**Kabul edilmez.** `68df9b1..43291eb` farkında emniyet sırasını bozan iki somut yol ve aşağıdaki ek sorunlar var. İnceleme salt okunur yapıldı; testler çalıştırılmadı, dosya değiştirilmedi. CSV/A1 eşitliği ve kart üzerindeki davranış çalıştırılarak doğrulanmış sayılmamalı.
+
+## Düzeltilmesi gerekenler
+
+| # | Yer | Sorun | Doğrusu / önerilen düzeltme | Önem |
+|---|---|---|---|---|
+| 1 | `sim/sunucu/src/sunucu.cpp:1767`, `:1043`; `sim/kopru/src/kopru_sinir.cpp:609`, `:727` | **EMNİYET — aynı sınırda kısıtlama hâkimiyeti kayboluyor.** Senaryo 5 s’de acili basıp 6 s’de bırakacak olsun. `b=4800` sınırında duraklat; operatör yeniden “bas” göndersin: ilk `sinir_isle(b)` revizyonu artırır. Sürdürünce senaryonun bırakması ikinci çağrıya girer; `rev_bas` yeniden alındığından gevşetme kabul edilir. Operatörün aynı sınırdaki kısıtlaması silinir. Bu, A1-K85/A3-K95’e aykırıdır. | Senaryo atamalarını sınırın ilk emniyet işlemine dahil et; sınır boyunca kısıtlama geçmişini koru. Duraklatma yoklamaları bütün sınırı baştan yürütmemeli. Karşı örnekte senaryonun bırakması reddedilmeli. | kritik |
+| 2 | `sim/sunucu/src/a3_baglanti.cpp:177`, `:186` | **EMNİYET — gevşeten, daha önce kabul edilen kısıtlayanı geçebiliyor.** Acil basılı, revizyon `r`: dünya acil yuvasını boş görüp geçer; G/Ç önce yeniden “bas”ı o yuvaya, ardından `r` revizyonlu “bırak”ı genel halkaya koyar. Dünya daha sonra genel halkanın sonunu okur; bırakmayı bu sınırda uygular, basmayı sonraki sınıra bırakır. Kitaplığın mandalı devreye girmez; ilk istek alıcıya başarıyla teslim edilmiştir. | İki aktarım yolunun sınırda tüketilecek kümesini tutarlı bir kesimle belirle. Genel halkadan alınan gevşetme, kendisinden önce teslim edilmiş kısıtlayıcı etkiyi geçememeli. Yalnız `memory_order` değiştirmek bu sıralama hatasını çözmez. | kritik |
+| 3 | `sim/sunucu/src/sunucu.cpp:1765`, `:1774` | **HIL duraklatmasında sınırsız birikme.** Panel komutu yoksa `sinir_isle` çağrılmaz, fakat `pompa` kart çıktısını almaya devam eder. Güvenli `ASYNC` yanıtlar köprüde `esz_bekleyen` vektörüne eklenir (`kopru_sinir.cpp:137`); boşaltma yalnız sınır işlemindedir. Uzun duraklatmada bellek ve sürdürmedeki iş yükü süreyle sınırsız büyür. | Kart çıktılarının duraklatma hizmetini panel komutu varlığına bağlama. Güvenli çıktıların tüketilmesini ve bekleyen belleğin sınırlı kalmasını, #1’deki sınır sırasını koruyarak sağla. | kritik |
+| 4 | `sim/sunucu/src/sunucu.cpp:1803`, `:1773` | **EMNİYET — HIL duraklatılırken üye gönderiliyor.** Duraklatılmışken `DISARM` verildiğinde mevcut köprü yolu komutu hemen `giden`e kodlayabilir (`kopru_parti.cpp:667`); yoklamadaki `yaz()` bunu tele çıkarır. TF gönderilmezken yeni parti üyesi gönderilmiş olur. A1-K41’in “TF ve üye gönderimi durur” şartı sağlanmıyor. | Duraklatmadaki komut kabulü, daraltıcı etki ve tel gönderimini A1-K41 ile uyumlu yönet. Daraltıcılar için tel istisnası isteniyorsa bunu uygulayıcı varsayımı yerine mimar kararıyla açıklaştır. | kritik |
+| 5 | `sim/sunucu/src/sunucu.cpp:1495`, `:1642`, `:2229`; `sim/sunucu/src/a3_baglanti.cpp:105`, `:179` | **Dünya tarafı bellek ayırıyor ve mutex alıyor.** Örneğin etkin itici arızasında her yayın noktasında yeni `map` düğümü kuruluyor; ilk komutta boş vektörler büyüyor; senaryo özeti yeniden metinleştiriliyor. Anlık görüntü aktarımı da başarılı `try_lock` ile mutex sahipleniyor. `a3_olc` yalnız yayın çağrısını ölçtüğünden bu hazırlık maliyetlerini kapsamıyor. | Aktarım ve yayın hazırlığını önceden ayrılmış, sınırlı depolamayla yap; değişmeyen özeti önceden üret. Dünya tarafındaki bütün A3 hizmetini ölç ve tahsis denetimine dahil et. | kritik |
+| 6 | `sim/sunucu/src/sunucu.cpp:2882`, `:2897`, `:1648` | **Hazırlanırken kabul edilen `durdur` uygulanmıyor.** `hazirlaniyor` durumunda geçerli revizyonla alınan istek, engelleyen `oturum_kur`/hazırlık boyunca çekilmiyor. Hazırlık başarılı olunca önce `kosuyor` geçişi revizyonu artırıyor; ilk sınırda durdurma `durum_rev_uyusmuyor` ile reddediliyor ve koşu başlıyor. Başarısızlıkta da hazırlığı iptal edemiyor. | Hazırlık beklemeleri içinde çalıştırma denetimini işle. Tablo 4.7a gereği hazırlıktaki durdurma `yuklendi` durumuna dönmeli; sonradan otomatik başlama olmamalı. | kritik |
+| 7 | `tests/butunleme/test_a3.cpp:501`, `:616`; `sim/kopru/test/test_operator.cpp:75` | **EMNİYET testlerinde önemli kapsama boşluğu var.** Duraklatma testleri 2/2,5 s’de, varsayılan ARM’ın 3 s başlangıcından önce çalışıyor; duraklatılmışken bırakma da yok. Eski nötr dışı komutun geri gelmesi sınanmıyor. Operatör testi ise her işlemde sınırı ilerlettiğinden #1’i; tek iş parçacıklı enjeksiyonlar #2’yi yakalayamaz. | Önce nötr dışı yürürlükte komut bulunduğunu doğrula; duraklatılmışken bas/bırak ve sürdür dizisini sına. Aynı `b` üzerinde senaryo karşılaşmasını ve iki kuyruk arasındaki kesin iş parçacığı sıralamasını belirlenimci olarak kur. | önemli |
+
+## Yeniden hesaplananlar
+
+- `h=1,25 ms`: `P/h=4`; 16, 80 ve 400 sınır sırasıyla **50, 10 ve 2 Hz** verir.
+- #1’de ilk çağrı `r → r+1` yapar; ikinci çağrı başlangıcı `r+1` olduğundan senaryo gevşetmesi yanlışlıkla `r+2` ile kabul edilir.
+- HIL’in 10 ms ızgarası, güvenli çıktı üretimi sürdüğünde **100 kayıt/saat değil, 360.000 kayıt/saat** birikme oluşturur (#3; ölçüm değil hesap).
+- `a_n=R(q)(ν̇+ω×v)` dönüşümünün işaretleri tutarlı; hesap fizik durumuna yazmıyor (`sunucu.cpp:2513`).
+- `JsonYaz` kapanış için bir bayt ayırıyor; taşmada kesilmiş JSON yerine `{}` döndürüyor. İncelenen yolda tampon taşması saptanmadı.
+
+## İskelete ya da diğer bölümlere notlar
+
+Tek `sinir_isle` çağrısında senaryo/operatör kısıtlamaları, bayat veya eksik revizyonlu gevşetmeler ve doyma engeli korunuyor. Sorun, duraklatmayla aynı fizik sınırının ayrı işlemlere bölünmesi.
+
+Halka ve yuvalarda yırtık okuma veya ABA karşı örneği saptamadım; release/acquire aktarımı içerik sahipliğini koruyor. Bu sonuç #2’deki iki kuyruk arasındaki sıra hatasını ortadan kaldırmaz. Atomik eşzamanlama kuralı [C++ çalışma taslağından](https://eel.is/c%2B%2Bdraft/atomics.order) canlı doğrulandı. `try_lock` engellemez; başarılı olduğunda mutex’i sahiplenir. [C++ mutex gereksinimleri](https://eel.is/c%2B%2Bdraft/thread.mutex.requirements.mutex.general)
+
+`fc_fire` mevcut `komut_fc` yolundan taşınıyor; yeni atış karar mantığı eklenmemiş. Tek sınır çağrısında genişletici komutların revizyon denetimi mevcut. A3 kapalı varsayılanlarında operatör kimliği sıfır kalıyor; bayt eşitliği ise bu salt okunur incelemede deneysel olarak doğrulanmadı.

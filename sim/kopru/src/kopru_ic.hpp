@@ -236,8 +236,10 @@ struct Kopru::Ic {
     SiraliHarita<std::int64_t> yanit_sure{64};              // TF yazımından yanıt alımına
     std::vector<std::int64_t> yanit_sureleri;           // çalıştırma boyunca (ölçüm)
     std::vector<std::int64_t> sira_boslugu_t;           // A1-K08 boşluklarının sim zamanı
-    std::vector<mavlink_ida_actuator_t> esz_bekleyen;
-    std::set<std::uint32_t> esz_muaf;       // W4-K6: ilk parti öncesi eşzamansız çıktıların out_seq'i
+    std::vector<mavlink_ida_actuator_t> esz_bekleyen;   // en çok 1 (W4-K27 (3))
+    // W4-K6, W4-K28 (3): tutulan tek eşzamansız çıktının ilk parti öncesi muafiyeti. Muafiyet
+    // çıktıyla birlikte saklanır; birleşen çıktıların kimlikleri biriktirilmez (bellek sabit).
+    bool esz_bekleyen_muaf = false;
     bool ilk_yanit_alindi = false;          // bu oturumda olağan yanıt alındı
     // W4-K14 (SIL; A1-K121 (ii) okuması): KOSUYOR'da ACTUATOR, SESSION_CLOSE ve BOARD_HELLO
     // dışındaki çerçeveler tamponlanır; sonraki ACTUATOR alındığında ondan önce, oturum sonunda
@@ -277,6 +279,10 @@ struct Kopru::Ic {
     void sayim_ihlali(const std::vector<std::uint64_t>& idler);
     std::deque<mavlink_ida_event_result_t> sonuc_kuyrugu;
     std::deque<std::uint64_t> sakli_talep;
+    // W4-bagla-a3 (A3-K98): verilen olay kararları, A3'e aktarılana dek (en çok 1024).
+    std::array<OlayKarari, 1024> olay_kararlari{};
+    std::size_t olay_karari_bas = 0, olay_karari_n = 0;
+    std::uint64_t olay_karari_atilan = 0;
 
     // ---- Emniyet ----
     sensor::EmniyetDurumu emn{};
@@ -354,8 +360,17 @@ struct Kopru::Ic {
     void pencere_ac(std::int64_t t_onceki);
     void rev_artir();
     void izin_kapat(int tup);
+    // Emniyet adımlarının ortak kodu (sinir_isle ve emniyet_artimli; W4-K27 (1)).
+    bool kisitla(const EmniyetAtama& at, bool& degisti);
+    bool operator_kisitla(const EmniyetAtama& at, OperatorSonucu& o);
+    OperatorSonucu operator_gevset(const EmniyetAtama& at, bool kisitlama_hakim, std::uint32_t rev_bas);
+    void estop_isle();
     void olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no);
-    void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply);
+    void cikti_uygula(const mavlink_ida_actuator_t& m, bool esz, bool muaf, std::uint64_t adim_no, std::int64_t t,
+                      SinirSonucu& s);
+    bool oturum_sonu_daralt();
+    void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply, std::uint8_t kind = 255,
+                       std::uint8_t tube = 255);
     bool yuva_tamam(const Yuva& y) const;
     void yuva_tamamlandi_mi(std::uint32_t seq);
     std::uint32_t nonce_sec();

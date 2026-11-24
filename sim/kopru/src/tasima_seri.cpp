@@ -30,7 +30,9 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <string>
+#include <thread>
 
 namespace ida::kopru {
 namespace {
@@ -91,6 +93,38 @@ public:
         if (h_ != INVALID_HANDLE_VALUE) {
             (void)PurgeComm(h_, PURGE_RXCLEAR | PURGE_RXABORT);
         }
+    }
+
+    // W4-K28 sol-3 #3: gönderim kuyruğu (COMSTAT::cbOutQue, ClearCommError) 0 olana ya da son
+    // tarihe dek 1 ms aralıkla yoklanır. FlushFileBuffers kullanılmaz: aygıt durursa süresiz
+    // engelleyebilir. Kaynaklar: https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-clearcommerror,
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-comstat
+    bool cikis_bosalt(std::int64_t sure_us) override
+    {
+        const ULONGLONG son = GetTickCount64() + static_cast<ULONGLONG>(std::max<std::int64_t>((sure_us + 999) / 1000, 0));
+        for (;;) {
+            if (h_ == INVALID_HANDLE_VALUE) {
+                return false;
+            }
+            DWORD hatalar = 0;
+            COMSTAT st{};
+            if (ClearCommError(h_, &hatalar, &st) == 0) {
+                return false;
+            }
+            if (st.cbOutQue == 0) {
+                return true;
+            }
+            if (GetTickCount64() >= son) {
+                return false;
+            }
+            Sleep(1);
+        }
+    }
+
+    void kapat_duzgun(std::int64_t sure_us) override
+    {
+        (void)cikis_bosalt(sure_us);
+        kapat();
     }
     bool acik() const override { return h_ != INVALID_HANDLE_VALUE; }
     void kapat() override
@@ -189,6 +223,44 @@ public:
         if (fd_ >= 0) {
             (void)tcflush(fd_, TCIFLUSH);
         }
+    }
+
+    // W4-K28 sol-3 #3: gönderim kuyruğu 0 olana ya da son tarihe dek 1 ms aralıkla yoklanır.
+    // tcdrain kullanılmaz: aygıt durursa süresiz engelleyebilir. TIOCOUTQ uçbirimin çıkış
+    // kuyruğundaki bayt sayısını verir (XNU bsd/kern/tty.c ttioctl: `*(int *)data = tp->t_outq.c_cc`;
+    // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/tty.c, tanımı
+    // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/ttycom.h). USB CDC
+    // sürücüsünün kendi tamponu bu sayıya girmeyebilir (doğrulanmadı; kartta ölçülmedi).
+    bool cikis_bosalt(std::int64_t sure_us) override
+    {
+#if defined(TIOCOUTQ)
+        const auto son = std::chrono::steady_clock::now() + std::chrono::microseconds(std::max<std::int64_t>(sure_us, 0));
+        for (;;) {
+            if (fd_ < 0) {
+                return false;
+            }
+            int q = 0;
+            if (ioctl(fd_, TIOCOUTQ, &q) != 0) {
+                return false;
+            }
+            if (q <= 0) {
+                return true;
+            }
+            if (std::chrono::steady_clock::now() >= son) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+#else
+        (void)sure_us;
+        return fd_ >= 0;   // kuyruk yoklanamıyor (bu platformda TIOCOUTQ yok)
+#endif
+    }
+
+    void kapat_duzgun(std::int64_t sure_us) override
+    {
+        (void)cikis_bosalt(sure_us);
+        kapat();
     }
     bool acik() const override { return fd_ >= 0; }
     void kapat() override

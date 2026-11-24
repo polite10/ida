@@ -1,14 +1,19 @@
 // Aşama 1, okuma: TOML 1.0 (toml++), A5-K01, K96, K97 ve tamsayı sınırı (A5-K10).
 //
-// Ayrıştırmadan önce iki ön denetim yapılır: UTF-8 geçerliliği (satırıyla) ve iç içe yapı
-// derinliği. Derinlik denetimi bir dayanıklılık önlemidir: toml++ noktalı anahtarlarla kurulan
-// çok derin tabloları özyinelemeli olarak yıkar ve yüz binlerce düzeyde yığın taşar (bu işte
-// denendi); bu yüzden derinlik kaynak metinden toml++'tan önce sınanır.
+// Güvenlik sınırı kitaplığın kendisidir: toml++ depo içi vcpkg overlay port'uyla gelir
+// (vcpkg-overlay/tomlplusplus: 3.4.0 + üst akımda birleşmiş PR #242, #301, #305, #321). Bu
+// yamalar bozuk girdinin TOML_UNREACHABLE / TOML_ASSERT_ASSUME yollarına (tanımsız davranış)
+// ulaşmasını ayrıştırma hatasına çevirir; hata A5-K01 olur. Aşağıdaki ön tarama bir güvenlik
+// sınırı değildir (W4-mac-ci kararı): yalnız (1) UTF-8 geçerliliğini satırıyla bildirir,
+// (2) iç içe yapı derinliğine erken ve okunaklı bir üst sınır koyar (kitaplık ayrıca noktalı
+// anahtarları 1024, iç içe değerleri 256 ile sınırlar) ve (3) değer konumundaki kayan noktalı
+// yazımları bulur.
 //
 // toml++ Clang'de kayan noktalı değeri akışla okur ve alt normal, taşan, alt taşan yazımları
-// ayrıştırma hatası sayar (A5-K96 vektörleri). Böyle bir hatada yazım aynı uzunlukta geçerli
-// bir yer tutucuyla değiştirilip yeniden ayrıştırılır; bütün kayan noktalı değerler sonunda
-// özgün metinden `ondalik_cevir` ile çevrilir (sütunlar korunduğu için konum aynıdır).
+// ayrıştırma hatası sayar (A5-K96 vektörleri). Bu yazımlar aynı uzunlukta geçerli bir yer
+// tutucuyla değiştirilip tek geçişte ayrıştırılır; bütün kayan noktalı değerler özgün metinden
+// `ondalik_cevir` ile çevrilir. Yer tutucunun her konumu bir kayan noktalı düğüme denk
+// gelmelidir; gelmezse dosya A5-K01 ile reddedilir (ön tarama yanılsa da yanlış değer üretilmez).
 #include "ic.hpp"
 
 #include <toml++/toml.hpp>
@@ -87,7 +92,6 @@ public:
     // En büyük derinlik ve ilk aşıldığı satır.
     std::size_t azami = 0;
     std::int64_t azami_satir = 1;
-    std::int64_t gecersiz_baslik_satiri = 0;  // ilk anahtar karakteri geçersiz başlık
     // Değer konumundaki dizgi olmayan belirteçler [baş, son) (sayı kurtarma için).
     std::vector<std::pair<std::size_t, std::size_t>> skalerler;
 
@@ -106,14 +110,6 @@ public:
                 if (i_ < s_.size() && s_[i_] == '[') {
                     ++i_;
                     dizi_tablo = true;
-                }
-                // toml++ 3.4.0 başlıktaki ilk anahtar karakterini yalnız bir iddiayla
-                // (TOML_ASSERT_ASSUME) denetler; geçersiz karakter hata ayıklamada süreci
-                // durdurur, sürüm derlemesinde tanımsız davranıştır. Burada reddedilir.
-                bosluk_atla();
-                if (i_ < s_.size() && !anahtar_basi(s_[i_]) && s_[i_] != ']' &&
-                    gecersiz_baslik_satiri == 0) {
-                    gecersiz_baslik_satiri = satir_;
                 }
                 taban = anahtar_oku() + (dizi_tablo ? 1u : 0u);
                 kaydet(taban);
@@ -646,11 +642,6 @@ TomlOkuma toml_oku(std::string_view metin, int dosya_no, Bulgucu& b)
     {
         DerinlikTarayici t(metin);
         t.tara();
-        if (t.gecersiz_baslik_satiri != 0) {
-            b.hata("A5-K01", Konum{dosya_no, t.gecersiz_baslik_satiri}, kok,
-                   "TOML 1.0 sözdizimi hatası: tablo başlığı anahtar karakteriyle başlamıyor");
-            return sonuc;
-        }
         if (t.azami > kAzamiDerinlik) {
             b.hata("A5-K01", Konum{dosya_no, t.azami_satir}, kok,
                    "iç içe yapı derinliği uygulama sınırını aşıyor (" +

@@ -1,6 +1,10 @@
 // Başsız sim sunucusu: fizik + sensör kümesi + A1 köprüsü + zaman yöneticisi (sunucu.hpp).
 #include "ida/sunucu/sunucu.hpp"
 
+#include "a3_baglanti.hpp"
+#include "ida/a3/kaynak.hpp"
+#include "ida/a3/sunucu.hpp"
+#include "ida/a3/zaman.hpp"
 #include "ida/fizik/dunya.hpp"
 #include "ida/kopru/karsi.hpp"
 #include "ida/kopru/param_blogu.hpp"
@@ -11,6 +15,8 @@
 #include "yardimci.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <deque>
 #include <atomic>
 #include <chrono>
@@ -98,9 +104,34 @@ public:
         }
     }
 
-    Sonuc kos();
+    // Sol 4. denetim #1: dış sınırda istisna yakalanır ve Sonuc::hata'ya çevrilir (süreç
+    // std::terminate ile düşmez); oturum açıksa kapanışı kos_ic'teki koruyucu yapmıştır.
+    Sonuc kos() noexcept
+    {
+        try {
+            return kos_ic();
+        } catch (const std::exception& e) {
+            try {
+                s_.hata = std::string("istisna: ") + e.what();
+                s_.tamam = false;
+                return s_;
+            } catch (...) {
+                return Sonuc{};
+            }
+        } catch (...) {
+            try {
+                s_.hata = "istisna (bilinmeyen tür)";
+                s_.tamam = false;
+                return s_;
+            } catch (...) {
+                return Sonuc{};
+            }
+        }
+    }
 
 private:
+    Sonuc kos_ic();
+
     // ---- Zaman ----
     std::int64_t duvar() const
     {
@@ -129,6 +160,9 @@ private:
     void yaz()
     {
         k_->giden_al(tampon_);
+        if (a_.giden_kancasi && !tampon_.empty()) {
+            a_.giden_kancasi(tampon_.data(), tampon_.size());   // sim'in göndermeye karar verdiği dizi
+        }
         if (!tas_) {
             cikis_.clear();
             cikis_k_ = 0;
@@ -141,12 +175,20 @@ private:
                 cikis_ilerleme_ = gercek();
             }
             cikis_.insert(cikis_.end(), tampon_.begin(), tampon_.end());
+            if (a_.a1_bayt_kancasi) {
+                a_.a1_bayt_kancasi(true, tampon_.data(), tampon_.size());
+            }
         }
         cikis_hizmet();
     }
 
     void cikis_hizmet()
     {
+        if (sil_yazma_bitti_) {
+            cikis_.clear();   // W4-K26 (2): karşı uç artık okumuyor; dizi kancada kayıtlı
+            cikis_k_ = 0;
+            return;
+        }
         if (!tas_ || cikis_k_ >= cikis_.size()) {
             return;
         }
@@ -154,6 +196,14 @@ private:
         for (int j = 0; j < 8 && cikis_k_ < cikis_.size(); ++j) {
             const long long k = tas_->yaz_biraz(cikis_.data() + cikis_k_, cikis_.size() - cikis_k_);
             if (k < 0) {
+                if (a_.kip == Kip::sil) {
+                    // W4-K26 (2) (EMNİYET): SIL'de yazma hatası bağlantıyı burada bitirmez; alım
+                    // kuyruğu akış sırasıyla işlenmeye devam eder, akışın sonu kuyruk bitince.
+                    sil_yazma_bitti_ = true;
+                    cikis_.clear();
+                    cikis_k_ = 0;
+                    return;
+                }
                 baglanti_koptu("yazma hatası");
                 return;
             }
@@ -177,6 +227,115 @@ private:
         evre_[kEvreYaz] += gercek() - e0;
     }
 
+    // EMNİYET (W4-K28 (3), W4-K25 (5); W4-bagla-a3 sol-3 #2, #3; w4-mac-ci sol 3. denetim #3):
+    // köprünün bekleyen çıkışını (ör. SESSION_CLOSE) mutlak süre sınırına (`son`, gercek()
+    // ölçeğinde) dek tamamlar. Kısmi ya da 0 yazımda karşı tarafın baytları okunmaya devam eder
+    // (iki yönün tamponları dolup kilitlenmesin) ve 1 ms sonra yeniden denenir. Süre dolarsa,
+    // bağlantı koparsa ya da SIL'de yazma hatası olduysa açıkça sonuçlanır: sayılır, günlüğe
+    // yazılır, false döner (çağıran yine kapatır). true: hepsi yazıldı ve (seri portta) işletim
+    // sisteminin gönderim kuyruğu da boşaldı (uygulama tamponunun boşalması telin boşalması
+    // sayılmaz). Taşıma yoksa yapılacak iş yoktur (true). Son tarih her turda denetlenir; tur
+    // sınırlıdır (pompa'nın okuma işi HIL'de de sınırlı).
+    bool cikisi_bitir(std::int64_t son)
+    {
+        if (!tas_) {
+            return true;
+        }
+        yaz();
+        while (tas_ && cikis_k_ < cikis_.size()) {
+            if (gercek() >= son) {
+                ++s_.kapanis_yazim_eksik;
+                gunluk(1, "kapanış: bekleyen " + std::to_string(cikis_.size() - cikis_k_) +
+                              " B süre sınırında yazılamadı");
+                return false;
+            }
+            const std::size_t once = cikis_k_;
+            pompa(0);   // cikis_hizmet de çağrılır
+            if (tas_ && cikis_k_ == once && cikis_k_ < cikis_.size()) {
+                sure_uyu(kMs);
+            }
+        }
+        if (!tas_ || sil_yazma_bitti_) {
+            ++s_.kapanis_yazim_eksik;
+            return false;
+        }
+        if (!tas_->cikis_bosalt(std::max<std::int64_t>(son - gercek(), 0) / 1000)) {
+            ++s_.kapanis_yazim_eksik;
+            gunluk(1, "kapanış: işletim sisteminin gönderim kuyruğu süre sınırında boşalmadı");
+            return false;
+        }
+        return true;
+    }
+
+    // Oturum kurulamadan ya da koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta
+    // durdurma, ön denetim ya da hazırlık kalması, bağlantı beklemesinin iptali; sol 3. denetim
+    // #3, A1-K21): oturum açıksa (hazir, kosuyor) SESSION_CLOSE(SHUTDOWN) sıraya girer (köprüde
+    // oturum biter: izinler kapanır, iticiler nötr); bekleyen çıkış mutlak süre sınırıyla
+    // tamamlanır; sonra taşıma düzgün kapanır.
+    // Sol 4. denetim #3: SESSION_CLOSE'dan sonra yerel daraltma gerçekten uygulanır (izinler
+    // kapanır, fizik girdisi nötr; kapanis_daraltmasi).
+    void erken_kapanis()
+    {
+        if (!k_) {
+            return;
+        }
+        if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
+            k_->oturum_kapat(kCloseShutdown, duvar());
+        }
+        kapanis_daraltmasi();
+        (void)cikisi_bitir(gercek() + kKapanisYazimNs);
+        if (tas_) {
+            tas_->kapat_duzgun(kKapanisBosaltmaUs);
+            tas_.reset();
+        }
+    }
+
+    // Sol 4. denetim #3 (EMNİYET; SIL ve HIL): kapanışta köprünün yetkili durumunda izinler
+    // kapatılır ve yürürlükteki itki silinir (Kopru::kapanis_daralt; sil_kisitlayan_uygula'nın
+    // oturum sonu dalıyla aynı yardımcı), fiziğin itici girdisi nötrlenir. Yeni kart çıktısı
+    // tüketilmez, fizik ilerlemez; CSV'nin son satırı değişmez, sonuç Sonuc::kapanis_* alanlarında.
+    void kapanis_daraltmasi()
+    {
+        if (!k_) {
+            return;
+        }
+        s_.kapanis_oncesi_itki = k_->itki_yururlukte();
+        s_.kapanis_oncesi_izin = k_->izin_acik(0) || k_->izin_acik(1);
+        const kopru::KisitSonucu d = k_->kapanis_daralt();
+        pwm_yur_ = d.pwm_us;
+        (void)dn_.itici_komutu_ver(dn_.adim_no(), d.pwm_us);
+        s_.kapanis_daraltildi = true;
+        s_.kapanis_izin_acik = k_->izin_acik(0) || k_->izin_acik(1);
+        s_.kapanis_itki_yururlukte = k_->itki_yururlukte();
+    }
+
+    // Sol 4. denetim #1 (EMNİYET): oturumun bütün yaşamını kapsayan kapanış koruyucusu. Kapsamdan
+    // her çıkışta (istisna dahil) kapanış yapılmadıysa ortak güvenli kapanışı (erken_kapanis)
+    // çağırır; kendisi bellek ayırmaz ve istisna fırlatmaz, kapanış içindeki istisnalar yutulur ve
+    // sayılır. Olağan bitiş ve açık erken kapanış `yapildi()` ile işaretler (çift kapanış yok).
+    class KapanisKoruyucu {
+    public:
+        explicit KapanisKoruyucu(Calistirici& c) noexcept : c_(c) {}
+        KapanisKoruyucu(const KapanisKoruyucu&) = delete;
+        KapanisKoruyucu& operator=(const KapanisKoruyucu&) = delete;
+        ~KapanisKoruyucu() noexcept
+        {
+            if (yapildi_) {
+                return;
+            }
+            try {
+                c_.erken_kapanis();
+            } catch (...) {
+                ++c_.s_.kapanis_istisna;
+            }
+        }
+        void yapildi() noexcept { yapildi_ = true; }
+
+    private:
+        Calistirici& c_;
+        bool yapildi_ = false;
+    };
+
     // Bağlantı kaybı (A1-K23): oturum biter (iticiler sonraki sınırdan nötr, izinler kapanır;
     // fizik sürer), taşıma kapatılır; HIL'de port 1 s aralıkla yeniden açılmaya çalışılır.
     void baglanti_koptu(const char* neden)
@@ -190,6 +349,7 @@ private:
         }
         cikis_.clear();
         cikis_k_ = 0;
+        sil_gelen_temizle();
         sonraki_acma_ = gercek() + kYenidenAcma;
     }
 
@@ -197,37 +357,117 @@ private:
     void baglanti_bakim();
     std::unique_ptr<kopru::Tasima> port_ac(std::string& hata);
 
-    // Eldeki baytları köprüye verir; ilk okuma en çok bekle_us bekler.
+    // Eldeki baytları alır; ilk okuma en çok bekle_us bekler. HIL'de baytlar hemen köprüye
+    // verilir. SIL'de (A1-K121, K102) yalnız alım kuyruğuna eklenir ve köprüye sil_besle() verir:
+    // çerçeveler yalnız sim'in beklediği noktalarda (yuva bekleme, el sıkışma), akıştaki sırayla
+    // ve bekleme koşulu sağlandığı çerçevede durularak işlenir. Böylece oturumun bitiş anı,
+    // kapanış çerçevesi ve yeniden başlama anı baytların geliş zamanına bağlı olmaz. Akışın
+    // kapanması da (karşı uç kapattı) akıştaki yerinde, kuyruk bitince işlenir.
     void pompa(std::int64_t bekle_us)
     {
-        if (ic_ && a_.kip == Kip::sil) {
+        const bool sil = a_.kip == Kip::sil;
+        if (ic_ && sil) {
             (void)ic_->pompala();
             bekle_us = 0;
         }
         cikis_hizmet();
-        if (!tas_) {
+        if (!tas_ || (sil && sil_akis_bitti_)) {
             return;
         }
         alim_.resize(16384);   // yığında değil (MSVC C6262)
         const std::int64_t e0 = gercek();
+        std::size_t bu_tur = 0;
         for (;;) {
+            std::size_t istek = alim_.size();
+            if (!sil) {
+                // W4-K28 sol-3 #2: HIL'de de bir turun işi sınırlı (sürekli veri basan karşı taraf
+                // dünya döngüsünü ve kapanışın son tarih denetimini kilitleyemez). Geri basınç YOK:
+                // HIL'de okumamak veri kaybıdır; kalan baytlar sonraki turda okunur.
+                if (bu_tur >= kHilOkumaTuru) {
+                    break;
+                }
+            } else {
+                // W4-K26 (3): bir turun işi sınırlı (gözetim denetimine dönülür) ve kuyruğun
+                // bellek tavanı her eklemeden önce: tavan doluysa okunmaz (geri basınç; TCP
+                // karşı tarafı yavaşlatır). Tavan karar üretmez: kuyruğun doluluğu geliş
+                // zamanına bağlıdır; protokol hatası yalnız akış konumuna bağlı tüketim
+                // sınırından (yuva_bekle, kSilBeklemeAzami) gelir.
+                const std::size_t dolu = sil_gelen_.size() - sil_gelen_k_;
+                if (bu_tur >= kSilOkumaTuru || dolu >= kSilGelenAzami) {
+                    break;
+                }
+                istek = std::min(istek, kSilGelenAzami - dolu);
+            }
             std::size_t n = 0;
-            const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
+            const kopru::OkumaSonucu r = tas_->oku(alim_.data(), istek, bekle_us, n);
             bekle_us = 0;
             if (r == kopru::OkumaSonucu::tamam) {
-                k_->al(alim_.data(), n, duvar());
-                if (ic_ && a_.kip == Kip::sil && k_->giden_var()) {
-                    yaz();
-                    (void)ic_->pompala();
+                if (a_.a1_bayt_kancasi) {
+                    a_.a1_bayt_kancasi(false, alim_.data(), n);
+                }
+                if (sil) {
+                    bu_tur += n;
+                    sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
+                    s_.sil_kuyruk_en_cok = std::max<std::uint64_t>(s_.sil_kuyruk_en_cok, sil_gelen_.size() - sil_gelen_k_);
+                } else {
+                    bu_tur += n;
+                    k_->al(alim_.data(), n, duvar());
                 }
                 continue;
             }
             if (r == kopru::OkumaSonucu::kapandi) {
-                baglanti_koptu("taşıma kapandı (aygıt kalktı ya da karşı uç kapattı)");
+                if (sil) {
+                    sil_akis_bitti_ = true;
+                } else {
+                    baglanti_koptu("taşıma kapandı (aygıt kalktı ya da karşı uç kapattı)");
+                }
             }
             break;
         }
         evre_[kEvreOkuma] += gercek() - e0;
+    }
+
+    // SIL: alım kuyruğunu akış sırasıyla köprüye verir; dur() doğru olunca o çerçevede durur ve
+    // kalan baytlar kuyrukta kalır. En çok `azami` bayt verilir (W4-K26 (3): tüketim sınırı
+    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır).
+    // Genel kural (EMNİYET, sol 3. denetim #1): alım kuyruğundaki her olayın (bayt tüketimi ve
+    // köprünün çerçeve kararları, W4-K14 tampon taşması, bekleme bütçesinin aşımı, akışın sonu)
+    // kararı akıştaki konum sırasıyla verilir; aynı turda görülen iki olaydan akışta önce olan önce
+    // karara bağlanır. Akışın sonu (EOF) son bayttan sonradır: yalnız kuyruk bittiğinde, bekleyen
+    // hâlâ veri istiyorsa ve bu beslemenin bütçesi tükenmemişse işlenir (bütçe tam son baytta
+    // bittiyse önce çağıranın bütçe kararı verilir). Yazma hatasının kendi kararı yoktur (çıktı
+    // atılır; W4-K26 (2)). Dönüş: dur().
+    bool sil_besle(const std::function<bool()>& dur, std::uint64_t azami = UINT64_MAX)
+    {
+        std::uint64_t verilen = 0;
+        while (sil_gelen_k_ < sil_gelen_.size() && verilen < azami && !dur()) {
+            const std::size_t parca = static_cast<std::size_t>(
+                std::min<std::uint64_t>(sil_gelen_.size() - sil_gelen_k_, azami - verilen));
+            const std::size_t n = k_->al(sil_gelen_.data() + sil_gelen_k_, parca, duvar(), dur);
+            sil_gelen_k_ += n;
+            sil_beslenen_ += n;
+            verilen += n;
+        }
+        if (sil_gelen_k_ >= sil_gelen_.size()) {
+            sil_gelen_.clear();
+            sil_gelen_k_ = 0;
+        } else if (sil_gelen_k_ > (std::size_t{1} << 16U)) {
+            sil_gelen_.erase(sil_gelen_.begin(), sil_gelen_.begin() + static_cast<std::ptrdiff_t>(sil_gelen_k_));
+            sil_gelen_k_ = 0;
+        }
+        const bool tamam = dur();
+        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty() && verilen < azami) {
+            baglanti_koptu("taşıma kapandı (karşı uç kapattı)");
+        }
+        return tamam;
+    }
+
+    void sil_gelen_temizle()
+    {
+        sil_gelen_.clear();
+        sil_gelen_k_ = 0;
+        sil_akis_bitti_ = false;
+        sil_yazma_bitti_ = false;
     }
 
     // HIL: hedef duvar anına kadar okuyup bekler. Okuma engelsizdir; arada mutlak son tarihe
@@ -250,10 +490,12 @@ private:
         }
     }
 
-    bool baglanti_kabul();
+    // Bekleme sonucu: tamam; oturum bitti (çağıran yeniden kurar, özyineleme yok); hata (s_.hata).
+    enum class Bekleme { tamam, oturum_bitti, hata };
+    bool baglanti_kabul(std::int64_t son_mutlak = std::numeric_limits<std::int64_t>::max());
     bool oturum_kur();
-    bool hazirlik();
-    bool yuva_bekle(std::uint32_t seq);
+    Bekleme hazirlik(std::int64_t son_mutlak);
+    Bekleme yuva_bekle(std::uint32_t seq, std::int64_t son_mutlak = std::numeric_limits<std::int64_t>::max());
     bool dosya_plani();
     bool plan_hazirla(const sensor::SensorKumesiAyari& sa);
     void plan_sinir(std::uint64_t b);
@@ -267,18 +509,56 @@ private:
     void csv_yaz(const Satir& r);
     void evre_ozeti_kur();
 
+    // ---- A3 (W4-bagla-a3) ----
+    bool a3_baslat();
+    bool a3_baslat_bekle();
+    void a3_cek(std::uint16_t atla);
+    bool a3_run_uyar(const a3::Komut& k) const;
+    bool a3_gevsetme_onu_acik(const A3Giris& g);
+    void a3_calistirma_isle(std::uint64_t b);
+    bool a3_sinir_basi(std::uint64_t b);
+    bool a3_hazirlik_durdu(bool kanca = true);
+    void a3_emniyet_ver(std::uint64_t b);
+    void a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
+    void a3_sonuclari_isle(std::uint64_t b, const kopru::OperatorSonucu* sonuc, std::size_t n,
+                           const sensor::EmniyetDurumu& once);
+    void a3_yi_uygula(std::uint64_t b, const A3Giris& g, const kopru::SinirSonucu* ss);
+    void a3_yi_izle();
+    void a3_yayinla(std::uint64_t b);
+    void a3_sensor_yayinla();
+    void a3_durum_yayinla(std::int64_t t);
+    void a3_gecerlilik(std::uint64_t b);
+    void a3_oturum_izle();
+    void a3_olay_kararlari();
+    void a3_ariza_izle(std::uint64_t b);
+    void a3_gecis(a3::CalistirmaDurumu yeni, const char* neden, bool ic);
+    void a3_sonuc(const A3Giris& g, bool uygulandi, std::uint64_t b, const char* kod, std::string_view ayrinti = {});
+    void a3_olay(std::uint16_t tur, std::uint8_t onem, std::uint8_t kaynak, std::uint32_t komut_no,
+                 std::uint32_t istemci, std::string_view ayrinti);
+    void a3_senaryo_ogesi(std::size_t i, const char* sonuc, std::int64_t t, const char* neden);
+    void a3_emniyet_olaylari(std::uint64_t b, const sensor::EmniyetDurumu& once);
+    void a3_anlik_guncelle();
+    void a3_kayitlari_aktar();
+    void a3_bitir();
+    template <typename F>
+    void a3_olc(F&& f);
+
     Ayar a_;
     Sonuc s_;
     Plan plan_;
     struct PlanDurumu {
         bool basladi = false;
         std::int64_t tetik_b = -1;   // koşul sağlandı: bu sınırda başlar (A5-K63)
+        std::int64_t baslangic_ns = 0;   // başladığı sınır (A3 ariza/etkin)
+        bool reddedildi = false;         // başlatılamadı (sensör arızası reddi)
     };
     std::vector<PlanDurumu> pd_;
     struct IticiAriza {
         std::uint8_t maske = 0;
         double carpan = 1.0;
         std::int64_t bitis_ns = 0;   // t_b + sure_ns'e eşit ya da sonraki ilk sınırda biter (A5-K64)
+        std::string kimlik;          // A5 olay kimliği (A3 ariza/etkin)
+        std::int64_t baslangic_ns = 0;
     };
     std::vector<IticiAriza> itici_;
     std::vector<std::int64_t> hb_;   // yer istasyonu canlılığı (A1-K70) anları
@@ -310,11 +590,35 @@ private:
     bool pty_cikarildi_ = false;
     bool pty_takildi_ = false;
     std::vector<std::uint8_t> alim_;
+    std::vector<std::uint8_t> sil_gelen_;   // SIL: alınmış, köprüye henüz verilmemiş baytlar
+    std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
+    bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
+    bool sil_yazma_bitti_ = false;          // SIL: yazım hata aldı (W4-K26 (2); bağlantı kuyrukta biter)
+    std::uint64_t sil_beslenen_ = 0;        // SIL: köprüye verilen toplam bayt
+    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB (W4-K26 (3))
+    static constexpr std::size_t kSilOkumaTuru = std::size_t{1} << 20U;    // pompa turu başına en çok 1 MiB
+    // W4-K28 sol-3 #2: HIL pompa turu başına en çok 256 KiB (3 Mbaud hatta ≈ 0,85 s; olağan
+    // akışta bir periyotta bir kaç KiB gelir, sınır yalnız bozuk/sürekli akışta devreye girer;
+    // kalan baytlar işletim sisteminin tamponunda kalır, sonraki pompada okunur).
+    static constexpr std::size_t kHilOkumaTuru = std::size_t{1} << 18U;
+    // W4-K26 (3): bir yuva beklemesinde, yuva tamamlanmadan işlenebilecek en çok bayt (kartın bir
+    // çağrısının meşru çıktısı birkaç KiB; W4-K14'ün 128 çerçevelik sınırının bayt karşılığından çok
+    // büyük). Aşılırsa oturum protokol hatasıyla biter (akış sırasına bağlı, belirlenimci).
+    static constexpr std::uint64_t kSilBeklemeAzami = std::uint64_t{1} << 22U;   // 4 MiB
+    // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
+    static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
+    // W4-K28 (3): kapanışta bekleyen çıkışın tamamlanması için mutlak süre sınırı.
+    static constexpr std::int64_t kKapanisYazimNs = 500'000'000;
+    // Sol 3. denetim #2: bir oturum kurma işleminde en çok hazırlık denemesi (tahmin; olağan
+    // hazırlık bir denemede biter, yeniden açılış ve kopmalar için pay).
+    static constexpr int kHazirlikDenemeAzami = 5;
+    std::uint64_t oturum_kur_derinlik_ = 0;
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
     std::vector<sensor::Olcum> olcumler_;
     std::array<double, 8> pwm_yur_{};
+    Ayar::SinirGozlemi gozlem_;   // bu sınırın fiziğe verilen girdisi (kancaya adımdan önce)
     std::array<double, 8> son_pwm_yur_{};
     std::string pty_yol_;
     bool estop_bu_adim_ = false;
@@ -331,6 +635,97 @@ private:
     }
     std::int64_t son_tf_yazim_ = -1;
     std::int64_t w0_ = 0;
+
+    // ---- A3 (W4-bagla-a3) ----
+    // W4-K27 (5): dünya tarafındaki A3 depoları A3 başlarken ayrılır; hizmet sırasında bellek
+    // ayrılmaz, kilit alınmaz.
+    std::unique_ptr<A3Alici> a3al_;
+    std::unique_ptr<a3::Sunucu> a3sv_;
+    a3::Yayinci* yay_ = nullptr;                 // null: A3 kapalı (bugünkü davranış)
+    struct A3Durum {                              // dünyanın yetkili çalıştırma durumu (A3 Tablo 4.7a)
+        a3::CalistirmaDurumu durum = a3::CalistirmaDurumu::yuklendi;
+        bool run_var = false;
+        std::uint64_t durum_rev = 1;
+    };
+    A3Durum a3d_;
+    std::string a3_run_id_;                       // A3-K63 metin kimliği (çalıştırma başlamadan üretilir)
+    AnlikPod a3p_;                                // anlık görüntünün dünya tarafı
+    bool a3_anlik_kirli_ = false;
+    bool a3_durum_kirli_ = false;                 // durum kanalları sonraki yayın noktasında
+    std::vector<A3Giris> a3_kisit_, a3_genel_;
+    std::vector<A3Giris> a3_emniyet_bekleyen_;    // köprüye verilen operatör emniyet istekleri
+    std::vector<A3Giris> a3_degisen_;             // yetkili durumu değiştiren operatör istekleri
+    std::vector<kopru::EmniyetAtama> a3_atama_;   // sınırın operatör emniyet atamaları
+    std::vector<kopru::OperatorSonucu> a3_op_sonuc_;
+    bool a3_durdur_ = false;
+    double hiz_ = 0.0;                            // SIL hız çarpanı (A3-K66; 0: olabildiğince hızlı)
+    std::int64_t hiz_t0_sim_ = 0;
+    Saat::time_point hiz_t0_duvar_{};
+    std::uint64_t a3_b_ = 0;                      // son işlenen sınır (olayların adım numarası)
+    struct YiIzi {
+        std::uint32_t komut_no = 0;
+        std::uint32_t istemci = 0;
+        const char* ad = "";
+        std::uint32_t cmd_id = 0;
+        std::uint16_t param_id = 0;   // param_get
+    };
+    std::array<YiIzi, 256> a3_yi_{};
+    std::size_t a3_yi_n_ = 0;
+    std::array<std::uint64_t, 4096> a3_olay_sira_{};   // A6-K41 normallestirilmis_sira
+    std::size_t a3_olay_sira_n_ = 0;
+    std::array<std::uint8_t, 2> a3_tup_son_olay_{};
+    std::vector<kopru::OlayKarari> a3_kararlar_;
+    std::uint64_t a3_son_degisim_adimi_ = std::numeric_limits<std::uint64_t>::max();
+    std::uint8_t a3_son_degisim_kaynagi_ = 0;     // 0 başlangıç, 1 senaryo, 2 operatör
+    std::uint32_t a3_gecerlilik_ = 0;             // Tablo 4.8 bitleri (yalnız eklenir)
+    bool a3_gecerli_ = true;
+    bool a3_rt_kacirdi_ = false;
+    kopru::OturumDurumu a3_a1_onceki_ = kopru::OturumDurumu::kapali;
+    bool a3_a1_kopuk_ = false;
+    std::uint32_t a3_boot_onceki_ = 0;
+    bool a3_boot_var_ = false;
+    std::uint32_t a3_nav_seq_ = 0, a3_durum_seq_ = 0;
+    std::int64_t a3_nav_t_ = 0;
+    bool a3_nav_var_ = false, a3_durum_var_ = false;
+    std::uint64_t a3_kacirma_adet_ = 0, a3_kacirma_ilk_ = 0, a3_kacirma_son_ = 0;
+    std::int64_t a3_kacirma_olay_duvar_ = 0;
+    struct A3Ariza {                              // senaryonun arıza olayı (önceden hazırlanmış)
+        std::size_t plan_i = 0;
+        std::string hedef;
+        const char* tur = "";
+        std::uint8_t sinif = 0;
+        bool aktif = false;
+    };
+    std::vector<A3Ariza> a3_arizalar_;
+    std::vector<a3::yuk_ariza_etkin_arizalar> a3_ariza_yuk_;
+    std::size_t a3_celiski_n_ = 0, a3_gevsetme_n_ = 0;
+    std::uint32_t a3_celiski_kimligi_ = 0;
+    bool a3_doydu_bildirildi_ = false;
+    std::int64_t a3_carpan_ref_duvar_ = 0, a3_carpan_ref_sim_ = 0;
+    float a3_gerceklesen_ = std::numeric_limits<float>::quiet_NaN();
+    std::int64_t a3_sinir_ns_ = 0;               // bu sınırdaki bütün A3 hizmeti (ölçüm)
+    sensor::EmniyetDurumu a3_emn_once_{};         // sınır işleminden önceki yetkili emniyet durumu
+    std::optional<A3Giris> a3_baslat_komutu_;     // `baslat` (a3_bekle): sonucu ön denetimden sonra
+    std::uint32_t a3_son_komut_no_ = 0;
+    bool a3_kapaniyor_ = false;
+    struct A3KomutKaydi {
+        std::uint32_t komut_no = 0;
+        a3::KomutTuru tur = a3::KomutTuru::calistirma_baslat;
+        const char* yi_ad = nullptr;
+        std::int64_t t_ns = 0;
+        bool uygulandi = false;
+        const char* kod = nullptr;
+    };
+    std::vector<A3KomutKaydi> a3_komut_kaydi_;
+    struct A3EmniyetKaydi {
+        std::int64_t t_ns = 0;
+        const char* alan = "";
+        bool onceki = false, sonraki = false;
+        bool operator_ = false;
+        std::uint32_t komut_no = 0;
+        std::uint32_t emniyet_rev = 0;
+    };
+    std::vector<A3EmniyetKaydi> a3_emniyet_kaydi_;
 };
 
 std::unique_ptr<kopru::Tasima> Calistirici::port_ac(std::string& hata)
@@ -402,16 +797,34 @@ void Calistirici::baglanti_bakim()
     k_->el_sikisma_baslat(duvar());
 }
 
-bool Calistirici::baglanti_kabul()
+bool Calistirici::baglanti_kabul(std::int64_t son_mutlak)
 {
     if (a_.karsi != Karsi::tcp || !din_) {
         return tas_ != nullptr;
     }
     std::string hata;
-    tas_ = din_->kabul(a_.baglanti_bekleme_ns / 1000, hata);
+    // Bekleme kendi payını alır; süren bir hazırlık işleminin mutlak son tarihini aşmaz.
+    const std::int64_t pay = std::max<std::int64_t>(0, std::min(a_.baglanti_bekleme_ns, son_mutlak - gercek()));
+    if (yay_ != nullptr) {
+        // W4-K27 (4): bağlantı beklenirken de çalıştırma denetimi işlenir (100 ms dilimler; toplam
+        // aynı pay). Kabul edilmiş durdurma kazanır.
+        for (std::int64_t kalan = pay / 1000; kalan > 0 && !tas_; kalan -= 100'000) {
+            if (a3_hazirlik_durdu()) {
+                s_.hata = "hazırlanırken durduruldu";
+                return false;
+            }
+            tas_ = din_->kabul(std::min<std::int64_t>(kalan, 100'000), hata);
+        }
+    } else {
+        tas_ = din_->kabul(pay / 1000, hata);
+    }
     if (!tas_) {
         s_.hata = "SIL koşucusu bağlanmadı: " + hata;
         return false;
+    }
+    sil_gelen_temizle();   // A1-K99: her bağlantı yeni bir akıştır
+    if (a_.tasima_sarmalayici) {
+        tas_ = a_.tasima_sarmalayici(std::move(tas_));   // yalnız sınama
     }
     gunluk(2, "bağlantı: " + tas_->ad());
     return true;
@@ -419,14 +832,84 @@ bool Calistirici::baglanti_kabul()
 
 bool Calistirici::oturum_kur()
 {
-    const std::int64_t son = gercek() + a_.baglanti_bekleme_ns;
-    if (!tas_ && !baglanti_kabul()) {
+    // Süre sınırı her aşamanın başında yeniden kurulur (W4-K26 mimar kararı): bağlantının kabulü
+    // kendi payını alır (baglanti_kabul), el sıkışma kabulden sonra; hazırlık oturumunun süresi
+    // sınıra girmez (kendi sınırı hazirlik_azami_ns), çalıştırma oturumunun el sıkışması
+    // hazırlıktan sonra yeniden pay alır. SIL'de bu beklemelerde sim zamanı ilerlemez (W4-K25 (1)).
+    //
+    // Sol 3. denetim #2 (EMNİYET): yeniden kurma özyinelemesizdir. Hazırlık ya da yuva beklemesi
+    // oturumun bittiğini döndürür (Bekleme::oturum_bitti); yeniden kurma bu döngüde yürür.
+    // Bir hazırlık işlemi başlayınca mutlak son tarihi (hazirlik_azami_ns) yeniden bağlantılar
+    // boyunca korunur ve bütün iç beklemelere taşınır (aşama payı onu aşamaz); hazırlık denemesi
+    // de kHazirlikDenemeAzami ile sınırlıdır. Hazırlık tamamlanınca çalıştırma oturumunun el
+    // sıkışması kendi payını alır.
+    ++oturum_kur_derinlik_;
+    s_.oturum_kur_derinlik_en_cok = std::max<std::uint64_t>(s_.oturum_kur_derinlik_en_cok, oturum_kur_derinlik_);
+    struct Derinlik {
+        std::uint64_t& d;
+        ~Derinlik() { --d; }
+    } derinlik{oturum_kur_derinlik_};
+    //
+    // Sol 4. denetim #2 (EMNİYET): kurma işleminin tamamı (ilk kurulum ya da koşu ortasında yeniden
+    // kurma; hazırlık gerekip gerekmediğinden bağımsız) mutlak son tarihe (kurma_azami_ns) ve en
+    // çok kurma_deneme_azami denemeye (bağlantı kabulleri ve el sıkışma başlangıçları) bağlıdır;
+    // her iç bekleme bu son tarihi aşamaz. Aşılırsa false (çağıran ortak güvenli kapanışla biter).
+    constexpr std::int64_t kSonsuz = std::numeric_limits<std::int64_t>::max();
+    const std::int64_t kurma_son = gercek() + a_.kurma_azami_ns;
+    int kurma_deneme = 0;
+    std::int64_t hazirlik_son = kSonsuz;   // süren hazırlık işleminin mutlak son tarihi
+    bool hazirlik_suruyor = false;
+    int hazirlik_deneme = 0;
+    const auto ust = [&] { return hazirlik_suruyor ? std::min(kurma_son, hazirlik_son) : kurma_son; };
+    const auto pay = [&](std::int64_t p) { return std::min(gercek() + p, ust()); };
+    const auto dene = [&] {
+        if (++kurma_deneme > a_.kurma_deneme_azami) {
+            s_.hata = "oturum kurulamadı (" + std::to_string(a_.kurma_deneme_azami) + " deneme)";
+            return false;
+        }
+        return true;
+    };
+    const auto kabul = [&] {
+        if (!dene()) {
+            return false;
+        }
+        if (!baglanti_kabul(ust())) {
+            if (gercek() >= ust()) {
+                s_.hata = hazirlik_suruyor && hazirlik_son <= kurma_son ? "hazırlık oturumu süre sınırını aştı"
+                                                                       : "oturum kurma süre sınırını aştı";
+            }
+            return false;
+        }
+        return true;
+    };
+    if (!tas_ && !kabul()) {
         return false;
     }
-    k_->el_sikisma_baslat(duvar());
+    std::int64_t son = pay(a_.baglanti_bekleme_ns);
+    // SIL (A1-K121 (iv), K23): oturum köprüde bittiyse el sıkışma orada başlamıştır (giden
+    // kuyrukta varsa SESSION_CLOSE, ardından SIM_HELLO): yeniden başlatılmaz. Böylece kapanış
+    // çerçevesi silinmez ve el sıkışma tek SIM_HELLO'yla tamamlanır.
+    if (!dene()) {
+        return false;
+    }
+    if (a_.kip != Kip::sil || k_->durum() != kopru::OturumDurumu::el_sikisma) {
+        k_->el_sikisma_baslat(duvar());
+    }
+    const auto el_bitti = [this] {
+        const kopru::OturumDurumu d = k_->durum();
+        return d == kopru::OturumDurumu::kosuyor || d == kopru::OturumDurumu::reddedildi;
+    };
     for (;;) {
+        if (a3_hazirlik_durdu()) {
+            return false;   // W4-K27 (4)
+        }
         yaz();
-        pompa(500);
+        if (a_.kip != Kip::sil) {
+            pompa(500);
+        } else if (!sil_besle(el_bitti)) {
+            pompa(500);
+            (void)sil_besle(el_bitti);
+        }
         k_->zamanla(duvar());
         if (k_->durum() == kopru::OturumDurumu::reddedildi) {
             s_.hata = "el sıkışma reddedildi (IDAW_SESSION_RESULT " + std::to_string(k_->kart().son_oturum_reddi) + ")";
@@ -434,23 +917,58 @@ bool Calistirici::oturum_kur()
         }
         if (k_->durum() == kopru::OturumDurumu::kosuyor) {
             if (k_->hazirlik_gerekli()) {
-                if (!hazirlik()) {
+                if (hazirlik_deneme >= kHazirlikDenemeAzami) {
+                    s_.hata = "hazırlık oturumu " + std::to_string(hazirlik_deneme) + " denemede tamamlanamadı";
+                    return false;
+                }
+                ++hazirlik_deneme;
+                if (!hazirlik_suruyor) {
+                    hazirlik_suruyor = true;
+                    if (hazirlik_son == kSonsuz) {
+                        hazirlik_son = gercek() + a_.hazirlik_azami_ns;
+                    }
+                }
+                const Bekleme r = hazirlik(hazirlik_son);
+                if (r == Bekleme::hata) {
+                    return false;
+                }
+                if (r == Bekleme::oturum_bitti) {
+                    // Hazırlık oturumu koptu: aynı hazırlık işlemi, aynı mutlak son tarihle sürer.
+                    if (tas_ && k_->durum() != kopru::OturumDurumu::el_sikisma) {
+                        if (!dene()) {
+                            return false;
+                        }
+                        k_->el_sikisma_baslat(duvar());
+                    }
+                    son = pay(a_.baglanti_bekleme_ns);
+                    continue;   // taşıma yoksa yeni bağlantı döngünün sonunda kabul edilir
+                }
+                hazirlik_suruyor = false;
+                if (!dene()) {
                     return false;
                 }
                 k_->el_sikisma_baslat(duvar());
+                son = pay(a_.baglanti_bekleme_ns);   // çalıştırma oturumunun el sıkışması
                 continue;
             }
             return true;
         }
         if (!tas_) {
             ++s_.yeniden_baglanti;
-            if (!baglanti_kabul()) {
+            if (!kabul() || !dene()) {
                 return false;
             }
             k_->el_sikisma_baslat(duvar());
+            son = pay(a_.baglanti_bekleme_ns);   // yeni bağlantının el sıkışması
         }
         if (gercek() > son) {
-            s_.hata = "el sıkışma zaman aşımı";
+            if (son >= kurma_son) {
+                s_.hata = "oturum kurma süre sınırını aştı";
+            } else if (hazirlik_suruyor && son >= hazirlik_son) {
+                s_.hata = "hazırlık oturumu süre sınırını aştı";
+            } else {
+                s_.hata = "el sıkışma zaman aşımı";
+            }
             return false;
         }
     }
@@ -459,13 +977,22 @@ bool Calistirici::oturum_kur()
 // A1-K19: hazırlık oturumu: fizik yürütülmez, yalnız TF; her parametre için PARAM_SET, sonra
 // PARAM_COMMIT ve PARAM_SAVE (kaynak 250); hepsi kabul edilir, kart bloğu kaydeder ve
 // param_blob_crc beklenene eşit olunca RUN_END. Ardından REBOOT'lu yeni el sıkışma gelir.
-bool Calistirici::hazirlik()
+// Dönüş: tamam (RUN_END gönderildi); oturum_bitti (hazırlık oturumu koptu; çağıran aynı mutlak
+// son tarihle yeniden kurar); hata (s_.hata). Gözetim: en çok 8000 periyot (sim zamanı 40 s), SIL'de
+// her yuva T_SIL (duvar) ve hazırlık işleminin mutlak son tarihi `son_mutlak` (duvar; yeniden
+// bağlantılar boyunca korunur, yavaş yanıt veren ya da tekrar tekrar kapanan kartla asılma yok).
+Calistirici::Bekleme Calistirici::hazirlik(std::int64_t son_mutlak)
 {
     ++s_.hazirlik_oturumu;
     gunluk(1, "parametre bloğu uyuşmuyor: hazırlık oturumu (A1-K19)");
     std::int64_t t_h = 0;
     const std::int64_t eski_duvar = sil_duvar_;
     sil_duvar_ = 0;
+    struct DuvarGeri {
+        std::int64_t& d;
+        std::int64_t eski;
+        ~DuvarGeri() { d = eski; }
+    } duvar_geri{sil_duvar_, eski_duvar};
     std::vector<std::uint32_t> idler;
     for (const kopru::ParamDegeri& p : pb_.tumu) {
         idler.push_back(k_->komut_param_set(p.id, p.type, p.bits, t_h, 250));
@@ -474,6 +1001,16 @@ bool Calistirici::hazirlik()
     idler.push_back(k_->komut_basit(kCmdParamSave, 0, t_h, 250));
     bool tamam = false;
     for (int n = 0; n < 8000 && !tamam; ++n) {
+        // Kabul edilmiş durdurma önce (W4-K27 (4), W4-K28 (3)): durdurma kazanır (Bekleme::hata;
+        // s_.hata kos()'un durdurma dalında temizlenir); sonra hazırlığın mutlak son tarihi. Erken
+        // dönüşlerin kapanışı (SESSION_CLOSE) kos()'taki erken_kapanis'te.
+        if (a3_hazirlik_durdu()) {
+            return Bekleme::hata;   // W4-K27 (4): hazırlık oturumu yarıda bırakılır
+        }
+        if (gercek() > son_mutlak) {
+            s_.hata = "hazırlık oturumu süre sınırını aştı";
+            return Bekleme::hata;
+        }
         t_h += kP;
         if (a_.kip == Kip::sil) {
             sil_duvar_ = t_h;
@@ -483,12 +1020,13 @@ bool Calistirici::hazirlik()
         const std::optional<std::uint32_t> seq = k_->parti_kapat(t_h, duvar());
         yaz();
         if (!seq) {
-            s_.hata = "hazırlık oturumu koptu";
-            return false;
+            gunluk(1, "hazırlık oturumu koptu; yeniden kuruluyor");
+            return Bekleme::oturum_bitti;
         }
         if (a_.kip == Kip::sil) {
-            if (!yuva_bekle(*seq)) {
-                return false;
+            const Bekleme r = yuva_bekle(*seq, son_mutlak);
+            if (r != Bekleme::tamam) {
+                return r;
             }
         } else {
             pompa(0);
@@ -503,7 +1041,7 @@ bool Calistirici::hazirlik()
             if (r->ack != kAckAccepted) {
                 s_.hata = "hazırlık: komut reddedildi (cmd_id " + std::to_string(id) + ", neden " +
                           std::to_string(r->reason) + ")";
-                return false;
+                return Bekleme::hata;
             }
         }
         const kopru::KartDurum& d = k_->kart().durum;
@@ -511,44 +1049,68 @@ bool Calistirici::hazirlik()
     }
     if (!tamam) {
         s_.hata = "hazırlık oturumu tamamlanmadı (param_blob_crc eşleşmedi)";
-        return false;
+        return Bekleme::hata;
     }
     k_->oturum_kapat(kCloseRunEnd, duvar());
     yaz();
     pompa(0);
     k_->kip_ayarla(a_.kip == Kip::sil ? kopru::CalistirmaKipi::sil : kopru::CalistirmaKipi::hil_1x);
-    sil_duvar_ = eski_duvar;
-    return true;
+    return Bekleme::tamam;
 }
 
-// SIL kilitli adım (A1-K121 (ii), K76): yuva tamamlanana kadar bekler.
-bool Calistirici::yuva_bekle(std::uint32_t seq)
+// SIL kilitli adım (A1-K121 (ii), K76): yuva tamamlanana kadar bekler. Oturum biterse (karşı
+// taraf kapattı, protokol hatası, T_SIL) yeniden kurmaz: Bekleme::oturum_bitti döner (çağıran
+// kurar; özyineleme yok). son_mutlak: süren hazırlık işleminin mutlak son tarihi (duvar).
+Calistirici::Bekleme Calistirici::yuva_bekle(std::uint32_t seq, std::int64_t son_mutlak)
 {
     const auto bas = Saat::now();
+    // Alım kuyruğu yalnız burada (ve el sıkışmada) işlenir; yuva tamamlanınca ya da oturum
+    // bitince o çerçevede durulur: sonrası sonraki yuvanın beklemesinde işlenir (W4-K14).
+    const auto dur = [this, seq] {
+        return k_->yuva_tamam(seq) || k_->durum() != kopru::OturumDurumu::kosuyor;
+    };
+    // W4-K26 (3) (EMNİYET): bu beklemede yuva tamamlanmadan en çok kSilBeklemeAzami bayt
+    // tüketilir. Besleme kalan bütçeyle sınırlanır; bütçe yuva tamamlanmadan bittiği anda (tam o
+    // baytta) oturum protokol hatasıyla biter. Karar yalnız akıştaki bayt konumuna bağlıdır: yuvayı
+    // tamamlayan çerçevenin son baytı bütçenin içindeyse geçerli, dışındaysa (aynı okumada gelse de)
+    // değil. Kalan kuyruk atılmaz; el sıkışmada akış sırasıyla işlenir.
+    const std::uint64_t beslenen_bas = sil_beslenen_;
     for (;;) {
+        const std::uint64_t harcanan = sil_beslenen_ - beslenen_bas;
+        (void)sil_besle(dur, harcanan < kSilBeklemeAzami ? kSilBeklemeAzami - harcanan : 0u);
+        if (!k_->yuva_tamam(seq) && k_->durum() == kopru::OturumDurumu::kosuyor &&
+            sil_beslenen_ - beslenen_bas >= kSilBeklemeAzami) {
+            ++s_.sil_kuyruk_tasma;
+            k_->protokol_hatasi(duvar());
+        }
         if (k_->yuva_tamam(seq)) {
-            return true;
+            return Bekleme::tamam;
         }
         if (k_->durum() != kopru::OturumDurumu::kosuyor) {
-            // Oturum bitti (karşı taraf kapattı): yeniden kurulur; bu yuva kaçırılır.
+            // Oturum bitti (karşı taraf kapattı): çağıran yeniden kurar; bu yuva kaçırılır.
             gunluk(1, "oturum bitti (parti " + std::to_string(seq) + "); yeniden kuruluyor");
             ++s_.yeniden_baglanti;
-            return oturum_kur();
+            return Bekleme::oturum_bitti;
         }
         pompa(1000);
+        if (gercek() > son_mutlak) {
+            s_.hata = "hazırlık oturumu süre sınırını aştı";
+            return Bekleme::hata;
+        }
         if (Saat::now() - bas > std::chrono::nanoseconds(a_.t_sil_ns)) {
             k_->sil_gozetimi_doldu(duvar());   // A1-K76
             gunluk(1, "T_SIL doldu (parti " + std::to_string(seq) + ")");
             if (ic_) {
                 s_.hata = "süreç içi karşı taraf yanıt vermedi";
-                return false;
+                return Bekleme::hata;
             }
             if (tas_) {
-                tas_->kapat();
+                tas_->kapat_duzgun(kKapanisBosaltmaUs);   // W4-K25 (5)
                 tas_.reset();
             }
+            sil_gelen_temizle();
             ++s_.yeniden_baglanti;
-            return oturum_kur();
+            return Bekleme::oturum_bitti;
         }
     }
 }
@@ -689,7 +1251,10 @@ bool Calistirici::plan_hazirla(const sensor::SensorKumesiAyari& sa)
 
 void Calistirici::olay_sonucu(std::size_t i, const char* sonuc, std::int64_t t, const char* neden)
 {
-    s_.olay_sonuclari.push_back({plan_.olaylar[i].kimlik, sonuc, t, neden});
+    s_.olay_sonuclari.push_back({plan_.olaylar[i].kimlik, sonuc, t, neden, "senaryo"});
+    if (yay_ != nullptr) {
+        a3_senaryo_ogesi(i, sonuc, t, neden);
+    }
 }
 
 // Görev yüklemesi (A5-K57; A1-K69): MISSION_BEGIN(count), öğeler, MISSION_END; her ileti
@@ -764,6 +1329,7 @@ void Calistirici::plan_sinir(std::uint64_t b)
             continue;
         }
         d.basladi = true;
+        d.baslangic_ns = t;
         switch (o.tur) {
         case PlanOlayTuru::emniyet:
             sinir_emniyet_.push_back(i);   // sonuç köprünün sınır işleminden sonra yazılır
@@ -795,6 +1361,7 @@ void Calistirici::plan_sinir(std::uint64_t b)
                 if (!r.tamam) {
                     // Ön denetimden geçtiği için beklenmez; nedeni olduğu gibi yazılır.
                     const bool hedef = r.hata.find("hedef") != std::string::npos;
+                    d.reddedildi = true;
                     olay_sonucu(i, "reddedildi", t, hedef ? "hedef_yok" : "desteklenmiyor");
                     s_.senaryo_uyarilari.push_back("olaylar[" + o.kimlik + "] başlatılamadı: " + r.hata);
                     break;
@@ -804,7 +1371,7 @@ void Calistirici::plan_sinir(std::uint64_t b)
             break;
         case PlanOlayTuru::itici:
             itici_.push_back({o.kanal_maskesi, o.carpan,
-                              o.sure_ns > 0 ? t + o.sure_ns : std::numeric_limits<std::int64_t>::max()});
+                              o.sure_ns > 0 ? t + o.sure_ns : std::numeric_limits<std::int64_t>::max(), o.kimlik, t});
             olay_sonucu(i, "uygulandi", t);
             break;
         }
@@ -866,10 +1433,19 @@ bool Calistirici::sinir_on(std::uint64_t b)
 {
     const std::int64_t t = static_cast<std::int64_t>(b) * kH;
     plan_sinir(b);
+    if (yay_ != nullptr) {
+        // W4-bagla-a3 (EMNİYET): panelin emniyet istekleri ve daraltıcı komutları senaryonun
+        // atamalarıyla aynı sınırda, aynı köprü yolundan (emniyet_ata, komut_*) girer; sırayı
+        // (A1-K85) köprü uygular.
+        a3_emniyet_ver(b);
+    }
     const std::int64_t e0 = gercek();
     const kopru::SinirSonucu ss = k_->sinir_isle(b, duvar());
     const std::int64_t e1 = gercek();
     plan_sinir_sonrasi(b, ss);
+    if (yay_ != nullptr) {
+        a3_sinir_sonrasi(b, ss);
+    }
     evre_[kEvreKopru] += e1 - e0;
     son_pwm_yur_ = pwm_yur_;
     pwm_yur_ = ss.pwm_us;
@@ -903,15 +1479,12 @@ bool Calistirici::sinir_on(std::uint64_t b)
         fizik_carpan_ = carpanlar;
     }
     (void)dn_.itici_komutu_ver(b, pwm);
-    if (a_.sinir_kancasi) {
-        Ayar::SinirGozlemi g;
-        g.b = b;
-        g.derinlik = dn_.durum().konum_n[2];
-        g.pwm = pwm;
-        g.itici_carpani = carpanlar;
-        g.acil_durdurma = estop_bu_adim_;
-        a_.sinir_kancasi(g);
-    }
+    // Gözlem fizik adımından hemen önce bildirilir (SIL'de W4-K26 (1) komutu değiştirebilir).
+    gozlem_.b = b;
+    gozlem_.derinlik = dn_.durum().konum_n[2];
+    gozlem_.pwm = pwm;
+    gozlem_.itici_carpani = carpanlar;
+    gozlem_.acil_durdurma = estop_bu_adim_;
     const std::int64_t e2 = gercek();
     kume_.dis_durum_ver(k_->dis_durum());
     if (kume_.adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
@@ -1109,7 +1682,1495 @@ void Calistirici::evre_ozeti_kur()
     }
 }
 
-Sonuc Calistirici::kos()
+// ======================================================================== A3 (W4-bagla-a3)
+//
+// Dünya iş parçacığının A3 tarafı (W4-K27 (5)): istek çekme, yayın hazırlığı ve yayın bellek
+// ayırmaz ve kilit almaz. Kalıcı depolar (istek vektörleri, kayıt tamponları, arıza tabloları)
+// A3 başlarken ayrılır; değişmeyen içerik (run_id, senaryo özeti, arıza hedefleri) önceden
+// üretilir. Köprü ve fizik çağrıları (senaryonun kullandığı yollar) bu güvencenin dışındadır.
+// Yayın çağrıları fizik ve köprü sırasını değiştirmez.
+
+namespace {
+
+constexpr std::uint64_t kYok64 = std::numeric_limits<std::uint64_t>::max();
+constexpr std::uint64_t kHizliSinir = 16;    // 50 Hz sim zamanı (fizik/durum, kart/durum)
+constexpr std::uint64_t kDurumSinir = 80;    // 10 Hz (A3 Tablo 3.3 varsayılanları)
+constexpr std::uint64_t kYavasSinir = 400;   // 2 Hz
+constexpr std::size_t kGenelAzami = 512;     // dünya tarafında bekleyen genel istek (halka 256 + hazırlıkta biriken)
+constexpr std::size_t kKayitAzami = 65536;   // Sonuc'a yazılacak A3 komut ve emniyet kayıtları
+
+// W4-K27 (5): ölçüm ve sınama kapsamı. `g_a3_derinlik` dünya tarafındaki A3 hizmetinin iç içe
+// derinliği (süre en dıştakinde ölçülür); `g_a3_sayim` > 0 iken bellek ayırması A3 hizmetine
+// sayılır (köprü ve fizik çağrıları sırasında 0).
+thread_local int g_a3_derinlik = 0;
+thread_local int g_a3_sayim = 0;
+
+class A3Hizmet {
+public:
+    explicit A3Hizmet(std::int64_t& toplam) : toplam_(toplam), dis_(g_a3_derinlik == 0)
+    {
+        if (dis_) {
+            bas_ = Saat::now();
+        }
+        ++g_a3_derinlik;
+        ++g_a3_sayim;
+    }
+    ~A3Hizmet()
+    {
+        --g_a3_sayim;
+        --g_a3_derinlik;
+        if (dis_) {
+            toplam_ += std::chrono::duration_cast<std::chrono::nanoseconds>(Saat::now() - bas_).count();
+        }
+    }
+    A3Hizmet(const A3Hizmet&) = delete;
+    A3Hizmet& operator=(const A3Hizmet&) = delete;
+
+private:
+    std::int64_t& toplam_;
+    bool dis_;
+    Saat::time_point bas_{};
+};
+
+// Köprü/fizik çağrısı: ayırma sayımı dışı (süre A3 hizmetine dahil kalır).
+class KopruCagrisi {
+public:
+    KopruCagrisi() : eski_(g_a3_sayim) { g_a3_sayim = 0; }
+    ~KopruCagrisi() { g_a3_sayim = eski_; }
+    KopruCagrisi(const KopruCagrisi&) = delete;
+    KopruCagrisi& operator=(const KopruCagrisi&) = delete;
+
+private:
+    int eski_;
+};
+
+const char* girdi_durumu(bool takili_ya_da_basili, bool acil)
+{
+    return acil ? (takili_ya_da_basili ? "basili" : "serbest") : (takili_ya_da_basili ? "takili" : "cikarilmis");
+}
+
+const char* calistirma_adi(a3::KomutTuru t)
+{
+    switch (t) {
+    case a3::KomutTuru::calistirma_baslat: return "calistirma/baslat";
+    case a3::KomutTuru::calistirma_duraklat: return "calistirma/duraklat";
+    case a3::KomutTuru::calistirma_surdur: return "calistirma/surdur";
+    case a3::KomutTuru::calistirma_adimla: return "calistirma/adimla";
+    case a3::KomutTuru::calistirma_hiz: return "calistirma/hiz";
+    case a3::KomutTuru::calistirma_durdur: return "calistirma/durdur";
+    case a3::KomutTuru::calistirma_sifirla: return "calistirma/sifirla";
+    case a3::KomutTuru::emniyet_degistir: return "emniyet/degistir";
+    case a3::KomutTuru::yer_istasyonu_komut: return "yer_istasyonu";
+    }
+    return "?";
+}
+
+// Panelin emniyet isteğinin köprü ataması (operatör isteği; tek alan).
+kopru::EmniyetAtama operator_atamasi(const a3::Komut& k)
+{
+    kopru::EmniyetAtama e;
+    const auto t = static_cast<std::size_t>(k.tup == 1 ? 1 : 0);
+    switch (k.girdi) {
+    case a3::EmniyetGirdisi::acil_durdurma: e.acil_durdurma = k.hedef_durum == a3::GirdiDurumu::basili; break;
+    case a3::EmniyetGirdisi::silahlandirma_fisi: e.fis[t] = k.hedef_durum == a3::GirdiDurumu::takili; break;
+    case a3::EmniyetGirdisi::emniyet_pimi: e.pim[t] = k.hedef_durum == a3::GirdiDurumu::takili; break;
+    }
+    e.operator_kimligi = k.komut_no == 0u ? 1u : k.komut_no;
+    if (!k.kisitlayan) {
+        e.beklenen_rev = k.beklenen_emniyet_rev;
+    }
+    return e;
+}
+
+std::uint8_t a1_oturum_kodu(kopru::OturumDurumu d, bool kopuk)
+{
+    if (kopuk) {
+        return 4u;
+    }
+    switch (d) {
+    case kopru::OturumDurumu::kapali: return 0u;
+    case kopru::OturumDurumu::el_sikisma: return 1u;
+    case kopru::OturumDurumu::hazir: return 2u;
+    case kopru::OturumDurumu::kosuyor: return 3u;
+    case kopru::OturumDurumu::reddedildi: return 0u;
+    }
+    return 0u;
+}
+
+const char* a1_oturum_adi(std::uint8_t k)
+{
+    static constexpr const char* a[] = {"kapali", "el_sikisma", "hazir", "kosuyor", "kopuk"};
+    return k < 5u ? a[k] : "kapali";
+}
+
+const char* ariza_turu_adi(sensor::ArizaTuru t)
+{
+    static constexpr const char* a[] = {"ofset", "olcek", "suruklenme_dogrusal", "suruklenme_ustel", "gurultu_artisi",
+                                        "sicrama", "donma", "donma_zaman_damgasi", "yanlis_gecerlilik",
+                                        "kendini_bildiren", "kayip", "gec_teslim", "motor_takilmasi",
+                                        "dvl_isin_kaybi", "guc_cevrimi"};
+    const auto i = static_cast<std::size_t>(t);
+    return i < sizeof a / sizeof a[0] ? a[i] : "?";
+}
+
+template <std::size_t N>
+void metin_kopyala(std::array<char, N>& d, std::string_view s)
+{
+    const std::size_t n = std::min(s.size(), N - 1u);
+    for (std::size_t i = 0; i < n; ++i) {
+        d[i] = s[i];
+    }
+    d[n] = '\0';
+}
+
+// Sabit tamponda JSON dizesi dizisi (atama_celiskisi; A3-K125 parçaları).
+class DiziYaz {
+public:
+    void ekle(std::string_view s)
+    {
+        yaz_(n_ == 1u ? "\"" : ",\"");
+        for (const char c : s) {
+            if (static_cast<unsigned char>(c) < 0x20u) {
+                continue;
+            }
+            if (c == '"' || c == '\\') {
+                yaz_("\\");
+            }
+            yaz_(std::string_view(&c, 1));
+        }
+        yaz_("\"");
+    }
+    std::string_view bitir()
+    {
+        yaz_("]");
+        return tasti_ ? std::string_view("[]") : std::string_view(t_.data(), n_);
+    }
+
+private:
+    void yaz_(std::string_view s)
+    {
+        if (tasti_ || s.size() > t_.size() - n_) {
+            tasti_ = true;
+            return;
+        }
+        for (const char c : s) {
+            t_[n_] = c;
+            ++n_;
+        }
+    }
+    std::array<char, 768> t_{'['};
+    std::size_t n_ = 1;
+    bool tasti_ = false;
+};
+
+template <typename Y>
+void olcum_basligi(Y& y, const sensor::OlcumBasligi& h)
+{
+    y.sensor_id = h.sensor_id;
+    y.inst = h.inst;
+    y.seq = h.seq;
+    y.flags = h.flags;
+    y.window_ns = static_cast<std::int64_t>(h.window_ns);
+    y.t_tx_ns = h.t_tx_ns;
+    y.t_hazir_ns = h.t_hazir_ns;
+    y.t_teslim_ns = h.t_teslim_ns;
+    // parti_step_seq: köprü kaydın girdiği partiyi dışa vermiyor (kayabilir: A1-K113) → yok.
+    y.fault_mask = h.ariza_maskesi;
+    // quality: sensör modeli kalite üretmiyor → yok (NaN, varsayılan).
+    y.model_version = h.model_surumu;
+}
+
+}  // namespace
+
+template <typename F>
+void Calistirici::a3_olc(F&& f)
+{
+    const auto bas = Saat::now();
+    f();
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Saat::now() - bas).count();
+    ++s_.a3_yayin_cagrisi;
+    s_.a3_cagri_en_kotu_ns = std::max<std::int64_t>(s_.a3_cagri_en_kotu_ns, ns);
+}
+
+bool Calistirici::a3_run_uyar(const a3::Komut& k) const
+{
+    if (!a3d_.run_var) {
+        return !k.beklenen_run_id.has_value();
+    }
+    return k.beklenen_run_id.has_value() && *k.beklenen_run_id == a3_run_id_;
+}
+
+void Calistirici::a3_olay(std::uint16_t tur, std::uint8_t onem, std::uint8_t kaynak, std::uint32_t komut_no,
+                          std::uint32_t istemci, std::string_view ayrinti)
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    a3::yuk_olay o;
+    o.tur = tur;
+    o.onem = onem;
+    o.kaynak = kaynak;
+    o.adim_no = a3d_.durum == a3::CalistirmaDurumu::kosuyor ? a3_b_ : kYok64;
+    o.komut_no = komut_no;
+    o.istemci_id = istemci;
+    o.ayrinti = ayrinti;
+    const std::int64_t t = static_cast<std::int64_t>(a3_b_) * kH;
+    a3_olc([&] { (void)yay_->olay(t, o); });
+}
+
+void Calistirici::a3_sonuc(const A3Giris& g, bool uygulandi, std::uint64_t b, const char* kod, std::string_view ayrinti)
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    a3::KomutSonucuGirdisi s;
+    s.komut_no = g.k.komut_no;
+    s.uygulandi = uygulandi;
+    s.uygulama_adimi_var = uygulandi;
+    s.uygulama_adimi = b;
+    s.t_ns = t;
+    s.adim_no = b;
+    s.hata_kodu = kod != nullptr ? std::string_view(kod) : std::string_view();
+    s.sonuc_ayrinti_json = ayrinti;
+    a3_olc([&] { (void)yay_->komut_sonucu(s); });
+    // Kapsam 4: A3'ten gelen komutlar olay kaydına senaryodakilerle aynı biçimde, kaynağıyla
+    // (önceden ayrılmış kayıt tamponuna; Sonuc'a koşu sonunda çevrilir).
+    if (a3_komut_kaydi_.size() < kKayitAzami) {
+        a3_komut_kaydi_.push_back({g.k.komut_no, g.k.tur, g.yi.ad, t, uygulandi, kod});
+    } else {
+        ++s_.a3_kayit_atilan;
+    }
+    ++s_.a3_komut;
+}
+
+void Calistirici::a3_gecis(a3::CalistirmaDurumu yeni, const char* neden, bool ic)
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    const a3::CalistirmaDurumu eski = a3d_.durum;
+    a3d_.durum = yeni;
+    if (ic) {
+        ++a3d_.durum_rev;   // A3-K122: iç geçiş (komutun kendi artışı uygulandığı yerde)
+    }
+    if (yeni == a3::CalistirmaDurumu::yuklendi) {
+        a3d_.run_var = false;   // A3-K124
+    }
+    a3b::JsonYaz j;
+    j.metin("onceki", a3b::durum_adi(eski)).metin("sonraki", a3b::durum_adi(yeni));
+    if (neden != nullptr) {
+        j.metin("neden", neden);
+    }
+    a3_olay(1, 0, 0, 0, 0, j.bitir());
+    a3_durum_kirli_ = true;
+    a3_durum_yayinla(static_cast<std::int64_t>(a3_b_) * kH);
+    a3_anlik_guncelle();
+}
+
+// Anlık görüntü (kilitsiz üçlü tampon; bellek ayırmaz).
+void Calistirici::a3_anlik_guncelle()
+{
+    if (a3al_ == nullptr) {
+        return;
+    }
+    AnlikPod& p = a3p_;
+    p.durum = static_cast<std::uint8_t>(a3d_.durum);
+    p.kip = static_cast<std::uint8_t>(a_.kip == Kip::hil ? a3::ZamanKipi::hil_1x : a3::ZamanKipi::sil);
+    p.run_var = a3d_.run_var;
+    p.sim_t_ns = static_cast<std::int64_t>(a3_b_) * kH;
+    p.adim_no = a3_b_;
+    p.gecerli = a3_gecerli_;
+    p.gercek_zamani_kacirdi = a3_rt_kacirdi_;
+    p.gecerlilik_nedenleri = a3_gecerlilik_;
+    p.durum_rev = a3d_.durum_rev;
+    if (k_) {
+        const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
+        p.emniyet_rev = e.emniyet_revizyonu;
+        p.emniyet_rev_doydu = k_->emniyet_rev_doydu();
+        p.acil = e.acil_durdurma ? 1u : 0u;
+        p.fis = {static_cast<std::uint8_t>(e.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(e.fis[1] ? 1u : 0u)};
+        p.pim = {static_cast<std::uint8_t>(e.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(e.pim[1] ? 1u : 0u)};
+        p.a1_run_id = k_->run_id();
+        const kopru::Sayaclar& c = k_->sayaclar();
+        p.sayac = {static_cast<std::int64_t>(c.parti_gonderilen), static_cast<std::int64_t>(c.parti_kacirildi),
+                   static_cast<std::int64_t>(c.oturum_kopma), static_cast<std::int64_t>(s_.zaman.sim_gecikmesi),
+                   static_cast<std::int64_t>(yay_ != nullptr ? yay_->halka_tasma() : 0u)};
+    } else {
+        p.emniyet_rev = 1;
+        p.acil = plan_.acil_durdurma ? 1u : 0u;
+        p.fis = {static_cast<std::uint8_t>(plan_.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.fis[1] ? 1u : 0u)};
+        p.pim = {static_cast<std::uint8_t>(plan_.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.pim[1] ? 1u : 0u)};
+    }
+    p.son_degisim_var = a3_son_degisim_adimi_ != kYok64;
+    p.son_degisim_adimi = a3_son_degisim_adimi_;
+    a3al_->anlik_yaz(p);
+    a3_anlik_kirli_ = false;
+}
+
+bool Calistirici::a3_baslat()
+{
+    a3al_ = std::make_unique<A3Alici>(a_.kip == Kip::hil);
+    a3::SunucuAyari sa;
+    sa.port = a_.a3_port;
+    sa.statik_kok = a_.a3_kok;
+    sa.sim_surumu = "ida_sim";
+    const int gunluk_duzeyi = a_.gunluk;
+    sa.gunluk = [gunluk_duzeyi](std::string_view m) {
+        if (gunluk_duzeyi >= 1) {
+            std::fprintf(stderr, "ida_sim: %.*s\n", static_cast<int>(m.size()), m.data());
+        }
+    };
+    std::string hata;
+    a3sv_ = a3::Sunucu::baslat(sa, *a3al_, hata);
+    if (!a3sv_) {
+        s_.hata = "A3 sunucusu başlatılamadı: " + hata;
+        a3al_.reset();
+        return false;
+    }
+    yay_ = &a3sv_->yayinci();
+    // W4-K27 (5): dünya tarafının kalıcı depoları burada ayrılır; değişmeyen içerik önceden üretilir.
+    a3_kisit_.reserve(A3Alici::kKisitYuva + 4u);
+    a3_genel_.reserve(kGenelAzami + A3Alici::kGenelKuyruk + 2u * A3Alici::kDenetimYolu);
+    a3_emniyet_bekleyen_.reserve(kGenelAzami + A3Alici::kKisitYuva);
+    a3_atama_.reserve(kGenelAzami + A3Alici::kKisitYuva);
+    a3_op_sonuc_.resize(kGenelAzami + A3Alici::kKisitYuva);
+    a3_degisen_.reserve(kGenelAzami + A3Alici::kKisitYuva);
+    a3_kararlar_.reserve(1024);
+    a3_komut_kaydi_.reserve(kKayitAzami);
+    a3_emniyet_kaydi_.reserve(kKayitAzami);
+    if (!s_.davranis_ozeti.empty()) {
+        a3p_.ozet_var = true;
+        metin_kopyala(a3p_.ozet, "sha256:" + s_.davranis_ozeti);
+    }
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        if (o.tur == PlanOlayTuru::sensor) {
+            a3_arizalar_.push_back({i, o.ariza.hedef, ariza_turu_adi(o.ariza.tur), 0u, false});
+        } else if (o.tur == PlanOlayTuru::itici) {
+            std::string h;
+            for (int c = 0; c < 8; ++c) {
+                if ((o.kanal_maskesi & (1u << c)) != 0u) {
+                    h += (h.empty() ? "t" : ",t") + std::to_string(c + 1);
+                }
+            }
+            a3_arizalar_.push_back({i, h, "itki_carpani", 1u, false});
+        }
+    }
+    a3_ariza_yuk_.reserve(a3_arizalar_.size());
+    a3d_ = A3Durum{};
+    a3_anlik_guncelle();
+    a3_durum_yayinla(0);
+    gunluk(1, "A3 127.0.0.1:" + std::to_string(a3sv_->port()));
+    if (a_.a3_acilis) {
+        a_.a3_acilis(a3sv_->acilis_adresi());
+    }
+    if (a_.a3_hazir) {
+        a_.a3_hazir(a3sv_->port(), a3sv_->jeton());
+    }
+    return true;
+}
+
+// Tutarlı kesimle çekiş (W4-K27 (2)). `atla`: alınmayacak kısıtlayan yuvalar (hazırlıkta yer
+// istasyonu komutları birikmez: yuvasında bekler, kitaplığın mandalı birleştirir).
+void Calistirici::a3_cek(std::uint16_t atla)
+{
+    const std::size_t yer = a3_genel_.size() < kGenelAzami ? kGenelAzami - a3_genel_.size() : 0u;
+    a3al_->cek(a3_kisit_, a3_genel_, atla, std::min<std::size_t>(yer, A3Alici::kGenelKuyruk));
+    for (const A3Giris& g : a3_kisit_) {
+        a3_son_komut_no_ = std::max(a3_son_komut_no_, g.k.komut_no);
+    }
+    for (const A3Giris& g : a3_genel_) {
+        a3_son_komut_no_ = std::max(a3_son_komut_no_, g.k.komut_no);
+    }
+}
+
+// EMNİYET (W4-K27 (2)): bir gevşetme, kendisinden önce teslim edilmiş (küçük sıra numaralı) ve
+// henüz işlenmemiş bir kısıtlayanın önüne geçemez. Kesim bunu sağlar; değişmez burada denetlenir:
+// ihlal sayılır ve gevşetme reddedilir (kısıtlayan yön).
+bool Calistirici::a3_gevsetme_onu_acik(const A3Giris& g)
+{
+    const std::uint64_t bekleyen = a3al_->bekleyen_kisit_en_kucuk(A3Alici::kButunYuvalar);
+    bool engel = bekleyen != 0u && bekleyen < g.sira;
+    for (const A3Giris& r : a3_kisit_) {
+        engel = engel || r.sira < g.sira;
+    }
+    if (engel) {
+        ++s_.a3_sira_korumasi;
+    }
+    return !engel;
+}
+
+// `yuklendi`'de `baslat` beklenir (A3-K62); `sifirla` yalnız durum revizyonunu artırır (A3-K67).
+// Canlı çalıştırma gerektiren istekler reddedilir (A3-K91).
+bool Calistirici::a3_baslat_bekle()
+{
+    gunluk(1, "A3: çalıştırma panelden `baslat` ile başlayacak");
+    std::int64_t son_yayin = 0;
+    for (;;) {
+        if (a_.a3_sinir_kancasi) {
+            a_.a3_sinir_kancasi(0, *a3al_);
+        }
+        a3_cek(0);
+        for (const A3Giris& g : a3_kisit_) {
+            a3_sonuc(g, false, 0, "canli_calistirma_yok");
+        }
+        a3_kisit_.clear();
+        bool basla = false;
+        for (A3Giris& g : a3_genel_) {
+            const a3::Komut& k = g.k;
+            if (basla || !a3b::calistirma_mi(k.tur)) {
+                a3_sonuc(g, false, 0, basla ? "gecersiz_durum" : "canli_calistirma_yok");
+                continue;
+            }
+            if (a3b::duraklatma_mi(k.tur)) {
+                a3_sonuc(g, false, 0, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);   // W4-K28 (1)
+                continue;
+            }
+            if (k.beklenen_durum_rev != a3d_.durum_rev) {
+                a3_sonuc(g, false, 0, "durum_rev_uyusmuyor", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+                continue;
+            }
+            if (k.beklenen_run_id.has_value()) {
+                a3_sonuc(g, false, 0, "beklenen_durum_uyusmuyor");
+                continue;
+            }
+            if (k.tur == a3::KomutTuru::calistirma_baslat) {
+                ++a3d_.durum_rev;   // A3-K122; sonuç ön denetimden sonra (A3-K62)
+                a3_baslat_komutu_ = std::move(g);
+                basla = true;
+            } else if (k.tur == a3::KomutTuru::calistirma_sifirla) {
+                ++a3d_.durum_rev;
+                a3_sonuc(g, true, 0, nullptr);
+                a3_durum_kirli_ = true;
+            } else {
+                a3_sonuc(g, false, 0, "gecersiz_durum");
+            }
+        }
+        a3_genel_.clear();
+        if (basla) {
+            return true;
+        }
+        if (a3_durum_kirli_ || gercek() - son_yayin > 100 * kMs) {
+            a3_durum_yayinla(0);
+            a3_anlik_guncelle();
+            son_yayin = gercek();
+        }
+        sure_uyu(2 * kMs);
+    }
+}
+
+// Çalıştırma kontrolü komutları (A3-K61…K66, K122, K123): durumla aynı atomik adımda yeniden
+// denetlenir. Öteki istekler sırasıyla yerinde kalır (yerinde sıkıştırma; bellek ayırmaz).
+void Calistirici::a3_calistirma_isle(std::uint64_t b)
+{
+    std::size_t yaz = 0;
+    for (std::size_t i = 0; i < a3_genel_.size(); ++i) {
+        A3Giris& g = a3_genel_[i];
+        const a3::Komut& k = g.k;
+        if (!a3b::calistirma_mi(k.tur)) {
+            if (yaz != i) {
+                a3_genel_[yaz] = std::move(g);
+            }
+            ++yaz;
+            continue;
+        }
+        const bool hil = a_.kip == Kip::hil;
+        if (a3b::duraklatma_mi(k.tur)) {
+            // W4-K28 (1): alıcı girişte reddeder; buraya ulaşırsa da reddedilir (durum değişmez).
+            a3_sonuc(g, false, b, "gecersiz_durum", a3b::kDuraklatmaYokAyrinti);
+            continue;
+        }
+        if (k.beklenen_durum_rev != a3d_.durum_rev) {
+            a3_sonuc(g, false, b, "durum_rev_uyusmuyor", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+            continue;
+        }
+        if (!a3_run_uyar(k)) {
+            // A3 §3.9: ayrıntı güncel run_id, durum ve durum revizyonu (A3-K54, K123).
+            a3b::JsonYaz ay;
+            if (a3d_.run_var) {
+                ay.metin("guncel_run_id", a3_run_id_);
+            } else {
+                ay.ham("guncel_run_id", "null");
+            }
+            ay.metin("guncel_durum", a3b::durum_adi(a3d_.durum)).sayi_u("guncel_durum_rev", a3d_.durum_rev);
+            a3_sonuc(g, false, b, "beklenen_durum_uyusmuyor", ay.bitir());
+            continue;
+        }
+        const bool hazirlikta = a3d_.durum == a3::CalistirmaDurumu::hazirlaniyor;
+        if (!a3b::gecis_gecerli(a3d_.durum, k.tur) ||
+            (k.tur == a3::KomutTuru::calistirma_sifirla && a3d_.durum != a3::CalistirmaDurumu::yuklendi)) {
+            a3_sonuc(g, false, b, "gecersiz_durum", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+            continue;
+        }
+        if (hil && k.tur == a3::KomutTuru::calistirma_hiz) {
+            a3_sonuc(g, false, b, "kipte_gecersiz", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
+            continue;
+        }
+        ++a3d_.durum_rev;   // A3-K122
+        switch (k.tur) {
+        case a3::KomutTuru::calistirma_hiz:
+            hiz_ = k.carpan;   // A3-K66 (yalnız SIL; 0: olabildiğince hızlı)
+            hiz_t0_sim_ = static_cast<std::int64_t>(b) * kH;
+            hiz_t0_duvar_ = Saat::now();
+            a3_durum_kirli_ = true;
+            break;
+        case a3::KomutTuru::calistirma_durdur:
+            a3_durdur_ = true;
+            // Tablo 4.7a: hazırlanırken durdur → yuklendi (W4-K27 (4)); koşarken → durduruldu.
+            a3_gecis(hazirlikta ? a3::CalistirmaDurumu::yuklendi : a3::CalistirmaDurumu::durduruldu, nullptr, false);
+            break;
+        default:
+            break;
+        }
+        a3_sonuc(g, true, b, nullptr);
+    }
+    a3_genel_.resize(yaz);   // küçültme: bellek ayırmaz
+}
+
+// Sınır başı: istek çekme ve çalıştırma denetimi; SIL hız çarpanı.
+bool Calistirici::a3_sinir_basi(std::uint64_t b)
+{
+    a3_b_ = b;
+    a3_sinir_ns_ = 0;
+    if (a_.a3_sinir_kancasi) {
+        a_.a3_sinir_kancasi(b, *a3al_);   // sınama (hizmet kapsamı dışında)
+    }
+    {
+        A3Hizmet h(a3_sinir_ns_);
+        a3_cek(0);
+        a3_calistirma_isle(b);
+    }
+    if (a3_durdur_) {
+        return false;
+    }
+    if (a_.kip == Kip::sil && hiz_ > 0.0 && b % kopru::kPeriyotAdim == 0) {
+        // A3-K66: SIL hız çarpanı (yalnız bekleme; bayt akışı ve CSV değişmez).
+        const double ns = static_cast<double>(static_cast<std::int64_t>(b) * kH - hiz_t0_sim_) / hiz_;
+        a3::hassas_bekle(hiz_t0_duvar_ + std::chrono::nanoseconds(static_cast<std::int64_t>(ns)));
+    }
+    return true;
+}
+
+// Operatör emniyet isteklerinin sonuçları ve emniyet olayları (sınırda).
+void Calistirici::a3_sonuclari_isle(std::uint64_t b, const kopru::OperatorSonucu* sonuc, std::size_t n,
+                                    const sensor::EmniyetDurumu& once)
+{
+    a3_degisen_.clear();
+    for (std::size_t j = 0; j < n; ++j) {
+        const kopru::OperatorSonucu& o = sonuc[j];
+        std::size_t i = 0;
+        while (i < a3_emniyet_bekleyen_.size() &&
+               (a3_emniyet_bekleyen_[i].k.komut_no == 0u ? 1u : a3_emniyet_bekleyen_[i].k.komut_no) != o.kimlik) {
+            ++i;
+        }
+        if (i == a3_emniyet_bekleyen_.size()) {
+            continue;
+        }
+        A3Giris& g = a3_emniyet_bekleyen_[i];
+        a3b::JsonYaz ay;
+        ay.sayi_u("guncel_emniyet_rev", o.rev_sonra);
+        switch (o.sonuc) {
+        case kopru::AtamaSonucu::uygulandi:
+            a3_sonuc(g, true, b, nullptr);
+            if (o.degisti) {
+                a3_degisen_.push_back(std::move(g));
+            }
+            break;
+        case kopru::AtamaSonucu::kisitlama_hakim: a3_sonuc(g, false, b, "kisitlama_hakim", ay.bitir()); break;
+        case kopru::AtamaSonucu::rev_uyusmuyor: a3_sonuc(g, false, b, "emniyet_rev_uyusmuyor", ay.bitir()); break;
+        case kopru::AtamaSonucu::rev_doydu: a3_sonuc(g, false, b, "emniyet_rev_doydu"); break;
+        }
+        g.k.komut_no = 0xFFFFFFFFu;   // işlendi (kimlik 0xFFFFFFFF hiçbir isteğe denk gelmez)
+    }
+    for (A3Giris& g : a3_emniyet_bekleyen_) {
+        if (g.k.komut_no != 0xFFFFFFFFu) {
+            a3_sonuc(g, false, b, "sunucu_hatasi");   // köprü sonuç vermedi: olmamalı
+        }
+    }
+    a3_emniyet_bekleyen_.clear();
+    a3_emniyet_olaylari(b, once);
+}
+
+// Sınır işleminden önce: kısıtlayan istekler (emniyet ve daraltıcı yer istasyonu komutları) ve
+// gevşeten emniyet istekleri köprüye verilir (senaryonun atamalarıyla aynı sınırda, aynı yoldan).
+// EMNİYET: kısıtlayan istek `beklenen_run_id`'ye bakılmadan uygulanır (W4-K19); revizyon istemez.
+void Calistirici::a3_emniyet_ver(std::uint64_t b)
+{
+    A3Hizmet h(a3_sinir_ns_);
+    a3_emn_once_ = k_->dis_durum().emniyet;
+    a3_emniyet_bekleyen_.clear();
+    const bool canli = a3b::canli(a3d_.durum);
+    for (A3Giris& g : a3_kisit_) {
+        if (!canli) {
+            a3_sonuc(g, false, b, "canli_calistirma_yok");
+            continue;
+        }
+        if (g.k.tur == a3::KomutTuru::emniyet_degistir) {
+            {
+                KopruCagrisi kc;
+                k_->emniyet_ata(operator_atamasi(g.k));
+            }
+            a3_emniyet_bekleyen_.push_back(std::move(g));
+        } else {
+            a3_yi_uygula(b, g, nullptr);   // daraltıcı: A1-K85 adım 2 (köprü revizyonu artırır)
+        }
+    }
+    a3_kisit_.clear();
+    std::size_t yaz = 0;
+    for (std::size_t i = 0; i < a3_genel_.size(); ++i) {
+        A3Giris& g = a3_genel_[i];
+        if (g.k.tur != a3::KomutTuru::emniyet_degistir) {
+            if (yaz != i) {
+                a3_genel_[yaz] = std::move(g);
+            }
+            ++yaz;
+            continue;
+        }
+        // A3-K57: beklenen_run_id uygulamadan hemen önce yeniden karşılaştırılır (kısıtlayan hariç).
+        if (!canli) {
+            a3_sonuc(g, false, b, "canli_calistirma_yok");
+        } else if (!g.k.kisitlayan && !a3_run_uyar(g.k)) {
+            a3_sonuc(g, false, b, "beklenen_durum_uyusmuyor");
+        } else if (!g.k.kisitlayan && !a3_gevsetme_onu_acik(g)) {
+            a3_sonuc(g, false, b, "kisitlama_hakim");
+        } else {
+            {
+                KopruCagrisi kc;
+                k_->emniyet_ata(operator_atamasi(g.k));
+            }
+            a3_emniyet_bekleyen_.push_back(std::move(g));
+        }
+    }
+    a3_genel_.resize(yaz);
+}
+
+// Sınır işleminden sonra: operatör emniyet isteklerinin sonuçları, emniyet olayları, genişletici
+// ve nötr yer istasyonu komutları (A1-K85 adım 4'ün yerinde).
+void Calistirici::a3_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss)
+{
+    A3Hizmet h(a3_sinir_ns_);
+    a3_sonuclari_isle(b, ss.operator_sonuclari.data(), ss.operator_sonuclari.size(), a3_emn_once_);
+    a3_emn_once_ = k_->dis_durum().emniyet;
+    if (ss.yuva_kacirildi) {
+        if (a3_kacirma_adet_ == 0u) {
+            a3_kacirma_ilk_ = ss.yuva_seq;
+        }
+        a3_kacirma_son_ = ss.yuva_seq;
+        ++a3_kacirma_adet_;
+    }
+    for (A3Giris& g : a3_genel_) {
+        a3_yi_uygula(b, g, &ss);
+    }
+    a3_genel_.clear();
+}
+
+void Calistirici::a3_yi_uygula(std::uint64_t b, const A3Giris& g, const kopru::SinirSonucu* ss)
+{
+    const a3::Komut& k = g.k;
+    if (k.tur != a3::KomutTuru::yer_istasyonu_komut) {
+        a3_sonuc(g, false, b, "sunucu_hatasi");
+        return;
+    }
+    if (!a3b::canli(a3d_.durum)) {
+        a3_sonuc(g, false, b, "canli_calistirma_yok");
+        return;
+    }
+    if (!k.kisitlayan && !a3_run_uyar(k)) {
+        a3_sonuc(g, false, b, "beklenen_durum_uyusmuyor");
+        return;
+    }
+    if (k.yi_sinif == a3::KomutSinifi::genisletici) {
+        // EMNİYET (A3-K95 (4), K118; W4-K27 (2)): genişletici, kabul edildiği revizyona bağlıdır ve
+        // önce teslim edilmiş bir kısıtlayanı geçemez.
+        const std::uint32_t rev = k_->emniyet_revizyonu();
+        a3b::JsonYaz ay;
+        ay.sayi_u("guncel_emniyet_rev", rev);
+        if ((ss != nullptr && ss->rev_adim3_sonu != ss->rev_adim_basi) || !a3_gevsetme_onu_acik(g)) {
+            a3_sonuc(g, false, b, "kisitlama_hakim", ay.bitir());
+            return;
+        }
+        if (k_->emniyet_rev_doydu()) {
+            a3_sonuc(g, false, b, "emniyet_rev_doydu");
+            return;
+        }
+        if (!k.beklenen_emniyet_rev || *k.beklenen_emniyet_rev != rev) {
+            a3_sonuc(g, false, b, "emniyet_rev_uyusmuyor", ay.bitir());
+            return;
+        }
+    }
+    const a3b::YiKarsilik& y = g.yi;
+    a3b::JsonYaz j;
+    if (y.tur == a3b::YiTur::desteklenmiyor) {
+        // Karşılığı olmayan komut (W4-bagla-a3 kapsam 3): komut ağ geçidinde işlendi, sonuç
+        // `yer_istasyonu_yaniti` olayında `desteklenmiyor` (A3 §3.5).
+        a3_sonuc(g, true, b, nullptr);
+        j.sayi_u("komut_no", k.komut_no).metin("komut", y.ad).metin("sonuc", "desteklenmiyor");
+        a3_olay(12, 0, 6, k.komut_no, k.istemci_id, j.bitir());
+        return;
+    }
+    // Senaryonun operatör komutlarıyla aynı köprü yolu (komut_basit, komut_guided, komut_fc).
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    std::uint32_t id = 0;
+    {
+        KopruCagrisi kc;
+        switch (y.tur) {
+        case a3b::YiTur::basit: id = k_->komut_basit(y.a1_tur, y.arg, t); break;
+        case a3b::YiTur::guided: {
+            kopru::GuidedHedef hd;
+            hd.mask = y.sp_mask;
+            hd.pos_ne = y.pos_ne;
+            hd.depth = y.depth;
+            hd.altitude = y.altitude;
+            hd.vel_ned = y.vel_ned;
+            hd.yaw = y.yaw;
+            hd.yaw_rate = y.yaw_rate;
+            id = k_->komut_guided(hd, t);
+            break;
+        }
+        case a3b::YiTur::fc: id = k_->komut_fc(y.a1_tur, static_cast<std::uint8_t>(y.arg), t); break;
+        case a3b::YiTur::desteklenmiyor: break;
+        }
+    }
+    a3_sonuc(g, true, b, nullptr);
+    const std::optional<kopru::KomutSonucu> r = k_->komut_sonucu(id);
+    const bool oturumsuz = r && r->yerel && r->reason == 129u;   // IDAW_REASON_LINK_SESSION_END
+    j.sayi_u("komut_no", k.komut_no).metin("komut", y.ad).sayi_u("emniyet_rev", k_->emniyet_revizyonu())
+        .metin("durum", oturumsuz ? "oturum_yok" : "karta_iletildi");
+    a3_olay(11, 0, 6, k.komut_no, k.istemci_id, j.bitir());
+    if (!oturumsuz) {
+        if (a3_yi_n_ < a3_yi_.size()) {
+            a3_yi_[a3_yi_n_++] = YiIzi{k.komut_no, k.istemci_id, y.ad, id, y.arg};
+        } else {
+            ++s_.a3_kayit_atilan;   // izleme tablosu dolu: kart yanıtı olaya çevrilmez (sayılır)
+        }
+    }
+}
+
+// Yer istasyonu komutlarının kart yanıtı ya da yerel sonucu (A3-K101, K102).
+void Calistirici::a3_yi_izle()
+{
+    std::size_t yaz = 0;
+    for (std::size_t i = 0; i < a3_yi_n_; ++i) {
+        const YiIzi z = a3_yi_[i];
+        const std::optional<kopru::KomutSonucu> r = k_->komut_sonucu(z.cmd_id);
+        if (!r) {
+            a3_yi_[yaz++] = z;
+            continue;
+        }
+        a3b::JsonYaz j;
+        j.sayi_u("komut_no", z.komut_no).metin("komut", z.ad);
+        if (r->yerel && r->ack == 2u && (r->reason == 10u || r->reason == 129u)) {
+            // A1-K129 (bayat yetki: NARROWED) ya da oturum bitti (LINK_SESSION_END): karta gitmedi.
+            j.sayi_u("emniyet_rev", k_->emniyet_revizyonu()).metin("durum", r->reason == 10u ? "bayat_yetki" : "oturum_yok");
+            a3_olay(11, 0, 6, z.komut_no, z.istemci, j.bitir());
+            continue;
+        }
+        const char* sonuc = r->ack == 1u ? "kabul" : r->ack == 3u ? "suruyor" : r->ack == 4u ? "yineleme"
+                            : r->ack == 5u ? "desteklenmiyor" : "ret";
+        a3b::JsonYaz v;
+        v.metin("ack", a3b::ack_adi(r->ack)).sayi_u("reason", r->reason);
+        if (std::string_view(z.ad) == "param_get") {
+            v.sayi_u("param_id", z.param_id);
+            // A3-K102: ACCEPTED ve PARAM_VALUE'da tür ve değer; değilse yazılmaz.
+            if (r->kind == IDA_RES_PARAM_VALUE && r->ack == 1u && r->param_type >= 1u && r->param_type <= 3u) {
+                static constexpr const char* kTip[] = {"", "I32", "U32", "F32"};
+                v.metin("param_type", kTip[r->param_type]);
+                if (r->param_type == 1u) {
+                    v.sayi("value", static_cast<std::int32_t>(r->value_bits));
+                } else if (r->param_type == 2u) {
+                    v.sayi_u("value", r->value_bits);
+                } else {
+                    float f = 0.0F;
+                    std::memcpy(&f, &r->value_bits, sizeof f);
+                    if (std::isfinite(f)) {
+                        char sb[48];
+                        const int sn = std::snprintf(sb, sizeof sb, "%.9g", static_cast<double>(f));
+                        v.ham("value", std::string_view(sb, sn > 0 ? static_cast<std::size_t>(sn) : 0u));
+                    }
+                }
+            }
+        }
+        j.metin("sonuc", sonuc).ham("veri", v.bitir());
+        a3_olay(12, 0, 6, z.komut_no, z.istemci, j.bitir());
+    }
+    a3_yi_n_ = yaz;
+}
+
+// emniyet_girdisi_degisti (A3-K96), son değişim ve revizyon doygunluğu; senaryonun gevşetme
+// retleri ve atama çelişkileri (A3 §3.5, A5 §3.15).
+void Calistirici::a3_emniyet_olaylari(std::uint64_t b, const sensor::EmniyetDurumu& once)
+{
+    const sensor::EmniyetDurumu simdi = k_->dis_durum().emniyet;
+    struct Alan {
+        a3::EmniyetGirdisi g;
+        int tup;
+        bool o, s;
+        const char* ad;
+    };
+    const Alan alanlar[] = {
+        {a3::EmniyetGirdisi::acil_durdurma, -1, once.acil_durdurma, simdi.acil_durdurma, "acil_durdurma"},
+        {a3::EmniyetGirdisi::silahlandirma_fisi, 0, once.fis[0], simdi.fis[0], "silahlandirma_fisi.f1"},
+        {a3::EmniyetGirdisi::silahlandirma_fisi, 1, once.fis[1], simdi.fis[1], "silahlandirma_fisi.f2"},
+        {a3::EmniyetGirdisi::emniyet_pimi, 0, once.pim[0], simdi.pim[0], "emniyet_pimi.f1"},
+        {a3::EmniyetGirdisi::emniyet_pimi, 1, once.pim[1], simdi.pim[1], "emniyet_pimi.f2"},
+    };
+    for (const Alan& a : alanlar) {
+        if (a.o == a.s) {
+            continue;
+        }
+        const a3::Komut* op = nullptr;
+        for (const A3Giris& g : a3_degisen_) {
+            if (g.k.girdi == a.g && (a.tup < 0 || g.k.tup == a.tup)) {
+                op = &g.k;
+            }
+        }
+        const bool acil = a.g == a3::EmniyetGirdisi::acil_durdurma;
+        // Kısıtlayan yön: acil basılı, fiş çıkık, pim takılı.
+        const bool artiran = a.g == a3::EmniyetGirdisi::silahlandirma_fisi ? !a.s : a.s;
+        a3b::JsonYaz j;
+        j.metin("girdi", acil ? "acil_durdurma" : (a.g == a3::EmniyetGirdisi::silahlandirma_fisi ? "silahlandirma_fisi" : "emniyet_pimi"));
+        if (!acil) {
+            j.metin("tup", a.tup == 0 ? "f1" : "f2");
+        }
+        j.metin("onceki", girdi_durumu(a.o, acil)).metin("sonraki", girdi_durumu(a.s, acil))
+            .metin("kaynak", op != nullptr ? "operator" : "senaryo").metin("yon", artiran ? "artiran" : "azaltan")
+            .sayi_u("uygulama_adimi", b).sayi_u("emniyet_rev", simdi.emniyet_revizyonu);
+        a3_olay(7, 3, op != nullptr ? 1 : 3, op != nullptr ? op->komut_no : 0u, op != nullptr ? op->istemci_id : 0u, j.bitir());
+        if (a3_emniyet_kaydi_.size() < kKayitAzami) {
+            a3_emniyet_kaydi_.push_back({static_cast<std::int64_t>(b) * kH, a.ad, a.o, a.s, op != nullptr,
+                                         op != nullptr ? op->komut_no : 0u, simdi.emniyet_revizyonu});
+        } else {
+            ++s_.a3_kayit_atilan;
+        }
+        a3_son_degisim_adimi_ = b;
+        a3_son_degisim_kaynagi_ = op != nullptr ? 2u : 1u;
+        a3_durum_kirli_ = true;
+        a3_anlik_kirli_ = true;
+    }
+    a3_degisen_.clear();
+    if (once.emniyet_revizyonu != simdi.emniyet_revizyonu) {
+        a3_durum_kirli_ = true;
+        a3_anlik_kirli_ = true;
+    }
+    if (k_->emniyet_rev_doydu() && !a3_doydu_bildirildi_) {
+        a3_doydu_bildirildi_ = true;
+        a3_olay(30, 3, 0, 0, 0, a3b::JsonYaz().sayi_u("emniyet_rev", simdi.emniyet_revizyonu).bitir());
+    }
+    // Senaryonun gevşetme retleri (A3 §3.5 tür 26) ve atama çelişkileri (tür 25; A3-K125 parçaları).
+    for (; a3_gevsetme_n_ < s_.gevsetme_retleri.size(); ++a3_gevsetme_n_) {
+        const GevsetmeReddi& g = s_.gevsetme_retleri[a3_gevsetme_n_];
+        a3b::JsonYaz j;
+        j.sayi("t_ns", g.t_ns).metin("olay_kimligi", g.olay_kimligi).metin("alan", g.alan)
+            .metin("istenen_deger", g.istenen_deger ? "true" : "false").sayi_u("revizyon_adim_basi", g.revizyon_adim_basi)
+            .sayi_u("revizyon_adim_3_sonu", g.revizyon_adim_3_sonu);
+        a3_olay(26, 3, 3, 0, 0, j.bitir());
+    }
+    for (; a3_celiski_n_ < s_.atama_celiskileri.size(); ++a3_celiski_n_) {
+        const AtamaCeliskisi& c = s_.atama_celiskileri[a3_celiski_n_];
+        ++a3_celiski_kimligi_;
+        const std::size_t n = c.degerler.size();
+        const std::size_t parca = std::max<std::size_t>(1u, (n + 7u) / 8u);
+        for (std::size_t p = 0; p < parca; ++p) {
+            DiziYaz deg;
+            DiziYaz kim;
+            for (std::size_t i = p * 8u; i < std::min(n, p * 8u + 8u); ++i) {
+                deg.ekle(c.degerler[i] ? "true" : "false");
+                kim.ekle(c.olay_kimlikleri[i]);
+            }
+            a3b::JsonYaz j;
+            j.sayi("t_ns", c.t_ns).metin("alan", c.alan).sayi_u("celiski_kimligi", a3_celiski_kimligi_)
+                .sayi_u("parca_no", p + 1u).sayi_u("parca_sayisi", parca).mantik("son_parca", p + 1u == parca)
+                .ham("degerler", deg.bitir()).ham("olay_kimlikleri", kim.bitir())
+                .metin("uygulanan_deger", c.uygulanan_deger ? "true" : "false");
+            a3_olay(25, 1, 3, 0, 0, j.bitir());
+        }
+    }
+}
+
+void Calistirici::a3_senaryo_ogesi(std::size_t i, const char* sonuc, std::int64_t t, const char* neden)
+{
+    const PlanOlayi& o = plan_.olaylar[i];
+    // `olay_kimligi` deseni ^[A-Za-z][A-Za-z0-9_]{0,31}$ (A5 kimlikleri); yerleşik planın üretilmiş
+    // adları uymazsa olay yayınlanmaz (kayıt Sonuc'ta kalır).
+    const std::string& id = o.kimlik;
+    bool uyar = !id.empty() && id.size() <= 32u && std::isalpha(static_cast<unsigned char>(id[0])) != 0;
+    for (const char c : id) {
+        uyar = uyar && (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_') && static_cast<unsigned char>(c) < 0x80u;
+    }
+    if (!uyar) {
+        return;
+    }
+    const char* tur = o.tur == PlanOlayTuru::emniyet                                    ? "emniyet_girdisi"
+                      : o.tur == PlanOlayTuru::sensor || o.tur == PlanOlayTuru::itici ? "ariza"
+                                                                                       : "diger";
+    a3b::JsonYaz j;
+    j.metin("olay_kimligi", id).metin("tur", tur).sayi("t_ns", t);
+    if (std::string_view(sonuc) != "uygulanmadi") {
+        j.sayi_u("uygulama_adimi", static_cast<std::uint64_t>(t / kH));
+    }
+    j.metin("sonuc", sonuc);
+    if (neden != nullptr && neden[0] != '\0') {
+        j.metin("neden", neden);
+    }
+    a3_olay(21, 0, 3, 0, 0, j.bitir());
+}
+
+// atis_olayi_sonucu (A3-K98; A6-K41 normallestirilmis_sira) ve atis/durum'un tüp sonucu.
+void Calistirici::a3_olay_kararlari()
+{
+    {
+        KopruCagrisi kc;
+        k_->olay_kararlari_al(a3_kararlar_);
+    }
+    for (const kopru::OlayKarari& o : a3_kararlar_) {
+        std::uint32_t sira = 0;
+        for (std::size_t i = 0; i < a3_olay_sira_n_; ++i) {
+            if (a3_olay_sira_[i] == o.event_id) {
+                sira = static_cast<std::uint32_t>(i + 1u);
+            }
+        }
+        if (sira == 0u && a3_olay_sira_n_ < a3_olay_sira_.size()) {
+            a3_olay_sira_[a3_olay_sira_n_++] = o.event_id;
+            sira = static_cast<std::uint32_t>(a3_olay_sira_n_);
+        }
+        const char* tur = o.kind == 1u ? "SAFETY_OPEN" : o.kind == 2u ? "SAFETY_CLOSE" : o.kind == 3u ? "FIRE" : "bilinmiyor";
+        // IDA_EVR: 1 APPLIED, 2 DUPLICATE, 3 REJ_EXPIRED, 4 REJ_SAFE, 5 REJ_TUBE_EMPTY, 6 REJ_SESSION.
+        const char* sonuc = o.sonuc == 1u ? "uygulandi" : o.sonuc == 2u ? "yineleme" : o.sonuc == 4u ? "ret_emniyet"
+                            : o.sonuc == 3u ? "ret_suresi_gecmis" : "ret_diger";
+        const std::uint8_t kod = o.sonuc == 1u ? 1u : o.sonuc == 2u ? 2u : o.sonuc == 4u ? 3u : o.sonuc == 3u ? 4u : 5u;
+        a3b::JsonYaz j;
+        if (o.tube <= 1u) {
+            j.sayi_u("tup", o.tube);
+            a3_tup_son_olay_[o.tube] = kod;
+        } else if (o.kind == 2u) {
+            a3_tup_son_olay_ = {kod, kod};   // iki tüpün izni (tube = 255)
+        }
+        j.metin("olay_turu", tur).metin("sonuc", sonuc);
+        if (sira != 0u) {
+            j.sayi_u("normallestirilmis_sira", sira);
+        }
+        if (o.sonuc == 1u && o.t_apply_ns >= 0) {
+            j.sayi_u("uygulama_adimi", static_cast<std::uint64_t>(o.t_apply_ns / kH));
+        }
+        a3_olay(8, 3, 0, 0, 0, j.bitir());
+        a3_durum_kirli_ = true;
+    }
+    a3_kararlar_.clear();
+}
+
+// a1_oturum_degisti (tür 9) ve kart_sifirlandi (tür 10).
+void Calistirici::a3_oturum_izle()
+{
+    const bool kopuk = !tas_ && a_.kip == Kip::hil;
+    const std::uint8_t simdi = a1_oturum_kodu(k_->durum(), kopuk);
+    const std::uint8_t once = a1_oturum_kodu(a3_a1_onceki_, a3_a1_kopuk_);
+    const kopru::KartBilgisi& kb = k_->kart();
+    if (simdi != once) {
+        const char* neden = a3_kapaniyor_                                    ? "sim_kapanisi"
+                            : simdi == 3u                                     ? "el_sikisma_tamam"
+                            : k_->durum() == kopru::OturumDurumu::reddedildi ? "uyumsuzluk"
+                            : kopuk                                           ? "aygit_kalkti"
+                            : k_->yeniden_baslatma_bekleniyor()               ? "reboot_istendi"
+                            : kb.son_kapanis_nedeni == 2u                     ? "beklenmedik_sifirlama"
+                                                                              : "canlilik_kaybi";
+        a3b::JsonYaz j;
+        j.metin("onceki", a1_oturum_adi(once)).metin("sonraki", a1_oturum_adi(simdi)).sayi_u("sess", k_->sess())
+            .sayi_u("acilis_sayaci", kb.boot_count).metin("neden", neden)
+            .mantik("planli", a3_kapaniyor_ || std::string_view(neden) == "reboot_istendi" || simdi == 3u);
+        a3_olay(9, 0, 0, 0, 0, j.bitir());
+        a3_a1_onceki_ = k_->durum();
+        a3_a1_kopuk_ = kopuk;
+        a3_durum_kirli_ = true;
+    }
+    if (kb.boot_count != 0u) {
+        if (a3_boot_var_ && kb.boot_count != a3_boot_onceki_) {
+            a3b::JsonYaz j;
+            j.sayi_u("onceki_acilis_sayaci", a3_boot_onceki_).sayi_u("yeni_acilis_sayaci", kb.boot_count)
+                .mantik("planli", k_->yeniden_baslatma_bekleniyor() || s_.hazirlik_oturumu > 0u);
+            a3_olay(10, 1, 2, 0, 0, j.bitir());
+        }
+        a3_boot_var_ = true;
+        a3_boot_onceki_ = kb.boot_count;
+    }
+}
+
+// Geçerlilik (A3-K70, K71; Tablo 4.8): bitler yalnız eklenir.
+void Calistirici::a3_gecerlilik(std::uint64_t b)
+{
+    const kopru::Sayaclar& c = k_->sayaclar();
+    const std::uint32_t bitler = a3b::gecerlilik_bitleri(c.calistirma_gecersiz, c.beklenmeyen_sifirlama,
+                                                         kume_.sayaclar().kuyruk_tasma);
+    const std::uint32_t yeni = bitler & ~a3_gecerlilik_;
+    if (yeni == 0u) {
+        return;
+    }
+    a3_gecerlilik_ |= bitler;
+    const std::uint32_t g = a3b::gecersiz_kilan(a_.kip == Kip::hil);
+    for (unsigned bit = 0; bit < 32u; ++bit) {
+        if (((yeni >> bit) & 1u) == 0u || ((g >> bit) & 1u) == 0u) {
+            continue;
+        }
+        a3_gecerli_ = false;
+        a3b::JsonYaz j;
+        j.metin("neden", a3b::neden_adi(bit)).sayi_u("ilk_adim", b);
+        a3_olay(2, 1, 0, 0, 0, j.bitir());
+    }
+    const std::uint32_t rt = yeni & g & 0x0FFFu;
+    if (rt != 0u && !a3_rt_kacirdi_) {
+        a3_rt_kacirdi_ = true;
+        unsigned ilk = 0;
+        while (((rt >> ilk) & 1u) == 0u) {
+            ++ilk;
+        }
+        a3b::JsonYaz j;
+        j.sayi_u("ilk_adim", b).metin("neden", a3b::neden_adi(ilk)).sayi_u("neden_biti", ilk);
+        a3_olay(3, 1, 0, 0, 0, j.bitir());
+    }
+    a3_durum_kirli_ = true;
+    a3_anlik_kirli_ = true;
+}
+
+// Etkin arızalar (senaryonun sensör ve itici arızaları; plan durumundan): ariza_degisti (A3-K86)
+// ve ariza/etkin. Tablolar A3 başlarken kuruldu; burada bellek ayrılmaz.
+void Calistirici::a3_ariza_izle(std::uint64_t b)
+{
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    bool degisti = false;
+    for (A3Ariza& a : a3_arizalar_) {
+        const PlanOlayi& o = plan_.olaylar[a.plan_i];
+        const PlanDurumu& d = pd_[a.plan_i];
+        const bool aktif = d.basladi && !d.reddedildi && (o.sure_ns <= 0 || t < d.baslangic_ns + o.sure_ns);
+        if (aktif == a.aktif) {
+            continue;
+        }
+        a.aktif = aktif;
+        degisti = true;
+        a3b::JsonYaz j;
+        j.metin("fault_id", o.kimlik).metin("islem", aktif ? "uygulandi" : "bitti").metin("kaynak", "senaryo")
+            .sayi_u("uygulama_adimi", aktif ? static_cast<std::uint64_t>(d.baslangic_ns / kH) : b);
+        a3_olay(6, 0, 3, 0, 0, j.bitir());
+    }
+    if (!degisti && b % kYavasSinir != 0u) {
+        return;
+    }
+    a3_ariza_yuk_.clear();
+    for (const A3Ariza& a : a3_arizalar_) {
+        if (!a.aktif) {
+            continue;
+        }
+        const PlanOlayi& o = plan_.olaylar[a.plan_i];
+        const PlanDurumu& d = pd_[a.plan_i];
+        a3::yuk_ariza_etkin_arizalar x;
+        x.fault_id = o.kimlik;
+        x.sinif = a.sinif;
+        x.hedef = a.hedef;
+        x.tur = a.tur;
+        x.kaynak = 0;
+        x.baslangic_adimi = static_cast<std::uint64_t>(d.baslangic_ns / kH);
+        x.bitis_adimi = o.sure_ns > 0 ? static_cast<std::uint64_t>((d.baslangic_ns + o.sure_ns + kH - 1) / kH) : kYok64;
+        a3_ariza_yuk_.push_back(x);
+    }
+    a3::yuk_ariza_etkin y;
+    y.arizalar = a3_ariza_yuk_;
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::ariza_etkin>(t, y); });
+}
+
+// Durum kanalları (10 Hz ve değişimde): calistirma/durum, sayac/gercek_zaman, emniyet/girdiler,
+// atis/durum, baglanti/durum.
+void Calistirici::a3_durum_yayinla(std::int64_t t)
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    a3_durum_kirli_ = false;
+    a3::yuk_calistirma_durum c;
+    c.durum = static_cast<std::uint8_t>(a3d_.durum);
+    c.kip = static_cast<std::uint8_t>(a_.kip == Kip::hil ? a3::ZamanKipi::hil_1x : a3::ZamanKipi::sil);
+    c.run_id = a3d_.run_var ? std::string_view(a3_run_id_) : std::string_view();
+    c.adim_no = a3_b_;
+    c.hedef_carpan = a_.kip == Kip::hil ? 1.0F : static_cast<float>(hiz_);
+    const std::int64_t duvar_simdi = gercek();
+    if (duvar_simdi - a3_carpan_ref_duvar_ >= 1'000'000'000) {
+        if (a3_carpan_ref_duvar_ > 0) {
+            a3_gerceklesen_ = static_cast<float>(static_cast<double>(t - a3_carpan_ref_sim_) /
+                                                 static_cast<double>(duvar_simdi - a3_carpan_ref_duvar_));
+        }
+        a3_carpan_ref_duvar_ = duvar_simdi;
+        a3_carpan_ref_sim_ = t;
+    }
+    c.gerceklesen_carpan = a3_gerceklesen_;
+    c.gecerli = a3_gecerli_ ? 1u : 0u;
+    c.gercek_zamani_kacirdi = a3_rt_kacirdi_ ? 1u : 0u;
+    c.gecerlilik_nedenleri = a3_gecerlilik_;
+    c.tekrar_guvencesi = 0;   // kayıt (A6) yok: güvence yok
+    c.kademe_gorunum = 0;
+    c.kademe_kamera = 0;
+    c.kademe_sonar = 0;
+    c.kademe_kayit = 0;
+    c.a1_oturum = k_ ? a1_oturum_kodu(k_->durum(), !tas_ && a_.kip == Kip::hil && a3b::canli(a3d_.durum)) : 255u;
+    c.son_komut_no = a3_son_komut_no_;   // dünyaya ulaşan en büyük komut numarası (okuma; rapor)
+    c.durum_rev = a3d_.durum_rev;
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::calistirma_durum>(t, c); });
+    if (!k_) {
+        return;
+    }
+    const kopru::Sayaclar& s = k_->sayaclar();
+    a3::yuk_sayac_gercek_zaman g;
+    g.parti_gonderilen = s.parti_gonderilen;
+    g.parti_kacirildi = s.parti_kacirildi;
+    g.parti_kacirildi_birlesik = s.parti_kacirildi_birlesik;
+    g.bariyer_bekleme = s.bariyer_bekleme;
+    g.tf_gec_yazim_ns = std::max<std::int64_t>(static_cast<std::int64_t>(s.tf_gec_yazim_ns_en_buyuk), s_.zaman.gec_yazim_en_cok_ns);
+    g.yanit_ret_yinelenen = s.yanit_ret_yinelenen;
+    g.yanit_ret_gec = s.yanit_ret_gec;
+    g.yanit_ret_oturum = s.yanit_ret_oturum;
+    g.yanit_iptal_esz = s.yanit_iptal_esz;
+    g.esz_guvenli_uygulanan = s.esz_guvenli_uygulanan;
+    g.komut_suresi_doldu = s.komut_suresi_doldu;
+    g.olay_alinan = s.olay_alinan;
+    g.olay_gec = s.olay_gec;
+    g.olay_eksik = s.olay_eksik;
+    for (std::size_t i = 0; i < 6; ++i) {
+        g.olay_sonuc[i] = s.olay_sonuc[i + 1u];
+    }
+    g.komut_birlestirildi = s.komut_birlestirildi;
+    g.komut_ertelendi = s.komut_ertelendi;
+    g.komut_sonucsuz = s.komut_sonucsuz;
+    g.pencere_tasma = s.pencere_tasma;
+    g.rx_crc_err = s.rx_crc_err;
+    g.rx_resync_bytes = s.rx_resync_bytes;
+    g.rx_unknown_msgid = s.rx_unknown_msgid;
+    g.rx_bad_len = s.rx_bad_len;
+    g.rx_wrong_sys = s.rx_wrong_sys;
+    g.rx_iflag = s.rx_iflag;
+    g.rx_mav1 = s.rx_mav1;
+    g.rx_seq_gap = s.rx_seq_gap;
+    g.oturum_kurulan = s.oturum_kurulan;
+    g.oturum_kopma = s.oturum_kopma;
+    g.beklenmeyen_sifirlama = s.beklenmeyen_sifirlama;
+    g.calistirma_gecersiz = (a3_gecerlilik_ & 0x0FFFu) != 0u ? 1u : 0u;
+    g.neden_bitleri = a3_gecerlilik_ & 0x0FFFu;
+    g.son_tarih_kacirildi = s.son_tarih_kacirildi;
+    g.sim_gecikmesi = std::max<std::uint64_t>(s.sim_gecikmesi, s_.zaman.sim_gecikmesi);
+    g.yanit_ret_eski_uretim = s.yanit_ret_eski_uretim;
+    g.olay_rev_ret = s.olay_rev_ret;
+    g.sonuc_kuyrugu_en_buyuk = s.sonuc_kuyrugu_en_buyuk;
+    g.kritik_erteleme = s.kritik_erteleme;
+    g.kritik_erteleme_en_buyuk = s.kritik_erteleme_en_buyuk;
+    g.cagri_cakismasi = s.cagri_cakismasi;
+    g.sonuc_talebi_atildi = s.sonuc_talebi_atildi;
+    g.emniyet_rev_doydu = s.emniyet_rev_doydu ? 1u : 0u;
+    const sensor::Sayaclar ks = kume_.sayaclar();
+    g.sensor_kuyruk_tasma = ks.kuyruk_tasma;
+    g.donma_onceki_cikti_yok = ks.donma_onceki_cikti_yok;
+    g.atama_celiskisi = s_.atama_celiskileri.size();
+    g.gevsetme_reddedildi = s.gevsetme_reddedildi;
+    g.komut_bayat_yetki = s.komut_bayat_yetki;
+    g.a3_halka_tasma = yay_->halka_tasma();
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sayac_gercek_zaman>(t, g); });
+
+    const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
+    const kopru::KartBilgisi& kb = k_->kart();
+    a3::yuk_emniyet_girdiler eg;
+    eg.acil_durdurma = e.acil_durdurma ? 1u : 0u;
+    eg.silahlandirma_fisi = {static_cast<std::uint8_t>(e.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(e.fis[1] ? 1u : 0u)};
+    eg.emniyet_pimi = {static_cast<std::uint8_t>(e.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(e.pim[1] ? 1u : 0u)};
+    eg.son_degisim_adimi = a3_son_degisim_adimi_;
+    eg.son_degisim_kaynagi = a3_son_degisim_kaynagi_;
+    if (kb.fc_var) {
+        // A3-K97: kartın etkin değerleri yalnız IDA_FC_STATUS.inhibit_mask'ten.
+        const std::uint32_t m = kb.fc_inhibit_mask;
+        eg.kart_acil_durdurma = static_cast<std::uint8_t>((m >> 4u) & 1u);
+        std::uint8_t fark = eg.kart_acil_durdurma != eg.acil_durdurma ? 1u : 0u;
+        for (std::size_t i = 0; i < 2; ++i) {
+            eg.kart_silahlandirma_fisi[i] = ((m >> (5u + i)) & 1u) != 0u ? 0u : 1u;
+            eg.kart_emniyet_pimi[i] = ((m >> (7u + i)) & 1u) != 0u ? 1u : 0u;
+            fark = static_cast<std::uint8_t>(fark | (eg.kart_silahlandirma_fisi[i] != eg.silahlandirma_fisi[i] ? (2u << i) : 0u) |
+                                             (eg.kart_emniyet_pimi[i] != eg.emniyet_pimi[i] ? (8u << i) : 0u));
+        }
+        eg.geri_okuma_farki = fark;
+    }
+    eg.emniyet_rev = e.emniyet_revizyonu;
+    eg.emniyet_rev_doydu = k_->emniyet_rev_doydu() ? 1u : 0u;
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::emniyet_girdiler>(t, eg); });
+
+    std::array<a3::yuk_atis_durum_tupler, 2> tupler{};
+    for (int i = 0; i < 2; ++i) {
+        auto& x = tupler[static_cast<std::size_t>(i)];
+        x.tup = static_cast<std::uint8_t>(i);
+        x.dolu = k_->tup_dolu(i) ? 1u : 0u;
+        x.sureli_izin_gecerli = k_->izin_acik(i) ? 1u : 0u;
+        const std::int64_t bitis = k_->izin_bitis_ns(i);
+        x.izin_kalan_ns = bitis >= 0 ? std::max<std::int64_t>(0, bitis - t) : -1;
+        x.son_olay_sonucu = a3_tup_son_olay_[static_cast<std::size_t>(i)];
+    }
+    a3::yuk_atis_durum ad;
+    if (kb.fc_var) {
+        ad.fc_durumu = kb.fc_state;
+        ad.engel_maskesi = kb.fc_inhibit_mask;
+        ad.kart_son_olay_kimligi = kb.fc_son_olay_kimligi;
+    }
+    ad.tupler = tupler;
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::atis_durum>(t, ad); });
+
+    a3::yuk_baglanti_durum bd;
+    bd.a1_oturum = c.a1_oturum;
+    bd.sess = k_->durum() == kopru::OturumDurumu::kosuyor ? k_->sess() : 0u;
+    bd.acilis_sayaci = kb.boot_count;
+    // d_asagi_ort_ns: bağlantı emülatörü yok → yok (INT64_MIN, varsayılan); emulator: boş.
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::baglanti_durum>(t, bd); });
+}
+
+// Sensör kanalları (beş panelin kullandığı: basınç, DVL, batarya): sınırda teslim edilen kayıtlar.
+void Calistirici::a3_sensor_yayinla()
+{
+    for (const sensor::Olcum& o : olcumler_) {
+        const std::int64_t t = o.hdr.t_meas_ns;   // zaman anlamı `olcum` (A3-K26)
+        if (const auto* b = std::get_if<sensor::BaroOlcumu>(&o.yuk)) {
+            a3::yuk_basinc y;
+            olcum_basligi(y, o.hdr);
+            y.basinc_pa = b->p_abs;
+            y.sicaklik_c = b->temp_c;
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sensor_basinc>(t, y); });
+        } else if (const auto* d = std::get_if<sensor::DvlOlcumu>(&o.yuk)) {
+            a3::yuk_dvl y;
+            olcum_basligi(y, o.hdr);
+            if ((d->dvl_flags & sensor::kDvlHizGecerli) != 0u) {
+                y.hiz_sensor_mps = d->vel;
+            }
+            if (d->altitude >= 0.0F) {
+                y.irtifa_m = d->altitude;
+            }
+            y.fom_mps = d->fom;
+            y.isin_gecerli = d->beam_valid;
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sensor_dvl>(t, y); });
+        } else if (const auto* p = std::get_if<sensor::BataryaOlcumu>(&o.yuk)) {
+            a3::yuk_batarya y;
+            olcum_basligi(y, o.hdr);
+            y.gerilim_v = p->voltage;
+            y.akim_a = p->current;
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::sensor_batarya>(t, y); });
+        }
+    }
+}
+
+// Yayın noktası (dünya iş parçacığı; fizik sınırındaki sıranın sonu).
+void Calistirici::a3_yayinla(std::uint64_t b)
+{
+    A3Hizmet hizmet(a3_sinir_ns_);
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    a3_olay_kararlari();
+    a3_yi_izle();
+    a3_oturum_izle();
+    a3_gecerlilik(b);
+    a3_sensor_yayinla();
+    if (b % kHizliSinir == 0u) {
+        const fizik::DurumAnlik& d = dn_.durum();
+        std::array<a3::yuk_fizik_durum_govdeler, 1> govde{};
+        govde[0].govde_id = 1;
+        govde[0].tur = 0;
+        const int dolu = (plan_.dolu[0] ? 1 : 0) + (plan_.dolu[1] ? 1 : 0);   // fiziğin kurulumdaki kütle durumu
+        govde[0].kutle_durumu = static_cast<std::uint8_t>(dolu == 2 ? 0 : dolu == 1 ? 1 : 2);
+        govde[0].p_n = {d.konum_n[0], d.konum_n[1], d.konum_n[2]};
+        govde[0].q_nb = {d.yonelim[0], d.yonelim[1], d.yonelim[2], d.yonelim[3]};
+        govde[0].nu = {d.dogrusal_hiz_b[0], d.dogrusal_hiz_b[1], d.dogrusal_hiz_b[2],
+                       d.acisal_hiz_b[0], d.acisal_hiz_b[1], d.acisal_hiz_b[2]};
+        {
+            // a_n = R(q) (ν̇₁:₃ + ω × v): O_b'nin NED eylemsiz ivmesi (04).
+            const auto& v = d.dogrusal_hiz_b;
+            const auto& w = d.acisal_hiz_b;
+            const double ax = d.dogrusal_ivme_b[0] + (w[1] * v[2] - w[2] * v[1]);
+            const double ay = d.dogrusal_ivme_b[1] + (w[2] * v[0] - w[0] * v[2]);
+            const double az = d.dogrusal_ivme_b[2] + (w[0] * v[1] - w[1] * v[0]);
+            const double qw = d.yonelim[0], qx = d.yonelim[1], qy = d.yonelim[2], qz = d.yonelim[3];
+            govde[0].a_n = {(1.0 - 2.0 * (qy * qy + qz * qz)) * ax + 2.0 * (qx * qy - qw * qz) * ay + 2.0 * (qx * qz + qw * qy) * az,
+                            2.0 * (qx * qy + qw * qz) * ax + (1.0 - 2.0 * (qx * qx + qz * qz)) * ay + 2.0 * (qy * qz - qw * qx) * az,
+                            2.0 * (qx * qz - qw * qy) * ax + 2.0 * (qy * qz + qw * qx) * ay + (1.0 - 2.0 * (qx * qx + qy * qy)) * az};
+        }
+        std::array<a3::yuk_fizik_durum_iticiler, 8> itici{};
+        const double notr = static_cast<double>(arac_.esc.pwm_notr_us);
+        for (std::size_t i = 0; i < itici.size(); ++i) {
+            const double p = d.pwm_us[i];
+            const double u = p >= notr ? (p - notr) / std::max(1.0, static_cast<double>(arac_.esc.pwm_max_us) - notr)
+                                       : (p - notr) / std::max(1.0, notr - static_cast<double>(arac_.esc.pwm_min_us));
+            itici[i].u = static_cast<float>(std::clamp(u, -1.0, 1.0));
+            itici[i].itki_n = static_cast<float>(d.itki[i]);
+            itici[i].akim_a = std::numeric_limits<float>::quiet_NaN();   // fizikte güç modeli yok
+        }
+        a3::yuk_fizik_durum f;
+        f.adim_no = b;
+        f.govdeler = govde;
+        f.iticiler = itici;
+        f.bara_gerilimi_v = static_cast<float>(arac_.batarya.v_sabit);   // ideal kaynak (A5 arac.batarya)
+        f.paket_akimi_a = std::numeric_limits<float>::quiet_NaN();
+        f.soc = std::numeric_limits<float>::quiet_NaN();
+        a3_olc([&] { (void)yay_->yayinla<a3::Kanal::fizik_durum>(t, f); });
+
+        const kopru::KartBilgisi& kb = k_->kart();
+        // Yalnız yeni bildirimde (son IDA_NAV ya da IDA_STATUS değişti).
+        const bool yeni = kb.nav.var != a3_nav_var_ || kb.nav.batch_seq != a3_nav_seq_ || kb.nav.t_ns != a3_nav_t_ ||
+                          kb.durum.batch_seq != a3_durum_seq_ || kb.durum.var != a3_durum_var_;
+        if ((kb.nav.var || kb.durum.var) && yeni) {
+            a3_nav_var_ = kb.nav.var;
+            a3_nav_seq_ = kb.nav.batch_seq;
+            a3_nav_t_ = kb.nav.t_ns;
+            a3_durum_seq_ = kb.durum.batch_seq;
+            a3_durum_var_ = kb.durum.var;
+            a3::yuk_kart_durum k;
+            k.kart_t_ns = kb.nav.var ? kb.nav.t_ns : 0;
+            k.acilis_sayaci = kb.boot_count;
+            if (kb.durum.var) {
+                k.kip = kb.durum.mode;
+                k.silahli = kb.durum.armed;
+                k.saglik = kb.durum.health;
+            } else {
+                k.silahli = 255u;
+            }
+            if (kb.nav.var) {
+                k.kestirim_gecerli = kb.nav.est_level == IDA_EST_OK || kb.nav.est_level == IDA_EST_DEGRADED ? 1u : 0u;
+                k.p_n = kb.nav.p_ned;
+                k.v_n = kb.nav.v_ned;
+                k.q_nb = kb.nav.q_nb;
+                k.derinlik_m = kb.nav.depth;
+            } else {
+                k.kestirim_gecerli = 255u;
+            }
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::kart_durum>(t, k); });
+        }
+        a3_ariza_izle(b);
+    }
+    if (b % kDurumSinir == 0u || a3_durum_kirli_) {
+        a3_durum_yayinla(t);
+    }
+    if (b % kYavasSinir == 0u) {
+        const kopru::KartBilgisi& kb = k_->kart();
+        if (kb.sayac.var) {
+            const kopru::KartSayaclari& c = kb.sayac;
+            a3::yuk_kart_cekirdek_sayaclari y;
+            y.acilis_sayaci = kb.boot_count;
+            y.sample_rejected = c.sample_rejected;
+            y.sample_future = c.sample_future;
+            y.sample_conflict = c.sample_conflict;
+            y.sample_dup_dropped = c.sample_dup_dropped;
+            y.narrow_from_rejected = c.narrow_from_rejected;
+            y.bg_bad_input = c.bg_bad_input;
+            y.imu_rejected = c.imu_rejected;
+            y.imu_gap = c.imu_gap;
+            y.bad_input = c.bad_input;
+            y.dup_seq = c.dup_seq;
+            y.old_seq = c.old_seq;
+            y.wall_backstep = c.wall_backstep;
+            y.cmd_rejected = c.cmd_rejected;
+            y.widen_blocked = c.widen_blocked;
+            y.evres_ignored = c.evres_ignored;
+            y.event_unknown = c.event_unknown;
+            y.det_rejected = c.det_rejected;
+            y.ping360_rejected = c.ping360_rejected;
+            y.bg_dropped = c.bg_dropped;
+            y.bg_slice_mismatch = c.bg_slice_mismatch;
+            y.log_dropped = c.log_dropped;
+            y.step_miss = c.step_miss;
+            y.saglik = kb.durum.var ? kb.durum.health : 0u;
+            a3_olc([&] { (void)yay_->yayinla<a3::Kanal::kart_cekirdek_sayaclari>(t, y); });
+        }
+    }
+    // A3-K72: kaçırılan partiler en çok saniyede bir özetlenir (duvar).
+    if (a3_kacirma_adet_ > 0u && gercek() - a3_kacirma_olay_duvar_ >= 1'000'000'000) {
+        a3b::JsonYaz j;
+        j.sayi_u("ilk_step_seq", a3_kacirma_ilk_).sayi_u("son_step_seq", a3_kacirma_son_).sayi_u("adet", a3_kacirma_adet_);
+        a3_olay(4, 1, 0, 0, 0, j.bitir());
+        a3_kacirma_adet_ = 0;
+        a3_kacirma_olay_duvar_ = gercek();
+    }
+    if (b % kDurumSinir == 0u || a3_anlik_kirli_) {
+        a3_anlik_guncelle();
+    }
+}
+
+// Koşu sonu: kalan komutlar reddedilir, son durum yayınlanır, sunucu düzgün durur (A3-K49).
+
+// W4-K27 (4): `hazirlaniyor`'da (A1 el sıkışması ve hazırlık oturumu beklemeleri) çalıştırma
+// denetimi işlenir; kabul edilen `durdur` çalıştırmayı `yuklendi`'ye döndürür ve hazırlık biter
+// (sonradan kendiliğinden başlamaz). Emniyet ve yer istasyonu istekleri birikir (kısıtlayanlar
+// yuvasında, ötekiler en çok kGenelAzami) ve ilk sınırda işlenir. Dönüş true: durduruldu.
+// `kanca` false: sınama kancası çağrılmaz (gecis_kilidi altındaki son çekiş; kanca `al` çağırır).
+bool Calistirici::a3_hazirlik_durdu(bool kanca)
+{
+    if (yay_ == nullptr || a3d_.durum != a3::CalistirmaDurumu::hazirlaniyor) {
+        return yay_ != nullptr && a3_durdur_;
+    }
+    if (kanca && a_.a3_sinir_kancasi) {
+        a_.a3_sinir_kancasi(0, *a3al_);
+    }
+    a3_cek(A3Alici::kButunYuvalar);
+    a3_calistirma_isle(0);
+    if (a3_durum_kirli_) {
+        a3_durum_yayinla(0);
+    }
+    return a3_durdur_;
+}
+
+// A3 kayıtlarını Sonuc'a çevirir (koşu sonunda; kapsam 4: senaryo olaylarıyla aynı biçim).
+void Calistirici::a3_kayitlari_aktar()
+{
+    for (const A3KomutKaydi& r : a3_komut_kaydi_) {
+        std::string ad = calistirma_adi(r.tur);
+        if (r.tur == a3::KomutTuru::yer_istasyonu_komut) {
+            ad += "/";
+            ad += r.yi_ad != nullptr ? r.yi_ad : "";
+        }
+        s_.olay_sonuclari.push_back({"a3/" + std::to_string(r.komut_no) + "/" + ad, r.uygulandi ? "uygulandi" : "reddedildi",
+                                     r.t_ns, r.kod != nullptr ? r.kod : "", "a3"});
+    }
+    a3_komut_kaydi_.clear();
+    for (const A3EmniyetKaydi& e : a3_emniyet_kaydi_) {
+        s_.emniyet_degisimleri.push_back({e.t_ns, e.alan, e.onceki, e.sonraki, e.operator_ ? "operator" : "senaryo",
+                                          e.komut_no, e.emniyet_rev});
+    }
+    a3_emniyet_kaydi_.clear();
+}
+
+// Koşu sonu: kalan istekler reddedilir, son durum yayınlanır, sunucu düzgün durur (A3-K49).
+void Calistirici::a3_bitir()
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    auto kalanlari_reddet = [this] {
+        a3_cek(0);
+        for (const A3Giris& g : a3_kisit_) {
+            a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
+        }
+        for (const A3Giris& g : a3_genel_) {
+            a3_sonuc(g, false, a3_b_, a3b::calistirma_mi(g.k.tur) ? "gecersiz_durum" : "canli_calistirma_yok");
+        }
+        a3_kisit_.clear();
+        a3_genel_.clear();
+    };
+    kalanlari_reddet();
+    if (k_) {
+        a3_kapaniyor_ = true;   // planlı kapanış (A1-K21): oturum değişiminin nedeni
+        a3_yi_izle();
+        a3_oturum_izle();
+    }
+    a3_durum_yayinla(static_cast<std::int64_t>(a3_b_) * kH);
+    a3_anlik_guncelle();
+    s_.a3_halka_tasma = yay_->halka_tasma();
+    if (a_.a3_kapanis_bekleme_s > 0.0) {
+        // Son çerçevelerin yayın tikinde (A3-K33, 20 ms) gönderilmesi için.
+        const auto son = Saat::now() + std::chrono::milliseconds(static_cast<std::int64_t>(a_.a3_kapanis_bekleme_s * 1000.0));
+        while (Saat::now() < son) {
+            kalanlari_reddet();
+            sure_uyu(5 * kMs);
+        }
+    }
+    a3sv_->durdur();
+    yay_ = nullptr;
+    a3_kayitlari_aktar();
+}
+
+Sonuc Calistirici::kos_ic()
 {
     // ---- Senaryo: A5 dosyası ya da yerleşik ----
     s_.kip = a_.kip;
@@ -1194,6 +3255,17 @@ Sonuc Calistirici::kos()
         return s_;
     }
 
+    // ---- A3 sunucusu (W4-bagla-a3): yalnız --a3-port verildiyse ----
+    if (a_.a3_acik) {
+        if (!a3_baslat()) {
+            return s_;
+        }
+        if (a_.a3_bekle && !a3_baslat_bekle()) {
+            return s_;
+        }
+        a3_run_id_ = a3b::run_id_uret();   // A3-K63: çalıştırmanın başladığı an
+    }
+
     // ---- Köprü ----
     kopru::KopruAyari ka;
     ka.kip = a_.kip == Kip::sil ? kopru::CalistirmaKipi::sil : kopru::CalistirmaKipi::hil_1x;
@@ -1207,6 +3279,9 @@ Sonuc Calistirici::kos()
         // yok: başlangıç duvar saatinden türetilmiş sıfırdan farklı değer.
         const auto z = static_cast<std::uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
         ka.run_id = static_cast<std::uint32_t>(z ^ (z >> 32U)) | 1u;
+        if (!a3_run_id_.empty()) {
+            ka.run_id = a3b::a1_run_id(a3_run_id_);   // A3-K63, A1-K126: metin kimliği varken
+        }
     }
     k_ = std::make_unique<kopru::Kopru>(ka);
     const std::string yh = k_->yapilandirma_hatasi();
@@ -1218,6 +3293,14 @@ Sonuc Calistirici::kos()
     if (!k_->emniyet_baslangic(plan_.acil_durdurma, plan_.fis, plan_.pim, plan_.dolu)) {
         s_.hata = "başlangıç emniyet durumu kurulamadı";
         return s_;
+    }
+    if (yay_ != nullptr) {
+        // A3-K62, K63: çalıştırma başladı (baslat ya da kendiliğinden); ön denetim A1 el sıkışmasıdır.
+        a3d_.run_var = true;
+        metin_kopyala(a3p_.run_id, a3_run_id_);
+        a3_emn_once_ = k_->dis_durum().emniyet;
+        a3_gecis(a3::CalistirmaDurumu::hazirlaniyor, a_.a3_bekle ? nullptr : "kendiliginden_baslatma", !a_.a3_bekle);
+        a3_anlik_guncelle();
     }
 
     // ---- Taşıma ve karşı taraf ----
@@ -1300,14 +3383,72 @@ Sonuc Calistirici::kos()
     }
     }
 
+    if (tas_ && a_.tasima_sarmalayici) {
+        tas_ = a_.tasima_sarmalayici(std::move(tas_));   // yalnız sınama
+    }
     if (a_.kip == Kip::hil) {
         zamanlayici_onceligi();   // HIL 1x: duvar saatine kilitli döngü
     }
     bas_ = Saat::now();
-    if (!oturum_kur()) {
+    // Sol 4. denetim #1 (EMNİYET): buradan sonraki her çıkışta (istisna dahil) ortak güvenli
+    // kapanış; olağan bitiş ve açık erken kapanış koruyucuyu işaretler.
+    KapanisKoruyucu koruyucu(*this);
+    bool kuruldu = oturum_kur();
+    if (kuruldu && yay_ != nullptr) {
+        // EMNİYET (W4-K28 (3); sol-2 #5): hazırlığın tamamlanması ile kabul edilmiş durdurmanın
+        // sahipliği birlikte çözülür. Üretici kilidi altında son çekiş: son el sıkışma pompası
+        // sırasında `hazirlaniyor` görüntüsüyle kabul edilen `durdur` burada (aynı revizyonla)
+        // işlenir ve kazanır; kilit bırakılmadan `kosuyor` görüntüsü yazılır, sonraki her istek
+        // yeni görüntüyle denetlenir. İç geçiş kabul edilmiş durdurmayı geçersizleştiremez.
+        std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
+        if (a3_hazirlik_durdu(false)) {
+            kuruldu = false;
+        } else {
+            a3_gecis(a3::CalistirmaDurumu::kosuyor, "on_denetim_gecti", true);
+            a3_anlik_guncelle();
+        }
+    }
+    if (!kuruldu) {
+        // EMNİYET (W4-K28 (3); sol-2 #6; w4-mac-ci sol 3. denetim #3, A1-K21): bütün erken
+        // bitişlerde (hazırlıkta durdurma, hazırlıkta süre sınırı ya da komut reddi, bağlantı
+        // beklemesinin iptali) oturum açıksa SESSION_CLOSE tamamen yazılır (mutlak süre sınırıyla)
+        // ve taşıma düzgün kapanır.
+        erken_kapanis();
+        koruyucu.yapildi();
         s_.sayac = k_->sayaclar();
         s_.kart = k_->kart();
+        if (yay_ != nullptr && a3_durdur_) {
+            // W4-K27 (4): hazırlanırken durdurma: çalıştırma `yuklendi`'de kalır, başlamaz.
+            if (a3_baslat_komutu_) {
+                a3_sonuc(*a3_baslat_komutu_, true, 0, nullptr);
+                a3_baslat_komutu_.reset();
+            }
+            s_.calistirma_sonu = "yuklendi";
+            s_.hata.clear();
+            a3_bitir();
+            s_.tamam = true;
+            return s_;
+        }
+        if (yay_ != nullptr) {
+            // A3-K62: ön denetim kaldı → yuklendi; `baslat` reddedildi (on_denetim_kaldi).
+            a3_gecis(a3::CalistirmaDurumu::yuklendi, "on_denetim_kaldi", true);
+            s_.calistirma_sonu = "yuklendi";   // W4-K27 (4): sonradan kendiliğinden başlamaz
+            if (a3_baslat_komutu_) {
+                a3_sonuc(*a3_baslat_komutu_, false, 0, "on_denetim_kaldi");
+                a3_baslat_komutu_.reset();
+            }
+            a3_bitir();
+        }
         return s_;
+    }
+    if (yay_ != nullptr) {
+        if (a3_baslat_komutu_) {
+            a3_sonuc(*a3_baslat_komutu_, true, 0, nullptr);
+            a3_baslat_komutu_.reset();
+        }
+        a3_oturum_izle();
+        a3_anlik_guncelle();
+        hiz_t0_duvar_ = Saat::now();
     }
     gunluk(2, "oturum kuruldu: sess " + std::to_string(k_->sess()));
     const kopru::Sayaclar rx_bas = k_->sayaclar();   // çalıştırma oturumunun başındaki çerçeve sayaçları
@@ -1328,6 +3469,11 @@ Sonuc Calistirici::kos()
 
     for (std::uint64_t b = 0; b <= n_sinir; ++b) {
         const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
+        // W4-bagla-a3: istek çekme ve çalıştırma denetimi sınırın başında. Duraklatma sınırın
+        // olağan işlemi bittikten sonra, fizik adımından önce kurulur (W4-K27 (1)).
+        if (yay_ != nullptr && !a3_sinir_basi(b)) {
+            break;
+        }
         if (a_.kip == Kip::sil) {
             sil_duvar_ = t_b;
             pompa(0);
@@ -1377,13 +3523,50 @@ Sonuc Calistirici::kos()
             satir_ekle(b, gon);
             evre_[kEvreSatir] += gercek() - e_s;
             if (a_.kip == Kip::sil) {
-                if (gon && !yuva_bekle(seq)) {
-                    break;
+                if (gon) {
+                    const Bekleme r = yuva_bekle(seq);
+                    if (r == Bekleme::hata || (r == Bekleme::oturum_bitti && !oturum_kur())) {
+                        break;
+                    }
                 }
                 satirlari_tamamla(gon ? 1u : 0u);   // W4-K14: önceki satır ACTUATOR(n)'den sonra
             }
         } else {
             yaz();
+        }
+        if (a_.kip == Kip::sil && k_->durum() != kopru::OturumDurumu::kosuyor) {
+            // A1-K121 (iv): SIL'de sim zamanı el sıkışmada ilerlemez. Oturum yuva beklemesi
+            // dışında (sim tarafında; ör. A1-K111) bittiyse yeni oturum fizik ilerlemeden kurulur.
+            gunluk(1, "oturum bitti (sınır " + std::to_string(b) + "); yeniden kuruluyor");
+            ++s_.yeniden_baglanti;
+            if (!oturum_kur()) {
+                break;
+            }
+        }
+        if (a_.kip == Kip::sil) {
+            // W4-K26 (1) (EMNİYET): bu sınırın yuva beklemesinde işlenen kısıtlayan çerçeveler
+            // (oturum sonu, eşzamansız güvenli çıktı) fizik bu sınırdan ilerlemeden yürürlüğe girer.
+            const kopru::KisitSonucu kisit = k_->sil_kisitlayan_uygula(b);
+            if (kisit.degisti) {
+                pwm_yur_ = kisit.pwm_us;
+                std::array<double, 8> girdi = kisit.pwm_us;
+                if (estop_bu_adim_) {
+                    girdi.fill(static_cast<double>(arac_.esc.pwm_notr_us));
+                }
+                (void)dn_.itici_komutu_ver(b, girdi);
+                gozlem_.pwm = girdi;
+            }
+        }
+        if (a_.sinir_kancasi) {
+            a_.sinir_kancasi(gozlem_);
+        }
+        if (yay_ != nullptr) {
+            // Yayın noktası: fizik sınırındaki sıranın sonu (A3 emniyet istekleri sinir_isle'den
+            // önce, köprü, sensörler, parti, yuva, SIL'in kısıtlayan erken uygulaması), fizik
+            // adımından hemen önce; durum b sınırınındır (CSV satırıyla aynı an). Sırayı değiştirmez.
+            a3_yayinla(b);
+            s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
+            // W4-K28 (1): duraklatma bu dilimde yoktur; sınırdan sonra her zaman fizik adımı gelir.
         }
         const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {
@@ -1395,6 +3578,27 @@ Sonuc Calistirici::kos()
             evre_[kEvreFizik] += gercek() - e_f;
             profil_.push_back(evre_);
         }
+    }
+    if (yay_ != nullptr) {
+        // EMNİYET (W4-K28 sol-3 #1): koşunun son sınırından sonra kabul edilmiş bir `durdur`,
+        // `bitti` iç geçişiyle bayatlamaz: üretici kilidi altında son çekiş (kısıtlayan yuvalar
+        // a3_bitir'de), durdurma kazanır; kilit bırakılmadan son görüntü yazılır.
+        std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
+        if (!a3_durdur_ && s_.hata.empty()) {
+            a3_cek(A3Alici::kButunYuvalar);
+            a3_calistirma_isle(a3_b_);
+        }
+        // Tablo 4.7a iç geçişleri: süre doldu → bitti; çalıştırmayı durduran hata → hata
+        // (durdur komutu durumu zaten `durduruldu` yaptı).
+        if (!a3_durdur_) {
+            a3_gecis(s_.hata.empty() ? a3::CalistirmaDurumu::bitti : a3::CalistirmaDurumu::hata,
+                     s_.hata.empty() ? "sure_doldu" : "calistirma_hatasi", true);
+        }
+        a3_anlik_guncelle();
+        kilit.unlock();
+        s_.calistirma_sonu = a3d_.durum == a3::CalistirmaDurumu::bitti        ? "bitti"
+                             : a3d_.durum == a3::CalistirmaDurumu::durduruldu ? "durduruldu"
+                                                                               : "hata";
     }
     // Hiç başlamayan olaylar (A5 §3.15 olay sonucu: uygulanmadi; t = çalıştırma sonu).
     for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
@@ -1413,17 +3617,23 @@ Sonuc Calistirici::kos()
     // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
     const kopru::Sayaclar rx_son = k_->sayaclar();
     k_->oturum_kapat(kCloseShutdown, duvar());
-    yaz();
+    kapanis_daraltmasi();   // sol 4. denetim #3: izinler kapalı, fizik girdisi nötr (son satır değişmez)
+    (void)cikisi_bitir(gercek() + kKapanisYazimNs);   // W4-K28 (3): SESSION_CLOSE tamamen yazılır
     pompa(0);
     if (tas_) {
-        tas_->kapat();
+        // W4-K25 (5): düzgün kapanış; SIL'de alım kuyruğu artık işlenmez, atılan baytlar da.
+        tas_->kapat_duzgun(kKapanisBosaltmaUs);
     }
+    koruyucu.yapildi();
     dur_ = true;
     if (karsi_is_.joinable()) {
         karsi_is_.join();
     }
     if (surec_) {
         surec_->sonlandir();
+    }
+    if (yay_ != nullptr) {
+        a3_bitir();
     }
 
     // ---- Sonuç ----
@@ -1510,6 +3720,8 @@ const char* csv_basligi()
            "kip,armed,fs_level,fs_reasons,est_level,thr_valid,is_safe,yanit_var,core_rc,estop,sess,"
            "parti_kacirildi,calistirma_gecersiz,yanit_sure_us,fc_state,fc_inhibit,sim_izin\n";
 }
+
+int a3_ayirma_sayilir() noexcept { return g_a3_sayim; }
 
 Sonuc kos(const Ayar& ayar)
 {

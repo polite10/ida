@@ -151,7 +151,7 @@ void Kopru::Ic::oturum_bitti(bool planli, bool yeniden)
     yuvalar.clear();
     adim_yuva.clear();
     esz_bekleyen.clear();
-    esz_muaf.clear();
+    esz_bekleyen_muaf = false;
     ilk_yanit_alindi = false;
     kume.temizle();
     olay_bekleyen.clear();
@@ -572,6 +572,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         kart.nav.est_level = m.est_level;
         for (std::size_t i = 0; i < 3; ++i) {
             kart.nav.p_ned[i] = m.p_ned[i];
+            kart.nav.v_ned[i] = m.v_ned[i];
         }
         for (std::size_t i = 0; i < 4; ++i) {
             kart.nav.q_nb[i] = m.q_nb[i];
@@ -593,6 +594,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         kart.fc_state = m.state;
         kart.fc_inhibit_mask = m.inhibit_mask;
         kart.fc_son_olay_sonucu = m.last_event_result;
+        kart.fc_son_olay_kimligi = m.last_event_id;
         gecerli(false);
         return;
     }
@@ -638,6 +640,13 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         s.evres_ignored = m.evres_ignored;
         s.event_unknown = m.event_unknown;
         s.step_miss = m.step_miss;
+        s.bg_bad_input = m.bg_bad_input;
+        s.wall_backstep = m.wall_backstep;
+        s.det_rejected = m.det_rejected;
+        s.ping360_rejected = m.ping360_rejected;
+        s.bg_dropped = m.bg_dropped;
+        s.bg_slice_mismatch = m.bg_slice_mismatch;
+        s.log_dropped = m.log_dropped;
         gecerli(false);
         return;
     }
@@ -681,6 +690,7 @@ bool Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
     s.reason = m.reason;
     s.kind = m.kind;
     s.value_bits = m.value_bits;
+    s.param_type = m.param_type;
     s.save_crc = m.save_crc;
     s.t_ns = tf_var ? tf_zamani(son_seq) : 0;
     sonuclar[m.cmd_id] = s;
@@ -726,20 +736,31 @@ void Kopru::el_sikisma_baslat(std::int64_t duvar_ns)
 
 void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
 {
+    (void)al(p, n, duvar_ns, std::function<bool()>{});
+}
+
+std::size_t Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns, const std::function<bool()>& dur)
+{
     Ic& i = *ic_;
     i.duvar = duvar_ns;
+    std::size_t tuketilen = 0;
     while (n > 0) {
         std::size_t tuk = 0;
         ida_link_cerceve_t fr;
         const ida_link_rc_t rc = ida_link_al(&i.alici, p, n, &tuk, &fr);
         p += tuk;
         n -= tuk;
+        tuketilen += tuk;
         if (rc == IDA_LINK_CERCEVE) {
             while (i.sira_boslugu_t.size() < i.alici.sayac.rx_seq_gap && i.sira_boslugu_t.size() < 1024u) {
                 i.sira_boslugu_t.push_back(i.sinir_var ? static_cast<std::int64_t>(i.son_sinir) * kH : 0);
             }
             i.cerceve_al(fr);
+            if (dur && dur()) {
+                break;
+            }
         } else {
+            tuketilen += n;   // BEKLE: hepsi tüketildi; hata dönüşünde kalan (eskisi gibi) atılır
             break;
         }
     }
@@ -753,6 +774,7 @@ void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
     i.say.rx_mav1 = s.rx_mav1;
     i.say.rx_seq_gap = s.rx_seq_gap;
     i.say.rx_frames = s.rx_frames;
+    return tuketilen;
 }
 
 void Kopru::zamanla(std::int64_t duvar_ns)
@@ -835,6 +857,21 @@ void Kopru::sil_gozetimi_doldu(std::int64_t duvar_ns)
     i.duvar = duvar_ns;
     i.giden.clear();
     i.oturum_bitti(false, false);
+}
+
+void Kopru::protokol_hatasi(std::int64_t duvar_ns)
+{
+    Ic& i = *ic_;
+    i.duvar = duvar_ns;
+    if (i.durum != OturumDurumu::kosuyor && i.durum != OturumDurumu::hazir) {
+        return;
+    }
+    mavlink_ida_session_close_t kapanis{};
+    kapanis.sess = i.sess_;
+    kapanis.reason = static_cast<std::uint8_t>(IDAW_CLOSE_REASON_PROTOCOL);
+    i.giden.clear();
+    i.cerceve(MAVLINK_MSG_ID_IDA_SESSION_CLOSE, &kapanis, sizeof kapanis);
+    i.oturum_bitti(false, true);
 }
 
 void Kopru::kip_ayarla(CalistirmaKipi kip)

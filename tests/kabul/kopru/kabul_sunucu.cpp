@@ -240,6 +240,40 @@ void ozet(const SunucuKosusu& k) {
                 static_cast<unsigned long long>(s.parti_kacirildi),
                 static_cast<unsigned long long>(s.batch_incomplete),
                 static_cast<unsigned long long>(s.rx_crc_err));
+    std::printf("oturum_kopma=%llu beklenmeyen_sifirlama=%llu sil_tampon_tasma=%llu "
+                "sil_tampon_en_cok=%llu gecersiz=0x%x tcp_baglanti=%llu kart_kapanis_nedeni=%u "
+                "kart_sim_hello=%llu\n",
+                static_cast<unsigned long long>(s.oturum_kopma),
+                static_cast<unsigned long long>(s.beklenmeyen_sifirlama),
+                static_cast<unsigned long long>(s.sil_tampon_tasma),
+                static_cast<unsigned long long>(s.sil_tampon_en_cok), s.calistirma_gecersiz,
+                static_cast<unsigned long long>(k.baglanti), k.kart.son_kapanis_nedeni,
+                static_cast<unsigned long long>(k.kart.sim_hello_sayisi));
+    for (const auto& [t, neden] : k.kart.kapanislar) {
+        std::printf("  SESSION_CLOSE (sim → kart): son TF %lld ms, neden %u\n",
+                    static_cast<long long>(t / kMs), neden);
+    }
+    // Oturum başına partiler (kartın gördüğü): ilk ve son TF zamanı.
+    std::uint16_t sess = 0;
+    std::size_t n = 0;
+    std::int64_t t_ilk = 0, t_son = 0;
+    const auto yaz = [&] {
+        if (n != 0) {
+            std::printf("  oturum %u: %zu parti, t %lld … %lld ms\n", sess, n,
+                        static_cast<long long>(t_ilk / kMs), static_cast<long long>(t_son / kMs));
+        }
+    };
+    for (const auto& p : k.kart.partiler) {
+        if (p.tf.sess != sess || n == 0) {
+            yaz();
+            sess = p.tf.sess;
+            n = 0;
+            t_ilk = p.tf.t;
+        }
+        ++n;
+        t_son = p.tf.t;
+    }
+    yaz();
 }
 
 ida::sunucu::Ayar bos_senaryo(double sure, double acil, double kalk) {

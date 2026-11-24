@@ -1,7 +1,9 @@
 // Taşıma sınamaları: bellek, TCP (A1-K97) ve sözde uçbirimle seri port yolu (A1-K01).
 #include "test_destek.hpp"
+#include "zamanlama_olcutu.hpp"   // W4-K24
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -92,6 +94,57 @@ int test_tcp_tasima()
     return d.hata;
 }
 
+// W4-K26 (3): düzgün kapanışın süre sınırı mutlak son tarihtir; karşı uç durmadan veri gönderse
+// de (okuma hiç beklemeye düşmese de) kapat_duzgun sınırda döner. W4-K26 (2): FIN'den sonra
+// yazma hatası okunmamış veriyi yok etmez.
+int test_tcp_kapat_duzgun_sinirli()
+{
+    Denetci d;
+    std::string hata;
+    auto din = tcp_dinle(0, hata);
+    DOGRULA(d, din != nullptr, "dinleyici: " + hata);
+    if (!din) {
+        return d.hata;
+    }
+    std::unique_ptr<Tasima> istemci;
+    std::thread baglan([&] {
+        std::string h2;
+        istemci = tcp_baglan(din->port(), h2);
+    });
+    auto sunucu = din->kabul(2'000'000, hata);
+    baglan.join();
+    DOGRULA(d, sunucu != nullptr && istemci != nullptr, "bağlantı kuruldu");
+    if (!sunucu || !istemci) {
+        return d.hata;
+    }
+    std::atomic<bool> dur{false};
+    std::atomic<std::uint64_t> gonderilen{0};
+    std::thread sel([&] {
+        std::vector<std::uint8_t> v(65536, 0x5A);
+        while (!dur.load()) {
+            const long long k = istemci->yaz_biraz(v.data(), v.size());
+            if (k < 0) {
+                break;
+            }
+            gonderilen += static_cast<std::uint64_t>(k);
+        }
+    });
+    // Sel başlasın: sunucunun alım tamponu dolu olsun.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const auto t0 = std::chrono::steady_clock::now();
+    sunucu->kapat_duzgun(100'000);   // sınır 100 ms
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    dur = true;
+    sel.join();
+    // İşlevsel ölçüt: kapanış döndü (asılmadı) ve uç kapandı.
+    DOGRULA(d, !sunucu->acik(), "sürekli veri gönderen karşı uçla kapat_duzgun döndü ve uç kapandı (" +
+                                    std::to_string(gonderilen.load()) + " B gönderildi)");
+    // ZAMANLAMA (W4-K24): üst sınır duvar saatine bağlı.
+    DOGRULA(d, ida::test::zamanlama(ms < 100 + 400, "kapat_duzgun.sinir", std::to_string(ms) + " ms (sınır 100 + pay 400)"),
+            "kapat_duzgun süre sınırında döndü (zamanlama)");
+    return d.hata;
+}
+
 int test_pty_tasima()
 {
     Denetci d;
@@ -178,12 +231,16 @@ int test_yazma_sinirli()
     const bool ok = sunucu->yaz(v.data(), v.size(), 300'000);
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
     DOGRULA(d, !ok, "okumayan karşı uca yazım başarısız döndü");
-    DOGRULA(d, ms < 2000, "sınırlı sürede (" + std::to_string(ms) + " ms; sınır 300 ms + bir dilim)");
+    // ZAMANLAMA (W4-K24): üst sınır duvar saatine bağlı; başarısızlık işlevseldir (yukarıda).
+    DOGRULA(d, ida::test::zamanlama(ms < 2000, "yazma_sinirli.tcp_sure", std::to_string(ms) + " ms (< 2000)"),
+            "sınırlı sürede (zamanlama)");
     // Tampon doluyken yaz_biraz beklemeden 0 döner.
     const auto t1 = std::chrono::steady_clock::now();
     const long long k = sunucu->yaz_biraz(v.data(), 4096);
     const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t1).count();
-    DOGRULA(d, k == 0 && us < 50'000, "dolu tamponda yaz_biraz 0 ve beklemesiz (" + std::to_string(us) + " µs)");
+    DOGRULA(d, k == 0, "dolu tamponda yaz_biraz 0 (" + std::to_string(k) + ")");
+    DOGRULA(d, ida::test::zamanlama(us < 50'000, "yazma_sinirli.yaz_biraz_beklemesiz", std::to_string(us) + " µs (< 50 000)"),
+            "yaz_biraz beklemesiz (zamanlama)");
 
     // Platformdan bağımsız kısım (Windows CI'da düşen eski vaka): sahte uç, her çağrıda en çok
     // 3 bayt yazar; her ikinci çağrıda ilerlemez; `durgun_sonra` çağrıdan sonra hiç ilerlemez.
@@ -238,7 +295,9 @@ int test_yazma_sinirli()
     const auto ms2 = ms_gecen(t2);
     std::printf("  tanı (2): sonuç %d, yazılan %zu, alınan %zu, çağrı %d (ilerlemesiz %d), %lld ms (sınır 200)\n",
                 ok2 ? 1 : 0, yazilan, ks2.al.size(), ks2.sayac, ks2.sifir, static_cast<long long>(ms2));
-    DOGRULA(d, !ok2 && ms2 >= 200 && ms2 < 1500, "durgun uca yazım süre sınırında başarısız döndü");
+    DOGRULA(d, !ok2 && ms2 >= 200, "durgun uca yazım süre sınırından önce dönmedi ve başarısız döndü");
+    DOGRULA(d, ida::test::zamanlama(ms2 < 1500, "yazma_sinirli.durgun_sure", std::to_string(ms2) + " ms (< 1500)"),
+            "durgun uca yazım süre sınırından kısa sürede döndü (zamanlama)");
     DOGRULA(d, yazilan == 30u && ks2.al.size() == 30u && std::equal(ks2.al.begin(), ks2.al.end(), w.begin()),
             "yazılan önek bildirildi; veri bozulmadı ve yinelenmedi");
     ks2.durgun_sonra = -1;
@@ -281,6 +340,99 @@ int test_aygit_kalkti()
     }
     DOGRULA(d, r == OkumaSonucu::kapandi, "aygıtın kalkması okumada görüldü");
     DOGRULA(d, !seri->acik(), "uç kapatıldı");
+#endif
+    return d.hata;
+}
+
+// W4-K28 sol-3 #3 (EMNİYET): seri portta uygulama tamponunun boşalması telin boşalması sayılmaz.
+// cikis_bosalt, yaz_biraz'ın kabul ettiği baytlar karşı uca geçene dek bekler (sözde uçbirimde:
+// ana uç okuyana dek); karşı uç okumuyorsa sınırlı sürede false döner. Denetim karşı ucun aldığı
+// baytlarla yapılır (yalnız yaz_biraz dönüşleriyle değil).
+int test_seri_cikis_bosalt()
+{
+    Denetci d;
+#if defined(_WIN32)
+    std::printf("  atlandı: sözde uçbirim Windows'ta yok\n");
+#else
+    std::string hata;
+    SozdeUcbirim su = sozde_ucbirim_ac(hata);
+    DOGRULA(d, su.ana != nullptr, "sözde uçbirim " + hata);
+    if (!su.ana) {
+        return d.hata;
+    }
+    SeriAyar sa;
+    sa.hiz_zorunlu = false;
+    auto seri = seri_ac(su.yol, sa, hata);
+    DOGRULA(d, seri != nullptr, "seri_ac " + hata);
+    if (!seri) {
+        return d.hata;
+    }
+    std::vector<std::uint8_t> v(2000);
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        v[i] = static_cast<std::uint8_t>((i * 37u + 11u) & 0xFFu);
+    }
+    auto hepsini_kabul_ettir = [&](const std::vector<std::uint8_t>& x) {
+        std::size_t k = 0;
+        for (int j = 0; j < 2000 && k < x.size(); ++j) {
+            const long long y = seri->yaz_biraz(x.data() + k, x.size() - k);
+            if (y < 0) {
+                break;
+            }
+            k += static_cast<std::size_t>(y);
+            if (y == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+        return k;
+    };
+    // (a) Karşı uç okumuyor: kuyruk boşalmaz; sınırlı sürede false.
+    const std::size_t k1 = hepsini_kabul_ettir(v);
+    DOGRULA(d, k1 > 0u, "ön koşul: baytlar uygulama tamponundan çıktı (" + std::to_string(k1) + " B)");
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool b1 = seri->cikis_bosalt(200'000);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    DOGRULA(d, !b1, "okumayan karşı uçta gönderim kuyruğu boşalmadı: false (eksik kapanış)");
+    DOGRULA(d, ida::test::zamanlama(ms < 200 + 300, "cikis_bosalt.sinir", std::to_string(ms) + " ms (sınır 200 + pay 300)"),
+            "cikis_bosalt süre sınırında döndü (zamanlama)");
+    // Bekleyenleri karşı uçta al (temizle).
+    std::vector<std::uint8_t> al;
+    std::uint8_t t[4096];
+    for (int j = 0; j < 100 && al.size() < k1; ++j) {
+        std::size_t n = 0;
+        if (su.ana->oku(t, sizeof t, 10'000, n) == OkumaSonucu::tamam) {
+            al.insert(al.end(), t, t + n);
+        }
+    }
+    DOGRULA(d, al.size() == k1 && std::equal(al.begin(), al.end(), v.begin()), "bekleyenler karşı uca bozulmadan geçti");
+    // (b) Karşı uç geç ve yavaş okuyor: cikis_bosalt true döndüğünde karşı uç bütün baytları almış.
+    std::atomic<std::size_t> alinan{0};
+    std::atomic<bool> dur{false};
+    std::vector<std::uint8_t> al2;
+    std::thread okuyucu([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        while (!dur.load()) {
+            std::uint8_t u[64];
+            std::size_t n = 0;
+            if (su.ana->oku(u, sizeof u, 2'000, n) == OkumaSonucu::tamam) {
+                al2.insert(al2.end(), u, u + n);
+                alinan = al2.size();
+            }
+        }
+    });
+    const std::size_t k2 = hepsini_kabul_ettir(v);
+    const bool b2 = seri->cikis_bosalt(2'000'000);
+    const std::size_t o_an = alinan.load();
+    for (int j = 0; j < 100 && alinan.load() < k2; ++j) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));   // son okumanın sayaca yazılması
+    }
+    dur = true;
+    okuyucu.join();
+    DOGRULA(d, b2 && k2 == v.size(), "okuyan karşı uçta kuyruk boşaldı: true (" + std::to_string(k2) + " B)");
+    DOGRULA(d, al2 == v, "karşı uç bütün çerçeveyi aldı (" + std::to_string(al2.size()) + " B; dönüş anında sayılan " +
+                             std::to_string(o_an) + ")");
+    // Bellek taşımasının gönderim kuyruğu yok: true.
+    auto [x, y] = bellek_cifti();
+    DOGRULA(d, x->cikis_bosalt(0), "bellek taşıması: kuyruk yok (true)");
 #endif
     return d.hata;
 }

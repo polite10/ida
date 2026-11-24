@@ -1999,8 +1999,10 @@ struct Cekirdek::Ic {
     {
         k.komut_no = no;
         if (k.kisitlayan) {
-            // EMNİYET — W4-K22 (a): hiçbir sınır yüzünden reddedilmez.
-            if (dolu_mandal() > 0) {
+            // EMNİYET — W4-K22 (a): hiçbir sınır yüzünden reddedilmez. W4-K28 E: mandallar etki
+            // başına bağımsızdır; yalnız aynı etkinin mandalı doluysa (sıra korunsun diye) mandala
+            // girer, başka bir etkinin dolu mandalı arkasında beklemez (ör. DISARM → DISARM → acil bas).
+            if (mandal_dolu(k)) {
                 mandala_koy(k);
                 return kuyrukta(no);
             }
@@ -2224,6 +2226,12 @@ struct Cekirdek::Ic {
                (k.tup == 1 ? "1" : "0");
     }
 
+    bool mandal_dolu(const Komut& k) const
+    {
+        const auto it = mandallar.find(etki_anahtari(k));
+        return it != mandallar.end() && it->second.dolu;
+    }
+
     std::size_t dolu_mandal() const
     {
         std::size_t n = 0;
@@ -2261,11 +2269,17 @@ struct Cekirdek::Ic {
 
     void bekleyenleri_isle()
     {
+        // W4-K28 E: mandallar komut numarası sırasıyla denenir; alıcısı (yuvası) dolu olan etki
+        // atlanır, öteki etkilerin mandalları onun arkasında beklemez.
+        std::vector<const Mandal*> dolu_atlanan;
         for (;;) {
             Mandal* sonraki = nullptr;
             for (auto& [a, m] : mandallar) {
                 (void)a;
-                if (m.dolu && (sonraki == nullptr || m.k.komut_no < sonraki->k.komut_no)) {
+                if (!m.dolu || std::find(dolu_atlanan.begin(), dolu_atlanan.end(), &m) != dolu_atlanan.end()) {
+                    continue;
+                }
+                if (sonraki == nullptr || m.k.komut_no < sonraki->k.komut_no) {
                     sonraki = &m;
                 }
             }
@@ -2274,7 +2288,8 @@ struct Cekirdek::Ic {
             }
             const AlimSonucu a = alici.al(sonraki->k);
             if (a.tur == AlimSonucu::Tur::dolu) {
-                break;
+                dolu_atlanan.push_back(sonraki);
+                continue;
             }
             const std::uint32_t no = sonraki->k.komut_no;
             std::deque<std::uint32_t> birlesen = std::move(sonraki->birlesen);
