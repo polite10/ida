@@ -78,10 +78,11 @@ static void test_ilk_degerler_kisitlayan(void)
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_MODE) != 0u);
     TEST_ASSERT_TRUE((OUT.fc.inhibit_mask & IDA_FCI_DET_STALE) != 0u);
     TEST_ASSERT_FALSE(OUT.health.narrowed);
-    /* Gevşeten örnek W2'de etkin değeri gevşetmez (gevşetme W4'ün). */
+    /* Kabul edilen gevşeten inst = 0 örneği etkin değerleri gevşetir (A4-K116; gevşetme
+       W5-atis-emniyet'te atis/atis_emniyet.c'dedir; W2'de burada "gevşetmez" sınanıyordu). */
     emniyet_ornegi(0u, 1u);
     TEST_ASSERT_EQUAL(IDA_RC_OK, step());
-    TEST_ASSERT_EQUAL_HEX32(emn, OUT.fc.inhibit_mask & emn);
+    TEST_ASSERT_EQUAL_HEX32(0u, OUT.fc.inhibit_mask & emn);
     TEST_ASSERT_EQUAL_UINT32(0u, OUT.status.cnt.sample_rejected);
 }
 

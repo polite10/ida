@@ -1,5 +1,26 @@
 /*
- * atis_param.def — atış kontrol parametreleri. Sahibi: W4 atış kontrol işi. Kimlik bloğu
- * 0x06xx. Bu sürümde boştur (FC_APPLY_BY_NS, FC_HOLD_NS ve T_det_stale A4'ün adlandırdığı
- * değerler olarak cerceve/cerceve_param.def'tedir); satır biçimi o dosyanın başındadır.
+ * atis_param.def — atış kontrol emniyet zinciri parametreleri. Sahibi: W5-atis-emniyet.
+ * Kimlik bloğu 0x06xx. Satır biçimi cerceve/cerceve_param.def başındadır. FC_APPLY_BY_NS,
+ * FC_HOLD_NS ve T_det_stale A4'ün adlandırdığı değerler olarak cerceve/cerceve_param.def'tedir.
+ *
+ * Hepsi B sınıfıdır: yalnız silahsızken değişir, silahlıyken PARAM_SET ve bunlardan birini
+ * taşıyan PARAM_COMMIT REJECTED / ARMED alır (W5-K6; A4-K81; G-Ç28). Süreler duvar saatinde ms
+ * (IDA_PT_U32; ns'ye int64_t'de çevrilir, zaman/zaman.h ida_ms_ns).
+ *
+ * BÜTÜN VARSAYILANLAR TAHMİNDİR, ÖLÇÜLMEDİ:
+ *   T_emn_bayat 250 ms: W5-K4'ün 2026-11-24 düzeltmesi (sim'in değişim yokken yeniden gönderim
+ *     aralığı T_emniyet = 100 ms'nin 2,5 katı; A1-K56, A1 §3.9); kartta Z2 koşularındaki en
+ *     uzun emniyet örneği aralığı ölçülerek doğrulanacak, ölçüm çıkmadan kesinleşmiş sayılmaz.
+ *     Alt sınır 150 ms: T_emniyet'e eşit ya da yakın bir değer olağan teslim titremesinde
+ *     yanlış tetikler (03 §2.6.1 md. 7 gözlemi); uygulayıcının seçimi.
+ *   T_pencere 300 ms, T_hb_fc 1000 ms: 03 §2.6 durum tablosunun değerleri (tahmin). Aralıklar
+ *     uygulayıcının seçimidir.
+ *
+ * ASSESS süresi (1 s) ve tüp boşaldı geri okumasının süresi (500 ms) parametre değil, derlemede
+ * sabittir (atis/atis.h IDA_FC_T_ASSESS_MS, IDA_FC_T_TUP_BOS_MS; tahmin): hiçbir koşulda
+ * değişmez. Gerekçe: parametre sayısı 162'yi aşınca butunleme.sil_oturum_dusme_belirlenim'in
+ * hazırlık oturumu ilk ihlal noktasından önce bitmiyor (W5-atis-emniyet raporu).
  */
+IDA_PARAM(0x0601u, T_emn_bayat, U32, B, 150u, 2000u,  250u,  fc_emn_bayat_ms) /* W5-K4; G-Ç29 */
+IDA_PARAM(0x0602u, T_pencere,   U32, B, 100u, 2000u,  300u,  fc_pencere_ms)   /* W5-K3; G-Ç48 */
+IDA_PARAM(0x0603u, T_hb_fc,     U32, B, 200u, 10000u, 1000u, fc_hb_ms)        /* A4-K52; G-Ç25 */
