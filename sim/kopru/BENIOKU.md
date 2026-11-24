@@ -5,7 +5,7 @@ Sim sunucusunun kartla (ve kartsız koşucuyla) konuşan yarısı (görev: `docs
 | Dosya | İçerik |
 |---|---|
 | `include/ida/kopru/kopru.hpp` | `Kopru`: sim rolünde oturum (A1 §4.2), parti (§4.3, §4.4), yanıtların ve olayların doğrulanması (A1-K109, Tablo 4.6) ve uygulanması (A1-K72–K78, K81–K89, K106, K111, K118), fizik sınırındaki emniyet sırası (A1-K85), operatör komutları (§4.5) |
-| `include/ida/kopru/tasima.hpp` | Taşıma: bellek çifti, TCP (SIL; yalnız 127.0.0.1, `TCP_NODELAY`; `kapat_duzgun`: yazma yönünü kapatır, karşı taraf kapatana ya da süre sınırına dek gelen baytları okuyup atar, sonra kapatır, W4-K25 (5)), seri port (HIL; 3 000 000 baud 8N1, ham kip; macOS IOSSIOSPEED, Windows DCB), sözde uçbirim çifti (POSIX; kartsız HIL sınaması) |
+| `include/ida/kopru/tasima.hpp` | Taşıma: bellek çifti, TCP (SIL; yalnız 127.0.0.1, `TCP_NODELAY`; `kapat_duzgun`: yazma yönünü kapatır, karşı taraf kapatana ya da süre sınırına dek gelen baytları okuyup atar, sonra kapatır, W4-K25 (5)), seri port (HIL; 3 000 000 baud 8N1, ham kip; macOS IOSSIOSPEED, Windows DCB; `cikis_bosalt`: işletim sisteminin gönderim kuyruğu son tarihe dek yoklanır, POSIX `TIOCOUTQ`, Windows `ClearCommError` `cbOutQue`; `kapat_duzgun` önce bunu yapar, W4-K28 sol-3 #3: kapanışın ek güvencesi, kart kapanışı almasa da kendi gözetimiyle güvenli duruma geçer), sözde uçbirim çifti (POSIX; kartsız HIL sınaması) |
 | `include/ida/kopru/param_blogu.hpp` | A5'ten kurulan parametre bloğu (A4 §3.10) ve CRC'si (A1-K18, K19) |
 | `include/ida/kopru/karsi.hpp` | Süreç içi karşı taraf: `ida_link` üst katmanı + gerçek çekirdek (SIL ve kart rolü); sınama ve `ida_sim --karsi ic|pty` içindir, ürün değildir |
 | `test/` | CTest `sim.kopru.*` |

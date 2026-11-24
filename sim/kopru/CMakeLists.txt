@@ -116,6 +116,7 @@ set(_ida_kopru_testleri
   bellek_tasima
   tcp_tasima
   pty_tasima
+  seri_cikis_bosalt  # W4-K28 sol-3 #3 EMNİYET: seri gönderim kuyruğu son tarihle boşaltılır
   operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
   operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
   operator_artimli  # W4-K27 (1) EMNİYET: duraklatmada artımlı emniyet işlemi

@@ -49,8 +49,15 @@ public:
     // gider), karşı taraf kapatana ya da en çok sure_us geçene dek gelen baytlar okunup atılır,
     // sonra kapat(). Okunmamış gelen veriyle kapatma bağlantıyı RST ile keser (RFC 1122
     // §4.2.2.13); karşı tarafın yazımı hata alır ve son çerçeveyi okumadan kapanabilir. Atılan
-    // baytlar işlenmez. TCP dışındaki taşımalarda (seri port, bellek) kapat() ile aynıdır.
+    // baytlar işlenmez. Seri portta önce gönderim kuyruğu boşaltılır (cikis_bosalt; en çok
+    // sure_us), sonra kapat(). Bellek taşımasında kapat() ile aynıdır.
     virtual void kapat_duzgun(std::int64_t /*sure_us*/) { kapat(); }
+    // EMNİYET (W4-K28 sol-3 #3): yaz_biraz'ın kabul ettiği baytlar işletim sisteminin gönderim
+    // kuyruğundan da çıkana (telde gidene) ya da en çok sure_us geçene dek bekler. true: kuyruk
+    // boşaldı (ya da taşımanın böyle bir kuyruğu yok); false: süre doldu ya da hata (eksik kapanış).
+    // Yalnız seri port gerçekler (POSIX TIOCOUTQ, Windows ClearCommError cbOutQue yoklaması); TCP'de
+    // gönderilmiş veri FIN'den önce gider (kapat_duzgun), bellek taşımasında kuyruk yoktur.
+    virtual bool cikis_bosalt(std::int64_t /*sure_us*/) { return true; }
     virtual std::string ad() const = 0;
     // Tanı: son başarısız işlemin işletim sistemi hata kodu (POSIX errno, Winsock
     // WSAGetLastError); hata yoksa ya da taşıma bildirmiyorsa 0.

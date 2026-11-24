@@ -343,3 +343,96 @@ int test_aygit_kalkti()
 #endif
     return d.hata;
 }
+
+// W4-K28 sol-3 #3 (EMNİYET): seri portta uygulama tamponunun boşalması telin boşalması sayılmaz.
+// cikis_bosalt, yaz_biraz'ın kabul ettiği baytlar karşı uca geçene dek bekler (sözde uçbirimde:
+// ana uç okuyana dek); karşı uç okumuyorsa sınırlı sürede false döner. Denetim karşı ucun aldığı
+// baytlarla yapılır (yalnız yaz_biraz dönüşleriyle değil).
+int test_seri_cikis_bosalt()
+{
+    Denetci d;
+#if defined(_WIN32)
+    std::printf("  atlandı: sözde uçbirim Windows'ta yok\n");
+#else
+    std::string hata;
+    SozdeUcbirim su = sozde_ucbirim_ac(hata);
+    DOGRULA(d, su.ana != nullptr, "sözde uçbirim " + hata);
+    if (!su.ana) {
+        return d.hata;
+    }
+    SeriAyar sa;
+    sa.hiz_zorunlu = false;
+    auto seri = seri_ac(su.yol, sa, hata);
+    DOGRULA(d, seri != nullptr, "seri_ac " + hata);
+    if (!seri) {
+        return d.hata;
+    }
+    std::vector<std::uint8_t> v(2000);
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        v[i] = static_cast<std::uint8_t>((i * 37u + 11u) & 0xFFu);
+    }
+    auto hepsini_kabul_ettir = [&](const std::vector<std::uint8_t>& x) {
+        std::size_t k = 0;
+        for (int j = 0; j < 2000 && k < x.size(); ++j) {
+            const long long y = seri->yaz_biraz(x.data() + k, x.size() - k);
+            if (y < 0) {
+                break;
+            }
+            k += static_cast<std::size_t>(y);
+            if (y == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+        return k;
+    };
+    // (a) Karşı uç okumuyor: kuyruk boşalmaz; sınırlı sürede false.
+    const std::size_t k1 = hepsini_kabul_ettir(v);
+    DOGRULA(d, k1 > 0u, "ön koşul: baytlar uygulama tamponundan çıktı (" + std::to_string(k1) + " B)");
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool b1 = seri->cikis_bosalt(200'000);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    DOGRULA(d, !b1, "okumayan karşı uçta gönderim kuyruğu boşalmadı: false (eksik kapanış)");
+    DOGRULA(d, ida::test::zamanlama(ms < 200 + 300, "cikis_bosalt.sinir", std::to_string(ms) + " ms (sınır 200 + pay 300)"),
+            "cikis_bosalt süre sınırında döndü (zamanlama)");
+    // Bekleyenleri karşı uçta al (temizle).
+    std::vector<std::uint8_t> al;
+    std::uint8_t t[4096];
+    for (int j = 0; j < 100 && al.size() < k1; ++j) {
+        std::size_t n = 0;
+        if (su.ana->oku(t, sizeof t, 10'000, n) == OkumaSonucu::tamam) {
+            al.insert(al.end(), t, t + n);
+        }
+    }
+    DOGRULA(d, al.size() == k1 && std::equal(al.begin(), al.end(), v.begin()), "bekleyenler karşı uca bozulmadan geçti");
+    // (b) Karşı uç geç ve yavaş okuyor: cikis_bosalt true döndüğünde karşı uç bütün baytları almış.
+    std::atomic<std::size_t> alinan{0};
+    std::atomic<bool> dur{false};
+    std::vector<std::uint8_t> al2;
+    std::thread okuyucu([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        while (!dur.load()) {
+            std::uint8_t u[64];
+            std::size_t n = 0;
+            if (su.ana->oku(u, sizeof u, 2'000, n) == OkumaSonucu::tamam) {
+                al2.insert(al2.end(), u, u + n);
+                alinan = al2.size();
+            }
+        }
+    });
+    const std::size_t k2 = hepsini_kabul_ettir(v);
+    const bool b2 = seri->cikis_bosalt(2'000'000);
+    const std::size_t o_an = alinan.load();
+    for (int j = 0; j < 100 && alinan.load() < k2; ++j) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));   // son okumanın sayaca yazılması
+    }
+    dur = true;
+    okuyucu.join();
+    DOGRULA(d, b2 && k2 == v.size(), "okuyan karşı uçta kuyruk boşaldı: true (" + std::to_string(k2) + " B)");
+    DOGRULA(d, al2 == v, "karşı uç bütün çerçeveyi aldı (" + std::to_string(al2.size()) + " B; dönüş anında sayılan " +
+                             std::to_string(o_an) + ")");
+    // Bellek taşımasının gönderim kuyruğu yok: true.
+    auto [x, y] = bellek_cifti();
+    DOGRULA(d, x->cikis_bosalt(0), "bellek taşıması: kuyruk yok (true)");
+#endif
+    return d.hata;
+}

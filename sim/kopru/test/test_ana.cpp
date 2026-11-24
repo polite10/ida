@@ -60,6 +60,7 @@ int test_emniyet_rev_durum();
 int test_bellek_tasima();
 int test_tcp_tasima();
 int test_pty_tasima();
+int test_seri_cikis_bosalt();
 int test_operator_emniyet();
 int test_operator_ve_senaryo();
 int test_operator_artimli();
@@ -132,6 +133,7 @@ const Test kTestler[] = {
     {"bellek_tasima", test_bellek_tasima},
     {"tcp_tasima", test_tcp_tasima},
     {"pty_tasima", test_pty_tasima},
+    {"seri_cikis_bosalt", test_seri_cikis_bosalt},
     {"operator_emniyet", test_operator_emniyet},
     {"operator_ve_senaryo", test_operator_ve_senaryo},
     {"operator_artimli", test_operator_artimli},
