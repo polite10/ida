@@ -6,8 +6,8 @@
 // sonraki iş aynı yapıları çözümlenmiş senaryodan doldurur.
 //
 // A5'te olmayan iki girdi vardır ve öyle işaretlenmiştir: gövde içi sıcaklık modeli
-// (05 §2.3 [T]) ve ses hızı (A5 `ortam.su.ses_hizi` verilmemişse formül sonar işindedir;
-// burada çözümlenmiş değer beklenir).
+// (05 §2.3 [T]) ve ses hızı (A5 `ortam.su.ses_hizi` verilmemişse `kur` formülden hesaplar:
+// W4-K1, `ida/sonar/akustik.hpp`).
 #pragma once
 
 #include "ida/fizik/parametreler.hpp"
@@ -178,7 +178,8 @@ struct SensorOrtami {                 // ortam (05'in okuduğu alanlar)
     struct Su {
         double yogunluk = 1000.0;     // kg/m³
         double sicaklik_c = 20.0;     // °C
-        std::optional<double> ses_hizi;  // m/s; DVL etkinse zorunlu (bu dilim)
+        double tuzluluk = 0.0;        // kg/kg (A5 ortam.su.tuzluluk); ses hızı formülü için
+        std::optional<double> ses_hizi;  // m/s; yoksa formülden (W4-K1, ida/sonar/akustik.hpp)
     } su{};
     std::optional<OrtamOrijin> orijin;
     // Jeoit yüksekliği N (m): GNSS `alt_mm` = (h_elipsoit − N), ortalama deniz seviyesine göre
