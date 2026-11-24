@@ -146,14 +146,15 @@ public:
         if (bekliyor_hatasi(son_hata())) {
             return 0;
         }
-        kapat();
+        // W4-K26 (2): yazma hatası soketi kapatmaz; alım tamponunda bekleyen baytlar okunabilir
+        // kalır (karşı tarafın son çerçeveleri yazma hatasıyla kaybolmaz). Kapatma sahibinin işi.
         return -1;
     }
 
     OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
     {
         okunan = 0;
-        if (s_ == kGecersiz) {
+        if (s_ == kGecersiz || eof_) {
             return OkumaSonucu::kapandi;
         }
         const std::size_t istek = std::min<std::size_t>(n, std::size_t{1} << 20U);
@@ -167,7 +168,13 @@ public:
                 okunan = static_cast<std::size_t>(k);
                 return OkumaSonucu::tamam;
             }
-            if (k == 0 || !bekliyor_hatasi(son_hata())) {
+            if (k == 0) {
+                // W4-K26 (2): karşı uç yazma yönünü kapattı (FIN). Soket açık kalır: sim'in
+                // yazımı ve düzgün kapanışı sürebilir; kapatma sahibinin işi.
+                eof_ = true;
+                return OkumaSonucu::kapandi;
+            }
+            if (!bekliyor_hatasi(son_hata())) {
                 kapat();
                 return OkumaSonucu::kapandi;
             }
@@ -234,6 +241,7 @@ public:
 private:
     Soket s_;
     std::string ad_;
+    bool eof_ = false;   // karşı uç FIN gönderdi
 };
 
 class TcpDinleyiciGercek final : public TcpDinleyici {

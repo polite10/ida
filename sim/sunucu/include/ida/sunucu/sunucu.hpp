@@ -112,6 +112,9 @@ struct Ayar {
         bool acil_durdurma = false;
     };
     std::function<void(const SinirGozlemi&)> sinir_kancasi;
+    // Yalnız sınama (W4-K26 (2)): sim'in karşı tarafa göndermeye karar verdiği baytlar (taşımaya
+    // verilmeden önce, yazım başarısız olsa da), sırayla.
+    std::function<void(const std::uint8_t*, std::size_t)> giden_kancasi;
     std::function<void(const sensor::Olcum& o)> olcum_kancasi;
     // Yalnız sınama: görev iletileri sonuç beklenmeden (sınır başına bir) gönderilir; köprünün ve
     // kartın dönüştürücüsünün alanları taşıdığını sınamak için (çekirdek görevi desteklemese de).

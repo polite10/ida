@@ -129,6 +129,9 @@ private:
     void yaz()
     {
         k_->giden_al(tampon_);
+        if (a_.giden_kancasi && !tampon_.empty()) {
+            a_.giden_kancasi(tampon_.data(), tampon_.size());   // sim'in göndermeye karar verdiği dizi
+        }
         if (!tas_) {
             cikis_.clear();
             cikis_k_ = 0;
@@ -147,6 +150,11 @@ private:
 
     void cikis_hizmet()
     {
+        if (sil_yazma_bitti_) {
+            cikis_.clear();   // W4-K26 (2): karşı uç artık okumuyor; dizi kancada kayıtlı
+            cikis_k_ = 0;
+            return;
+        }
         if (!tas_ || cikis_k_ >= cikis_.size()) {
             return;
         }
@@ -154,6 +162,14 @@ private:
         for (int j = 0; j < 8 && cikis_k_ < cikis_.size(); ++j) {
             const long long k = tas_->yaz_biraz(cikis_.data() + cikis_k_, cikis_.size() - cikis_k_);
             if (k < 0) {
+                if (a_.kip == Kip::sil) {
+                    // W4-K26 (2) (EMNİYET): SIL'de yazma hatası bağlantıyı burada bitirmez; alım
+                    // kuyruğu akış sırasıyla işlenmeye devam eder, akışın sonu kuyruk bitince.
+                    sil_yazma_bitti_ = true;
+                    cikis_.clear();
+                    cikis_k_ = 0;
+                    return;
+                }
                 baglanti_koptu("yazma hatası");
                 return;
             }
@@ -271,6 +287,7 @@ private:
         sil_gelen_.clear();
         sil_gelen_k_ = 0;
         sil_akis_bitti_ = false;
+        sil_yazma_bitti_ = false;
     }
 
     // HIL: hedef duvar anına kadar okuyup bekler. Okuma engelsizdir; arada mutlak son tarihe
@@ -356,6 +373,7 @@ private:
     std::vector<std::uint8_t> sil_gelen_;   // SIL: alınmış, köprüye henüz verilmemiş baytlar
     std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
     bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
+    bool sil_yazma_bitti_ = false;          // SIL: yazım hata aldı (W4-K26 (2); bağlantı kuyrukta biter)
     static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
     // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
     static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
