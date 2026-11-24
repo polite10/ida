@@ -76,6 +76,9 @@ uint32_t ida_saglik_degerlendir(const ida_saglik_girdi_t *g)
     if (g->alim_durdu) {
         ret |= IDA_SAGLIK_ALIM_DURDU;
     }
+    if (g->flash_asim) {
+        ret |= IDA_SAGLIK_FLASH;
+    }
     return ret;
 }
 
@@ -85,4 +88,108 @@ ida_led_t ida_led_durumu(bool saat_tamam, bool baglanti, bool cekirdek_normal)
     l.yesil = saat_tamam && baglanti && cekirdek_normal;
     l.kirmizi = !l.yesil;
     return l;
+}
+
+void ida_islem_gozetim_kur(ida_islem_gozetim_t *g)
+{
+    g->var = 0u;
+    g->bas_us = 0u;
+    g->en_uzun_us = 0u;
+}
+
+void ida_islem_basladi(ida_islem_gozetim_t *g, uint64_t simdi_us)
+{
+    g->var = 1u;
+    g->bas_us = simdi_us;
+}
+
+void ida_islem_bitti(ida_islem_gozetim_t *g, uint64_t simdi_us)
+{
+    if (g->var != 0u && simdi_us >= g->bas_us) {
+        const uint64_t s = simdi_us - g->bas_us;
+        if (s > g->en_uzun_us) {
+            g->en_uzun_us = s > UINT32_MAX ? UINT32_MAX : (uint32_t)s;
+        }
+    }
+    g->var = 0u;
+}
+
+bool ida_islem_tamam(const ida_islem_gozetim_t *g, uint64_t simdi_us, uint64_t sinir_us)
+{
+    if (g->var == 0u || simdi_us < g->bas_us) {
+        return true;
+    }
+    return simdi_us - g->bas_us <= sinir_us;
+}
+
+void ida_kararli_kur(ida_kararli_t *k)
+{
+    k->suruyor = 0u;
+    k->bildirildi = 0u;
+    k->bas_us = 0u;
+}
+
+bool ida_kararli_guncelle(ida_kararli_t *k, bool kosul, uint64_t simdi_us, uint64_t sinir_us)
+{
+    if (!kosul) {
+        k->suruyor = 0u;
+        k->bildirildi = 0u;
+        return false;
+    }
+    if (k->suruyor == 0u) {
+        k->suruyor = 1u;
+        k->bildirildi = 0u;
+        k->bas_us = simdi_us;
+        return false;
+    }
+    if (k->bildirildi == 0u && simdi_us >= k->bas_us && simdi_us - k->bas_us >= sinir_us) {
+        k->bildirildi = 1u;
+        return true;
+    }
+    return false;
+}
+
+size_t ida_alim_turu(uint8_t *tampon, size_t b_ayr, ida_tur_oku_f oku, ida_tur_isle_f isle,
+                     void *ctx)
+{
+    size_t bu_tur = 0u;
+    while (bu_tur < b_ayr) {
+        const size_t n = oku(ctx, tampon, b_ayr - bu_tur);
+        if (n == 0u || n > b_ayr - bu_tur) {
+            break;
+        }
+        isle(ctx, tampon, n);
+        bu_tur += n;
+    }
+    return bu_tur;
+}
+
+void ida_cagri_turu_kur(ida_cagri_turu_t *t)
+{
+    t->sayi = 0u;
+    t->asim = 0u;
+    t->asim_param_save = 0u;
+    t->en_kotu_us = 0u;
+    t->en_kotu_param_save_us = 0u;
+}
+
+void ida_cagri_turu_ekle(ida_cagri_turu_t *t, uint32_t sure_us, bool param_save)
+{
+    t->sayi++;
+    const bool asti = sure_us > IDA_CAGRI_TURU_SINIR_US;
+    if (param_save) {
+        if (asti) {
+            t->asim_param_save++;
+        }
+        if (sure_us > t->en_kotu_param_save_us) {
+            t->en_kotu_param_save_us = sure_us;
+        }
+        return;
+    }
+    if (asti) {
+        t->asim++;
+    }
+    if (sure_us > t->en_kotu_us) {
+        t->en_kotu_us = sure_us;
+    }
 }

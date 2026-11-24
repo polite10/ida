@@ -11,7 +11,7 @@
  * FZ = 0, DN = 0; geri okunur), .data/.bss, ana yığının boyanması (en yüksek kullanım için),
  * main.
  *
- * Hata işleyicileri (HardFault, MemManage, BusFault, UsageFault, NMI): ilk komutlar MSP'yi
+ * Hata işleyicileri (HardFault, MemManage, BusFault, UsageFault; NMI bsp/hata.c'de): ilk komutlar MSP'yi
  * 1 KB'lık ayrı acil yığına, MSPLIM'i onun tabanına kurar; sonra C işlevi
  * ida_bsp_hata_isle(çerçeve, EXC_RETURN) bu yığında koşar (bsp/hata.c: kayıt ve sıfırlama).
  */
@@ -121,10 +121,10 @@ IDA_HATA_GIRISI(HardFault_Handler)
 IDA_HATA_GIRISI(MemManage_Handler)
 IDA_HATA_GIRISI(BusFault_Handler)
 IDA_HATA_GIRISI(UsageFault_Handler)
-IDA_HATA_GIRISI(NMI_Handler)
 
 /* Kart yazılımının kullandığı kesmeler: zayıf, varsayılan işleyiciye bağlı. */
 #define IDA_ZAYIF(ad) void ad(void) __attribute__((weak, alias("ida_varsayilan_isleyici")))
+IDA_ZAYIF(NMI_Handler); /* güçlüsü bsp/hata.c (flash ECC ayrımı) */
 IDA_ZAYIF(SecureFault_Handler);
 IDA_ZAYIF(SVC_Handler);
 IDA_ZAYIF(DebugMon_Handler);
@@ -134,6 +134,7 @@ IDA_ZAYIF(TIM2_IRQHandler);
 IDA_ZAYIF(USART1_IRQHandler);
 IDA_ZAYIF(GPDMA1_Channel0_IRQHandler);
 IDA_ZAYIF(GPDMA1_Channel1_IRQHandler);
+IDA_ZAYIF(FLASH_IRQHandler); /* güçlüsü bsp/flash.c (ECC düzeltme kesmesi) */
 
 typedef void (*ida_vektor_t)(void);
 
@@ -167,5 +168,6 @@ const ida_vektor_t ida_vektor_tablosu[IDA_VEKTOR_SAYISI] = {
     [16 + USART1_IRQn] = USART1_IRQHandler,
     [16 + GPDMA1_Channel0_IRQn] = GPDMA1_Channel0_IRQHandler,
     [16 + GPDMA1_Channel1_IRQn] = GPDMA1_Channel1_IRQHandler,
+    [16 + FLASH_IRQn] = FLASH_IRQHandler,
 };
 #pragma GCC diagnostic pop
