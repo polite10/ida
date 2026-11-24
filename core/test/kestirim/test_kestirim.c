@@ -24,7 +24,15 @@
 
 void setUp(void);
 void tearDown(void);
-void setUp(void) {}
+/* Dilim 2'nin "OK iken hata" denetiminde (test_kestirim_yatay.inc, y_ok_denet) konum bileşeni
+   kapalı: yalnız yer gerçeği ile mutlak başvurunun bilerek ayrıldığı testler kurar; her testin
+   başında yeniden açılır. */
+static bool Y_KONUM_DENETSIZ;
+
+void setUp(void)
+{
+    Y_KONUM_DENETSIZ = false;
+}
 void tearDown(void) {}
 
 /* ---- Sabitler ---------------------------------------------------------------------------- */
@@ -182,6 +190,7 @@ typedef struct {
     double dvl_flap_bas, dvl_flap_son, dvl_flap_yari; /* kilit yarı periyotla gidip gelir, s */
     double dvl_kes_bas, dvl_kes_son;     /* akış yok */
     double dvl_ayk_bas, dvl_ayk_son, dvl_ayk; /* DVL x eksenine eklenen aykırı değer, m/s */
+    double dvl_kov_bas, dvl_kov_son, dvl_kov; /* bildirilen kovaryans köşegeni ((m/s)²); FOM küçük kalır */
     double dvl_tek;       /* > 0: yalnız bu andan sonraki ilk örnek gönderilir */
     double dvl_hz;        /* ping hızı (5 ya da 10) */
     bool yardim_hizli;    /* GNSS ve DVL her çağrıda, gecikmesiz (seyreltme sınaması) */
@@ -497,6 +506,13 @@ static void dvl_uret(kosu_t *k, ida_in_t *in, uint8_t *n, int64_t T)
         o->u.dvl.cov[0] = (float)(a->s_dvl * a->s_dvl);
         o->u.dvl.cov[3] = (float)(a->s_dvl * a->s_dvl);
         o->u.dvl.cov[5] = (float)(a->s_dvl * a->s_dvl);
+        o->u.dvl.dvl_flags = (uint8_t)(o->u.dvl.dvl_flags | IDA_DVL_COV_PRESENT);
+    }
+    if (aralikta(t, a->dvl_kov_bas, a->dvl_kov_son)) {
+        /* Bilgisiz örnek: kovaryans çok büyük, FOM küçük (inceleme bulgu 5). */
+        o->u.dvl.cov[0] = (float)a->dvl_kov;
+        o->u.dvl.cov[3] = (float)a->dvl_kov;
+        o->u.dvl.cov[5] = (float)a->dvl_kov;
         o->u.dvl.dvl_flags = (uint8_t)(o->u.dvl.dvl_flags | IDA_DVL_COV_PRESENT);
     }
     o->u.dvl.fom = (float)a->s_dvl;
@@ -905,6 +921,7 @@ static kosu_ayar_t ayar_temel(senaryo_f s, uint32_t tohum)
     a.dvl_flap_yari = 1.0;
     a.dvl_kes_bas = a.dvl_kes_son = -1.0;
     a.dvl_ayk_bas = a.dvl_ayk_son = -1.0;
+    a.dvl_kov_bas = a.dvl_kov_son = -1.0;
     a.dvl_hz = 5.0;
     a.taban = 30.0;
     for (int i = 0; i < 3; i++) {
