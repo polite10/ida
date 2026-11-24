@@ -107,7 +107,7 @@ void ida_cik_yaz(ida_core_t *c, const ida_cagri_t *cg, const ida_in_t *in, ida_o
     float thr[IDA_PORT_N_THR] = {0.0f};
     bool cokme = false;
     if (step_ok) {
-        ida_kon_itki(&c->kon, thr, &cokme);
+        ida_kon_cikti(&c->kon, &c->emn, thr, &cokme); /* acil durdurma kapısıyla (W5-K26) */
         if (!itki_gecerli(thr)) {
             cokme = true;
         }

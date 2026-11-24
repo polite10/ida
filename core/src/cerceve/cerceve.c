@@ -597,6 +597,11 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
         gunluk(c, &g);
     }
 
+    /* W5-kontrol-acil (W5-K26; EMNİYET): kontrol, (b) ve (b3)'ten sonraki etkin acil durdurma
+       değerini her çağrıda görür (reddedilen ve out NULL çağrıda da). Yalnız kontrolün kendi
+       durumuna yazar. */
+    ida_kon_acil_izle(&c->kon, &c->emn);
+
     /* (b2): (b) ve (b3) uygulanmış kalır; olay ve günlük bekletilir; now_w izi ve
        wall_backstep yukarıda güncellendi; bg_slices sayımı karşılaştırılmadan sıfırlanır;
        bg_bad_input bayrağı (bg_kotu) silinmez, ilk yazılabilir çağrıya taşınır (A4-K117);

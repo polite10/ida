@@ -86,6 +86,11 @@ static void girdi_kur(void)
     if (g_leak && ((g_seq % 20u) == 10u)) {
         (void)ornek((uint8_t)IDA_SENS_LEAK, 0u);
     }
+    if ((g_seq % 20u) == 5u) {
+        /* W5-kontrol-acil (W5-K26): etkin acil durdurma kısıtlayanken çekirdek itki vermez.
+           Düzenek acil durdurması gevşek emniyet örneğini 10 Hz verir (T_emn_bayat içinde). */
+        ds_emniyet(&IN.samples[IN.n_samples++], g_t, ++g_sq[IDA_SENS_SAFETY]);
+    }
     if (g_hb && ((g_seq % 200u) == 100u)) {
         ida_cmd_t *k = &IN.cmds[IN.n_cmds++];
         (void)memset(k, 0, sizeof(*k));
