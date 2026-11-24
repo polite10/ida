@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -111,7 +112,7 @@ ida::zincir::Sonuc zincir_sonucu(const ida::sunucu::Sonuc& s)
     return z;
 }
 
-void z1_olc(const ida::sunucu::Sonuc& s, const ida::zincir::Ozet& o)
+void z1_olc(const ida::sunucu::Sonuc& s, const ida::zincir::Ozet& o, const ida::zincir::Ayar& za)
 {
     const int kabul = static_cast<int>(IDA_ACK_ACCEPTED);
     olcu("ARM ack", s.arm_ack, "= 1", s.arm_ack == kabul);
@@ -134,8 +135,26 @@ void z1_olc(const ida::sunucu::Sonuc& s, const ida::zincir::Ozet& o)
     olcu("manevra tutum rad", o.manevra.tutum_rad, "<= 0.25", o.manevra.tutum_rad <= kTutumArizali);
     olcu("tutum banda donus s", o.manevra.tutum_oturma_s, "0..15",
          o.manevra.tutum_oturma_s >= 0.0 && o.manevra.tutum_oturma_s <= kTutumToparlanma);
-    olcu("ariza etkin adim", o.ariza_etkin_adim, ">= 200 ve = degistirdi",
-         o.ariza_etkin_adim >= kEtkinAdimAz && o.ariza_degistirdi_adim == o.ariza_etkin_adim);
+    // W4-K20: itici arızası fizikte mekanik kuvvete uygulanır; darbe genişliği değişmez. W3-zincir'in
+    // "arıza darbe genişliğini değiştirdi" ölçütünün karşılığı (tests/butunleme ile aynı): arızanın
+    // etkin olduğu her satırda arızalı kanalların fizikteki çarpanı Z1 çarpanına eşit.
+    std::uint32_t uygulandi = 0;
+    std::uint32_t satir_sayisi = 0;
+    for (const ida::sunucu::Satir& r : s.satirlar) {
+        if (r.t_s < za.t_manevra_s + 0.002 || r.t_s >= za.t_disarm_s) {
+            continue;
+        }
+        ++satir_sayisi;
+        bool hepsi = true;
+        for (const int ch : za.ariza_kanallari) {
+            const auto c = static_cast<std::size_t>(ch);
+            hepsi = hepsi && (std::abs(r.pwm_yur[c] - 1500) <= 25 || r.itki_carpani[c] == za.ariza_carpani);
+        }
+        uygulandi += hepsi ? 1U : 0U;
+    }
+    olcu("ariza etkin adim", o.ariza_etkin_adim, ">= 200", o.ariza_etkin_adim >= kEtkinAdimAz);
+    olcu("ariza fizikte uygulanan satir", uygulandi, "= etkin satir (" + std::to_string(satir_sayisi) + ")",
+         satir_sayisi > 0 && uygulandi == satir_sayisi);
     olcu("sayisal cokme", o.sayisal_cokme ? 1.0 : 0.0, "= 0", !o.sayisal_cokme);
     olcu("en yuksek fs_level", o.en_yuksek_fs, "= 0", o.en_yuksek_fs == 0);
     olcu("DISARM sonrasi itki 0, pwm notr", o.disarm_sonrasi_sifir ? 1.0 : 0.0, "= 1", o.disarm_sonrasi_sifir);
@@ -235,7 +254,7 @@ int main(int argc, char** argv)
     olcu("kosu tamam", s.tamam ? 1.0 : 0.0, "= 1 " + s.hata, s.tamam);
     if (tam_z1) {
         const ida::zincir::Ayar za = zincir_ayari(a);
-        z1_olc(s, ida::zincir::ozetle(zincir_sonucu(s), za));
+        z1_olc(s, ida::zincir::ozetle(zincir_sonucu(s), za), za);
     }
     if (a.acil_durdurma_s >= 0.0) {
         std::size_t istek_notr_disi = 0;
