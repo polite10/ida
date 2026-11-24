@@ -67,6 +67,10 @@ int test_baski_chunked_eof();
 int test_baski_sira_tasmasi();
 int test_jeton_okunamayan();
 int test_statik_kok_tutulur();
+int test_yer_acma_okuma_firsati();
+int test_yer_acma_soket();
+int test_cikis_tavani_dogrulanmamis();
+int test_jeton_istemci_kapsami();
 int uyum_ornekleri_yaz(const char* yol);
 }  // namespace ida::a3::test
 
@@ -115,6 +119,10 @@ int main(int argc, char** argv)
         {"rastgele_cekirdek", test_rastgele_cekirdek},
         {"rastgele_ayristirici", test_rastgele_ayristirici},
         {"cok_baglanti", test_cok_baglanti},
+        {"yer_acma_okuma_firsati", test_yer_acma_okuma_firsati},
+        {"yer_acma_soket", test_yer_acma_soket},
+        {"cikis_tavani_dogrulanmamis", test_cikis_tavani_dogrulanmamis},
+        {"jeton_istemci_kapsami", test_jeton_istemci_kapsami},
         {"baglanti_siniri_dogrulanmis", test_baglanti_siniri_dogrulanmis},
         {"baglanti_siniri_503", test_baglanti_siniri_503},
         {"baski_uzun_kisitlayan", test_baski_uzun_kisitlayan},

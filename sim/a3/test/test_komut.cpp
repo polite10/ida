@@ -949,8 +949,6 @@ int test_jeton_erken_ret_tablo()
         {"yöntem OPTIONS", [&](const std::string& t) { return istek("OPTIONS", "/api/v1/emniyet/degistir", k.basliklar(), gevset(t)); }, {}},
         {"içerik türü text/plain",
          [&](const std::string& t) { return istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: text/plain", ist}, gevset(t)); }, {}},
-        {"Ida-Istemci yok",
-         [&](const std::string& t) { return istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: application/json"}, gevset(t)); }, {}},
         {"gövde boyu (> 1 MiB)",
          [&](const std::string& t) {
              std::string g = gevset(t);
@@ -1012,6 +1010,18 @@ int test_jeton_erken_ret_tablo()
     o.dunya.dondur(false);
     o.dunya.adim();
     o.dongu();
+    // W4-K23 (4'): istemci kimliği eksik istek reddedilir ve hiçbir jetona dokunulmaz.
+    {
+        const std::string tk = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
+        const HttpYanit r = o.http(istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: application/json"}, gevset(tk)));
+        const HttpYanit y = k.post("/api/v1/emniyet/degistir", gevset(tk));
+        DOGRULA(d, r.durum == 400 && y.durum == 202, "Ida-Istemci yok: 400, jeton korunur: " + std::to_string(y.durum) + " " + y.kod());
+        o.dunya.adim();
+        o.dongu();
+        k.post("/api/v1/emniyet/degistir", emniyet(k, "emniyet_pimi", "f1", "takili", run));
+        o.dunya.adim();
+        o.dongu();
+    }
     const std::string t = jeton_al(k, "emniyet_pimi", "f1", "cikarilmis", run);
     const HttpYanit kis = o.http(istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: text/plain", ist},
                                        emniyet(k, "emniyet_pimi", "f1", "takili", run, ",\"onay_jetonu\":\"" + t + "\"")));
@@ -1349,6 +1359,204 @@ int test_jeton_okunamayan()
         DOGRULA(d, r.durum == 415, "kısıtlayan biçim 415");
         const HttpYanit y = k.post("/api/v1/emniyet/degistir", gevset(k, "f1", t));
         DOGRULA(d, y.durum == 202, "kısıtlayan istekten sonra jeton geçerli: " + y.kod());
+    }
+    return d.hata;
+}
+
+// ---- W4-K23 ek (sol-4 karşı örnekleri) ------------------------------------------------------------
+
+// (2'), sol-4 #2a: 64 jetonsuz yarım bağlantı (okuma fırsatı bulmuş). Aynı kabul turunda önce
+// acil durdurma göndermiş meşru istemci, ardından saldırgan kabul edilir. Meşru bağlantı henüz
+// okunmadığı için kapatılmaz (yaş sırasıyla en eski yarım bağlantılar kapatılır); acil durdurma
+// mandala ulaşır. Hepsi korunurken yeni bağlantı reddedilir.
+int test_yer_acma_okuma_firsati()
+{
+    Denetci d;
+    {
+        Ortam o;
+        Istemci k{o, o.istemci_al()};
+        const std::string run = baslat(k);
+        std::vector<BagId> yarim;
+        for (int i = 0; i < 64; ++i) {
+            const BagId id = o.ac();
+            o.gonder(id, "POST /api/v1/emniyet/degistir HTTP/1.1\r\nHo");
+            yarim.push_back(id);
+        }
+        const BagId meshru = o.ac();  // aynı kabul turu: okuma fırsatı yok
+        const BagId saldirgan = o.ac();
+        DOGRULA(d, meshru != 0 && saldirgan != 0, "iki bağlantı da kabul edildi");
+        DOGRULA(d, !o.cekirdek.kapatilmali(meshru), "okuma fırsatı bulmamış meşru bağlantı kapatılmadı");
+        DOGRULA(d, o.cekirdek.kapatilmali(yarim[0]) && o.cekirdek.kapatilmali(yarim[1]) && !o.cekirdek.kapatilmali(yarim[2]),
+                "yaş sırasıyla en eski iki yarım bağlantı kapatıldı");
+        const HttpYanit y = o.http(meshru, istek("POST", "/api/v1/emniyet/degistir", k.basliklar(),
+                                                 emniyet(k, "acil_durdurma", "", "basili", run)));
+        DOGRULA(d, y.durum == 202, "acil durdurma 202: " + std::to_string(y.durum));
+        o.dunya.adim();
+        o.dongu();
+        DOGRULA(d, acil_basili(o), "yetkili acil durdurma basılı");
+    }
+    {
+        SunucuAyari sa;
+        sa.azami_http = 2;
+        Ortam o({}, sa);
+        const BagId h1 = o.ac();
+        o.gonder(h1, "GET / HT");
+        const BagId h2 = o.ac();
+        o.gonder(h2, "GET / HT");
+        const BagId a = o.ac();
+        const BagId b = o.ac();
+        DOGRULA(d, a != 0 && b != 0 && o.cekirdek.kapatilmali(h1) && o.cekirdek.kapatilmali(h2), "yarımlar yaş sırasıyla kapatıldı");
+        DOGRULA(d, o.ac() == 0, "okuma fırsatı bulmamışlar korunur: kapatılacak yok, yeni bağlantı reddedilir");
+    }
+    return d.hata;
+}
+
+// (2'), gerçek soketler: yarım bağlantılarla dolu sınırda meşru istemci acil durdurmayı yazar ve
+// hemen ardından birçok saldırgan bağlanır (kabul–okuma arasına ikinci kabul girer); acil durdurma
+// uygulanır.
+int test_yer_acma_soket()
+{
+    Denetci d;
+    SunucuAyari sa;
+    sa.azami_http = 4;
+    CanliSunucu s({}, sa);
+    if (!s.sunucu) {
+        return 1;
+    }
+    auto http1 = [&](const std::string& ham) {
+        SoketIstemci c(s.sunucu->port());
+        HttpYanit y;
+        c.yaz(ham);
+        c.yanit_bekle(y);
+        return y;
+    };
+    const HttpYanit ist = http1("POST /api/v1/istemciler HTTP/1.1\r\n" + s.host() + "\r\n" + s.yetki() +
+                                "\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}");
+    const json::Deger ij = ist.json_();
+    const json::Deger* iid = ij.bul("istemci_id");
+    if (iid == nullptr) {
+        return 1;
+    }
+    const std::string istemci = std::to_string(static_cast<std::uint32_t>(iid->sayi));
+    auto post = [&](const std::string& yol, const std::string& govde) {
+        return "POST " + yol + " HTTP/1.1\r\n" + s.host() + "\r\n" + s.yetki() + "\r\nContent-Type: application/json\r\nIda-Istemci: " +
+               istemci + "\r\nContent-Length: " + std::to_string(govde.size()) + "\r\n\r\n" + govde;
+    };
+    http1(post("/api/v1/calistirma/baslat", R"({"istek_kimligi":"yer-0001","beklenen_run_id":null,"beklenen_durum_rev":1})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::vector<std::unique_ptr<SoketIstemci>> yarim;
+    for (int i = 0; i < 4; ++i) {
+        yarim.push_back(std::make_unique<SoketIstemci>(s.sunucu->port()));
+        yarim.back()->yaz("POST /api/v1/emniyet/degistir HTTP/1.1\r\nHo");
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));  // yarımlar okundu (okuma fırsatı)
+    SoketIstemci meshru(s.sunucu->port());
+    meshru.yaz(post("/api/v1/emniyet/degistir", R"({"istek_kimligi":"yer-0002","girdi":"acil_durdurma","hedef_durum":"basili"})"));
+    std::vector<std::unique_ptr<SoketIstemci>> saldirgan;
+    for (int i = 0; i < 12; ++i) {
+        saldirgan.push_back(std::make_unique<SoketIstemci>(s.sunucu->port()));
+    }
+    HttpYanit y;
+    const bool geldi = meshru.yanit_bekle(y, 3000);
+    bool basili = false;
+    for (int i = 0; i < 40 && !basili; ++i) {
+        saldirgan.clear();  // yer açılsın: denetim isteği bağlanabilsin
+        const json::Deger e = http1("GET /api/v1/emniyet HTTP/1.1\r\n" + s.host() + "\r\n" + s.yetki() + "\r\n\r\n").json_();
+        const json::Deger* yt = e.bul("yetkili");
+        basili = yt != nullptr && yt->bul("acil_durdurma") != nullptr && yt->bul("acil_durdurma")->metin == "basili";
+        if (!basili) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+    const SunucuSayaclari say = s.sunucu->sayaclar();
+    std::printf("  TANI: meşru yanıt %s %d; yer açmak için kapatılan %llu; reddedilen %llu\n", geldi ? "geldi" : "gelmedi", y.durum,
+                static_cast<unsigned long long>(say.yer_acmak_icin_kapatilan), static_cast<unsigned long long>(say.baglanti_reddi));
+    DOGRULA(d, geldi && y.durum == 202, "meşru acil durdurma 202");
+    DOGRULA(d, basili, "yetkili acil durdurma basılı");
+    return d.hata;
+}
+
+// (3'), sol-4 #2b: jetonsuz istemci 403'leri okumadan çıkışı eşiğin üstüne taşır, ardından ayrı
+// okumalarda kısıtlayan biçimli POST'lar yollar. Doğrulanmamış istek öne alınmaz; çıkış eşik + bir
+// yanıtı aşmaz; sıra sınırında bağlantı kapanır.
+int test_cikis_tavani_dogrulanmamis()
+{
+    Denetci d;
+    Ortam o;
+    const BagId id = o.ac();
+    const std::string get = "GET /api/v1/surum HTTP/1.1\r\n" + host() + "\r\n\r\n";
+    o.gonder(id, get);
+    const std::size_t bir = o.cekirdek.cikis(id).size();
+    DOGRULA(d, bir > 0, "403 yanıtı");
+    if (bir == 0) {
+        return d.hata;
+    }
+    // 16'lık partiler: her parti ayrı okuma (sıra sınırına takılmadan eşik aşılır).
+    while (o.cekirdek.cikis(id).size() <= sinir::okuma_esigi && o.cekirdek.okumali(id)) {
+        const std::size_t kalan = (sinir::okuma_esigi - o.cekirdek.cikis(id).size()) / bir + 1;
+        std::string parti;
+        for (std::size_t i = 0; i < std::min<std::size_t>(kalan, 16); ++i) {
+            parti += get;
+        }
+        o.gonder(id, parti);
+    }
+    DOGRULA(d, o.cekirdek.cikis(id).size() > sinir::okuma_esigi, "çıkış eşiğin üstüne taşındı");
+    std::size_t en_cok = o.cekirdek.cikis(id).size();
+    const std::string govde = R"({"girdi":"acil_durdurma","hedef_durum":"basili"})";
+    const std::string post = "POST /api/v1/emniyet/degistir HTTP/1.1\r\n" + host() +
+                             "\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(govde.size()) + "\r\n\r\n" + govde;
+    for (int i = 0; i < 100; ++i) {
+        o.gonder(id, post);
+        o.dongu();
+        en_cok = std::max(en_cok, o.cekirdek.cikis(id).size());
+    }
+    const SunucuSayaclari say = o.cekirdek.sayaclar();
+    std::printf("ÖLÇÜM: jetonsuz baskı: en büyük bekleyen çıkış %zu B (eşik %zu B, bir yanıt %zu B); öne alınan %llu; sıra taşması %llu\n",
+                en_cok, sinir::okuma_esigi, bir, static_cast<unsigned long long>(say.baskida_one_alinan),
+                static_cast<unsigned long long>(say.http_sira_tasmasi));
+    DOGRULA(d, en_cok <= sinir::okuma_esigi + bir, "çıkış eşik + bir yanıtı aşmadı");
+    DOGRULA(d, say.baskida_one_alinan == 0, "doğrulanmamış istek öne alınmadı");
+    DOGRULA(d, say.http_sira_tasmasi >= 1 && !o.cekirdek.okumali(id), "sıra sınırında bağlantı kapandı");
+    return d.hata;
+}
+
+// (4'), sol-4 #3a, #3b: çerçeveleme hatasıyla biten kimliği doğrulanmış gevşetme isteği istemcinin
+// jetonlarını geçersizleştirir; kimliksiz bozuk istek başka istemcinin jetonuna dokunmaz; jeton
+// yalnız onu isteyen istemcinin kimliğiyle kullanılabilir (başkası sunarsa tüketilmez).
+int test_jeton_istemci_kapsami()
+{
+    Denetci d;
+    Ortam o;
+    Istemci a{o, o.istemci_al()};
+    Istemci b{o, o.istemci_al()};
+    const std::string run = baslat(a);
+    auto rv = [&] { return ",\"beklenen_emniyet_rev\":" + std::to_string(emniyet_rev(o)); };
+    auto gevset = [&](Istemci& c, const std::string& t) {
+        return emniyet(c, "emniyet_pimi", "f1", "cikarilmis", run, ",\"onay\":true,\"onay_jetonu\":\"" + t + "\"" + rv());
+    };
+    a.post("/api/v1/emniyet/degistir", emniyet(a, "emniyet_pimi", "f1", "takili", run));
+    o.dunya.adim();
+    o.dongu();
+    // 1) Çerçeveleme hatası (chunked boy satırı `Z`)
+    {
+        const std::string t = jeton_al(a, "emniyet_pimi", "f1", "cikarilmis", run);
+        const HttpYanit r = o.http("POST /api/v1/emniyet/degistir HTTP/1.1\r\n" + host() + "\r\n" + yetki() +
+                                   "\r\nContent-Type: application/json\r\nIda-Istemci: " + std::to_string(a.id) +
+                                   "\r\nTransfer-Encoding: chunked\r\n\r\nZ\r\n");
+        const HttpYanit y = a.post("/api/v1/emniyet/degistir", gevset(a, t));
+        DOGRULA(d, r.durum == 400, "çerçeveleme hatası 400");
+        DOGRULA(d, y.durum == 409 && y.kod() == "onay_jetonu_gecersiz", "çerçeveleme hatasından sonra jeton geçersiz: " + y.kod());
+    }
+    // 2) A'nın kimliksiz bozuk isteği B'nin jetonunu bozmaz; A'nın kimliğiyle B'nin jetonu kullanılamaz
+    //    ve tüketilmez; B kendi jetonunu kullanır.
+    {
+        const std::string tb = jeton_al(b, "emniyet_pimi", "f1", "cikarilmis", run);
+        const HttpYanit r = o.http(istek("POST", "/api/v1/emniyet/degistir", {"Content-Type: application/json"}, "{bozuk"));
+        DOGRULA(d, r.durum == 400, "kimliksiz bozuk istek 400");
+        const HttpYanit ya = a.post("/api/v1/emniyet/degistir", gevset(a, tb));
+        DOGRULA(d, ya.durum == 409 && ya.kod() == "onay_jetonu_gecersiz", "A'nın kimliğiyle B'nin jetonu kullanılamaz: " + ya.kod());
+        const HttpYanit yb = b.post("/api/v1/emniyet/degistir", gevset(b, tb));
+        DOGRULA(d, yb.durum == 202, "B'nin jetonu korunmuş: " + std::to_string(yb.durum) + " " + yb.kod());
     }
     return d.hata;
 }
