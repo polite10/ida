@@ -819,8 +819,10 @@ static void test_y_k4_cikis_sifirlama(void)
    Bilinen sınır (düzeltme turunda OK iken hata denetimiyle görüldü; raporda açık bulgu): dalışta
    tek hız kaynağı DVL'dir ve ölçek hatası DR_ORAN'ın (0,02) beş katıdır; süzgeç bunu ayırt
    edemez, bildirilen konum σ'sı SIG_HPOS'un altında kalır ve düzey OK iken konum hatası dalışın
-   sonunda 3·SIG_HPOS'u (30 m) aşar. Bu testte denetimin konum bileşeni kapalıdır; aşım ölçülüp
-   yazılır. Hız bileşeni açıktır. */
+   sonunda 3·SIG_HPOS'u (30 m) aşar. Denetimin konum bileşeni yalnız dalış bölümünde (çıkıştaki
+   hız sıfırlamasının konumu geçersiz kıldığı ana kadar) kapalıdır; aşım ölçülüp yazılır. Konum
+   geçersiz olduktan sonra denetim yeniden açılır: GNSS'ten yeniden kurulan konumla OK iken hata
+   3·SIG_HPOS'u aşamaz. Hız bileşeni hep açıktır. */
 static void test_y_k4_cikis_dvl_olcek(void)
 {
     TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
@@ -849,10 +851,14 @@ static void test_y_k4_cikis_dvl_olcek(void)
     TEST_ASSERT_FALSE(y_bit(IDA_KES_G_KONUM));
     TEST_ASSERT_FALSE(y_ok());
     TEST_ASSERT_TRUE_MESSAGE(h0.ph > 20.0, "senaryo beklenen sürüklenmeyi üretmedi");
+    /* Dalış bölümü bitti: konum geçersiz ve düzey OK değil (yukarıda). Buradan sonra OK ancak
+       konum GNSS'ten yeniden kurulup geçerli olunca gelir; konum denetimi açıktır. */
+    Y_KONUM_DENETSIZ = false;
     const uint8_t sayac0 = OUT.nav.reset_counter;
     const uint32_t red0 = C.kes.n_gnss_red;
     y_cikis_t c;
     y_cikis_izle(&k, 375.0, &c);
+    TEST_ASSERT_FALSE(Y_KONUM_DENETSIZ);
     y_olc("K4d: sicrama sayisi", (double)c.n_sicrama);
     y_olc("K4d: en buyuk sicrama (m)", c.en_sicrama);
     y_olc("K4d: ilk sicrama ani (s)", c.t_ilk);
@@ -1706,20 +1712,47 @@ static void test_y_r1_hiz_sifir_konum(void)
 /* Bulgu 2 (b): yüzey, GNSS 5 Hz + DVL 10 Hz; t ≥ 40 s'de DVL x ekseninde kalıcı sapma. İki
    nitelikli hız kaynağı sürekli çelişir: hız sırayla birine ve ötekine sıfırlanır. Yatay hız
    geçerliliği canlı ve nitelikli her kaynağın ret altında olmamasını ister (VE); düzey
-   KES_N_RED retle OK'tan düşer ve çelişki sürdükçe OK'a dönmez. ok_ms ≠ 0 ise KES_OK_MS o değere
-   çekilir: histerezis süresi sıfırlama çevriminden kısayken de OK'a dönülmediği (düzeyi tutanın
-   yalnız süre olmadığı) sınanır. Düzeltmeden önce: 40–100 s'de OK dışı adım 0, OK iken hız
-   hatası 0,515 m/s. */
-static void y_r2_celisen(double sapma, uint32_t ok_ms, uint32_t tohum, const char *ad)
+   KES_N_RED retle OK'tan düşer ve çelişki sürdükçe OK'a dönmez. Düzeltmeden önce: 40–100 s'de
+   OK dışı adım 0, OK iken hız hatası 0,515 m/s.
+   Üçüncü tur (dar denetim bulgu 1, 2): bir hız sıfırlaması bütün hız kaynaklarını kuşkulu yapar.
+   Sıfırlanan kaynağın sonraki örneği kapıdan kendiliğinden geçer (durum ona eşit); bu, öteki
+   kaynak için destek değildir. Öteki kaynak yeni duruma karşı reddetmeyi sürdürdüğünden yatay
+   hız geçerliliği sapma boyunca HİÇ kurulmaz: beklenti parametre değerinden bağımsızdır. Tarama
+   bunu KES_OK_MS'in alt ucunda (100 ms) ve kuşkunun geç kurulduğu durumda (büyük KES_N_RED ve
+   KES_RED_MS) sınar: düzeyi tutan süre (KES_OK_MS) değildir. Önceki turda sıfırlama ile öteki
+   kaynağın KES_N_RED'inci reddi arasında (varsayılanlarda ≈ 0,4 s) geçerlilik 1 m/s hız
+   hatasıyla kuruluyordu; KES_OK_MS o pencereden kısaysa düzey OK oluyordu (ölçülen sayılar
+   raporda). ok_ms, n_red, n_reset, red_ms: 0 ise varsayılan. */
+typedef struct {
+    double sapma;     /* m/s; DVL x eksenine */
+    uint32_t ok_ms;   /* KES_OK_MS */
+    uint32_t n_red;   /* KES_N_RED */
+    uint32_t n_reset; /* KES_N_RESET */
+    uint32_t red_ms;  /* KES_RED_MS */
+    uint32_t tohum;
+} y_r2_t;
+
+static void y_r2_celisen(const y_r2_t *r, const char *ad)
 {
     TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
-    if (ok_ms != 0u) {
-        y_prm_u32(IDA_PRM_kes_ok_ms, ok_ms);
+    if (r->ok_ms != 0u) {
+        y_prm_u32(IDA_PRM_kes_ok_ms, r->ok_ms);
     }
+    if (r->n_red != 0u) {
+        y_prm_u32(IDA_PRM_kes_n_red, r->n_red);
+    }
+    if (r->n_reset != 0u) {
+        y_prm_u32(IDA_PRM_kes_n_reset, r->n_reset);
+    }
+    if (r->red_ms != 0u) {
+        y_prm_u32(IDA_PRM_kes_red_ms, r->red_ms);
+    }
+    const uint32_t n_red = C.prm.yururluk.ham[IDA_PRM_kes_n_red];
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0u, ida_prm_grup(&C.prm.yururluk), "tarama noktası grup koşulunu bozuyor");
     kosu_t k;
-    kosu_ayar_t a = y_ayar(sen_y_duz, tohum);
+    kosu_ayar_t a = y_ayar(sen_y_duz, r->tohum);
     a.dvl_hz = 10.0;
-    a.dvl_ayk = sapma;
+    a.dvl_ayk = r->sapma;
     a.dvl_ayk_bas = 40.0;
     a.dvl_ayk_son = 1.0e9;
     kosu_kur(&k, &a);
@@ -1727,12 +1760,31 @@ static void y_r2_celisen(double sapma, uint32_t ok_ms, uint32_t tohum, const cha
     TEST_ASSERT_TRUE(y_ok());
     y_iz_t z;
     y_iz_kur(&z);
-    y_izle(&k, 100.0, &z);
+    /* Düzey düştükten (DVL kuşkulu olduktan) sonra yatay hız geçerlilik biti kurulu çağrılar;
+       sıfırlamalardan sonraki pencereler dahil. */
+    uint32_t hiz_gecerli = 0u;
+    double en_vh_gecerli = 0.0;
+    while (ns_t(k.t_ns) < 100.0) {
+        y_adim_ham(&k);
+        y_iz_adim(&k, &z);
+        if ((z.t_dusme >= 0.0) && y_bit(IDA_KES_G_YATAY_HIZ)) {
+            hata_t h;
+            nav_hatasi(&k, &OUT.nav, &h);
+            hiz_gecerli++;
+            en_vh_gecerli = (h.vh > en_vh_gecerli) ? h.vh : en_vh_gecerli;
+        }
+    }
     y_iz_yaz(ad, &z);
-    /* Üçüncü DVL reddi: örnek 40,207 s; füzyonu D = 0,15 s sonra. */
-    TEST_ASSERT_TRUE_MESSAGE((z.t_dusme > 40.3) && (z.t_dusme < 40.5),
+    y_olc2(ad, ": dustukten sonra yatay hiz gecerli cagri sayisi", (double)hiz_gecerli);
+    y_olc2(ad, ": dustukten sonra yatay hiz gecerliyken en buyuk hiz hatasi (m/s)", en_vh_gecerli);
+    /* KES_N_RED'inci DVL reddi: örnek 40,007 + (KES_N_RED − 1)·0,1 s; füzyonu D = 0,15 s sonra.
+       Taramanın bütün noktalarında süre kuralı (ilk ret + KES_RED_MS) bundan geçtir. */
+    const double t_red = 40.007 + 0.1 * (double)(n_red - 1u) + 0.15;
+    TEST_ASSERT_TRUE_MESSAGE((z.t_dusme > t_red - 0.06) && (z.t_dusme < t_red + 0.14),
                              "çelişen hız kaynaklarında düzey KES_N_RED retle OK'tan düşmedi");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, z.ok_adim, "hız kaynakları çelişirken düzey OK'a döndü");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, hiz_gecerli,
+                                     "hız kaynakları çelişirken yatay hız geçerliliği kuruldu");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(0u, z.ihlal, "düzey OK iken hata 3 σ_max'ı aştı");
     TEST_ASSERT_TRUE_MESSAGE(C.kes.n_hiz_sifir >= 4u, "senaryo ardışık hız sıfırlamaları üretmedi");
     TEST_ASSERT_EQUAL_UINT8(IDA_EST_DEGRADED, OUT.nav.est_level);
@@ -1740,12 +1792,32 @@ static void y_r2_celisen(double sapma, uint32_t ok_ms, uint32_t tohum, const cha
 
 static void test_y_r2_celisen_kaynaklar(void)
 {
-    y_r2_celisen(0.5, 0u, 0x51E103u, "R2b GNSS + DVL (+0,5 m/s)");
+    const y_r2_t r = {0.5, 0u, 0u, 0u, 0u, 0x51E103u};
+    y_r2_celisen(&r, "R2b GNSS + DVL (+0,5 m/s)");
 }
 
+/* KES_OK_MS taraması (alt uç 100 ms dahil); öteki parametreler varsayılan. */
 static void test_y_r2_celisen_kisa_histerezis(void)
 {
-    y_r2_celisen(1.0, 1000u, 0x51E108u, "R2b GNSS + DVL (+1 m/s), KES_OK_MS = 1000");
+    const y_r2_t r1 = {1.0, 100u, 0u, 0u, 0u, 0x51E108u};
+    y_r2_celisen(&r1, "R2b GNSS + DVL (+1 m/s), KES_OK_MS = 100");
+    const y_r2_t r2 = {1.0, 200u, 0u, 0u, 0u, 0x51E108u};
+    y_r2_celisen(&r2, "R2b GNSS + DVL (+1 m/s), KES_OK_MS = 200");
+    const y_r2_t r3 = {1.0, 300u, 0u, 0u, 0u, 0x51E108u};
+    y_r2_celisen(&r3, "R2b GNSS + DVL (+1 m/s), KES_OK_MS = 300");
+    const y_r2_t r4 = {1.0, 1000u, 0u, 0u, 0u, 0x51E108u};
+    y_r2_celisen(&r4, "R2b GNSS + DVL (+1 m/s), KES_OK_MS = 1000");
+}
+
+/* Kuşkunun geç kurulduğu durum: KES_N_RED = 15, KES_N_RESET = 20, KES_RED_MS = 5000. Sıfırlama
+   ile öteki kaynağın KES_N_RED'inci reddi arası (GNSS 5 Hz: ≈ 2,8 s) varsayılan KES_OK_MS'ten
+   (2 s) uzundur; ikinci nokta ayrıca KES_OK_MS'i alt uca çeker. */
+static void test_y_r2_celisen_gec_kusku(void)
+{
+    const y_r2_t r1 = {1.0, 0u, 15u, 20u, 5000u, 0x51E108u};
+    y_r2_celisen(&r1, "R2b GNSS + DVL (+1 m/s), N_RED = 15, N_RESET = 20, RED_MS = 5000");
+    const y_r2_t r2 = {1.0, 100u, 15u, 20u, 5000u, 0x51E108u};
+    y_r2_celisen(&r2, "R2b GNSS + DVL (+1 m/s), N_RED = 15, N_RESET = 20, RED_MS = 5000, KES_OK_MS = 100");
 }
 
 /* Karar 2, "canlı ve nitelikli" koşulu: ret altındaki kaynağın akışı kesilirse (DVL 40 s'den
@@ -1803,13 +1875,16 @@ static void test_y_r2_kaynak_kesilir(void)
    değişmez, (iii) KES_N_RED rette kuşku, (iv) GNSS konumu taze değilken hız sıfırlaması konumu
    düşürür, tazeyken düşürmez; karar 4: ret izi sıfırlamada temizlenir, kuşku ancak kabul edilen
    örnekte. Port yolunda (i) ve (ii) tek başlarına gözlenemez: sıfırlamanın bıraktığı kuşku aynı
-   çağrıda geçerliliği zaten düşürür; burada ayrı ayrı sınanırlar. */
+   çağrıda geçerliliği zaten düşürür; burada ayrı ayrı sınanırlar. Üçüncü tur: hız sıfırlaması
+   öteki hız kaynağını (GNSS hızı) da kuşkulu yapar ve o kuşkuyu DVL'in kabul edilen örneği
+   kaldırmaz. */
 static void y_r1_dvl_sifirla(bool gnss_taze)
 {
     ida_kes_ayar_t ay;
     ida_kes_ayar_oku(&C, &ay);
     TEST_ASSERT_TRUE(C.kes.akis_dvl.destek_var && (C.kes.akis_dvl.destek_ns != ay.now_ns));
     TEST_ASSERT_TRUE(C.kes.ok_aday_var && C.kes.konum_var && !C.kes.kusku_dvl && !C.kes.red_dvl.var);
+    TEST_ASSERT_FALSE(C.kes.kusku_gnss_v);
     const int64_t destek0 = C.kes.akis_dvl.destek_ns;
     const int64_t fuz0 = C.kes.hiz_fuz_ns;
     const uint32_t sifir0 = C.kes.n_hiz_sifir;
@@ -1830,6 +1905,7 @@ static void y_r1_dvl_sifirla(bool gnss_taze)
         if (i < ay.n_reset) {
             TEST_ASSERT_EQUAL_UINT32(sifir0, C.kes.n_hiz_sifir);
             TEST_ASSERT_TRUE(C.kes.red_dvl.var);
+            TEST_ASSERT_FALSE_MESSAGE(C.kes.kusku_gnss_v, "DVL reddi GNSS hızını kuşkulu yaptı");
             TEST_ASSERT_TRUE_MESSAGE(C.kes.ok_aday_var && C.kes.konum_var, "ret tek başına sıfırlama etkisi yaptı");
         }
     }
@@ -1839,12 +1915,15 @@ static void y_r1_dvl_sifirla(bool gnss_taze)
     TEST_ASSERT_TRUE_MESSAGE(C.kes.akis_dvl.destek_ns == destek0, "(ii) hız sıfırlaması desteği yeniledi");
     TEST_ASSERT_TRUE_MESSAGE(C.kes.hiz_fuz_ns == fuz0, "(ii) hız sıfırlaması ölü hesap desteğini yeniledi");
     TEST_ASSERT_TRUE_MESSAGE(C.kes.kusku_dvl, "sıfırlama kuşkuyu kaldırdı");
+    TEST_ASSERT_TRUE_MESSAGE(C.kes.kusku_gnss_v, "hız sıfırlaması öteki hız kaynağını kuşkulu yapmadı");
     TEST_ASSERT_FALSE_MESSAGE(C.kes.red_dvl.var, "karar 4: ret izi sıfırlamada temizlenmedi");
     TEST_ASSERT_EQUAL_UINT8(0u, C.kes.nit_dvl.red_n);
     TEST_ASSERT_EQUAL_MESSAGE(gnss_taze, C.kes.konum_var, "(iv) hız sıfırlamasında konum geçerliliği");
-    /* Sonraki örnek kapıdan geçer: destek ve kuşkunun kalkması ondan gelir. */
+    /* Sonraki örnek kapıdan geçer (durum ona eşit): DVL'in desteği ve kuşkusunun kalkması ondan
+       gelir; GNSS hızının kuşkusu kalkmaz (kendi kabul edilen örneğini bekler). */
     ida_kes_dvl_fuzyon(&C.kes, &ay, &y, w0);
     TEST_ASSERT_FALSE(C.kes.kusku_dvl);
+    TEST_ASSERT_TRUE_MESSAGE(C.kes.kusku_gnss_v, "sıfırlanan kaynağın kendi örneği öteki kaynağın kuşkusunu kaldırdı");
     TEST_ASSERT_TRUE(C.kes.akis_dvl.destek_ns == ay.now_ns);
     TEST_ASSERT_EQUAL_UINT32(sifir0 + 1u, C.kes.n_hiz_sifir);
 }
@@ -1874,6 +1953,7 @@ static void test_y_r1_sifirlama_birim(void)
     C.kes.ok_aday_var = true; /* düzey hesabı araya girmedi: aday yeniden kurulmuş sayılır */
     TEST_ASSERT_TRUE(C.kes.akis_gnss.destek_var && (C.kes.akis_gnss.destek_ns != ay.now_ns));
     TEST_ASSERT_TRUE(!C.kes.kusku_gnss_p && !C.kes.red_gnss_p.var);
+    TEST_ASSERT_TRUE(C.kes.kusku_gnss_v); /* yukarıdaki DVL hız sıfırlamasından */
     const int64_t destek0 = C.kes.akis_gnss.destek_ns;
     const uint32_t sifir0 = C.kes.n_konum_sifir;
     const uint8_t sayac0 = C.kes.reset_sayac;
@@ -1893,6 +1973,7 @@ static void test_y_r1_sifirlama_birim(void)
     for (uint32_t i = 1u; i <= ay.n_reset; i++) {
         ida_kes_gnss_fuzyon(&C.kes, &ay, &y, w0);
         TEST_ASSERT_EQUAL_MESSAGE(i >= ay.n_red, C.kes.kusku_gnss_p, "konum kuşkusu KES_N_RED rette kurulmadı");
+        /* Hız bileşeni ilk örnekte kapıdan geçti: GNSS hızının kuşkusunu kendi kabulü kaldırır. */
         TEST_ASSERT_FALSE(C.kes.kusku_gnss_v);
         if (i < ay.n_reset) {
             TEST_ASSERT_EQUAL_UINT32(sifir0, C.kes.n_konum_sifir);
@@ -1907,6 +1988,7 @@ static void test_y_r1_sifirlama_birim(void)
     TEST_ASSERT_TRUE_MESSAGE(C.kes.kusku_gnss_p, "sıfırlama kuşkuyu kaldırdı");
     TEST_ASSERT_FALSE_MESSAGE(C.kes.red_gnss_p.var, "karar 4: ret izi sıfırlamada temizlenmedi");
     TEST_ASSERT_TRUE(C.kes.konum_var);
+    TEST_ASSERT_FALSE_MESSAGE(C.kes.kusku_dvl || C.kes.kusku_gnss_v, "konum sıfırlaması hız kaynaklarını kuşkulu yaptı");
     ida_kes_gnss_fuzyon(&C.kes, &ay, &y, w0);
     TEST_ASSERT_FALSE(C.kes.kusku_gnss_p);
     TEST_ASSERT_TRUE(C.kes.akis_gnss.destek_ns == ay.now_ns);
@@ -2009,6 +2091,69 @@ static void test_y_r4_ret_yeniden_nitelik(void)
     }
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(sifir0, C.kes.n_konum_sifir, "senaryo beklenenden erken sıfırladı");
     TEST_ASSERT_TRUE(y_bit(IDA_KES_G_YATAY_HIZ)); /* DVL sürüyor: taşıyıcı vardı */
+}
+
+/* Dar denetim bulgu 3 (ilk incelemenin 4. bulgusunun DVL tarafı): yeniden nitelendirme DVL ret
+   izini silmez. Yüzey, GNSS 5 Hz + DVL 10 Hz; DVL 40 s'den başlayarak kalıcı +1 m/s sapmalı
+   (8 ret: 40,007 … 40,707 s; KES_N_RESET'e varmaz), akışı 40,75–42,25 s arası kesilir ve sapmalı
+   olarak döner. KES_N_RED bu testte 9'dur: yalnız süre kuralı (KES_RED_MS) sınanır. Kesinti
+   T_DVL_STALE'i aştığı için DVL yeniden nitelenir (ilk 4 örnekte kapı çalışmaz) ve bu arada etkin
+   değildir: yatay hızı GNSS hızı taşır. Ret izi korunduğu için DVL'in yeniden nitelendikten
+   sonraki İLK kapı reddinde (iz ≈ 40,16 s'den beri sürüyor: KES_RED_MS çoktan doldu) yatay hız
+   geçerliliği aynı çağrıda düşer. İz yeniden nitelendirmede silinseydi süre o retten baştan
+   sayılır, geçerlilik KES_RED_MS (1 s) boyunca 1 m/s çelişkiyle kurulu kalırdı. */
+static void test_y_r4_dvl_ret_yeniden_nitelik(void)
+{
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    y_prm_u32(IDA_PRM_kes_n_red, 9u);
+    kosu_t k;
+    kosu_ayar_t a = y_ayar(sen_y_duz, 0x51E10Cu);
+    a.dvl_hz = 10.0;
+    a.dvl_ayk = 1.0;
+    a.dvl_ayk_bas = 40.0; /* 8 ret: 40,007 … 40,707 s */
+    a.dvl_ayk_son = 1.0e9;
+    a.dvl_kes_bas = 40.75;
+    a.dvl_kes_son = 42.25;
+    kosu_kur(&k, &a);
+    y_git(&k, 40.0);
+    TEST_ASSERT_TRUE(y_ok());
+    const uint32_t red0 = C.kes.n_dvl_red;
+    y_git(&k, 40.3);
+    TEST_ASSERT_TRUE_MESSAGE(C.kes.red_dvl.var, "senaryo DVL reddi üretmedi");
+    const int64_t iz_bas = C.kes.red_dvl.bas_ns;
+    const int64_t destek0 = C.kes.akis_dvl.destek_ns;
+    /* Kesintiden önce: süre kuralı (ilk ret ≈ 40,16 s + KES_RED_MS) geçerliliği düşürür. */
+    y_git(&k, 41.3);
+    TEST_ASSERT_FALSE_MESSAGE(y_bit(IDA_KES_G_YATAY_HIZ), "sürekli DVL reddi yatay hız geçerliliğini düşürmedi");
+    TEST_ASSERT_EQUAL_UINT32(red0 + 8u, C.kes.n_dvl_red);
+    /* Kesinti ve yeniden nitelendirme: kapı çalışmaz, iz ve başlangıcı korunur. DVL etkin
+       değilken (son kapı kararı ≈ 40,86 s; T_DVL_STALE = 1 s) GNSS hızı yatay hızı taşır. */
+    bool tasindi = false;
+    double t_ilk_ret = -1.0;
+    while (ns_t(k.t_ns) < 44.0) {
+        y_adim(&k);
+        TEST_ASSERT_TRUE_MESSAGE(C.kes.red_dvl.var && (C.kes.red_dvl.bas_ns == iz_bas),
+                                 "DVL ret izi kabul edilen örnek ya da sıfırlama olmadan silindi");
+        if (C.kes.n_dvl_red == red0 + 8u) {
+            tasindi = tasindi || y_bit(IDA_KES_G_YATAY_HIZ);
+        } else {
+            /* Yeniden nitelendikten sonraki ilk ret: aynı çağrıda geçerlilik düşer. */
+            t_ilk_ret = ns_t(k.t_ns);
+            TEST_ASSERT_EQUAL_UINT32(red0 + 9u, C.kes.n_dvl_red);
+            TEST_ASSERT_FALSE_MESSAGE(y_bit(IDA_KES_G_YATAY_HIZ),
+                                      "yeniden nitelenen DVL'in reddi, süren ret izine rağmen geçerliliği düşürmedi");
+            TEST_ASSERT_FALSE(y_ok());
+            break;
+        }
+    }
+    y_olc("R4 DVL yeniden nitelik: nitelendikten sonraki ilk ret ani (s)", t_ilk_ret);
+    /* Dönüş 42,25 s; iyi örnekler 42,307 s'den başlar, beşincisi (42,707 s; KES_N_IYI = 5)
+       kaynağı nitelendirir ve kapıya girer; füzyonu D = 0,15 s sonra. */
+    TEST_ASSERT_TRUE_MESSAGE((t_ilk_ret > 42.8) && (t_ilk_ret < 43.2), "DVL beklenen anda yeniden nitelenmedi");
+    TEST_ASSERT_TRUE_MESSAGE(tasindi, "senaryo: DVL etkin değilken GNSS hızı yatay hızı taşımadı (sınama boş)");
+    TEST_ASSERT_TRUE_MESSAGE(C.kes.akis_dvl.destek_ns == destek0, "sapmalı DVL örneği kabul edildi");
+    TEST_ASSERT_FALSE_MESSAGE(C.kes.kusku_dvl, "senaryo: kuşku kuruldu (yalnız süre kuralı sınanacaktı)");
+    TEST_ASSERT_EQUAL_UINT32(0u, C.kes.n_hiz_sifir);
 }
 
 /* Bulgu 5: sensör kovaryansı çok büyük (1 (m/s)²) ama FOM küçük DVL örneği bilgi taşımaz;
@@ -2151,10 +2296,12 @@ static void yatay_testleri(void)
     RUN_TEST(test_y_r1_hiz_sifir_konum);
     RUN_TEST(test_y_r2_celisen_kaynaklar);
     RUN_TEST(test_y_r2_celisen_kisa_histerezis);
+    RUN_TEST(test_y_r2_celisen_gec_kusku);
     RUN_TEST(test_y_r2_kaynak_kesilir);
     RUN_TEST(test_y_r1_sifirlama_birim);
     RUN_TEST(test_y_r3_orijin_degisimi);
     RUN_TEST(test_y_r4_ret_yeniden_nitelik);
+    RUN_TEST(test_y_r4_dvl_ret_yeniden_nitelik);
     RUN_TEST(test_y_r5_dvl_kovaryans);
     RUN_TEST(test_y_r7_olcum_kuyrugu);
     RUN_TEST(test_y_r1_param_grup);
