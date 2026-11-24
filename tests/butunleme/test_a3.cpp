@@ -683,7 +683,9 @@ int test_a3_hil_olcum()
                 static_cast<unsigned long long>(h.cerceve_sayisi.count(3) ? h.cerceve_sayisi.at(3) : 0u));
     std::printf("  hil döngü %s", s.evre_ozeti.c_str());
     dogrula_a3(ist.baglandi, "istemci bağlandı");
-    dogrula_a3(z.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + std::to_string(z.tf_sayisi) + ")");
+    // ZAMANLAMA (W4-K24, K29): 60 s'deki TF sayısı duvar saatine bağlıdır; ölçüt değilse yalnız ölçüm.
+    dogrula_a3(ida::test::zamanlama(z.tf_sayisi >= 11'990u, "a3_hil_olcum.tf_sayisi", "60 s'de " + std::to_string(z.tf_sayisi) + " TF (≥ 11 990; ≈ 12 000)"),
+            "60 s'de ≈ 12 000 TF (zamanlama)");
     dogrula_a3(s.a3_halka_tasma == 0u, "dünya → A3 halkasında düşme yok");
     dogrula_a3(s.calistirma_sonu == "bitti", "çalıştırma bitti");
     // ZAMANLAMA (W4-K24): yayın tiki duvar saatine bağlıdır (50 Hz · 60 s ≈ 3000).

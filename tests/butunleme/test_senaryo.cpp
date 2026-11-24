@@ -615,7 +615,9 @@ int test_hil_pty()
                 static_cast<unsigned long long>(s.zaman.tf_sayisi), yuzde(0.5), yuzde(0.999),
                 1e-6 * static_cast<double>(s.zaman.periyot_en_cok_ns), 1e-6 * static_cast<double>(s.zaman.gec_yazim_en_cok_ns),
                 static_cast<unsigned long long>(s.zaman.gercek_zaman_kacirma), s.sayac.calistirma_gecersiz);
-    dogrula(s.zaman.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + std::to_string(s.zaman.tf_sayisi) + ")");
+    // ZAMANLAMA (W4-K24, K29): 60 s'deki TF sayısı duvar saatine bağlıdır; ölçüt değilse yalnız ölçüm.
+    dogrula(ida::test::zamanlama(s.zaman.tf_sayisi >= 11'990u, "senaryo_hil_pty.tf_sayisi", "60 s'de " + std::to_string(s.zaman.tf_sayisi) + " TF (≥ 11 990; ≈ 12 000)"),
+            "60 s'de ≈ 12 000 TF (zamanlama)");
     // ZAMANLAMA (W4-K24): gerçek zaman kaçırma (sim gecikmesi, kaçırılan parti, son tarih) ve
     // çalıştırma geçersiz bitlerinin zamanlama kaynaklıları.
     dogrula(ida::test::zamanlama(s.zaman.gercek_zaman_kacirma == 0u, "senaryo_hil_pty.gercek_zaman_kacirma",

@@ -65,6 +65,22 @@ void dogrula_d(bool kosul, const std::string& ileti)
     }
 }
 
+// Gerçek zamana bağlı öncül denetimi (HIL kolları; W4-K24, W4-K29). Öncül tutuyorsa ya da zamanlama
+// ölçütse (yerel release) "ön koşul:" olarak sayılır ve true döner (tutmuyorsa KALDI). Öncül tutmuyor ve
+// zamanlama ölçüt değilse (CI, sanitizer, debug) iletiyle "atlandı" yazılır, KALDI sayılmaz ve false
+// döner: çağıran kola bağlı emniyet doğrulamalarını koşturmaz. Emniyet doğrulamalarının kendisi hiçbir
+// ortamda gevşemez.
+bool hil_on_kosul(bool tutuyor, const std::string& ad, const std::string& ileti)
+{
+    if (!tutuyor && !ida::test::zamanlama_olcut_mu()) {
+        std::printf("  atlandı: %s: ön koşul kurulamadı (gerçek zaman bu ortamda ölçüt değil; W4-K24/K29): %s%s\n",
+                    ad.c_str(), ileti.c_str(), ida::test::zamanlama_muafiyeti());
+        return false;
+    }
+    dogrula_d(tutuyor, ad + ": ön koşul: " + ileti);
+    return true;
+}
+
 using ida::a3::AlimSonucu;
 using ida::a3::CalistirmaDurumu;
 using ida::a3::Komut;
@@ -553,21 +569,12 @@ int test_ayni_tur_cikis()
         const Kosu kontrol = kos_bu(false, kno_bas, kret_onay, kret_adimla);
         const Kosu k = kos_bu(true, no_bas, ret_onay, ret_adimla);
         dogrula_d(kontrol.s.tamam && kontrol.s.calistirma_sonu == "bitti", ad + ": kontrol koşusu tamam ve bitti " + kontrol.s.hata);
-        // Gerçek zamanlı koşunun öncülü (W4-K24, K29): zamanlama ölçüt değilse (CI, sanitizer, debug) yavaş
-        // koşu partileri kaçırabilir ve komut nötr dışı olmayabilir; kol atlanır, KALDI sayılmaz. Ölçütse
-        // (yerel release) ön koşul zorunludur. Emniyet doğrulamaları hiçbir ortamda gevşemez.
-        const bool on_kosul = notr_disi(kontrol, 4000);
-        if (!on_kosul && !ida::test::zamanlama_olcut_mu()) {
-            std::printf("  atlandı: %s: ön koşul kurulamadı (gerçek zaman bu ortamda ölçüt değil; W4-K24/K29): "
-                        "kontrol koşusunda çıkış adımı (4000) nötr, ölçülen sapma %.1f µs%s\n",
-                        ad.c_str(), kontrol.sapma.size() > 4000u ? kontrol.sapma[4000] : -1.0,
-                        ida::test::zamanlama_muafiyeti());
-        } else {
-        dogrula_d(on_kosul, ad + ": ön koşul: müdahalesiz kontrol koşusunda çıkış adımı (4000) nötr dışı");
+        // Gerçek zamanlı koşunun öncülleri (W4-K24, K29): hil_on_kosul. Emniyet doğrulamaları gevşemez.
+        if (hil_on_kosul(notr_disi(kontrol, 4000), ad, "müdahalesiz kontrol koşusunda çıkış adımı (4000) nötr dışı") &&
+            hil_on_kosul(notr_disi(k, 3999), ad, "duraklatmadan önceki adımda nötr dışı komut yürürlükte")) {
         dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", ad + ": koşu tamam ve bitti " + k.s.hata);
         dogrula_d(ret_onay == "onay_gerekli", ad + ": onaysız duraklat onay_gerekli (Tablo 4.7b): " + ret_onay);
         dogrula_d(ret_adimla == "kipte_gecersiz", ad + ": HIL'de adımla kipte_gecersiz (Tablo 4.7b): " + ret_adimla);
-        dogrula_d(notr_disi(k, 3999), ad + ": ön koşul: duraklatmadan önceki adımda nötr dışı komut yürürlükte");
         dogrula_d(k.acil.size() > 4000u && k.acil[4000] == 1u && notr_araligi(k, 4000, 4040),
                   ad + ": çıkıştan sonraki ilk fizik adımı (4000) ve sonrası nötr, acil etkin");
         dogrula_d(uygulandi(k.s, no_bas, 4000 * kH), ad + ": acil bas sınır 4000'de uygulandı");
@@ -799,7 +806,9 @@ int test_hil_oturum_sonu()
         }
     });
     dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + k.s.hata);
-    dogrula_d(sess.load() != 0u && rev0 != 0u, "ön koşul: oturum kuruldu, revizyon okundu");
+    if (!hil_on_kosul(sess.load() != 0u && rev0 != 0u, "HIL oturum sonu", "oturum kuruldu, revizyon okundu")) {
+        return 0;
+    }
     dogrula_d(rev_sonra >= rev0 + 1u, "kartın kapanışı duran turda revizyonu artırdı (" + std::to_string(rev0) + " → " +
                                           std::to_string(rev_sonra) + ")");
     const auto* o = a3_sonucu(k.s, no_gev);
@@ -834,7 +843,9 @@ int test_hil_esz()
                 static_cast<unsigned long long>(c.esz_guvenli_uygulanan), static_cast<unsigned long long>(c.esz_birlesen),
                 static_cast<unsigned long long>(c.yanit_iptal_esz));
     dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + k.s.hata);
-    dogrula_d(notr_disi(k, 3999), "ön koşul: duraklatmadan önce nötr dışı komut yürürlükte");
+    if (!hil_on_kosul(notr_disi(k, 3999), "HIL eşzamansız çıktı", "duraklatmadan önce nötr dışı komut yürürlükte")) {
+        return 0;
+    }
     dogrula_d(c.esz_guvenli_uygulanan >= 1u, "duraklatmada kartın eşzamansız güvenli çıktısı uygulandı (A1-K78)");
     dogrula_d(k.sapma.size() > 4000u && k.sapma[4000] == 0.0, "sürdürmeden sonraki ilk fizik adımı nötr girdiyle");
     return 0;
@@ -920,9 +931,12 @@ int test_hil_ilk_tf()
                 static_cast<unsigned long long>(esz_once_bagli), static_cast<unsigned long long>(esz_sifir),
                 static_cast<unsigned long long>(esz_bagli));
     dogrula_d(k.s.tamam && k.s.calistirma_sonu == "bitti", "HIL koşusu tamam ve bitti " + k.s.hata);
-    dogrula_d(surdu && tf_once == 0u, "ön koşul: sınır 0'da, hiç parti gönderilmeden duraklatıldı ve 3 s sonra sürdürüldü");
-    dogrula_d(c.esz_birlesen + c.esz_guvenli_uygulanan >= 100u && esz_once >= 100u,
-              "ön koşul: duraklatmada (sürdürmeden önce) kart çıktıları geldi (≥ 100)");
+    if (!hil_on_kosul(surdu && tf_once == 0u, "HIL ilk TF öncesi duraklatma",
+                      "sınır 0'da, hiç parti gönderilmeden duraklatıldı ve 3 s sonra sürdürüldü") ||
+        !hil_on_kosul(c.esz_birlesen + c.esz_guvenli_uygulanan >= 100u && esz_once >= 100u, "HIL ilk TF öncesi duraklatma",
+                      "duraklatmada (sürdürmeden önce) kart çıktıları geldi (≥ 100)")) {
+        return 0;
+    }
     // Duraklatma penceresi: sürdürmeden önce alınan bütün eşzamansız çıktılar ilk parti öncesidir
     // (batch_seq = 0) ve sürdürme anında bit 6 (eşzamansız güvenli çıktı) kurulmamıştır.
     dogrula_d(esz_once_bagli == 0u && (gec_surdur & (1u << 6)) == 0u,
