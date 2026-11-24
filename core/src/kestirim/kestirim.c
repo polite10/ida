@@ -84,6 +84,7 @@ void ida_kes_kur(ida_kes_t *k)
     k->q_o.w = 1.0f;
     k->xh.q.w = 1.0f;
     k->duzey = (uint8_t)IDA_EST_INIT;
+    k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
 }
 
 /* Filtreyi INIT'e döndürür (IMU boşluğu, sayısal çökme). Basınç referansı, çökme mandalı,
@@ -105,6 +106,7 @@ static void yeniden_hizala(ida_kes_t *k)
     k->cikis_gec = false;
     k->gecerlilik = 0u;
     k->duzey = k->ariza ? (uint8_t)IDA_EST_FAULT : (uint8_t)IDA_EST_INIT;
+    k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
 }
 
 void ida_kes_oturum_basi(ida_kes_t *k)
@@ -136,6 +138,7 @@ void ida_kes_oturum_basi(ida_kes_t *k)
     k->n_geri = sayac[7];
     k->n_bayrak = sayac[8];
     k->duzey = k->ariza ? (uint8_t)IDA_EST_FAULT : (uint8_t)IDA_EST_INIT;
+    k->suzgec_duzey = (uint8_t)IDA_EST_INIT;
 }
 
 /* ---- Örnekler -------------------------------------------------------------------------- */
@@ -440,14 +443,9 @@ static bool surekli(const ida_kes_red_t *r, int64_t now_ns, int64_t sure_ns)
     return r->var && ((now_ns - r->bas_ns) >= sure_ns);
 }
 
-/* Sağlık düzeyi ve geçerlilik (02 §2.3.6; tazelik 02 §4.1, A4-K36). */
-static void duzey_guncelle(ida_kes_t *k, const ida_kes_ayar_t *a)
+/* Sağlık düzeyi ve geçerlilik (02 §2.3.6; tazelik 02 §4.1, A4-K36), çökme mandalı hariç. */
+static void suzgec_duzeyi(ida_kes_t *k, const ida_kes_ayar_t *a)
 {
-    if (k->ariza) {
-        k->duzey = (uint8_t)IDA_EST_FAULT;
-        k->gecerlilik = 0u;
-        return;
-    }
     if (!k->hizali) {
         k->duzey = (uint8_t)IDA_EST_INIT;
         k->gecerlilik = 0u;
@@ -505,6 +503,18 @@ static void duzey_guncelle(ida_kes_t *k, const ida_kes_ayar_t *a)
     }
     if (k->cikis_gec) {
         k->gecerlilik = 0u; /* çıkış durumu t_ref'in 100 ms'den fazla gerisinde (bulgu 8) */
+    }
+}
+
+/* Yayımlanan düzey: süzgeç düzeyi; sayısal çökme mandalı kuruluyken FAULT ve geçerlilik 0
+   (02 §2.3.6). Süzgeç düzeyi mandaldan bağımsız ayrıca tutulur (ida_kes_suzgec_duzey). */
+static void duzey_guncelle(ida_kes_t *k, const ida_kes_ayar_t *a)
+{
+    suzgec_duzeyi(k, a);
+    k->suzgec_duzey = k->duzey;
+    if (k->ariza) {
+        k->duzey = (uint8_t)IDA_EST_FAULT;
+        k->gecerlilik = 0u;
     }
 }
 
@@ -603,6 +613,11 @@ uint8_t ida_kes_duzey(const ida_kes_t *k)
     return k->duzey;
 }
 
+uint8_t ida_kes_suzgec_duzey(const ida_kes_t *k)
+{
+    return k->suzgec_duzey;
+}
+
 uint8_t ida_kes_gecerlilik(const ida_kes_t *k)
 {
     return k->gecerlilik;
@@ -675,7 +690,8 @@ void ida_kes_nav(const ida_kes_t *k, ida_stime_t t, ida_nav_out_t *nav)
 
 bool ida_kes_tutarli(const ida_kes_t *k)
 {
-    return (k->duzey <= (uint8_t)IDA_EST_FAULT) && (k->imu_n <= IDA_KES_IMU_N) &&
+    return (k->duzey <= (uint8_t)IDA_EST_FAULT) && (k->suzgec_duzey <= (uint8_t)IDA_EST_BAD) &&
+           (k->imu_n <= IDA_KES_IMU_N) &&
            (k->imu_bas < IDA_KES_IMU_N) && (k->olc_n <= IDA_KES_OLC_N) &&
            (k->gecerlilik <= 0x3Fu);
 }
