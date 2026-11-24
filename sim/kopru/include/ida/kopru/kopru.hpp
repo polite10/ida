@@ -28,6 +28,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -307,6 +308,11 @@ public:
     // Yeni el sıkışma (A1-K12): yeni nonce, SIM_HELLO; o ana kadar alınan baytlar atılır.
     void el_sikisma_baslat(std::int64_t duvar_ns);
     void al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns);
+    // SIL kilitli adım (A1-K121, K102): al() gibi, ama her teslim edilen çerçeveden sonra dur()
+    // doğruysa o çerçevenin son baytında durur. Dönüş: tüketilen bayt sayısı (yarım çerçeve
+    // ayrıştırıcıda tutulur ve tüketilmiş sayılır). Kalan baytları çağıran saklar ve sonra verir:
+    // böylece çerçevelerin işlendiği an geliş zamanına değil akıştaki sırasına bağlı olur.
+    std::size_t al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns, const std::function<bool()>& dur);
     // Zamana bağlı işler: SIM_HELLO yinelemesi (T_hello), canlılık (T_canlı), T_bağ (yalnız
     // HIL), T_hazır, T_reboot.
     void zamanla(std::int64_t duvar_ns);

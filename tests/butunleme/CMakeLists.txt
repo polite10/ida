@@ -10,7 +10,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
   return()
 endif()
 
-add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp)
+add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp)
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -78,6 +78,10 @@ add_test(NAME butunleme.ida_sim_tohum_ve_senaryo
 add_test(NAME butunleme.a4_girdi_esitligi COMMAND ida_butunleme_test a4_girdi_esitligi)
 add_test(NAME butunleme.sil_gecikmeli_tcp COMMAND ida_butunleme_test sil_gecikmeli_tcp)
 set_tests_properties(butunleme.sil_gecikmeli_tcp PROPERTIES TIMEOUT 300)
+# A1-K102, K121 (iv): koşu ortasında protokol ihlaliyle düşen oturum; aynı tohumda 10 yüksüz +
+# 10 yüklü (6 meşgul döngü) koşunun iki yöndeki bayt akışı aynı.
+add_test(NAME butunleme.sil_oturum_dusme_belirlenim COMMAND ida_butunleme_test sil_oturum_dusme_belirlenim 10)
+set_tests_properties(butunleme.sil_oturum_dusme_belirlenim PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
 add_test(NAME butunleme.sil_iki_surec COMMAND ida_butunleme_test sil_iki_surec $<TARGET_FILE:ida_sil>)
 set_tests_properties(butunleme.sil_iki_surec PROPERTIES TIMEOUT 300)
 set_tests_properties(butunleme.a4_girdi_esitligi PROPERTIES TIMEOUT 300)

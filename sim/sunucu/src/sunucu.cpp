@@ -190,6 +190,7 @@ private:
         }
         cikis_.clear();
         cikis_k_ = 0;
+        sil_gelen_temizle();
         sonraki_acma_ = gercek() + kYenidenAcma;
     }
 
@@ -197,15 +198,21 @@ private:
     void baglanti_bakim();
     std::unique_ptr<kopru::Tasima> port_ac(std::string& hata);
 
-    // Eldeki baytları köprüye verir; ilk okuma en çok bekle_us bekler.
+    // Eldeki baytları alır; ilk okuma en çok bekle_us bekler. HIL'de baytlar hemen köprüye
+    // verilir. SIL'de (A1-K121, K102) yalnız alım kuyruğuna eklenir ve köprüye sil_besle() verir:
+    // çerçeveler yalnız sim'in beklediği noktalarda (yuva bekleme, el sıkışma), akıştaki sırayla
+    // ve bekleme koşulu sağlandığı çerçevede durularak işlenir. Böylece oturumun bitiş anı,
+    // kapanış çerçevesi ve yeniden başlama anı baytların geliş zamanına bağlı olmaz. Akışın
+    // kapanması da (karşı uç kapattı) akıştaki yerinde, kuyruk bitince işlenir.
     void pompa(std::int64_t bekle_us)
     {
-        if (ic_ && a_.kip == Kip::sil) {
+        const bool sil = a_.kip == Kip::sil;
+        if (ic_ && sil) {
             (void)ic_->pompala();
             bekle_us = 0;
         }
         cikis_hizmet();
-        if (!tas_) {
+        if (!tas_ || (sil && sil_akis_bitti_)) {
             return;
         }
         alim_.resize(16384);   // yığında değil (MSVC C6262)
@@ -215,19 +222,55 @@ private:
             const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
             bekle_us = 0;
             if (r == kopru::OkumaSonucu::tamam) {
-                k_->al(alim_.data(), n, duvar());
-                if (ic_ && a_.kip == Kip::sil && k_->giden_var()) {
-                    yaz();
-                    (void)ic_->pompala();
+                if (sil) {
+                    sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
+                } else {
+                    k_->al(alim_.data(), n, duvar());
                 }
                 continue;
             }
             if (r == kopru::OkumaSonucu::kapandi) {
-                baglanti_koptu("taşıma kapandı (aygıt kalktı ya da karşı uç kapattı)");
+                if (sil) {
+                    sil_akis_bitti_ = true;
+                } else {
+                    baglanti_koptu("taşıma kapandı (aygıt kalktı ya da karşı uç kapattı)");
+                }
             }
             break;
         }
+        if (sil && sil_gelen_.size() - sil_gelen_k_ > kSilGelenAzami) {
+            baglanti_koptu("SIL alım kuyruğu taştı");   // karşı taraf kilitli adımı bozuyor
+        }
         evre_[kEvreOkuma] += gercek() - e0;
+    }
+
+    // SIL: alım kuyruğunu akış sırasıyla köprüye verir; dur() doğru olunca o çerçevede durur ve
+    // kalan baytlar kuyrukta kalır. Kuyruk bitti ve akış kapandıysa (bekleyen hâlâ veri
+    // istiyorsa) bağlantı kaybı burada işlenir. Dönüş: dur().
+    bool sil_besle(const std::function<bool()>& dur)
+    {
+        while (sil_gelen_k_ < sil_gelen_.size() && !dur()) {
+            sil_gelen_k_ += k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+        }
+        if (sil_gelen_k_ >= sil_gelen_.size()) {
+            sil_gelen_.clear();
+            sil_gelen_k_ = 0;
+        } else if (sil_gelen_k_ > (std::size_t{1} << 16U)) {
+            sil_gelen_.erase(sil_gelen_.begin(), sil_gelen_.begin() + static_cast<std::ptrdiff_t>(sil_gelen_k_));
+            sil_gelen_k_ = 0;
+        }
+        const bool tamam = dur();
+        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty()) {
+            baglanti_koptu("taşıma kapandı (karşı uç kapattı)");
+        }
+        return tamam;
+    }
+
+    void sil_gelen_temizle()
+    {
+        sil_gelen_.clear();
+        sil_gelen_k_ = 0;
+        sil_akis_bitti_ = false;
     }
 
     // HIL: hedef duvar anına kadar okuyup bekler. Okuma engelsizdir; arada mutlak son tarihe
@@ -310,6 +353,10 @@ private:
     bool pty_cikarildi_ = false;
     bool pty_takildi_ = false;
     std::vector<std::uint8_t> alim_;
+    std::vector<std::uint8_t> sil_gelen_;   // SIL: alınmış, köprüye henüz verilmemiş baytlar
+    std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
+    bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
+    static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
@@ -413,6 +460,7 @@ bool Calistirici::baglanti_kabul()
         s_.hata = "SIL koşucusu bağlanmadı: " + hata;
         return false;
     }
+    sil_gelen_temizle();   // A1-K99: her bağlantı yeni bir akıştır
     gunluk(2, "bağlantı: " + tas_->ad());
     return true;
 }
@@ -423,10 +471,24 @@ bool Calistirici::oturum_kur()
     if (!tas_ && !baglanti_kabul()) {
         return false;
     }
-    k_->el_sikisma_baslat(duvar());
+    // SIL (A1-K121 (iv), K23): oturum köprüde bittiyse el sıkışma orada başlamıştır (giden
+    // kuyrukta varsa SESSION_CLOSE, ardından SIM_HELLO): yeniden başlatılmaz. Böylece kapanış
+    // çerçevesi silinmez ve el sıkışma tek SIM_HELLO'yla tamamlanır.
+    if (a_.kip != Kip::sil || k_->durum() != kopru::OturumDurumu::el_sikisma) {
+        k_->el_sikisma_baslat(duvar());
+    }
+    const auto el_bitti = [this] {
+        const kopru::OturumDurumu d = k_->durum();
+        return d == kopru::OturumDurumu::kosuyor || d == kopru::OturumDurumu::reddedildi;
+    };
     for (;;) {
         yaz();
-        pompa(500);
+        if (a_.kip != Kip::sil) {
+            pompa(500);
+        } else if (!sil_besle(el_bitti)) {
+            pompa(500);
+            (void)sil_besle(el_bitti);
+        }
         k_->zamanla(duvar());
         if (k_->durum() == kopru::OturumDurumu::reddedildi) {
             s_.hata = "el sıkışma reddedildi (IDAW_SESSION_RESULT " + std::to_string(k_->kart().son_oturum_reddi) + ")";
@@ -525,7 +587,13 @@ bool Calistirici::hazirlik()
 bool Calistirici::yuva_bekle(std::uint32_t seq)
 {
     const auto bas = Saat::now();
+    // Alım kuyruğu yalnız burada (ve el sıkışmada) işlenir; yuva tamamlanınca ya da oturum
+    // bitince o çerçevede durulur: sonrası sonraki yuvanın beklemesinde işlenir (W4-K14).
+    const auto dur = [this, seq] {
+        return k_->yuva_tamam(seq) || k_->durum() != kopru::OturumDurumu::kosuyor;
+    };
     for (;;) {
+        (void)sil_besle(dur);
         if (k_->yuva_tamam(seq)) {
             return true;
         }
@@ -547,6 +615,7 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
                 tas_->kapat();
                 tas_.reset();
             }
+            sil_gelen_temizle();
             ++s_.yeniden_baglanti;
             return oturum_kur();
         }
@@ -1384,6 +1453,15 @@ Sonuc Calistirici::kos()
             }
         } else {
             yaz();
+        }
+        if (a_.kip == Kip::sil && k_->durum() != kopru::OturumDurumu::kosuyor) {
+            // A1-K121 (iv): SIL'de sim zamanı el sıkışmada ilerlemez. Oturum yuva beklemesi
+            // dışında (sim tarafında; ör. A1-K111) bittiyse yeni oturum fizik ilerlemeden kurulur.
+            gunluk(1, "oturum bitti (sınır " + std::to_string(b) + "); yeniden kuruluyor");
+            ++s_.yeniden_baglanti;
+            if (!oturum_kur()) {
+                break;
+            }
         }
         const std::int64_t e_f = gercek();
         if (dn_.adim() != fizik::AdimDurumu::tamam) {

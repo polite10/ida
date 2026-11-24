@@ -726,20 +726,31 @@ void Kopru::el_sikisma_baslat(std::int64_t duvar_ns)
 
 void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
 {
+    (void)al(p, n, duvar_ns, std::function<bool()>{});
+}
+
+std::size_t Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns, const std::function<bool()>& dur)
+{
     Ic& i = *ic_;
     i.duvar = duvar_ns;
+    std::size_t tuketilen = 0;
     while (n > 0) {
         std::size_t tuk = 0;
         ida_link_cerceve_t fr;
         const ida_link_rc_t rc = ida_link_al(&i.alici, p, n, &tuk, &fr);
         p += tuk;
         n -= tuk;
+        tuketilen += tuk;
         if (rc == IDA_LINK_CERCEVE) {
             while (i.sira_boslugu_t.size() < i.alici.sayac.rx_seq_gap && i.sira_boslugu_t.size() < 1024u) {
                 i.sira_boslugu_t.push_back(i.sinir_var ? static_cast<std::int64_t>(i.son_sinir) * kH : 0);
             }
             i.cerceve_al(fr);
+            if (dur && dur()) {
+                break;
+            }
         } else {
+            tuketilen += n;   // BEKLE: hepsi tüketildi; hata dönüşünde kalan (eskisi gibi) atılır
             break;
         }
     }
@@ -753,6 +764,7 @@ void Kopru::al(const std::uint8_t* p, std::size_t n, std::int64_t duvar_ns)
     i.say.rx_mav1 = s.rx_mav1;
     i.say.rx_seq_gap = s.rx_seq_gap;
     i.say.rx_frames = s.rx_frames;
+    return tuketilen;
 }
 
 void Kopru::zamanla(std::int64_t duvar_ns)
