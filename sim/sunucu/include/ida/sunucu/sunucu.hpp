@@ -18,6 +18,7 @@
 
 #include "ida/a3/komut.hpp"
 #include "ida/kopru/kopru.hpp"
+#include "ida/kopru/tasima.hpp"
 #include "ida/port.h"
 
 #include <array>
@@ -137,6 +138,9 @@ struct Ayar {
     std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
     // Yalnız sınama: A1 bayt akışı (sim → karşı taraf: true; karşı taraf → sim: false).
     std::function<void(bool sim_giden, const std::uint8_t* p, std::size_t n)> a1_bayt_kancasi;
+    // Yalnız sınama (W4-K28 (3)): sim tarafının A1 taşımasını sarmalar (ör. kısmi yazım veren sahte
+    // taşıma). Taşıma kurulunca (süreç içi, sözde uçbirim, seri; TCP'de bağlantı kabul edilince) çağrılır.
+    std::function<std::unique_ptr<kopru::Tasima>(std::unique_ptr<kopru::Tasima>)> tasima_sarmalayici;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -274,6 +278,7 @@ struct Sonuc {
     std::uint64_t port_acma_denemesi = 0;      // 1 s aralıklı yeniden açma denemeleri
     std::uint64_t port_acildi = 0;
     std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
+    std::uint64_t kapanis_yazim_eksik = 0;     // W4-K28 (3): kapanış çıkışı süre sınırında yazılamadı
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;

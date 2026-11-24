@@ -186,6 +186,50 @@ private:
         evre_[kEvreYaz] += gercek() - e0;
     }
 
+    // EMNİYET (W4-K28 (3), W4-K25 (5)): köprünün bekleyen çıkışını (ör. SESSION_CLOSE) mutlak süre
+    // sınırına (`son`, gercek() ölçeğinde) dek tamamlar. Kısmi ya da 0 yazımda karşı tarafın
+    // baytları okunmaya devam eder (iki yönün tamponları dolup kilitlenmesin) ve 1 ms sonra
+    // yeniden denenir. Süre dolarsa ya da bağlantı koparsa açıkça sonuçlanır: sayılır, günlüğe
+    // yazılır, false döner (çağıran yine kapatır). true: hepsi yazıldı.
+    bool cikisi_bitir(std::int64_t son)
+    {
+        yaz();
+        while (tas_ && cikis_k_ < cikis_.size()) {
+            if (gercek() >= son) {
+                ++s_.kapanis_yazim_eksik;
+                gunluk(1, "kapanış: bekleyen " + std::to_string(cikis_.size() - cikis_k_) +
+                              " B süre sınırında yazılamadı");
+                return false;
+            }
+            const std::size_t once = cikis_k_;
+            pompa(0);   // cikis_hizmet de çağrılır
+            if (tas_ && cikis_k_ == once && cikis_k_ < cikis_.size()) {
+                sure_uyu(kMs);
+            }
+        }
+        if (!tas_) {
+            ++s_.kapanis_yazim_eksik;
+            return false;
+        }
+        return true;
+    }
+
+    // Koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta durdurma, ön denetim ya da
+    // hazırlık kalması, bağlantı beklemesinin iptali): oturum açıksa (hazir, kosuyor)
+    // SESSION_CLOSE(SHUTDOWN) sıraya girer; bekleyen çıkış mutlak süre sınırıyla tamamlanır;
+    // sonra taşıma düzgün kapanır.
+    void erken_kapanis()
+    {
+        if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
+            k_->oturum_kapat(kCloseShutdown, duvar());
+        }
+        (void)cikisi_bitir(gercek() + kKapanisYazimNs);
+        if (tas_) {
+            tas_->kapat_duzgun(kKapanisBosaltmaUs);
+            tas_.reset();
+        }
+    }
+
     // Bağlantı kaybı (A1-K23): oturum biter (iticiler sonraki sınırdan nötr, izinler kapanır;
     // fizik sürer), taşıma kapatılır; HIL'de port 1 s aralıkla yeniden açılmaya çalışılır.
     void baglanti_koptu(const char* neden)
@@ -409,6 +453,8 @@ private:
     static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
     // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
     static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
+    // W4-K28 (3): kapanışta bekleyen çıkışın tamamlanması için mutlak süre sınırı.
+    static constexpr std::int64_t kKapanisYazimNs = 500'000'000;
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
@@ -615,6 +661,9 @@ bool Calistirici::baglanti_kabul()
         return false;
     }
     sil_gelen_temizle();   // A1-K99: her bağlantı yeni bir akıştır
+    if (a_.tasima_sarmalayici) {
+        tas_ = a_.tasima_sarmalayici(std::move(tas_));   // yalnız sınama
+    }
     gunluk(2, "bağlantı: " + tas_->ad());
     return true;
 }
@@ -3053,6 +3102,9 @@ Sonuc Calistirici::kos()
     }
     }
 
+    if (tas_ && a_.tasima_sarmalayici) {
+        tas_ = a_.tasima_sarmalayici(std::move(tas_));   // yalnız sınama
+    }
     if (a_.kip == Kip::hil) {
         zamanlayici_onceligi();   // HIL 1x: duvar saatine kilitli döngü
     }
@@ -3073,6 +3125,9 @@ Sonuc Calistirici::kos()
         }
     }
     if (!kuruldu) {
+        // EMNİYET (W4-K28 (3); sol-2 #6): bütün erken bitişlerde oturum açıksa SESSION_CLOSE
+        // tamamen yazılır (mutlak süre sınırıyla) ve taşıma düzgün kapanır.
+        erken_kapanis();
         s_.sayac = k_->sayaclar();
         s_.kart = k_->kart();
         if (yay_ != nullptr && a3_durdur_) {
@@ -3080,10 +3135,6 @@ Sonuc Calistirici::kos()
             if (a3_baslat_komutu_) {
                 a3_sonuc(*a3_baslat_komutu_, true, 0, nullptr);
                 a3_baslat_komutu_.reset();
-            }
-            if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
-                k_->oturum_kapat(kCloseShutdown, duvar());
-                yaz();
             }
             s_.calistirma_sonu = "yuklendi";
             s_.hata.clear();
@@ -3248,7 +3299,7 @@ Sonuc Calistirici::kos()
     // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
     const kopru::Sayaclar rx_son = k_->sayaclar();
     k_->oturum_kapat(kCloseShutdown, duvar());
-    yaz();
+    (void)cikisi_bitir(gercek() + kKapanisYazimNs);   // W4-K28 (3): SESSION_CLOSE tamamen yazılır
     pompa(0);
     if (tas_) {
         // W4-K25 (5): düzgün kapanış; SIL'de alım kuyruğu artık işlenmez, atılan baytlar da.

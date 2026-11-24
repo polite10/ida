@@ -762,6 +762,123 @@ int test_a3_hazirlik_son_durdur()
     return 0;
 }
 
+// Sim → kart baytlarındaki çerçevelerin msgid'leri (kart rolündeki çözücüyle).
+std::vector<std::uint32_t> sim_cerceveleri(const std::vector<std::uint8_t>& v)
+{
+    std::vector<std::uint32_t> r;
+    ida_link_alici_t c{};
+    (void)ida_link_alici_kur(&c, IDA_LINK_ROL_KART);
+    std::size_t kk = 0;
+    while (kk < v.size()) {
+        std::size_t tuk = 0;
+        ida_link_cerceve_t f{};
+        const ida_link_rc_t rc = ida_link_al(&c, v.data() + kk, v.size() - kk, &tuk, &f);
+        kk += tuk;
+        if (rc == IDA_LINK_CERCEVE) {
+            r.push_back(f.msgid);
+        }
+        if (tuk == 0u) {
+            break;
+        }
+    }
+    return r;
+}
+
+// Kısmi yazım veren sahte taşıma: `cimri` açıkken her yazımda en çok 3 bayt, ardından bir kez 0
+// (ilerleme yok). Gerçekten yazılan baytlar ve düzgün kapanış kaydedilir.
+class CimriTasima final : public ida::kopru::Tasima {
+public:
+    CimriTasima(std::unique_ptr<ida::kopru::Tasima> ic, std::vector<std::uint8_t>& yazilan, bool& cimri, bool& duzgun)
+        : ic_(std::move(ic)), yazilan_(yazilan), cimri_(cimri), duzgun_(duzgun)
+    {
+    }
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override
+    {
+        if (cimri_) {
+            sifir_ = !sifir_;
+            if (!sifir_) {
+                return 0;
+            }
+            n = std::min<std::size_t>(n, 3u);
+        }
+        const long long k = ic_->yaz_biraz(p, n);
+        if (k > 0) {
+            yazilan_.insert(yazilan_.end(), p, p + k);
+        }
+        return k;
+    }
+    ida::kopru::OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
+    {
+        return ic_->oku(p, n, bekle_us, okunan);
+    }
+    void giris_bosalt() override { ic_->giris_bosalt(); }
+    bool acik() const override { return ic_->acik(); }
+    void kapat() override { ic_->kapat(); }
+    void kapat_duzgun(std::int64_t sure_us) override
+    {
+        duzgun_ = true;
+        ic_->kapat_duzgun(sure_us);
+    }
+    std::string ad() const override { return "cimri(" + ic_->ad() + ")"; }
+
+private:
+    std::unique_ptr<ida::kopru::Tasima> ic_;
+    std::vector<std::uint8_t>& yazilan_;
+    bool& cimri_;
+    bool& duzgun_;
+    bool sifir_ = false;
+};
+
+// W4-K28 (3) (EMNİYET; sol-2 #6): hazırlık iptalinde SESSION_CLOSE, taşıma kısmi ya da 0 yazım
+// döndürse de mutlak süre sınırıyla tamamen yazılır; ardından taşıma düzgün kapanır. Oturum
+// kabulü (SESSION_ACCEPT) sıraya girince panelden `durdur` verilir ve taşıma cimrileşir.
+int test_a3_hazirlik_kapanis()
+{
+    ida::sunucu::Ayar a = z1_yerlesik(5.0);
+    Kosu k;
+    gozlem_kur(a, k);
+    a.a3_acik = true;
+    a.a3_port = 0;
+    a.a3_kapanis_bekleme_s = 0.0;
+    std::vector<std::uint8_t> yazilan;
+    bool cimri = false, duzgun = false;
+    ida::a3::KomutAlicisi* alici = nullptr;
+    std::uint32_t no = 0;
+    a.tasima_sarmalayici = [&](std::unique_ptr<ida::kopru::Tasima> t) -> std::unique_ptr<ida::kopru::Tasima> {
+        return std::make_unique<CimriTasima>(std::move(t), yazilan, cimri, duzgun);
+    };
+    a.a3_sinir_kancasi = [&alici](std::uint64_t, ida::a3::KomutAlicisi& al) { alici = &al; };
+    auto bayt = a.a1_bayt_kancasi;
+    a.a1_bayt_kancasi = [&, bayt](bool giden, const std::uint8_t* p, std::size_t n) {
+        bayt(giden, p, n);
+        if (!giden || cimri || alici == nullptr) {
+            return;
+        }
+        const std::vector<std::uint32_t> m = sim_cerceveleri(std::vector<std::uint8_t>(p, p + n));
+        if (std::find(m.begin(), m.end(), 46002u) != m.end()) {   // IDA_SESSION_ACCEPT
+            const ida::a3::AnlikDurum d = alici->anlik();
+            if (d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor) {
+                const Komut kd = calistirma(d, KomutTuru::calistirma_durdur);
+                no = kd.komut_no;
+                (void)alici->al(kd);
+                cimri = true;
+            }
+        }
+    };
+    k.s = ida::sunucu::kos(a);
+    const auto* o = a3_sonucu(k.s, no);
+    dogrula_a3(cimri && o != nullptr && o->sonuc == "uygulandi", "oturum kabulünden sonra durdur uygulandı");
+    dogrula_a3(k.s.tamam && k.s.calistirma_sonu == "yuklendi" && k.s.satirlar.empty(),
+               "çalıştırma yuklendi'de kaldı, başlamadı (" + k.s.calistirma_sonu + ")");
+    const std::vector<std::uint32_t> m = sim_cerceveleri(yazilan);
+    const bool kapanis = !m.empty() && m.back() == 46004u;   // IDA_SESSION_CLOSE
+    dogrula_a3(kapanis, "kart tarafı tam SESSION_CLOSE aldı (son çerçeve " + std::to_string(m.empty() ? 0u : m.back()) + ")");
+    dogrula_a3(yazilan == k.sim_giden,
+               "sıraya giren bütün baytlar yazıldı (" + std::to_string(yazilan.size()) + "/" + std::to_string(k.sim_giden.size()) + ")");
+    dogrula_a3(duzgun && k.s.kapanis_yazim_eksik == 0u, "taşıma düzgün kapandı; süre sınırına takılmadı");
+    return 0;
+}
+
 // W4-K28 (1) HIL: duraklatma kapalı. Hazırlıkta ve koşarken (onaylı duraklatma dahil) duraklat/sürdür/
 // adımla girişte reddedilir; durum `duraklatildi` olmaz; HIL duraklatma geçersizliği kurulmaz; TF'ler
 // boşluksuz ve çalıştırma `bitti`.
@@ -851,6 +968,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_hazirlik_kapanis") {
+        (void)test_a3_hazirlik_kapanis();
     } else if (ad == "a3_hazirlik_son_durdur") {
         (void)test_a3_hazirlik_son_durdur();
     } else if (ad == "a3_hil_duraklat_ret") {
