@@ -23,6 +23,13 @@
  * daraltmadan sonra gelen GUIDED_SP geçerli yeni hedeftir. EMNİYET: silinen hedefe kendiliğinden dönülmez; araç görev modülünün tutma
  * hedefinde kalır ve kontrol referansını bulunulan durumdan yeniden kurar (silinen hedef
  * kontrolün iptal bitini kurar, IDA_EMN_IPTAL_KON).
+ *
+ * GUD_SP_ASIM_MS (02 §2.6, 3 s) yeni GUIDED_SP gelmezse hız türü kanallar bulunulan derinliği,
+ * yönü ve konumu tutmaya çevrilir (son hedefte kalma).
+ *
+ * AUTO (W5-gorev-yurutucu; gudum_oto.c): görev yürütücüsünün hedefi (ida_gor_hedef_t) ILOS yol
+ * takibi, konum tutma ve hız/ivme sınırlı derinlik referansıyla aynı istek kanallarına yazılır;
+ * arıza eylemi HOLD ve üstündeyken yazılmaz. En az irtifa kırpması isteğin son adımıdır.
  */
 #ifndef IDA_CORE_GUDUM_H
 #define IDA_CORE_GUDUM_H

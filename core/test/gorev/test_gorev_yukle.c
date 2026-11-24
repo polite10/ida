@@ -48,7 +48,7 @@ static void vaka_dene(const vaka_t *v, uint32_t n)
 
 static void test_tablo36a_waypoint(void)
 {
-    vaka_t v[16];
+    vaka_t v[20];
     uint32_t n = 0u;
     v[n].m = wp(); v[n++].gecerli = true;
     v[n].m = wp(); v[n].m.p[0] = 0.1f; v[n++].gecerli = true;
@@ -150,11 +150,10 @@ static void test_gecerli_yukleme(void)
     gd_t *o = &O;
     gd_kur(o);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_IDLE, gd_durum(o).mission_state);
-    const ida_mission_item_t g[3] = {
-        wp(),
-        gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 2.0f),
-        gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f),
-    };
+    ida_mission_item_t g[3]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = wp();
+    g[1] = gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 2.0f);
+    g[2] = gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 3u);
     const ida_status_t st = gd_durum(o);
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_LOADED, st.mission_state);
@@ -186,9 +185,9 @@ static void test_gecersiz_yuklemeler_depoyu_degistirmez(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[2] = {
-        wp(), gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.25f, 0.0f, 0.0f, 0.0f,
-                     0.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = wp();
+    g[1] = gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 2u);
     ida_gor_gorev_t once;
     (void)memcpy(&once, &o->g.gv, sizeof(once));
@@ -261,8 +260,8 @@ static void test_yuruyen_gorevde_yukleme(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[1] = {gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE,
-                                            600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 1u);
     /* LOADED'da açılan yükleme, AUTO'ya girişte (RUNNING) kapanır. */
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_BEGIN, 1u));
@@ -322,9 +321,9 @@ static void ctl_bekle(gd_t *o, uint8_t eylem, uint16_t neden)
 
 static void uzun_gorev(gd_t *o)
 {
-    const ida_mission_item_t g[2] = {
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 2u);
 }
 
@@ -337,8 +336,8 @@ static void test_idle_ve_loaded_gecisleri(void)
     ctl_bekle(o, (uint8_t)IDA_MCTL_PAUSE, (uint16_t)IDA_REASON_BAD_MODE);
     ctl_bekle(o, (uint8_t)IDA_MCTL_RESUME, (uint16_t)IDA_REASON_BAD_MODE);
     ctl_bekle(o, (uint8_t)IDA_MCTL_ABORT, (uint16_t)IDA_REASON_BAD_MODE);
-    ctl_bekle(o, 0u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
-    ctl_bekle(o, 5u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    ctl_bekle(o, (uint8_t)0u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
+    ctl_bekle(o, (uint8_t)5u, (uint16_t)IDA_REASON_OUT_OF_RANGE);
     gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_ARM, 0u));
     gd_ret_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO),
                  (uint16_t)IDA_REASON_BAD_MODE);
@@ -440,8 +439,8 @@ static void test_complete_gecisi(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[1] = {gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE,
-                                            1.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 1.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 1u);
     gd_auto(o);
     gd_ilerle(o, 1500);

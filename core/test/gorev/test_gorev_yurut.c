@@ -65,10 +65,10 @@ static void test_waypoint_kabul_yaricapi_ve_gecis(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[3] = {
-        gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 10.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[3]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 10.0f, 0.0f);
+    g[2] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     baslat(o, g, 3u);
     const ida_gor_hedef_t *h = &o->g.gv.hedef;
     TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_YOL, h->yatay);
@@ -98,8 +98,8 @@ static void test_waypoint_zaman_asimi_ve_duraklama(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[1] = {gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL,
-                                            0.5f, 0.5f, 10.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 0.0f, 0.0f);
     baslat(o, g, 1u);
     /* Süre yalnız RUNNING'de sayılır: 200 s operatör duraklaması aşıma girmez. */
     gd_ilerle(o, 10000);
@@ -121,9 +121,9 @@ static void test_dive_to_bant_ve_zaman_asimi(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[2] = {
-        gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 2.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 2.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 2.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 2.0f);
     konum(o, 1.0f, 2.0f);
     o->gi.nav_yon = 0.7f;
     baslat(o, g, 2u);
@@ -156,9 +156,9 @@ static void test_surface_bitis_ve_zaman_asimi(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[2] = {
-        gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     o->gi.nav_derinlik = 2.0f;
     gd_ilerle(o, 100);
     baslat(o, g, 2u);
@@ -186,9 +186,9 @@ static void test_hold_sure_olcum_zamaninda(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[2] = {
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_LOCAL, 5.0f, 1.0f, 3.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_LOCAL, 5.0f, 1.0f, 3.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     baslat(o, g, 2u);
     TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay);
     TEST_ASSERT_EQUAL_FLOAT(3.0f, o->g.gv.hedef.hedef_ne[0]);
@@ -218,9 +218,9 @@ static void test_wait_gnss(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[2] = {
-        gd_oge((uint8_t)IDA_MI_WAIT_GNSS, (uint8_t)IDA_MI_FRAME_NONE, 30.0f, 2.0f, 0.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAIT_GNSS, (uint8_t)IDA_MI_FRAME_NONE, 30.0f, 2.0f, 0.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
     o->gi.nav_derinlik = 1.0f;
     o->gi.gnss_taze = false;
     gd_ilerle(o, 100);
@@ -342,8 +342,8 @@ static void test_olu_hesap_yol_siniri(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[1] = {gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL,
-                                            1.0f, 3.0f, 500.0f, 0.0f, 3.0f)};
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 1.0f, 3.0f, 500.0f, 0.0f, 3.0f);
     baslat(o, g, 1u);
     o->gi.gnss_taze = false;
     o->gi.nav_derinlik = 3.0f;
@@ -395,8 +395,8 @@ static void test_olu_hesap_kipten_cikis(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[1] = {gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL,
-                                            1.0f, 3.0f, 500.0f, 0.0f, 3.0f)};
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 1.0f, 3.0f, 500.0f, 0.0f, 3.0f);
     baslat(o, g, 1u);
     o->gi.gnss_taze = false;
     o->gi.nav_derinlik = 3.0f;
@@ -549,12 +549,12 @@ static void test_model_ile_gorev(void)
 {
     gd_t *o = &O;
     gd_kur(o);
-    const ida_mission_item_t g[5] = {
-        gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.4f, 6.0f, 0.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.4f, 6.0f, 4.0f, 0.0f),
-        gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 1.5f),
-        gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.3f, 0.0f, 4.0f, 1.5f),
-        gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.0f, 0.0f, 0.0f, 0.0f)};
+    ida_mission_item_t g[5]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.4f, 6.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.4f, 6.0f, 4.0f, 0.0f);
+    g[2] = gd_oge((uint8_t)IDA_MI_DIVE_TO, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.2f, 0.0f, 0.0f, 1.5f);
+    g[3] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.3f, 0.0f, 4.0f, 1.5f);
+    g[4] = gd_oge((uint8_t)IDA_MI_SURFACE, (uint8_t)IDA_MI_FRAME_NONE, 0.2f, 0.0f, 0.0f, 0.0f, 0.0f);
     gd_yukle(o, g, 5u);
     gd_auto(o);
     model_t m;

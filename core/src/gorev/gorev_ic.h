@@ -27,7 +27,7 @@ enum ida_gor_olay {
     IDA_GOR_OLAY_GUIDED,              /* SET_MODE(GUIDED) (genişletici)                      */
     IDA_GOR_OLAY_AUTO,                /* SET_MODE(AUTO) (genişletici)                        */
     IDA_GOR_OLAY_KONUM_YOK,           /* konum geçersiz (W3-K5)                              */
-    IDA_GOR_OLAY_GOREV_YOK,           /* AUTO'da yürüyen görev yok                           */
+    IDA_GOR_OLAY_GOREV_YOK,           /* AUTO'da yürüyen ya da duraklamış görev yok          */
     IDA_GOR_OLAY_DARALT_MANUAL,       /* NARROW_MODE → MANUAL                                */
     IDA_GOR_OLAY_DARALT_STABILIZE,
     IDA_GOR_OLAY_DARALT_DEPTH_HOLD,
