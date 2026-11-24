@@ -572,6 +572,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         kart.nav.est_level = m.est_level;
         for (std::size_t i = 0; i < 3; ++i) {
             kart.nav.p_ned[i] = m.p_ned[i];
+            kart.nav.v_ned[i] = m.v_ned[i];
         }
         for (std::size_t i = 0; i < 4; ++i) {
             kart.nav.q_nb[i] = m.q_nb[i];
@@ -593,6 +594,7 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         kart.fc_state = m.state;
         kart.fc_inhibit_mask = m.inhibit_mask;
         kart.fc_son_olay_sonucu = m.last_event_result;
+        kart.fc_son_olay_kimligi = m.last_event_id;
         gecerli(false);
         return;
     }
@@ -638,6 +640,13 @@ void Kopru::Ic::kart_cercevesi(const ida_link_cerceve_t& fr)
         s.evres_ignored = m.evres_ignored;
         s.event_unknown = m.event_unknown;
         s.step_miss = m.step_miss;
+        s.bg_bad_input = m.bg_bad_input;
+        s.wall_backstep = m.wall_backstep;
+        s.det_rejected = m.det_rejected;
+        s.ping360_rejected = m.ping360_rejected;
+        s.bg_dropped = m.bg_dropped;
+        s.bg_slice_mismatch = m.bg_slice_mismatch;
+        s.log_dropped = m.log_dropped;
         gecerli(false);
         return;
     }

@@ -277,6 +277,9 @@ struct Kopru::Ic {
     void sayim_ihlali(const std::vector<std::uint64_t>& idler);
     std::deque<mavlink_ida_event_result_t> sonuc_kuyrugu;
     std::deque<std::uint64_t> sakli_talep;
+    // W4-bagla-a3 (A3-K98): verilen olay kararları, A3'e aktarılana dek (en çok 1024).
+    std::deque<OlayKarari> olay_kararlari;
+    std::uint64_t olay_karari_atilan = 0;
 
     // ---- Emniyet ----
     sensor::EmniyetDurumu emn{};
@@ -355,7 +358,8 @@ struct Kopru::Ic {
     void rev_artir();
     void izin_kapat(int tup);
     void olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t adim_no);
-    void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply);
+    void sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply, std::uint8_t kind = 255,
+                       std::uint8_t tube = 255);
     bool yuva_tamam(const Yuva& y) const;
     void yuva_tamamlandi_mi(std::uint32_t seq);
     std::uint32_t nonce_sec();

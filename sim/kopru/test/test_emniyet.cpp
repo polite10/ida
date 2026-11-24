@@ -127,13 +127,13 @@ int test_olay_izin_yok()
     (void)z.periyot();
     (void)z.periyot();
     DOGRULA(d, sonuc_bul(z.sk, p.kimlikler[4]) == IDA_EVR_APPLIED && z.k.izin_acik(0), "güncel revizyonla izin açıldı");
-    z.k.emniyet_ata(EmniyetAtama{true, {}, {}});
+    z.k.emniyet_ata(EmniyetAtama{true, {}, {}, 0, {}});
     (void)z.periyot();
     DOGRULA(d, !z.k.izin_acik(0), "acil durdurma izni kapattı (A1-K89)");
     DOGRULA(d, z.k.dis_durum().emniyet.emniyet_revizyonu == rev3 + 1u, "tek revizyon artışı");
 
     // Tutarsız yanıt (FIRE için IS_SAFE = 1, ARMED = 0): REJ_SAFE (A1-K118).
-    z.k.emniyet_ata(EmniyetAtama{false, {}, {}});
+    z.k.emniyet_ata(EmniyetAtama{false, {}, {}, 0, {}});
     (void)z.periyot();
     const std::uint32_t rev4 = z.k.dis_durum().emniyet.emniyet_revizyonu;
     p.olaylar = {{IDAW_EVENT_KIND_SAFETY_OPEN, 0, rev4}};
@@ -312,10 +312,10 @@ int test_emniyet_rev_durum()
     Denetci d;
     SahteDuzenek z;
     DOGRULA(d, z.el_sikis(), "el sıkışma");
-    z.k.emniyet_ata(EmniyetAtama{true, {}, {}});
+    z.k.emniyet_ata(EmniyetAtama{true, {}, {}, 0, {}});
     (void)z.periyot();
     const std::uint32_t rev_basili = z.k.dis_durum().emniyet.emniyet_revizyonu;
-    z.k.emniyet_ata(EmniyetAtama{false, {}, {}});
+    z.k.emniyet_ata(EmniyetAtama{false, {}, {}, 0, {}});
     (void)z.periyot();
     const std::uint32_t rev_kalkti = z.k.dis_durum().emniyet.emniyet_revizyonu;
     DOGRULA(d, rev_kalkti == rev_basili + 1u, "kalkış revizyonu artırdı");

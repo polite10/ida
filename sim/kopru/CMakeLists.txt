@@ -51,7 +51,8 @@ add_executable(ida_kopru_test
   test/test_emniyet3.cpp
   test/test_parti.cpp
   test/test_emniyet2.cpp
-  test/test_tasima.cpp)
+  test/test_tasima.cpp
+  test/test_operator.cpp)
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
 target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
 ida_kopru_ayar(ida_kopru_test)
@@ -112,7 +113,10 @@ set(_ida_kopru_testleri
   canlilik_aninda  # W4-K15 ek (7) canlılık
   bellek_tasima
   tcp_tasima
-  pty_tasima)
+  pty_tasima
+  operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
+  operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
+)
 foreach(_ad IN LISTS _ida_kopru_testleri)
   add_test(NAME sim.kopru.${_ad} COMMAND ida_kopru_test ${_ad})
 endforeach()
