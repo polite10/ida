@@ -569,6 +569,84 @@ static void test_tumleyen_bozulmasi_save_uretmez(void)
     ozet_bozulmasi(true, UINT64_C(1) << 37);
 }
 
+/* sol-2 bulgu 1 (beyaz kutu): blok, önbellekten bir kez okunup doğrulanan değerle kodlanır.
+   Tutarlı ama tablonunkinden farklı bir çift (X, ~X) yazılır: SAVE kabul edilir ve başlıkta
+   tam olarak X bulunur (özet yeniden hesaplanmaz, doğrulanan yerel değer kodlayıcıya geçer).
+   Denetimle kullanım arasına bozma enjekte eden bir kanca çekirdekte yoktur (M9: test kipi
+   yok); tek okuma ida_prm_ozet_al'ın volatile okumasıyla yapısal olarak sağlanır. */
+static void test_save_dogrulanan_yerel_ozetle_kodlar(void)
+{
+    g_seq = 0u;
+    g_t = 2000 * DS_MS;
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    const uint64_t x = ALTIN_OZET ^ UINT64_C(0x5A5A00000000A5A5);
+    C.prm.sema_ozeti = x;
+    C.prm.sema_ozeti_tumleyen = UINT64_MAX ^ x;
+    uint64_t okunan = 0u;
+    TEST_ASSERT_TRUE(ida_prm_ozet_al(&C.prm, &okunan));
+    TEST_ASSERT_TRUE(okunan == x);
+    const ida_cmd_result_t *r = save_adimi();
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, r->ack);
+    TEST_ASSERT_TRUE(OUT.health.core_ok);
+    const uint8_t *b = r->save.blob;
+    TEST_ASSERT_NOT_NULL(b);
+    if (b != NULL) {
+        const uint64_t baslik = (uint64_t)b[8] | ((uint64_t)b[9] << 8) | ((uint64_t)b[10] << 16) |
+                                ((uint64_t)b[11] << 24) | ((uint64_t)b[12] << 32) |
+                                ((uint64_t)b[13] << 40) | ((uint64_t)b[14] << 48) |
+                                ((uint64_t)b[15] << 56);
+        TEST_ASSERT_TRUE(baslik == x);
+    }
+}
+
+/* sol-2 bulgu 2 (birim): çağrı sonundaki SAVE kararı önbelleği kendisi denetler. Çağrı başı
+   denetiminden sonra bozulmuş önbellek (burada doğrudan kurulur) için ida_prm_cagri_sonu 2
+   döner (çerçeve bunu aynı çağrının core_ok ve CORE_INTEGRITY çıktısına taşır), blok
+   üretmez ve gen tüketmez; tutarlı önbellekte 0 döner ve blok üretir. */
+static int32_t cagri_sonu_save(ida_out_t *out, ida_core_counters_t *cnt)
+{
+    ida_prm_cagri_basi(&C.prm);
+    C.prm.save_bekliyor = true;
+    C.prm.save_indis = 0u;
+    (void)memset(out, 0, sizeof *out);
+    out->results[0].cmd_id = 77u;
+    out->results[0].kind = (uint8_t)IDA_RES_PARAM_SAVE;
+    out->results[0].ack = (uint8_t)IDA_ACK_ACCEPTED; /* param_save'in geçici sonucu */
+    const ida_prm_komut_baglam_t b = {.k = NULL, .plat_param_gen = 5u, .gun = &C.gun,
+                                      .sonuc_indisi = 0u, .armed = false};
+    return ida_prm_cagri_sonu(&C.prm, &b, out, cnt);
+}
+
+static void test_cagri_sonu_save_bozulmayi_bildirir(void)
+{
+    for (uint32_t tur = 0u; tur < 2u; tur++) {
+        TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+        ida_core_counters_t cnt;
+        (void)memset(&cnt, 0, sizeof cnt);
+        if (tur == 0u) {
+            C.prm.sema_ozeti ^= UINT64_C(1);
+        } else {
+            C.prm.sema_ozeti_tumleyen ^= UINT64_C(1) << 40;
+        }
+        const uint32_t gen_once = C.prm.kayit_gen;
+        TEST_ASSERT_EQUAL_INT32(2, cagri_sonu_save(&OUT, &cnt));
+        TEST_ASSERT_EQUAL_UINT8(IDA_ACK_REJECTED, OUT.results[0].ack);
+        TEST_ASSERT_EQUAL_UINT16(IDA_REASON_PARAM_INVALID, OUT.results[0].reason);
+        TEST_ASSERT_TRUE(OUT.results[0].save.blob == NULL);
+        TEST_ASSERT_EQUAL_UINT32(0u, OUT.results[0].save.gen);
+        TEST_ASSERT_EQUAL_UINT32(gen_once, C.prm.kayit_gen); /* gen tüketilmedi */
+        TEST_ASSERT_FALSE(C.prm.kayit_bekliyor);
+        TEST_ASSERT_EQUAL_UINT32(1u, cnt.cmd_rejected);
+    }
+    TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
+    ida_core_counters_t cnt;
+    (void)memset(&cnt, 0, sizeof cnt);
+    TEST_ASSERT_EQUAL_INT32(0, cagri_sonu_save(&OUT, &cnt));
+    TEST_ASSERT_EQUAL_UINT8(IDA_ACK_ACCEPTED, OUT.results[0].ack);
+    TEST_ASSERT_TRUE(OUT.results[0].save.blob != NULL);
+    TEST_ASSERT_EQUAL_UINT32(6u, OUT.results[0].save.gen);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -584,5 +662,7 @@ int main(void)
     RUN_TEST(test_blok_i32_duzenegi);
     RUN_TEST(test_ozet_bozulmasi_save_uretmez);
     RUN_TEST(test_tumleyen_bozulmasi_save_uretmez);
+    RUN_TEST(test_save_dogrulanan_yerel_ozetle_kodlar);
+    RUN_TEST(test_cagri_sonu_save_bozulmayi_bildirir);
     return UNITY_END();
 }

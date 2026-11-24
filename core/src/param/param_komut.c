@@ -187,27 +187,32 @@ static void sonuc_reddet(ida_cmd_result_t *r, uint16_t neden, ida_core_counters_
     cnt->cmd_rejected++;
 }
 
-/* Bekleyen PARAM_SAVE'in kararı (A4-K78, K82, 3.17): commit sonrası küme kodlanır. */
-static void save_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd_result_t *r,
+/* Bekleyen PARAM_SAVE'in kararı (A4-K78, K82, 3.17): commit sonrası küme kodlanır. Dönüş
+   true: özet önbelleği tümleyeniyle tutarsız (bütünlük hatası; blok üretilmedi). */
+static bool save_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd_result_t *r,
                         ida_core_counters_t *cnt)
 {
-    /* Doğrulanamayan şema özetiyle blok üretilmez (A4 §3.10, K89): bozulma çerçevenin bütünlük
-       denetiminde de saptanır (core_ok, CORE_INTEGRITY); 3.17'nin kapalı listesinde en yakın
-       neden PARAM_INVALID'dir (seçilen okuma). */
-    if (!ida_prm_tutarli(p)) {
+    /* Özet ve tümleyeni bir kez okunur; blok yalnız bu doğrulanmış yerel değerle kodlanır
+       (A4 §3.10, K89). Tutarsızlıkta blok üretilmez ve gen tüketilmez; çağıran bozulmayı aynı
+       çağrının bütünlük sonucuna taşır. Komut sonucu: A4 bütünlük hatalı çağrıdaki komut
+       sonucunu tanımlamaz; ACCEPTED blob ister (K82), REJECTED 3.17'den bir neden ister
+       (K120, K124); PARAM_SAVE satırının nedenlerinden PARAM_INVALID seçildi (seçilen okuma;
+       sözleşme boşluğu, küçük sürüm notu). */
+    uint64_t ozet = 0u;
+    if (!ida_prm_ozet_al(p, &ozet)) {
         sonuc_reddet(r, (uint16_t)IDA_REASON_PARAM_INVALID, cnt);
-        return;
+        return true;
     }
     if (!p->param_ok && !p->commit_uygulandi) {
         sonuc_reddet(r, (uint16_t)IDA_REASON_PARAM_INVALID, cnt);
-        return;
+        return false;
     }
     const uint32_t taban = (b->plat_param_gen > p->kayit_gen) ? b->plat_param_gen : p->kayit_gen;
     if (taban == UINT32_MAX) {
         sonuc_reddet(r, (uint16_t)IDA_REASON_OUT_OF_RANGE, cnt); /* gen doyar, sarmaz */
-        return;
+        return false;
     }
-    const uint32_t len = ida_prm_blok_kodla(&p->yururluk, p->sema_ozeti, p->blob);
+    const uint32_t len = ida_prm_blok_kodla(&p->yururluk, ozet, p->blob);
     p->kayit_gen = taban + 1u;
     p->kayit_bekliyor = true;
     r->ack = (uint8_t)IDA_ACK_ACCEPTED;
@@ -215,11 +220,13 @@ static void save_karari(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_cmd
     r->save.gen = p->kayit_gen;
     r->save.blob = p->blob;
     r->save.len = len;
+    return false;
 }
 
-void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
-                        ida_core_counters_t *cnt)
+int32_t ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
+                           ida_core_counters_t *cnt)
 {
+    int32_t bozuk = 0;
     if (p->n_commit > 0u) {
         const uint16_t neden = commit_karari(p, b);
         const uint32_t n =
@@ -236,11 +243,14 @@ void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out
         }
     }
     if (p->save_bekliyor && (p->save_indis < IDA_PORT_MAX_RESULTS)) {
-        save_karari(p, b, &out->results[p->save_indis], cnt);
+        if (save_karari(p, b, &out->results[p->save_indis], cnt)) {
+            bozuk = 2; /* A4-K89: tamamlayıcı kopya */
+        }
     }
     p->n_commit = 0u;
     p->commit_armed = false;
     p->save_bekliyor = false;
+    return bozuk;
 }
 
 void ida_prm_depo_izle(ida_param_t *p, const ida_plat_t *plat, ida_gunluk_t *gun, ida_wtime_t now)

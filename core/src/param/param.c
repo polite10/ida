@@ -200,9 +200,21 @@ void ida_prm_kur(ida_param_t *p)
     p->sema_ozeti_tumleyen = UINT64_MAX ^ p->sema_ozeti;
 }
 
+bool ida_prm_ozet_al(const ida_param_t *p, uint64_t *ozet)
+{
+    /* Her alan tam bir kez okunur (volatile): denetlenen değer ile kullanılan değer aynıdır. */
+    const volatile uint64_t *o = &p->sema_ozeti;
+    const volatile uint64_t *t = &p->sema_ozeti_tumleyen;
+    const uint64_t okunan = *o;
+    const uint64_t tumleyen = *t;
+    *ozet = okunan;
+    return tumleyen == (UINT64_MAX ^ okunan);
+}
+
 bool ida_prm_tutarli(const ida_param_t *p)
 {
-    return p->sema_ozeti_tumleyen == (UINT64_MAX ^ p->sema_ozeti);
+    uint64_t ozet = 0u;
+    return ida_prm_ozet_al(p, &ozet);
 }
 
 /* ---- Grup denetimleri (A4-K80 md. 8) ----------------------------------------------------- */

@@ -79,6 +79,10 @@ uint64_t ida_prm_sema_ozeti_tablo(const ida_param_desc_t *tablo, uint16_t sayi);
 void ida_prm_kur(ida_param_t *p);
 /* Özet önbelleği tümleyeniyle tutarlı mı (A4-K89 tamamlayıcı kopya). */
 bool ida_prm_tutarli(const ida_param_t *p);
+/* Özeti ve tümleyenini birer kez okur, *ozet'e okunan özeti yazar ve ikisinin tutarlı olup
+   olmadığını döner. Çağıran yalnız true dönüşte ve yalnız *ozet'teki (doğrulanmış yerel)
+   değeri kullanır; önbellek yeniden okunmaz (sol W4-param-hiz-2 bulgu 1). */
+bool ida_prm_ozet_al(const ida_param_t *p, uint64_t *ozet);
 /* İlişkili grup denetimleri (A4-K80 md. 8): 0 geçerli; modüllerin kancalarını da çağırır. */
 uint8_t ida_prm_grup(const ida_prm_kume_t *k);
 
@@ -124,9 +128,12 @@ void ida_prm_komut(ida_param_t *p, const ida_prm_komut_baglam_t *b, const ida_cm
    commit olarak değerlendirir, aynı sonucu hepsine yazar, PARAM_COMMIT günlüklerini üretir ve
    kabul edilirse uygular; sonra bekleyen PARAM_SAVE'in PARAM_INVALID ve gen doyması
    koşullarını değerlendirir ve kabul edilirse commit sonrası kümeyi kodlar. Reddedilen her
-   sonuç için cnt->cmd_rejected bir artar. */
-void ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
-                        ida_core_counters_t *cnt);
+   sonuç için cnt->cmd_rejected bir artar.
+   Dönüş: 0, ya da bekleyen PARAM_SAVE özet önbelleğini tümleyeniyle tutarsız bulduysa 2
+   (A4-K89 tamamlayıcı kopya; blok üretilmez, gen tüketilmez). Çağıran bu sonucu aynı
+   çağrının bütünlük sonucuna taşır (core_ok, CORE_INTEGRITY). */
+int32_t ida_prm_cagri_sonu(ida_param_t *p, const ida_prm_komut_baglam_t *b, ida_out_t *out,
+                           ida_core_counters_t *cnt);
 /* plat.param_store: PARAM_SAVE günlüğü ve A4-K78 engelinin kalkması. Bekleyen kaydın
    tamamlanması (OK ya da FAIL) durum kodu değişiminden bağımsız olarak beklenen gen ile
    eşleştirilir (param_gen = beklenen gen; aradaki BUSY görülmese de); günlük bir kez. */
