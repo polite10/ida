@@ -1820,7 +1820,7 @@ fd 01 00 00 25 fa 19 ce b3 00 01 dc a6
 
 ## Sürüm geçmişi
 
-`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`, `W3-ortak.md`) eklenir. Not ile maddenin 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Tel sürümü (`proto_major`.`proto_minor`) ayrıdır ve yalnız tel biçimi değişirse artar.
+`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`, `W3-ortak.md`) eklenir. Not ile maddenin 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Tel sürümü (`proto_major`.`proto_minor`; A1-K14) ayrıdır: 1.0.x onu değiştirmez.
 
 | Sürüm | Tarih | Değişiklik |
 |---|---|---|

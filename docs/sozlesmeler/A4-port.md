@@ -1164,7 +1164,7 @@ A1 sözleşmesi bu adları kullanır. Tip ve anlamlar Bölüm 3'tedir. Düzeltme
 
 ## Sürüm geçmişi
 
-`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Port sürümü (`IDA_PORT_VERSION_MAJOR`, `IDA_PORT_VERSION_MINOR`; A4-K02) ayrıdır ve yalnız `port.h` değişirse artar.
+`1.0.x` belge düzeltme sürümüdür (K20: dondurulmuş sözleşmenin hataları uygulama sırasında bulunur ve küçük sürüm artışıyla düzeltilir). Var olan maddelerin metni ve numaraları değişmez; her düzeltme ilgili maddenin ya da tablonun altına "1.0.x notu" olarak, kaynağı olan mimar kararıyla (`docs/gorevler/W4-ortak.md`) eklenir. Not ile 1.0 metni çelişirse not geçerlidir ve notta bu açıkça yazılıdır. Port sürümü (`IDA_PORT_VERSION_MAJOR`, `IDA_PORT_VERSION_MINOR`; A4-K02) ayrıdır: 1.0.x onu değiştirmez.
 
 | Sürüm | Tarih | Değişiklik |
 |---|---|---|
