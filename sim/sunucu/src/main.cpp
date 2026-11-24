@@ -188,6 +188,11 @@ int main(int argc, char** argv)
         for (const auto& [dosya, ozet] : s.kaynak_ozetleri) {
             std::fprintf(stderr, "ida_sim:   kaynak %s %s\n", dosya.c_str(), ozet.c_str());
         }
+        for (const ida::sunucu::DogrulamaBulgusu& b : s.dogrulama_bulgulari) {
+            std::fprintf(stderr, "ida_sim:   doğrulama %s %s %s%s%s %s: %s\n", b.onem.c_str(), b.kural.c_str(),
+                         b.dosya.c_str(), b.satir >= 0 ? ":" : "", b.satir >= 0 ? std::to_string(b.satir).c_str() : "",
+                         b.yol.c_str(), b.ileti.c_str());
+        }
         for (const std::string& u : s.senaryo_uyarilari) {
             std::fprintf(stderr, "ida_sim:   uyarı: %s\n", u.c_str());
         }
@@ -230,7 +235,7 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "ida_sim: z1 komutları: ARM %d (neden %d), SET_MODE %d, GUIDED_SP %d/%d, DISARM %d\n",
                          s.arm_ack, s.arm_neden, s.kip_ack, s.sp_ack, s.sp2_ack, s.disarm_ack);
         }
-        if (a.kip == ida::sunucu::Kip::hil) {
+        if (s.kip == ida::sunucu::Kip::hil) {   // etkin kip (dosyadan seçilebilir; sol #5)
             std::fprintf(stderr,
                          "ida_sim: hil: TF %llu, periyot en az/ort/en çok %.3f/%.3f/%.3f ms, TF geç yazım en çok %.3f ms, "
                          "sim gecikmesi %llu, son tarih %llu, gerçek zaman kaçırma %llu\n",

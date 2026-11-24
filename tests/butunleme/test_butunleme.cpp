@@ -153,8 +153,26 @@ void z1_denetle(const char* ad, const ida::sunucu::Sonuc& s, const ida::zincir::
     dogrula(o.manevra.tutum_rad <= kTutumArizali, on + "manevra yalpa/baş-kıç " + sayi(o.manevra.tutum_rad) + " rad");
     dogrula(o.manevra.tutum_oturma_s >= 0.0 && o.manevra.tutum_oturma_s <= kTutumToparlanma,
             on + "tutum banda dönüş " + sayi(o.manevra.tutum_oturma_s) + " s");
-    dogrula(o.ariza_etkin_adim >= kEtkinAdimAz && o.ariza_degistirdi_adim == o.ariza_etkin_adim,
-            on + "arıza etkin (" + std::to_string(o.ariza_etkin_adim) + " adım)");
+    // W4-K20: itici arızası fizikte mekanik kuvvete uygulanır; darbe genişliği değişmez. W3-zincir'in
+    // "arıza darbe genişliğini değiştirdi" ölçütünün karşılığı: etkin her satırda arızalı kanalların
+    // fizikteki çarpanı Z1 çarpanına eşit.
+    std::uint32_t uygulandi = 0;
+    for (const ida::sunucu::Satir& r : s.satirlar) {
+        if (r.t_s < 43.2 + 0.002 || r.t_s >= 83.2) {
+            continue;
+        }
+        bool hepsi = true;
+        for (int ch : {4, 0}) {
+            const auto c = static_cast<std::size_t>(ch);
+            hepsi = hepsi && (std::abs(r.pwm_yur[c] - 1500) <= 25 || r.itki_carpani[c] == 0.4);
+        }
+        uygulandi += hepsi ? 1u : 0u;
+    }
+    const auto satir_sayisi = static_cast<std::uint32_t>(std::count_if(
+        s.satirlar.begin(), s.satirlar.end(), [](const ida::sunucu::Satir& r) { return r.t_s >= 43.202 && r.t_s < 83.2; }));
+    dogrula(o.ariza_etkin_adim >= kEtkinAdimAz && uygulandi == satir_sayisi,
+            on + "arıza etkin (" + std::to_string(o.ariza_etkin_adim) + " adım; fizikte çarpan 0,4: " +
+                std::to_string(uygulandi) + "/" + std::to_string(satir_sayisi) + " satır)");
     dogrula(!o.sayisal_cokme, on + "sayısal çökme yok");
     dogrula(o.en_yuksek_fs == 0, on + "beklenmeyen arıza eylemi yok (en yüksek fs_level " + std::to_string(o.en_yuksek_fs) + ")");
     dogrula(o.disarm_sonrasi_sifir, on + "DISARM sonrası itki sıfır ve darbe genişliği nötr");

@@ -24,7 +24,7 @@ add_test(NAME butunleme.acil_durdurma COMMAND ida_butunleme_test acil_durdurma)
 # W4-sim-senaryo: A5 senaryo dosyasıyla kurulum ve zaman çizelgesi.
 add_test(NAME butunleme.senaryo_z1_esitligi COMMAND ida_butunleme_test senaryo_z1_esitligi $<TARGET_FILE:ida_sil>)
 set_tests_properties(butunleme.senaryo_z1_esitligi PROPERTIES TIMEOUT 600)
-foreach(_ad senaryo_gecersiz senaryo_zaman_cizelgesi senaryo_emniyet senaryo_belirlenim senaryo_gorev)
+foreach(_ad senaryo_gecersiz senaryo_dogrulama_uyarilari senaryo_zaman_cizelgesi senaryo_emniyet senaryo_belirlenim senaryo_gorev)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
@@ -82,6 +82,11 @@ if(NOT WIN32)
   set_tests_properties(butunleme.hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   add_test(NAME butunleme.hil_cikarma_takma COMMAND ida_butunleme_test hil_cikarma_takma)
   add_test(NAME butunleme.senaryo_hil_pty COMMAND ida_butunleme_test senaryo_hil_pty)
+  # sol #5: --kip olmadan dosyadan seçilen HIL kipinin ölçüm özeti (2 s, sözde uçbirim).
+  add_test(NAME butunleme.ida_sim_hil_dosya
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> "-DKOK=${PROJECT_SOURCE_DIR}"
+            "-DGECICI=${CMAKE_CURRENT_BINARY_DIR}/hil_dosya_kok" -P "${CMAKE_CURRENT_SOURCE_DIR}/hil_dosya.cmake")
+  set_tests_properties(butunleme.ida_sim_hil_dosya PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
   set_tests_properties(butunleme.senaryo_hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   set_tests_properties(butunleme.hil_cikarma_takma PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

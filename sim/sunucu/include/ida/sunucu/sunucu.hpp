@@ -100,6 +100,7 @@ struct Ayar {
     // Yalnız sınama (sol #13): ic kipinde karşı tarafın çekirdek çağrısı girdileri; tcp kipinde
     // dinleme başlayınca port ve karşı tarafın A1 tohumu (dışarıdan koşucu başlatmak için).
     std::function<void(int tur, const ida_in_t& girdi)> ic_cagri_kancasi;
+    std::function<void(int tur, const ida_in_t& girdi, ida_out_t& cikti)> ic_cikti_kancasi;
     std::function<void(std::uint16_t port, std::uint64_t a1_tohum)> tcp_hazir;
     // Yalnız sınama (W4-sim-senaryo): her fizik sınırında fiziğe verilen darbe genişlikleri
     // (acil durdurma engeli ve itici arızasından sonra) ve sensör kümesinin teslim ettiği kayıtlar.
@@ -143,6 +144,7 @@ struct Satir {
     std::uint8_t fc_state = 0;                // kartın IDA_FC_STATUS'u (son alınan; gözlem)
     std::uint32_t fc_inhibit = 0;
     std::uint8_t sim_izin = 0;                // sim'in yetkili izinleri: bit 0 tüp 0, bit 1 tüp 1
+    std::array<double, 8> itki_carpani{};     // fizikteki itici arızası çarpanı (W4-K20; CSV'ye yazılmaz)
 };
 
 // HIL zamanlama ölçümü (duvar saati; bu makinedeki ölçüm).
@@ -190,12 +192,24 @@ struct GevsetmeReddi {
 
 enum class HataTuru { yok, calisma, kullanim, senaryo_gecersiz, senaryo_yurutulemez };
 
+// Doğrulama raporunun bir bulgusu (A5 §3.14; geçerli senaryonun uyarıları dahil, ör. A5-K71).
+struct DogrulamaBulgusu {
+    std::string kural;
+    std::string onem;    // hata | uyari
+    std::string dosya;
+    std::string yol;
+    std::int64_t satir = -1;   // −1: yok
+    std::string ileti;
+};
+
 struct Sonuc {
     bool tamam = false;
     std::string hata;
     HataTuru hata_turu = HataTuru::yok;
     // Senaryo dosyası (W4-sim-senaryo).
-    std::string dogrulama_raporu;                        // A5 §3.14 JSON (geçersiz senaryoda)
+    std::string dogrulama_raporu;                        // A5 §3.14 JSON, değiştirilmeden (geçerli ya da geçersiz)
+    std::vector<DogrulamaBulgusu> dogrulama_bulgulari;   // aynı raporun bulguları (uyarılar dahil)
+    Kip kip = Kip::sil;                                  // etkin kip (dosyadan seçilebilir; sol #5)
     std::string davranis_ozeti;                          // A5-K17
     std::map<std::string, std::string> kaynak_ozetleri;  // dosya → SHA-256
     std::vector<std::string> senaryo_uyarilari;

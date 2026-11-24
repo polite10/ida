@@ -30,57 +30,6 @@ extern char** environ;
 
 namespace ida::sunucu {
 
-SekilTersi::SekilTersi(const std::array<double, 5>& c)
-{
-    double enb = 0.0;
-    for (int j = 0; j <= kN; ++j) {
-        const double u = static_cast<double>(j) / kN;
-        const double u2 = u * u;
-        double t = c[4];
-        t = t * u2 + c[3];
-        t = t * u2 + c[2];
-        t = t * u2 + c[1];
-        t = t * u2 + c[0];
-        enb = std::max(enb, t * u);
-        tablo_[static_cast<std::size_t>(j)] = enb;
-    }
-}
-
-double SekilTersi::sekil(double u) const
-{
-    const double x = std::clamp(u, 0.0, 1.0) * kN;
-    const auto i = static_cast<std::size_t>(std::min(std::floor(x), static_cast<double>(kN - 1)));
-    const double f = x - static_cast<double>(i);
-    return tablo_[i] + f * (tablo_[i + 1U] - tablo_[i]);
-}
-
-double SekilTersi::ters(double hedef) const
-{
-    double lo = 0.0;
-    double hi = 1.0;
-    for (int k = 0; k < 60; ++k) {
-        const double orta = 0.5 * (lo + hi);
-        if (sekil(orta) < hedef) {
-            lo = orta;
-        } else {
-            hi = orta;
-        }
-    }
-    return hi;
-}
-
-double SekilTersi::olcekle(double pwm, double carpan, double notr, double kazanc, double olu_bant) const
-{
-    const double d = pwm - notr;
-    if (std::abs(d) <= olu_bant) {
-        return pwm;
-    }
-    const double u = std::min(std::abs(d) / kazanc, 1.0);
-    const double u2 = ters(carpan * sekil(u));
-    const double d2 = std::round(u2 * kazanc);
-    return d > 0.0 ? notr + d2 : notr - d2;
-}
-
 #if defined(__APPLE__)
 namespace {
 std::uint64_t ns_mach(std::int64_t ns)

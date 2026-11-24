@@ -87,7 +87,7 @@ void ekle(std::string& s, const char* bicim, ...)
 
 class Calistirici {
 public:
-    explicit Calistirici(const Ayar& a) : a_(a), sekil_(fizik::ida0_arac().itici_modeli.sekil_polinomu) {}
+    explicit Calistirici(const Ayar& a) : a_(a) {}
     Calistirici(const Calistirici&) = delete;
     Calistirici& operator=(const Calistirici&) = delete;
     ~Calistirici()
@@ -255,7 +255,7 @@ private:
     bool hazirlik();
     bool yuva_bekle(std::uint32_t seq);
     bool dosya_plani();
-    bool plan_hazirla();
+    bool plan_hazirla(const sensor::SensorKumesiAyari& sa);
     void plan_sinir(std::uint64_t b);
     void plan_sinir_sonrasi(std::uint64_t b, const kopru::SinirSonucu& ss);
     void gorev_hizmet(std::int64_t t);
@@ -287,7 +287,7 @@ private:
     int gorev_gonderilen_ = 0;
     std::uint32_t gorev_son_id_ = 0;
     bool gorev_bitti_ = false;
-    SekilTersi sekil_;
+    std::array<double, 8> fizik_carpan_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};   // fiziğe verilmiş son itki çarpanı
     fizik::AracParametreleri arac_;
     fizik::Dunya dn_;
     sensor::SensorKumesi kume_;
@@ -586,8 +586,14 @@ bool Calistirici::dosya_plani()
     const senaryo::CozumSonucu cs = senaryo::senaryo_coz(*kaynak, a_.senaryo_dosyasi);
     s_.davranis_ozeti = cs.rapor.davranis_ozeti.value_or("");
     s_.kaynak_ozetleri = cs.rapor.kaynak_ozetleri;
+    // Rapor her durumda değiştirilmeden saklanır; bulgular (A5-K71 uyarıları dahil) kaynak ve alan
+    // bilgisiyle taşınır (sol #4).
+    s_.dogrulama_raporu = cs.rapor.json();
+    for (const senaryo::Bulgu& b : cs.rapor.bulgular) {
+        s_.dogrulama_bulgulari.push_back({b.kural, b.onem == senaryo::Onem::hata ? "hata" : "uyari", b.dosya, b.yol,
+                                          b.satir.value_or(-1), b.ileti});
+    }
     if (!cs.rapor.gecerli || !cs.cozumlenmis) {
-        s_.dogrulama_raporu = cs.rapor.json();
         s_.hata = "senaryo geçersiz: " + std::to_string(cs.rapor.hata_sayisi()) + " hata (doğrulama raporu)";
         s_.hata_turu = HataTuru::senaryo_gecersiz;
         return false;
@@ -635,7 +641,7 @@ bool Calistirici::dosya_plani()
 // Plan yürütmesinin hazırlığı (sensör kümesi kurulduktan sonra): yer istasyonu canlılığı,
 // zamanlı sensör arızaları (kümede kurulur; başlangıç ve bitişi küme yürütür), koşullu sensör
 // arızalarının ön denetimi. false: s_ hatalı (başlamadan).
-bool Calistirici::plan_hazirla()
+bool Calistirici::plan_hazirla(const sensor::SensorKumesiAyari& sa)
 {
     pd_.assign(plan_.olaylar.size(), PlanDurumu{});
     hb_.clear();
@@ -651,23 +657,31 @@ bool Calistirici::plan_hazirla()
             hb_.push_back(static_cast<std::int64_t>(std::llround(t * 1e9)));
         }
     }
+    // Koşullu arızaların ön denetimi ayrı, geçici bir kümede yapılır (sol #2): canlı kümede arıza
+    // kimliği tüketilmez (`disarm` kaydı silmez; sonraki `arm` "kimlik tekil değil" derdi).
+    std::unique_ptr<sensor::SensorKumesi> gecici;
     for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
         const PlanOlayi& o = plan_.olaylar[i];
         if (o.tur != PlanOlayTuru::sensor) {
             continue;
         }
-        sensor::SensorArizasi f = o.ariza;
-        if (!o.zaman_ns) {
-            f.zaman_ns = std::numeric_limits<std::int64_t>::max() / 2;   // ön denetim: başlamaz
+        sensor::ArmSonucu r;
+        if (o.zaman_ns) {
+            r = kume_.arm(o.ariza);   // zamanlı: canlı kümede; başlangıç ve bitişi küme yürütür
+        } else {
+            if (!gecici) {
+                gecici = std::make_unique<sensor::SensorKumesi>();
+                if (!gecici->kur(sa).tamam) {
+                    s_.hata = "koşullu sensör arızalarının ön denetimi: geçici küme kurulamadı";
+                    return false;
+                }
+            }
+            r = gecici->arm(o.ariza);
         }
-        const sensor::ArmSonucu r = kume_.arm(f);
         if (!r.tamam) {
             s_.hata = "senaryo bu dilimde yürütülemez: olaylar[" + o.kimlik + "]: " + r.hata;
             s_.hata_turu = HataTuru::senaryo_yurutulemez;
             return false;
-        }
-        if (!o.zaman_ns) {
-            (void)kume_.disarm(r.tutamac);
         }
     }
     return true;
@@ -777,8 +791,12 @@ void Calistirici::plan_sinir(std::uint64_t b)
             if (!o.zaman_ns) {
                 sensor::SensorArizasi f = o.ariza;
                 f.zaman_ns = t;
-                if (!kume_.arm(f).tamam) {
-                    olay_sonucu(i, "reddedildi", t, "desteklenmiyor");
+                const sensor::ArmSonucu r = kume_.arm(f);
+                if (!r.tamam) {
+                    // Ön denetimden geçtiği için beklenmez; nedeni olduğu gibi yazılır.
+                    const bool hedef = r.hata.find("hedef") != std::string::npos;
+                    olay_sonucu(i, "reddedildi", t, hedef ? "hedef_yok" : "desteklenmiyor");
+                    s_.senaryo_uyarilari.push_back("olaylar[" + o.kimlik + "] başlatılamadı: " + r.hata);
                     break;
                 }
             }
@@ -874,16 +892,15 @@ bool Calistirici::sinir_on(std::uint64_t b)
             }
         }
     }
-    if (!estop_bu_adim_ && !itici_.empty()) {
-        // A5 aktuator/itki_carpani: arızalı kanalın darbe genişliği, durağan itki çarpan kadar
-        // küçülecek biçimde nötre doğru ölçeklenir (SekilTersi; fizikte kanal başına itki ölçeği
-        // yok). Çakışan arızaların çarpanları çarpılır (A5-K64).
-        const double kazanc = static_cast<double>(arac_.esc.pwm_max_us) - notr;
-        for (std::size_t c = 0; c < 8; ++c) {
-            if (carpanlar[c] != 1.0) {
-                pwm[c] = sekil_.olcekle(pwm[c], carpanlar[c], notr, kazanc, static_cast<double>(arac_.esc.olu_bant_us));
-            }
+    // A5 aktuator/itki_carpani (W4-K20): çarpan fizikte, süzgeç ve β sonrasındaki mekanik kuvvete
+    // uygulanır; darbe genişliği ve elektrik tarafı arızasız komutu görür. Çakışan arızaların
+    // çarpanları çarpılır (A5-K64). Bu sınırdan (adım b'den) itibaren geçerlidir.
+    if (carpanlar != fizik_carpan_) {
+        if (!dn_.itki_carpani_ver(b, carpanlar)) {
+            s_.hata = "itki çarpanı fiziğe verilemedi";
+            return false;
         }
+        fizik_carpan_ = carpanlar;
     }
     (void)dn_.itici_komutu_ver(b, pwm);
     if (a_.sinir_kancasi) {
@@ -979,6 +996,7 @@ void Calistirici::satir_ekle(std::uint64_t b, std::optional<std::uint32_t> seq)
     r.tau_z = d.itici_kuvvet_momenti[2];
     r.tau_n = d.itici_kuvvet_momenti[5];
     r.estop = onceki_estop_ ? 1u : 0u;
+    r.itki_carpani = fizik_carpan_;
     s_.satirlar.push_back(r);
     bekleyen_satir_.push_back(s_.satirlar.size() - 1u);
 }
@@ -1094,10 +1112,12 @@ void Calistirici::evre_ozeti_kur()
 Sonuc Calistirici::kos()
 {
     // ---- Senaryo: A5 dosyası ya da yerleşik ----
+    s_.kip = a_.kip;
     if (!a_.senaryo_dosyasi.empty()) {
         if (!dosya_plani()) {
             return s_;
         }
+        s_.kip = a_.kip;   // dosyadan seçilen etkin kip (sol #5)
     } else {
         // EMNİYET (sol #1 dar denetimi): verilen acil durdurma anları sonlu ve ≥ 0, kalkış
         // basıştan sonra olmalı; geçersiz değer sessizce "yok" sayılmaz.
@@ -1130,7 +1150,6 @@ Sonuc Calistirici::kos()
         ortam = plan_.fizik->ortam;
         bas = plan_.fizik->baslangic;
         kr = dn_.kur(arac_, ortam, bas);
-        sekil_ = SekilTersi(arac_.itici_modeli.sekil_polinomu);
     } else {
         arac_ = fizik::ida0_arac();
         ortam = fizik::havuz_ortami();
@@ -1162,7 +1181,7 @@ Sonuc Calistirici::kos()
         s_.hata = "sensör kümesi: " + ks.hata;
         return s_;
     }
-    if (!plan_hazirla()) {
+    if (!plan_hazirla(sa)) {
         return s_;
     }
 
@@ -1210,6 +1229,7 @@ Sonuc Calistirici::kos()
         kopru::KarsiAyari kk;
         kk.a1_tohum = k_->board_tohumu();
         kk.cagri_kancasi = a_.ic_cagri_kancasi;
+        kk.cikti_kancasi = a_.ic_cikti_kancasi;
         ic_ = std::make_unique<kopru::KarsiTaraf>(std::move(y), kk);
         if (!ic_->kur()) {
             s_.hata = "süreç içi karşı taraf: " + ic_->hata();

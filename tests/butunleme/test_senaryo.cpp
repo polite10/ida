@@ -258,6 +258,31 @@ int test_gecersiz()
     return 0;
 }
 
+// sol #4: geçerli senaryonun doğrulama uyarıları (gevşek başlangıç, gevşeten olay; A5-K71)
+// kaynak ve alan bilgisiyle Sonuc'a taşınır; rapor değiştirilmeden saklanır.
+int test_dogrulama_uyarilari()
+{
+    std::string m = z1_metni();
+    degistir(m, "sure_ns = 90_000_000_000", "sure_ns = 1_000_000_000");
+    m += "\n[emniyet_girdileri]\nfis = { f1 = true, f2 = false }\n"
+         "\n[[olaylar]]\nkimlik = \"pimcik\"\nsinif = \"emniyet_girdisi\"\nzaman_ns = 500_000_000\n"
+         "girdi = \"pim\"\nhedef = \"f2\"\ndeger = false\n";
+    const sunucu::Sonuc s = sunucu::kos(dosya_ayari(kaynak(m)));
+    dogrula(s.tamam, "koşu " + s.hata);
+    bool fis = false, olay = false;
+    for (const auto& b : s.dogrulama_bulgulari) {
+        std::printf("  bulgu %s %s %s %s: %s\n", b.onem.c_str(), b.kural.c_str(), b.dosya.c_str(), b.yol.c_str(),
+                    b.ileti.c_str());
+        fis = fis || (b.kural == "A5-K71" && b.onem == "uyari" && b.yol.find("emniyet_girdileri.fis.f1") != std::string::npos &&
+                      b.dosya == "scenarios/t.toml");
+        olay = olay || (b.kural == "A5-K71" && b.onem == "uyari" && b.yol.find("olaylar") != std::string::npos);
+    }
+    dogrula(fis, "A5-K71 uyarısı: gevşek başlangıç (fiş takılı), dosya ve alanıyla");
+    dogrula(olay, "A5-K71 uyarısı: gevşeten zaman çizelgesi ataması");
+    dogrula(s.dogrulama_raporu.find("\"gecerli\":true") != std::string::npos, "geçerli senaryonun raporu saklandı");
+    return 0;
+}
+
 int test_zaman_cizelgesi()
 {
     std::string m = z1_metni();
@@ -342,6 +367,40 @@ int test_zaman_cizelgesi()
         }
     }
     dogrula(anlar, "zamanlı olayların uygulama sınırları");
+
+    // sol #2: koşullu sensör arızası (baro0 ofseti, 1 s) koşulun sağlandığı sınırda (1,25 ms)
+    // başlar, ölçümü değiştirir ve süresi sonunda (1,00125 s) kalkar.
+    std::string k = z1_metni();
+    degistir(k, "sure_ns = 90_000_000_000", "sure_ns = 3_000_000_000");
+    k += "\n[[olaylar]]\nkimlik = \"kofs\"\nsinif = \"sensor\"\ntur = \"ofset\"\nhedef = \"baro0\"\n"
+         "sure_ns = 1_000_000_000\nsiddet = { ofset = 50.0 }\nkanal_maskesi = 4294967295\n"
+         "kosul = { buyukluk = \"derinlik\", karsilastirma = \">=\", deger = -10.0 }\n";
+    sunucu::Ayar ka = dosya_ayari(kaynak(k));
+    std::int64_t k_ilk = -1, k_son = -1, k_disi = 0, k_say = 0;
+    ka.olcum_kancasi = [&](const sensor::Olcum& o) {
+        if (o.hdr.tur != sensor::SensorTuru::basinc) {
+            return;
+        }
+        const bool ariza = o.hdr.ariza_maskesi != 0u;
+        const bool pencere = o.hdr.t_meas_ns >= 1'250'000 && o.hdr.t_meas_ns < 1'001'250'000;
+        if (ariza) {
+            k_ilk = k_ilk < 0 ? o.hdr.t_meas_ns : k_ilk;
+            k_son = o.hdr.t_meas_ns;
+            ++k_say;
+        }
+        k_disi += ariza != pencere ? 1 : 0;
+    };
+    const sunucu::Sonuc ks = sunucu::kos(ka);
+    std::string kofs_sonuc;
+    for (const auto& o : ks.olay_sonuclari) {
+        if (o.kimlik == "kofs") {
+            kofs_sonuc = o.sonuc + "@" + std::to_string(o.t_ns);
+        }
+    }
+    dogrula(ks.tamam && kofs_sonuc == "uygulandi@1250000", "koşullu sensör arızası 1,25 ms sınırında uygulandı (" +
+                                                              kofs_sonuc + ") " + ks.hata);
+    dogrula(k_say > 0 && k_disi == 0, "ofset yalnız [1,25 ms; 1,00125 s) ölçümlerinde (" + std::to_string(k_say) +
+                                          " kayıt, ilk " + std::to_string(k_ilk) + ", son " + std::to_string(k_son) + ")");
     return 0;
 }
 
@@ -492,6 +551,43 @@ int test_gorev()
     dogrula(s.gorev_durumu == "tamamlandi" ||
                 (s.gorev_durumu == "reddedildi" && s.gorev_basarisiz_adim == 0 && s.gorev_ack == IDA_ACK_UNSUPPORTED),
             "MISSION_BEGIN'in sonucu bekleniyor; çekirdek desteklemiyorsa (dilim 2) adım 0'da durur");
+    // (3) Tam kabul zinciri (sol notu): çekirdeğin görev yürütücüsü yokken karşı tarafın çıktısında
+    // görev komutlarının sonucu kabul yapılır (sınama kancası); BEGIN → öğeler → END sırayla,
+    // her biri öncekinin kabulünden sonra; (4) ikinci öğe reddedilince adım 2'de durur.
+    for (int red_indis : {-1, 1}) {
+        sunucu::Ayar b = dosya_ayari(kaynak(m));
+        std::vector<std::pair<std::uint8_t, int>> sira;   // (tür, öğe indisi)
+        b.ic_cikti_kancasi = [&, red_indis](int, const ida_in_t& in, ida_out_t& out) {
+            for (unsigned i = 0; i < in.n_cmds; ++i) {
+                const ida_cmd_t& c = in.cmds[i];
+                if (c.type != IDA_CMD_MISSION_BEGIN && c.type != IDA_CMD_MISSION_ITEM && c.type != IDA_CMD_MISSION_END) {
+                    continue;
+                }
+                const int indis = c.type == IDA_CMD_MISSION_ITEM ? static_cast<int>(c.u.mission_item.index) : -1;
+                sira.emplace_back(c.type, indis);
+                for (unsigned k = 0; k < out.n_results; ++k) {
+                    if (out.results[k].cmd_id == c.cmd_id) {
+                        const bool red = c.type == IDA_CMD_MISSION_ITEM && indis == red_indis;
+                        out.results[k].ack = red ? IDA_ACK_REJECTED : IDA_ACK_ACCEPTED;
+                        out.results[k].reason = red ? IDA_REASON_OUT_OF_RANGE : IDA_REASON_NONE;
+                    }
+                }
+            }
+        };
+        const sunucu::Sonuc r = sunucu::kos(b);
+        if (red_indis < 0) {
+            const bool sirali = sira.size() == 4u && sira[0].first == IDA_CMD_MISSION_BEGIN && sira[1].second == 0 &&
+                                sira[2].second == 1 && sira[3].first == IDA_CMD_MISSION_END;
+            dogrula(r.tamam && r.gorev_durumu == "tamamlandi" && sirali,
+                    "tam kabul zinciri: BEGIN → öğe 0 → öğe 1 → END, görev tamamlandı (" + r.gorev_durumu + ", " +
+                        std::to_string(sira.size()) + " ileti)");
+        } else {
+            dogrula(r.tamam && r.gorev_durumu == "reddedildi" && r.gorev_basarisiz_adim == 2 && sira.size() == 3u &&
+                        r.gorev_ack == IDA_ACK_REJECTED,
+                    "öğe 1 reddedilince adım 2'de durur, END gönderilmez (" + r.gorev_durumu + ", adım " +
+                        std::to_string(r.gorev_basarisiz_adim) + ", " + std::to_string(sira.size()) + " ileti)");
+        }
+    }
     return 0;
 }
 
@@ -532,6 +628,8 @@ int senaryo_testi(const std::string& ad, int argc, char** argv)
         (void)test_z1_esitligi(argc > 2 ? argv[2] : nullptr);
     } else if (ad == "senaryo_gecersiz") {
         (void)test_gecersiz();
+    } else if (ad == "senaryo_dogrulama_uyarilari") {
+        (void)test_dogrulama_uyarilari();
     } else if (ad == "senaryo_zaman_cizelgesi") {
         (void)test_zaman_cizelgesi();
     } else if (ad == "senaryo_emniyet") {
