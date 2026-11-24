@@ -14,9 +14,21 @@ Sonar sahnesinin, senaryonun gösterdiği A7 kümesindeki statik varlığın (ha
 
 Okunacaklar: `docs/sozlesmeler/A7-sahne.md` (özellikle §3 dosya düzeni, A7-K19–K29, K50, K56; hata kodları), `docs/sozlesmeler/A5-senaryo.md`'nin `ortam.sahne` ve `hedefler` bölümleri (A5-K36, K115), `sim/sonar/**` ve `sim/sonar/BENIOKU.md` (sahne arayüzü, ışın izleme, malzeme), `sim/senaryo/src/sonar_yukleyici.cpp`, `docs/gorevler/W4-bagla-sonar.md` ve sol incelemesi (`docs/gorevler/inceleme/W4-bagla-sonar-sol.md`), `assets/ornek/manifest.json`.
 
-## Önce saptanacaklar (rapora yazılır; işin biçimini belirler)
+## Mimar kararı: varlık kaynağı (2026-11-24; ilk saptama turunun sonucu)
 
-1. `assets/ornek/` kümesinin `.glb` dosyaları depoda yok. Nasıl üretilecekleri (A7'nin öngördüğü hat, bir üretim betiği, derleme sırasında üretim) kod ve belgeden saptanır. Depoda üretim yolu yoksa: `havuz_ornek` ve `hedef_ornek` için ağları belirlenimci üreten küçük bir üretici (derleme sırasında koşan, ikili dosyayı depoya koymayan; manifestteki özet ve boyutla tutarlı) bu işin kapsamındadır. Manifestteki özetlerle tutarlı dosya üretilemiyorsa DUR ve raporla (manifesti değiştirmek A7 uygunluk örneğini değiştirir; mimar kararı ister).
+İlk turda saptananlar: `assets/ornek/` kümesi A7 §3.7'nin yer tutucu uygunluk örneğidir (özetler sıfır, "çalışma zamanında yüklenemez"; A7-K06, K51); onunla tutarlı `.glb` üretilemez. Kaynak `.glb` üretimi derlemenin parçası değildir, derleme yalnız depodaki `.glb` ve manifesti kullanır (A7-K47); emsal `acik_su` kümesidir (üreticisi `viz/arac/model-uret/uret.py`, üç `.glb` depoda izlenir). Sim'de GLB okuyucu yoktur; sonar sahne arayüzü (`sahne.hpp`) üçgen ağa hazırdır. Bu belgenin ilk halindeki "derleme sırasında üretim" ve "`.glb` depoya girmez" ifadeleri yanlıştı ve kaldırıldı.
+
+Karar:
+
+1. **Yeni küme `havuz`** (`assets/havuz/manifest.json` + `.glb` dosyaları), `acik_su` emsaliyle aynı düzende: belirlenimci bir üretici betik depoda durur, ürettiği `.glb` dosyaları depoda izlenir, manifest gerçek özet ve boyutları taşır. Varlıklar: araç (`acik_su` kümesindeki araç tanımıyla aynı; A7'nin izin verdiği biçimde), statik havuz varlığı (taban + dört duvar çarpışma kaynak ağları; ölçüler ve `taban_derinligi_m`, `ornek` kümesindeki `havuz_ornek` tanımıyla aynı, böylece senaryoların `ortam.derinlik` denetimi (A5-K36) değişmez), bir hedef varlığı (`hedef_ornek`'in sınır kutusuna uyan basit kapalı gövde; yalnız akustik yansıtıcı cisim). Görselleştirme de ileride bu kümeyi kullanacaktır; görsel ağlar yalın tutulur.
+2. **`ornek` kümesi ve onu kullanan senaryolar (`scenarios/z1.toml`, `scenarios/ornek-havuz.toml`, altın dosya) DEĞİŞMEZ;** Z1 taban çizgisi değişmez. Sonar açıkken yer tutucu kümeyi gösteren senaryo, bugünkü üç ret koşulu yerine A7'nin kendi nedeniyle (özet/boyut uyuşmazlığı; A7-K06) açık hatayla reddedilir.
+3. **`scenarios/sonar-havuz.toml`** (W4-bagla-sonar'ın eklediği sonar örneği) `havuz` kümesine çevrilir ve yeni manifest özetini taşır; sonarlı havuz testleri bu senaryoyla koşar.
+4. **Sim'de en küçük GLB okuyucu** (`sim/` içinde ortak bir yerde; yalnız A7'nin izin verdiği alt küme) ve A7-K06, K10–K14, K19–K28 denetimlerinden sonar için gerekenler; **`Sahne` arayüzünü uygulayan BVH'li üçgen ağ sahnesi** (`sim/sonar`).
+5. A7-K50'nin "tek yükleme" kuralı bugün sağlanmıyor (fizik çarpışma şeklini manifestteki sınır kutusundan kuruyor); bu iş fiziği DEĞİŞTİRMEZ, yalnız sonar yükler; fark açık konu olarak raporlanır.
+
+## Önce saptanacaklar (ilk turda yanıtlandı; yukarıdaki karar bunlara dayanır)
+
+1. `assets/ornek/` kümesinin `.glb` dosyalarının kaynağı (yanıt: yer tutucu küme; yukarıdaki karar).
 2. Sim'de A7 kümesini okuyan bir yükleyici (GLB ayrıştırma, düğüm/rol denetimi) var mı; fizik bugün çarpışma ağlarını nereden alıyor. Varsa sonar aynı yüklemeyi kullanır (A7-K50); yoksa en küçük GLB okuyucu (yalnız A7'nin izin verdiği alt küme: `mode` = 4, `POSITION` float32, indeksli) `sim/` içinde ortak bir yerde yazılır ve sonar onu kullanır.
 3. Sonar modelinin sahne arayüzü üçgen ağ destekliyor mu (W4-sonar'da ne yazıldı).
 
@@ -37,7 +49,7 @@ Sonarın bayrak yerine senaryodan açılması (W4-sunucu-kucuk'ta karara bağlan
 1. **Havuz duvarı:** bilinen ölçülü havuzda duvara dik bakan Ping1D ve Ping360 ışınının menzili geometrik uzaklıkla modelin belgelenmiş hata sınırı içinde; duvara eğik açıda beklenen davranış (modelin yansıma kuralına göre) belgelenir ve sınanır.
 2. **Hedef cismi:** bilinen pozdaki hedefin Ping360 taramasında beklenen kerterizde ve menzilde dönüş verdiği; hedef hareket edince dönüşün izlediği.
 3. **Sözleşme uyumu (A7-K27):** akustik liste boşken sonarın kullandığı üçgen sayısı çarpışma kaynak ağınınkine eşit (A7-U09'un sonar yarısı).
-4. **Senaryolar:** `scenarios/z1.toml --sonar`, `scenarios/sonar-havuz.toml --sonar` çalışır; W4-bagla-sonar'ın bellekte açık suya çeviren test düzeneği gerçek havuz senaryosuna döndürülür (açık su testi ayrıca kalır).
+4. **Senaryolar:** `scenarios/sonar-havuz.toml --sonar` (`havuz` kümesi) çalışır; `scenarios/z1.toml --sonar` A7-K06 nedeniyle açık hatayla reddedilir (yer tutucu küme); W4-bagla-sonar'ın bellekte açık suya çeviren test düzeneği gerçek havuz senaryosuna döndürülür (açık su testi ayrıca kalır). Üreticinin çıktısı depodaki `.glb` dosyalarıyla bayt bayt aynıdır ve manifest özetleri tutar (test).
 5. **Eşitlik:** sonar kapalıyken bütün çıktılar bu iş öncesiyle bayt bayt aynı (iki ikilinin bir kez karşılaştırılması; W4-bagla-sonar düzeltme turundaki yöntem); `kabul.*` ve `zincir.z1` değişmeden.
 6. **Belirlenimcilik:** aynı senaryo ve tohumla iki sonarlı SIL koşusu bayt bayt aynı.
 7. **Zamanlama (ölçüm; W4-K24, K29):** havuz sahnesinde Ping1D + Ping360 açık 60 s kartsız HIL: kaçırma sayısı, sonar adımının en uzun ve p50/p99 süresi (bu Mac, release, makine sakinken); sade ve tam kademe ayrı. Ayırma 0 (ayırma testi ağlı sahneyle).
