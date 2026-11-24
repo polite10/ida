@@ -275,8 +275,14 @@ private:
 
     // SIL: alım kuyruğunu akış sırasıyla köprüye verir; dur() doğru olunca o çerçevede durur ve
     // kalan baytlar kuyrukta kalır. En çok `azami` bayt verilir (W4-K26 (3): tüketim sınırı
-    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır). Kuyruk bitti
-    // ve akış kapandıysa (bekleyen hâlâ veri istiyorsa) bağlantı kaybı burada işlenir. Dönüş: dur().
+    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır).
+    // Genel kural (EMNİYET, sol 3. denetim #1): alım kuyruğundaki her olayın (bayt tüketimi ve
+    // köprünün çerçeve kararları, W4-K14 tampon taşması, bekleme bütçesinin aşımı, akışın sonu)
+    // kararı akıştaki konum sırasıyla verilir; aynı turda görülen iki olaydan akışta önce olan önce
+    // karara bağlanır. Akışın sonu (EOF) son bayttan sonradır: yalnız kuyruk bittiğinde, bekleyen
+    // hâlâ veri istiyorsa ve bu beslemenin bütçesi tükenmemişse işlenir (bütçe tam son baytta
+    // bittiyse önce çağıranın bütçe kararı verilir). Yazma hatasının kendi kararı yoktur (çıktı
+    // atılır; W4-K26 (2)). Dönüş: dur().
     bool sil_besle(const std::function<bool()>& dur, std::uint64_t azami = UINT64_MAX)
     {
         std::uint64_t verilen = 0;
@@ -296,7 +302,7 @@ private:
             sil_gelen_k_ = 0;
         }
         const bool tamam = dur();
-        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty()) {
+        if (!tamam && sil_akis_bitti_ && sil_gelen_.empty() && verilen < azami) {
             baglanti_koptu("taşıma kapandı (karşı uç kapattı)");
         }
         return tamam;
