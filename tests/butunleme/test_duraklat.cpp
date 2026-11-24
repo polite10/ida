@@ -521,6 +521,10 @@ int test_ayni_tur_cikis()
         dogrula_d(uygulandi(k.s, no_bas, 4001 * kH), ad + ": acil bas sınır 4001'de uygulandı");
     }
     // HIL: aynı tur, sürdür (adımla HIL'de kipte geçersiz; duraklat onay ister).
+    // Sözde uçbirim yalnız POSIX'te: Windows'ta HIL kolu (kontrol koşusu dahil) atlanır; SIL kolu koşar.
+#if defined(_WIN32)
+    std::printf("  atlandı: HIL acil + sürdür (sözde uçbirim Windows'ta yok)\n");
+#else
     {
         const std::string ad = "HIL acil + sürdür";
         // `basar` false: aynı kurulumun müdahalesiz kontrol koşusu (onaylı duraklat ve sürdür var,
@@ -560,6 +564,7 @@ int test_ayni_tur_cikis()
         dogrula_d((k.s.sayac.calistirma_gecersiz & ida::kopru::kGecDuraklatma) != 0u,
                   ad + ": HIL duraklatması çalıştırmayı geçersiz kıldı (A1-K41, K79)");
     }
+#endif
     return 0;
 }
 
