@@ -289,7 +289,7 @@ struct Sonuc {
     std::uint64_t yazma_takilma = 0;           // T_bağ boyunca ilerlemeyen yazım
     std::uint64_t kapanis_yazim_eksik = 0;     // W4-K28 (3): kapanış çıkışı süre sınırında yazılamadı
     std::uint64_t sil_kuyruk_en_cok = 0;       // W4-K26 (3): SIL alım kuyruğunun en büyük boyu (B)
-    std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL alım kuyruğu/bekleme bayt sınırı aşıldı (PROTOCOL)
+    std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL bekleme tüketim sınırı (akış konumunda) aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
     std::uint32_t karsi_imu_rejected = 0;

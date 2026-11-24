@@ -299,13 +299,28 @@ private:
         const std::int64_t e0 = gercek();
         std::size_t bu_tur = 0;
         for (;;) {
-            if (bu_tur >= (sil ? kSilOkumaTuru : kHilOkumaTuru)) {
-                // W4-K26 (3), W4-K28 sol-3 #2: bir turun işi sınırlı (HIL'de de: sürekli veri basan
-                // karşı taraf dünya döngüsünü ve kapanışın son tarih denetimini kilitleyemez).
-                break;
+            std::size_t istek = alim_.size();
+            if (!sil) {
+                // W4-K28 sol-3 #2: HIL'de de bir turun işi sınırlı (sürekli veri basan karşı taraf
+                // dünya döngüsünü ve kapanışın son tarih denetimini kilitleyemez). Geri basınç YOK:
+                // HIL'de okumamak veri kaybıdır; kalan baytlar sonraki turda okunur.
+                if (bu_tur >= kHilOkumaTuru) {
+                    break;
+                }
+            } else {
+                // W4-K26 (3): bir turun işi sınırlı (gözetim denetimine dönülür) ve kuyruğun
+                // bellek tavanı her eklemeden önce: tavan doluysa okunmaz (geri basınç; TCP
+                // karşı tarafı yavaşlatır). Tavan karar üretmez: kuyruğun doluluğu geliş
+                // zamanına bağlıdır; protokol hatası yalnız akış konumuna bağlı tüketim
+                // sınırından (yuva_bekle, kSilBeklemeAzami) gelir.
+                const std::size_t dolu = sil_gelen_.size() - sil_gelen_k_;
+                if (bu_tur >= kSilOkumaTuru || dolu >= kSilGelenAzami) {
+                    break;
+                }
+                istek = std::min(istek, kSilGelenAzami - dolu);
             }
             std::size_t n = 0;
-            const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
+            const kopru::OkumaSonucu r = tas_->oku(alim_.data(), istek, bekle_us, n);
             bekle_us = 0;
             if (r == kopru::OkumaSonucu::tamam) {
                 if (a_.a1_bayt_kancasi) {
@@ -313,15 +328,6 @@ private:
                 }
                 if (sil) {
                     bu_tur += n;
-                    if (sil_gelen_.size() - sil_gelen_k_ + n > kSilGelenAzami) {
-                        // W4-K26 (3) (EMNİYET): bellek tavanı eklemeden önce; oturum protokol
-                        // hatasıyla biter, kuyruk (kilitli adımı bozan akış) atılır.
-                        ++s_.sil_kuyruk_tasma;
-                        k_->protokol_hatasi(duvar());
-                        sil_gelen_.clear();
-                        sil_gelen_k_ = 0;
-                        break;
-                    }
                     sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
                     s_.sil_kuyruk_en_cok = std::max<std::uint64_t>(s_.sil_kuyruk_en_cok, sil_gelen_.size() - sil_gelen_k_);
                 } else {
@@ -343,14 +349,19 @@ private:
     }
 
     // SIL: alım kuyruğunu akış sırasıyla köprüye verir; dur() doğru olunca o çerçevede durur ve
-    // kalan baytlar kuyrukta kalır. Kuyruk bitti ve akış kapandıysa (bekleyen hâlâ veri
-    // istiyorsa) bağlantı kaybı burada işlenir. Dönüş: dur().
-    bool sil_besle(const std::function<bool()>& dur)
+    // kalan baytlar kuyrukta kalır. En çok `azami` bayt verilir (W4-K26 (3): tüketim sınırı
+    // akıştaki bayt konumunda, okuma ve besleme parçalarından bağımsız uygulanır). Kuyruk bitti
+    // ve akış kapandıysa (bekleyen hâlâ veri istiyorsa) bağlantı kaybı burada işlenir. Dönüş: dur().
+    bool sil_besle(const std::function<bool()>& dur, std::uint64_t azami = UINT64_MAX)
     {
-        while (sil_gelen_k_ < sil_gelen_.size() && !dur()) {
-            const std::size_t n = k_->al(sil_gelen_.data() + sil_gelen_k_, sil_gelen_.size() - sil_gelen_k_, duvar(), dur);
+        std::uint64_t verilen = 0;
+        while (sil_gelen_k_ < sil_gelen_.size() && verilen < azami && !dur()) {
+            const std::size_t parca = static_cast<std::size_t>(
+                std::min<std::uint64_t>(sil_gelen_.size() - sil_gelen_k_, azami - verilen));
+            const std::size_t n = k_->al(sil_gelen_.data() + sil_gelen_k_, parca, duvar(), dur);
             sil_gelen_k_ += n;
             sil_beslenen_ += n;
+            verilen += n;
         }
         if (sil_gelen_k_ >= sil_gelen_.size()) {
             sil_gelen_.clear();
@@ -873,16 +884,19 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
     const auto dur = [this, seq] {
         return k_->yuva_tamam(seq) || k_->durum() != kopru::OturumDurumu::kosuyor;
     };
+    // W4-K26 (3) (EMNİYET): bu beklemede yuva tamamlanmadan en çok kSilBeklemeAzami bayt
+    // tüketilir. Besleme kalan bütçeyle sınırlanır; bütçe yuva tamamlanmadan bittiği anda (tam o
+    // baytta) oturum protokol hatasıyla biter. Karar yalnız akıştaki bayt konumuna bağlıdır: yuvayı
+    // tamamlayan çerçevenin son baytı bütçenin içindeyse geçerli, dışındaysa (aynı okumada gelse de)
+    // değil. Kalan kuyruk atılmaz; el sıkışmada akış sırasıyla işlenir.
     const std::uint64_t beslenen_bas = sil_beslenen_;
     for (;;) {
-        (void)sil_besle(dur);
+        const std::uint64_t harcanan = sil_beslenen_ - beslenen_bas;
+        (void)sil_besle(dur, harcanan < kSilBeklemeAzami ? kSilBeklemeAzami - harcanan : 0u);
         if (!k_->yuva_tamam(seq) && k_->durum() == kopru::OturumDurumu::kosuyor &&
-            sil_beslenen_ - beslenen_bas > kSilBeklemeAzami) {
-            // W4-K26 (3) (EMNİYET): yuvayı tamamlamayan sınırsız akış (ör. kesintisiz 0x00).
+            sil_beslenen_ - beslenen_bas >= kSilBeklemeAzami) {
             ++s_.sil_kuyruk_tasma;
             k_->protokol_hatasi(duvar());
-            sil_gelen_.clear();
-            sil_gelen_k_ = 0;
         }
         if (k_->yuva_tamam(seq)) {
             return true;

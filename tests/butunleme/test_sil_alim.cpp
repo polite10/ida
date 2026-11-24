@@ -51,7 +51,8 @@ constexpr std::int64_t kH = 1'250'000;
 constexpr std::uint16_t kNotr = 1500;
 
 enum class Teslim { ayni_okuma, ayri_gecikmeli, parcali, ince_parcali };
-enum class Ek { esz_guvenli, kart_kapanisi, log_fin, sifir_seli };
+enum class Ek { esz_guvenli, kart_kapanisi, log_fin, sifir_seli, sifir_act };
+constexpr std::int64_t kButce = std::int64_t{1} << 22U;   // sim'in bekleme tüketim sınırı (4 MiB)
 
 const char* teslim_adi(Teslim t)
 {
@@ -103,6 +104,15 @@ public:
     std::uint16_t port() const { return din_ ? din_->port() : 0; }
     const std::vector<std::uint8_t>& sim_kart() const { return sim_kart_; }
     bool tetiklendi() const { return tetik_; }
+    // Bütçe sınaması (Ek::sifir_act): ACTUATOR(n + 1)'in önüne konacak sıfır sayısı; göreli ise
+    // kButce − (ACTUATOR boyu) + z.
+    void sifir_ayarla(std::int64_t z, bool goreli)
+    {
+        sifir_ = z;
+        sifir_goreli_ = goreli;
+    }
+    std::uint64_t sifir_sayisi() const { return sifir_sayisi_; }
+    std::size_t act_boyu() const { return act_boyu_; }
     std::string tani() const
     {
         return "aktarıcı: aşama '" + asama_ + "', sim bağlantısı " + std::to_string(sim_baglanti_) +
@@ -248,6 +258,33 @@ private:
         if (kesildi_) {
             return;   // FIN ya da sel: kartın sonraki çıktısı iletilmez
         }
+        if (act_bekle_) {
+            // Bütçe sınaması: ACTUATOR(n)'den sonra kartın öteki çerçeveleri atılır; ACTUATOR(n + 1)
+            // gelince önüne Z sıfır konur (Z, çerçevenin boyuna göre: bütçeye göre konum kesin).
+            if (c.msgid != MAVLINK_MSG_ID_IDA_ACTUATOR) {
+                return;
+            }
+            act_bekle_ = false;
+            const std::int64_t s0 = sifir_.load();
+            const std::int64_t z = sifir_goreli_.load() ? kButce - static_cast<std::int64_t>(ham.size()) + s0 : s0;
+            sifir_sayisi_ = static_cast<std::uint64_t>(z);
+            act_boyu_ = ham.size();
+            std::vector<std::uint8_t> sifirlar(static_cast<std::size_t>(z), 0);
+            if (teslim_ == Teslim::ayni_okuma) {
+                sifirlar.insert(sifirlar.end(), ham.begin(), ham.end());
+                kuyruga(std::move(sifirlar), 0);
+            } else {
+                // Sıfırlar 64 KiB parçalarla, ACTUATOR ayrı ve 3 ms sonra.
+                for (std::size_t i = 0; i < sifirlar.size(); i += 65536) {
+                    kuyruga(std::vector<std::uint8_t>(
+                                sifirlar.begin() + static_cast<std::ptrdiff_t>(i),
+                                sifirlar.begin() + static_cast<std::ptrdiff_t>(std::min(sifirlar.size(), i + 65536))),
+                            0);
+                }
+                kuyruga(std::move(ham), 3000);
+            }
+            return;
+        }
         if (c.msgid != MAVLINK_MSG_ID_IDA_ACTUATOR) {
             kuyruga(std::move(ham), 0);
             return;
@@ -273,6 +310,12 @@ private:
             // FIN ve selde tetikten sonra kartın girdisi dondurulur (sim → kart iletilmez): kartın
             // gördüğü akış teslim biçiminden bağımsız kalır (tetik anında sim TF(n)'den sonrasını
             // göndermemiştir; kilitli adım).
+            if (ek_ == Ek::sifir_act) {
+                kuyruga(std::move(ham), 0);
+                act_bekle_ = true;
+                asama_ = "bütçe: ACTUATOR(n + 1) bekleniyor";
+                return;
+            }
             if (ek_ == Ek::sifir_seli) {
                 kuyruga(std::move(ham), 0);
                 sel_ = true;
@@ -442,6 +485,11 @@ private:
     bool kesildi_ = false;
     bool sel_ = false;
     bool sim_donuk_ = false;   // tetikten sonra sim → kart iletilmez (kartın girdisi belirli kalır)
+    bool act_bekle_ = false;
+    std::atomic<std::int64_t> sifir_{0};
+    std::atomic<bool> sifir_goreli_{false};
+    std::uint64_t sifir_sayisi_ = 0;
+    std::size_t act_boyu_ = 0;
     // Tanı (kurulamayan oturumda nedeni göstermek için).
     std::string asama_ = "başlamadı";
     int sim_baglanti_ = 0;
@@ -462,6 +510,8 @@ struct Kosu {
     bool tetik = false;
     double sure_s = 0.0;
     std::string tani;
+    std::uint64_t sifir_sayisi = 0;
+    std::size_t act_boyu = 0;
 };
 
 // Oturum kurulamadığında ya da ek katılmadığında nedeni yazar (CI günlüğü belirsiz kalmasın).
@@ -485,7 +535,7 @@ void tani_yaz(const Kosu& k)
 // baglanti_bekleme_ns varsayılandır (20 s): sim'in el sıkışma süre sınırı hazırlık oturumunu da
 // kapsar ve yavaş koşucuda (Windows CI, hata ayıklama/ASan) yüzlerce ms'yi aşar. Sınamalar bu
 // süreye dayanmaz: FIN'den sonra aktarıcı yeni bağlantıyla sürdürür, sel sim'in kapanışıyla durur.
-Kosu kos(Teslim teslim, Ek ek, double sure_s)
+Kosu kos(Teslim teslim, Ek ek, double sure_s, std::int64_t sifir = 0, bool goreli = false)
 {
     ida::sunucu::Ayar a;
     a.gunluk = 0;
@@ -499,6 +549,7 @@ Kosu kos(Teslim teslim, Ek ek, double sure_s)
     std::thread is;
     a.tcp_hazir = [&](std::uint16_t port, std::uint64_t tohum) {
         ak = std::make_unique<EkAktarici>(port, teslim, ek);
+        ak->sifir_ayarla(sifir, goreli);
         ida::sil::Ayarlar ka;
         ka.a1_port = ak->port();
         ka.a1_tohum = tohum;
@@ -521,6 +572,8 @@ Kosu kos(Teslim teslim, Ek ek, double sure_s)
         k.t_n = ak->t_n();
         k.tetik = ak->tetiklendi();
         k.tani = ak->tani();
+        k.sifir_sayisi = ak->sifir_sayisi();
+        k.act_boyu = ak->act_boyu();
     }
     tani_yaz(k);
     return k;
@@ -669,6 +722,45 @@ int test_sil_sifir_seli()
                "W4-K26 (3): oturum protokol hatasıyla bitti (SESSION_CLOSE(PROTOCOL))");
     dogrula_sa(k.s.sil_kuyruk_en_cok <= (std::uint64_t{1} << 26U) + 65536u, "alım kuyruğu sınırlı (≤ 64 MiB + bir okuma)");
     dogrula_sa(k.s.tamam, "koşu asılmadan sürdü: sel durunca yeni oturum kuruldu ve koşu tamamlandı");
+    return 0;
+}
+
+// W4-K26 (3), sol 2. denetim #3 (EMNİYET): bekleme tüketim sınırının kararı yalnız akıştaki bayt
+// konumuna bağlıdır. Beklenen yuva boşken akış Z × 0x00 → ACTUATOR(n + 1): ACTUATOR'ın son baytı
+// bütçenin (4 MiB) içindeyse geçerli, dışındaysa PROTOCOL; aynı okumada ya da ayrı teslimde aynı.
+int test_sil_butce_konumu()
+{
+    struct Durum {
+        const char* ad;
+        std::int64_t z;
+        bool goreli;
+    };
+    const Durum durumlar[] = {
+        {"sınırda (son bayt = 4 MiB)", 0, true},
+        {"sınırın bir bayt üstü", 1, true},
+        {"4 194 304 sıfır", 4'194'304, false},
+        {"4 194 305 sıfır", 4'194'305, false},
+    };
+    for (const Durum& d : durumlar) {
+        std::vector<Kosu> kosular;
+        for (const Teslim t : {Teslim::ayni_okuma, Teslim::ayri_gecikmeli}) {
+            kosular.push_back(kos(t, Ek::sifir_act, 4.0, d.z, d.goreli));
+            const Kosu& k = kosular.back();
+            const auto kp = kapanislar(k.giden);
+            const bool asim = k.sifir_sayisi + k.act_boyu > static_cast<std::uint64_t>(kButce);
+            std::printf("  %s, %s: sıfır %llu + ACTUATOR %zu B, bütçe aşımı %d, tüketim sınırı %llu, kapanışlar %s, "
+                        "karar dizisi %zu B\n",
+                        d.ad, teslim_adi(t), static_cast<unsigned long long>(k.sifir_sayisi), k.act_boyu, asim ? 1 : 0,
+                        static_cast<unsigned long long>(k.s.sil_kuyruk_tasma), nedenler(kp).c_str(), k.giden.size());
+            const std::string on = std::string(d.ad) + ", " + teslim_adi(t) + ": ";
+            dogrula_sa(k.tetik && k.act_boyu > 0u && k.s.tamam, on + "koşu tamamlandı " + k.s.hata);
+            const auto protokol = static_cast<std::uint64_t>(std::count(kp.begin(), kp.end(), std::uint8_t{3}));
+            dogrula_sa(k.s.sil_kuyruk_tasma == (asim ? 1u : 0u) && protokol == (asim ? 1u : 0u),
+                       on + (asim ? "bütçe aşıldı: SESSION_CLOSE(PROTOCOL)" : "bütçe içinde: yuva tamam, PROTOCOL yok"));
+        }
+        dogrula_sa(kosular[0].giden == kosular[1].giden && kosular[0].girdi == kosular[1].girdi,
+                   std::string(d.ad) + ": iki teslim biçiminde aynı karar, aynı sim çıktısı ve fizik girdisi");
+    }
     return 0;
 }
 
@@ -878,6 +970,10 @@ int test_sil_hazirlik_suresi()
 
 int sil_alim_testi(const std::string& ad, int, char**)
 {
+    if (ad == "sil_butce_konumu") {
+        (void)test_sil_butce_konumu();
+        return g_hata_sa;
+    }
     if (ad == "sil_hazirlik_suresi") {
         (void)test_sil_hazirlik_suresi();
         return g_hata_sa;
