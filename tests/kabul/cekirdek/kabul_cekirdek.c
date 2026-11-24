@@ -942,9 +942,13 @@ static void sonuclari_denetle(const baglam_t *b, const ida_out_t *o)
                            (unsigned)r->ack, (unsigned)r->reason);
             }
             if (kc_genisletici_komut(c)) {
-                KC_DOGRULA(r->ack != IDA_ACK_ACCEPTED && r->ack != IDA_ACK_IN_PROGRESS,
-                           "genişletici (tür %u, fc.op %u) kabul edildi: ack %u (yer tutucu; A4-K124, M4)",
-                           (unsigned)c->type, (unsigned)c->u.fc.op, (unsigned)r->ack);
+                /* A4-K124, 3.17: genişleticinin sonucu kapalı tablodandır (DUPLICATE, REJECTED,
+                   UNSUPPORTED ya da ACCEPTED; IN_PROGRESS yok). ACCEPTED, 3.17'nin izin verdiği
+                   yerde serbesttir (ör. temizlenecek mandal yokken FAILSAFE_RESET, zaten
+                   silahlıyken ARM); daraltmalı ve IMU'su reddedilen çağrıda aşağıdaki dallar
+                   REJECTED ister (A4-K45, K103). Etkinin denetimi genel_denetim'dedir (A4-K104). */
+                KC_DOGRULA(r->ack != IDA_ACK_IN_PROGRESS, "genişletici (tür %u, fc.op %u) IN_PROGRESS (A4-K124, 3.17)",
+                           (unsigned)c->type, (unsigned)c->u.fc.op);
                 if (r->ack != IDA_ACK_DUPLICATE) {
                     if (dar) {
                         KC_DOGRULA(r->ack == IDA_ACK_REJECTED && r->reason == IDA_REASON_NARROWED,
@@ -1005,18 +1009,38 @@ static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
     int tum = 0;
     int t0 = 0;
     int t1 = 0;
+    int genis_olay = 0;
     for (unsigned i = 0; i < o->n_events; ++i) {
         const ida_event_t *e = &o->events[i];
-        KC_DOGRULA(e->kind != IDA_EVT_SAFETY_OPEN && e->kind != IDA_EVT_FIRE,
-                   "genişletici olay üretildi: kind %u (yer tutucu; A4-K28, K64, M4)", (unsigned)e->kind);
-        KC_DOGRULA(e->kind == IDA_EVT_SAFETY_CLOSE, "tanımsız olay türü %u", (unsigned)e->kind);
-        KC_DOGRULA(e->tube == 0u || e->tube == 1u || e->tube == IDA_TUBE_ALL, "SAFETY_CLOSE tube %u",
-                   (unsigned)e->tube);
+        KC_DOGRULA(e->kind == IDA_EVT_SAFETY_CLOSE || e->kind == IDA_EVT_SAFETY_OPEN || e->kind == IDA_EVT_FIRE,
+                   "tanımsız olay türü %u (A4-K60)", (unsigned)e->kind);
+        if (e->kind != IDA_EVT_SAFETY_CLOSE) {
+            /* A4-K64, K45, K103, K28: izin açan olay ve FIRE yalnız OK dönen step'te ve
+               daraltmasız çağrıda; FIRE ayrıca armed = 1 ve is_safe = 0 iken; A4-K65:
+               SAFETY_CLOSE'lardan sonra; A4-K66: hold_ns aralığı; tüp 0–1. */
+            KC_DOGRULA(b->f == KC_STEP && b->rc == IDA_RC_OK, "genişletici olay (kind %u) step OK dışında (A4-K64)",
+                       (unsigned)e->kind);
+            KC_DOGRULA(!b->daraltma && !o->health.narrowed, "daraltmalı çağrıda genişletici olay (A4-K45)");
+            KC_DOGRULA(e->tube == 0u || e->tube == 1u, "genişletici olay tube %u (3.8)", (unsigned)e->tube);
+            if (e->kind == IDA_EVT_FIRE) {
+                KC_DOGRULA(o->armed && !o->is_safe, "FIRE armed = %d, is_safe = %d iken (A4-K64)", (int)o->armed,
+                           (int)o->is_safe);
+                KC_DOGRULA(e->hold_ns == 0u, "FIRE hold_ns %lu (A4-K66)", (unsigned long)e->hold_ns);
+            } else {
+                KC_DOGRULA(e->hold_ns >= IDA_HOLD_MIN_NS && e->hold_ns <= IDA_HOLD_MAX_NS,
+                           "SAFETY_OPEN hold_ns %lu aralık dışı (A4-K66)", (unsigned long)e->hold_ns);
+            }
+            genis_olay++;
+        } else {
+            KC_DOGRULA(genis_olay == 0, "SAFETY_CLOSE genişletici olaydan sonra (A4-K65)");
+            KC_DOGRULA(e->tube == 0u || e->tube == 1u || e->tube == IDA_TUBE_ALL, "SAFETY_CLOSE tube %u",
+                       (unsigned)e->tube);
+            KC_DOGRULA(e->hold_ns == 0u, "SAFETY_CLOSE hold_ns %lu (A4-K66)", (unsigned long)e->hold_ns);
+        }
         KC_DOGRULA(e->seq == o->seq && e->t_decide.ns == o->t_ref.ns,
                    "olay seq/t_decide (%lu, %lld) çıktının seq/t_ref'i (%lu, %lld) değil (A4-K57, K63)",
                    (unsigned long)e->seq, (long long)e->t_decide.ns, (unsigned long)o->seq,
                    (long long)o->t_ref.ns);
-        KC_DOGRULA(e->hold_ns == 0u, "SAFETY_CLOSE hold_ns %lu (A4-K66)", (unsigned long)e->hold_ns);
         KC_DOGRULA(e->apply_by_ns >= IDA_APPLY_BY_MIN_NS && e->apply_by_ns <= IDA_APPLY_BY_MAX_NS,
                    "apply_by_ns %lu aralık dışı (A4-K66)", (unsigned long)e->apply_by_ns);
         KC_DOGRULA((uint32_t)(e->event_id >> 32) == M.boot_count, "event_id üst 32 biti %lu, boot_count %lu (A4-K61)",
@@ -1028,7 +1052,9 @@ static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
         M.olay_var = true;
         M.son_ctr = ctr;
         M.son_id = e->event_id;
-        if (e->tube == IDA_TUBE_ALL) {
+        if (e->kind != IDA_EVT_SAFETY_CLOSE) {
+            continue;
+        } else if (e->tube == IDA_TUBE_ALL) {
             ++tum;
         } else if (e->tube == 0u) {
             ++t0;
@@ -1038,7 +1064,8 @@ static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
     }
     KC_DOGRULA(tum <= 1 && t0 <= 1 && t1 <= 1, "aynı kapsamda birden çok SAFETY_CLOSE (A4-K125)");
     if (tum == 1) {
-        KC_DOGRULA(o->n_events == 1u, "ALL kapanmasıyla birlikte %u olay (A4-K125)", (unsigned)o->n_events);
+        /* A4-K125: ALL kapanması varken başka SAFETY_CLOSE yok. */
+        KC_DOGRULA(t0 == 0 && t1 == 0, "ALL kapanmasıyla birlikte tüp kapanması (A4-K125)");
     }
     for (unsigned i = o->n_events; i < IDA_PORT_MAX_EVENTS; ++i) {
         KC_DOGRULA(olay_sifir(&o->events[i]), "events[%u] (n_events %u) sıfır değil (A4-K121)", i,
@@ -1048,6 +1075,7 @@ static void olaylari_denetle(const baglam_t *b, const ida_out_t *o)
        (ya da init'ten beri ilk SESSION_END ise) üretilir. */
     bool oturum_sonu = b->oturum_sonu_kapanma;
     if (M.olay_acik && (oturum_sonu || M.bekleyen_kapanma)) {
+        /* SESSION_END daraltıcıdır (A4-K45): genişletici olay da yok, yani tek olay. */
         KC_DOGRULA(o->n_events == 1u && o->events[0].kind == IDA_EVT_SAFETY_CLOSE &&
                        o->events[0].tube == IDA_TUBE_ALL,
                    "SESSION_END (bu çağrıda %d, bekletilen %d): tek SAFETY_CLOSE(ALL) bekleniyordu, %u olay "
@@ -1253,17 +1281,69 @@ static void genel_denetim(const baglam_t *b, const ida_out_t *o)
     bool_denetle(&o->health.sample_conflict, "health.sample_conflict");
     bool_denetle(&o->health.bg_bad_input, "health.bg_bad_input");
     bool_denetle(&o->bg.submitted, "bg.submitted");
-    /* Sürekli komut: yer tutucu hiçbir zaman itki üretmez, silahlanmaz (M4, A4-K55). */
+    /* Sürekli komut (A4-K28, K54, K55, K56): sürekli komut taşımayan ya da güvenli sınıftaki
+       çıktıda sekiz thr_cmd tam 0.0f; taşıyanda sonlu ve [−1, 1] içinde. */
     for (unsigned i = 0; i < IDA_PORT_N_THR; ++i) {
-        KC_DOGRULA(o->thr_cmd[i] == 0.0f, "thr_cmd[%u] ≠ 0 (yer tutucu; A4-K28, K55, K56)", i);
+        if (!o->thr_valid || o->is_safe) {
+            KC_DOGRULA(o->thr_cmd[i] == 0.0f, "thr_cmd[%u] ≠ 0 (thr_valid %d, is_safe %d; A4-K28, K55, K56)", i,
+                       (int)o->thr_valid, (int)o->is_safe);
+        } else {
+            KC_DOGRULA(o->thr_cmd[i] >= -1.0f && o->thr_cmd[i] <= 1.0f, "thr_cmd[%u] sonlu değil ya da [−1, 1] dışında (A4-K54)",
+                       i);
+        }
     }
-    KC_DOGRULA(!o->armed && !o->status.armed, "armed = 1: genişletici kabul edilmiş (yer tutucu; A4-K124, M4)");
-    KC_DOGRULA(o->is_safe, "is_safe = 0 iken armed = 0 (A4-K55)");
+    /* 3.8: out.armed ve status.armed aynı çağrı sonu durumudur; A4-K55: silahsızken is_safe = 1. */
+    KC_DOGRULA(o->armed == o->status.armed, "out.armed %d, status.armed %d (3.8)", (int)o->armed, (int)o->status.armed);
+    KC_DOGRULA(o->armed || o->is_safe, "armed = 0 iken is_safe = 0 (A4-K55)");
+    {
+        /* A4-K104, K45, K113, K26: armed ancak bu çağrıda kabul edilen bir ARM ile 0'dan 1'e,
+           kip ancak kabul edilen SET_MODE (o hedefle) ya da FAILSAFE_RESET ile GUIDED/AUTO'ya
+           geçer; reddedilen çağrıda hiçbir komut işlenmez. Önceki durum son yazılabilir
+           çıktıdır (init'te silahsız, INIT; A4-K77); araya giren out NULL çağrısı (b2)
+           komut işlemez. */
+        bool once_armed = M.yazilabilir_var ? M.son.status.armed : false;
+        uint8_t once_kip = M.yazilabilir_var ? M.son.status.mode : (uint8_t)IDA_MODE_INIT;
+        bool arm_kabul = false;
+        bool kip_kabul = false;
+        unsigned nlatch = (unsigned)kc_bit_sayisi((uint32_t)(in->narrow.mask & IDA_NARROW_DEFINED));
+        unsigned ncmd = in->n_cmds <= IDA_PORT_MAX_CMDS ? in->n_cmds : 0u;
+        for (unsigned j = 0; b->kabul && j < ncmd && nlatch + j < o->n_results; ++j) {
+            const ida_cmd_t *c = &in->cmds[j];
+            const ida_cmd_result_t *r = &o->results[nlatch + j];
+            if (r->ack != IDA_ACK_ACCEPTED) {
+                continue;
+            }
+            if (c->type == IDA_CMD_ARM) {
+                arm_kabul = true;
+            }
+            if (c->type == IDA_CMD_FAILSAFE_RESET ||
+                (c->type == IDA_CMD_SET_MODE && c->u.set_mode.mode == o->status.mode)) {
+                kip_kabul = true;
+            }
+        }
+        if (!once_armed && o->armed) {
+            KC_DOGRULA(arm_kabul, "armed 0 → 1, ama bu çağrıda ACCEPTED ARM yok (A4-K104, K26)");
+        }
+        KC_DOGRULA(o->status.mode <= IDA_MODE_AUTO, "status.mode %u tanımsız (A4 §3.4)", (unsigned)o->status.mode);
+        if (o->status.mode != once_kip && (o->status.mode == IDA_MODE_GUIDED || o->status.mode == IDA_MODE_AUTO)) {
+            KC_DOGRULA(kip_kabul, "kip %u → %u, ama bu çağrıda o hedefe ACCEPTED SET_MODE ya da FAILSAFE_RESET yok (A4-K104)",
+                       (unsigned)once_kip, (unsigned)o->status.mode);
+        }
+        /* A4-K127: INIT'teyken NARROW_MODE kipi değiştirmez; INIT'ten yalnız çekirdeğin kendi
+           başlatmasıyla (DISARMED'e) çıkılır. */
+        if (once_kip == IDA_MODE_INIT) {
+            KC_DOGRULA(o->status.mode == IDA_MODE_INIT || o->status.mode == IDA_MODE_DISARMED,
+                       "INIT'ten kip %u'ya geçildi (A4-K127)", (unsigned)o->status.mode);
+        }
+    }
     KC_DOGRULA(o->src == (b->f == KC_STEP ? IDA_SRC_STEP : IDA_SRC_TICK), "src %u (A4-K57)", (unsigned)o->src);
     KC_DOGRULA(o->fs_level <= IDA_FS_DISARM && o->fs_level == o->status.fs_level, "fs_level %u / status %u",
                (unsigned)o->fs_level, (unsigned)o->status.fs_level);
-    if (b->kabul) {
-        KC_DOGRULA(o->thr_valid, "kabul edilen çağrıda thr_valid = 0 (is_safe = 1; 4.14, A4-K56)");
+    if (step_ok) {
+        KC_DOGRULA(o->thr_valid, "OK dönen step'te thr_valid = 0 (4.14)");
+    } else if (b->kabul) {
+        KC_DOGRULA(o->thr_valid == o->is_safe, "tick OK / IMU_REJECTED çıktısında thr_valid %d, is_safe %d (A4-K56)",
+                   (int)o->thr_valid, (int)o->is_safe);
     } else {
         KC_DOGRULA(!o->thr_valid, "hata dönüşünde thr_valid = 1 (A4-K28)");
     }
@@ -1302,9 +1382,7 @@ static void genel_denetim(const baglam_t *b, const ida_out_t *o)
         KC_DOGRULA(sifir_mi(&o->det_tx[i], sizeof o->det_tx[i]), "det_tx[%u] sıfır değil (A4-K121)", i);
     }
     /* Durum ve sağlık (A4-K88, K89). */
-    /* A4-K127: yer tutucu çekirdek INIT'ten çıkmaz. */
-    KC_DOGRULA(o->status.mode == IDA_MODE_INIT, "status.mode %u; yer tutucu INIT'ten çıkmaz (A4-K127)",
-               (unsigned)o->status.mode);
+    /* Kip: değer aralığı, GUIDED/AUTO girişi ve INIT'ten çıkış yukarıda (A4-K104, K127). */
     KC_DOGRULA(o->status.mission_state <= IDA_MS_ABORTED, "mission_state %u", (unsigned)o->status.mission_state);
     KC_DOGRULA((o->status.fs_reasons & ~UINT32_C(0x7FFF)) == 0u, "fs_reasons tanımsız bit %lx",
                (unsigned long)o->status.fs_reasons);
@@ -1332,13 +1410,14 @@ static void genel_denetim(const baglam_t *b, const ida_out_t *o)
     }
     KC_DOGRULA(o->health.bg_bad_input == (M.bg_bad_sayi > 0u), "health.bg_bad_input %d, beklenen %d (A4-K117)",
                (int)o->health.bg_bad_input, (int)(M.bg_bad_sayi > 0u));
-    /* Atış kontrol durumu (A4-K91; yer tutucuda izin hiç açılmaz). */
-    KC_DOGRULA(o->fc.state <= IDA_FCS_FAULT_LATCHED && o->fc.state != IDA_FCS_PERMIT_OPEN &&
-                   o->fc.state != IDA_FCS_FIRE_PENDING,
-               "fc.state %u (izin açılmış ya da atış bekleniyor; yer tutucu)", (unsigned)o->fc.state);
+    /* Atış kontrol durumu (A4-K91; 3.16 kapalı tablo). */
+    KC_DOGRULA(o->fc.state <= IDA_FCS_FAULT_LATCHED, "fc.state %u tanımsız (3.16)", (unsigned)o->fc.state);
     KC_DOGRULA((o->fc.inhibit_mask & ~IDA_FCI_DEFINED) == 0u, "inhibit_mask ayrılmış bit %lx (A4-K91)",
                (unsigned long)o->fc.inhibit_mask);
-    KC_DOGRULA((o->fc.inhibit_mask & IDA_FCI_NOT_ARMED) != 0u, "silahsızken NOT_ARMED biti yok (3.16)");
+    /* 3.16: NOT_ARMED biti araç silahsızken kurulu (güvenli yön; ters yönü atış kontrol işinin, W4). */
+    if (!o->armed) {
+        KC_DOGRULA((o->fc.inhibit_mask & IDA_FCI_NOT_ARMED) != 0u, "silahsızken NOT_ARMED biti yok (3.16)");
+    }
     if (!M.olay_acik) {
         KC_DOGRULA((o->fc.inhibit_mask & IDA_FCI_EVENTS_OFF) != 0u, "olay kimliği yokken EVENTS_OFF biti yok (3.16)");
     }

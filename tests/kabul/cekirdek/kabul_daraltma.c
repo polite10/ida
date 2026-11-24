@@ -781,7 +781,9 @@ static void test_A4_K116_session_end_donusu_tek_kapanmada(void)
 }
 
 /* ===================================================================================
- * Genişleticiler kabul edilmez (A4-K124, 3.17, M4); kabul edilen daraltmasız çağrıda.
+ * Genişleticiler etki üretmez (A4-K104, K124, 3.17); kabul edilen daraltmasız çağrıda, ön
+ * koşulları tutmayan taze örnekte. Etkisiz ACCEPTED yalnız 3.17'nin izin verdiği yerde
+ * (FAILSAFE_RESET: temizlenecek mandal yok) serbesttir.
  * =================================================================================== */
 
 static bool neden_kumede(uint16_t r, const uint16_t *kume, size_t n)
@@ -834,7 +836,14 @@ static void genisleticiler_kabul_edilmez(kc_islev_t f, uint8_t link_state, bool 
         kabul_edilmedi(&o->results[0], N_ARM, 4, "ARM");
         kabul_edilmedi(&o->results[1], N_KIP, 1, "SET_MODE(GUIDED)");
         kabul_edilmedi(&o->results[2], N_KIP, 1, "SET_MODE(AUTO)");
-        kabul_edilmedi(&o->results[3], N_FSR, 1, "FAILSAFE_RESET");
+        /* 3.17 FAILSAFE_RESET satırı: temizlenecek mandallı arıza eylemi yoksa ACCEPTED (etkisiz),
+           temizleme koşulu tutmuyorsa NOT_ARMABLE; uygulanmıyorsa UNSUPPORTED. Etkisizliği
+           aşağıdaki denetimler sınar (A4-K104). */
+        if (o->results[3].ack == IDA_ACK_ACCEPTED) {
+            TEST_ASSERT_EQUAL_UINT16_MESSAGE(IDA_REASON_NONE, o->results[3].reason, "FAILSAFE_RESET ACCEPTED (A4-K120)");
+        } else {
+            kabul_edilmedi(&o->results[3], N_FSR, 1, "FAILSAFE_RESET");
+        }
         kabul_edilmedi(&o->results[4], N_FC_ARM, 4, "FC_ARM");
         kabul_edilmedi(&o->results[5], N_FC_ARM, 4, "FC_FIRE");
         kabul_edilmedi(&o->results[6], N_FC_RESET, 2, "FC_RESET");

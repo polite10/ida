@@ -1,4 +1,9 @@
 /*
  * gudum_param.def — güdüm parametreleri. Sahibi: W3 güdüm ve görev işi. Kimlik bloğu 0x03xx.
- * Bu sürümde boştur; satır biçimi cerceve/cerceve_param.def başındadır.
+ * Satır biçimi cerceve/cerceve_param.def başındadır.
+ *
+ * GUD_POS_KP: GUIDED_SP konum hedefinden yatay hız isteğine oransal kazanç (1/s; hız isteği
+ * kontrolün LIM_V sınırıyla kırpılır). TAHMİN; yatay konum geçerliliği bu sürümde
+ * kestirimde yok (W3-kestirim dilim 1), bu yüzden kazanç fizikle ayarlanmadı.
  */
+IDA_PARAM(0x0301u, GUD_POS_KP, F32, A, 0.0f, 5.0f, 0.3f, gud_konum_kp) /* 1/s, TAHMİN */
