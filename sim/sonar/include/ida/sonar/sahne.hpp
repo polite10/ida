@@ -4,8 +4,8 @@
 // Sonar modeli sahneyi yalnız `Sahne` arayüzünden görür. Bu dilimde `CozumselSahne` vardır:
 // havuz kutusu (taban, dört duvar, su yüzeyi), sonsuz düzlemler (düz deniz tabanı, su yüzeyi)
 // ve basit gövdeler (küre, kutu, silindir; sabit hızla hareket edebilir ya da pozu dışarıdan
-// güncellenebilir). A7 glTF ağlarından kurulan sahne (BVH) sonraki dilimde aynı arayüzü
-// uygular: kesişim, yüzey normali, gövdeye sabit hücre indisleri ve malzeme.
+// güncellenebilir). A7 glTF ağlarından kurulan sahne (BVH) aynı arayüzü uygular: `AgSahnesi`
+// (ag_sahnesi.hpp; W4-sonar-sahne): kesişim, yüzey normali, gövdeye sabit hücre indisleri ve malzeme.
 //
 // Kabuller (iskelet §3.1): NED, metre; kuaterniyon (w, x, y, z), gövdeden NED'e.
 #pragma once

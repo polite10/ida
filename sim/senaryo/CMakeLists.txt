@@ -48,6 +48,7 @@ add_custom_command(
   VERBATIM)
 
 add_library(ida_senaryo STATIC
+  src/a7_varlik.cpp
   src/cozumleme.cpp
   src/deger.cpp
   src/dogrulayici.cpp
@@ -81,6 +82,7 @@ ida_senaryo_ayar(ida_senaryo_dogrula)
 
 # ---- testler -----------------------------------------------------------------------------
 add_executable(ida_senaryo_test
+  test/test_a7_varlik.cpp
   test/test_ana.cpp
   test/test_altin.cpp
   test/test_bozuk.cpp
@@ -129,10 +131,19 @@ set(_ida_senaryo_testleri
   sol_9_routh_olcegi
   sol_10_bulgu_toplama
   sol_11_tek_gecis
-  sol_12_arac_dosyasi)
+  sol_12_arac_dosyasi
+  # W4-sonar-sahne: A7 varlık okuyucusu
+  a7_varlik_havuz          # assets/havuz yüklenir; uygunluk örneği EKSIK_VARLIK
+  a7_varlik_olumsuz)       # A7-U03/U05/U07/U09/U10/U18'in okuyucuya düşen satırları
 foreach(_ad IN LISTS _ida_senaryo_testleri)
   add_test(NAME sim.senaryo.${_ad} COMMAND ida_senaryo_test ${_ad} "${PROJECT_SOURCE_DIR}")
 endforeach()
+
+# W4-sonar-sahne: assets/havuz kümesinin üreticisi (viz/arac/model-uret/havuz.py; yalnız standart
+# kitaplık) depodaki manifest ve .glb dosyalarını bayt bayt aynı üretir.
+find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+add_test(NAME sim.senaryo.havuz_kumesi_uretici
+  COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${PROJECT_SOURCE_DIR}/viz/arac/model-uret/havuz.py" --denetle)
 
 # ---- sensör yükleyici (dilim 2): yalnız sim/sensor depoda varken (W4-sensor) ------------
 if(EXISTS "${PROJECT_SOURCE_DIR}/sim/sensor/CMakeLists.txt")
@@ -154,10 +165,16 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/sim/sonar/CMakeLists.txt")
   target_include_directories(ida_senaryo_sonar PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(ida_senaryo_sonar PUBLIC ida_senaryo ida_sonar)
   ida_senaryo_ayar(ida_senaryo_sonar)
-  add_executable(ida_senaryo_sonar_test test/test_sonar_yukleyici.cpp)
-  target_link_libraries(ida_senaryo_sonar_test PRIVATE ida_senaryo_sonar)
+  add_executable(ida_senaryo_sonar_test test/test_sonar_yukleyici.cpp test/test_sonar_sahne.cpp)
+  # W4-sonar-sahne: sonar sınama yardımcıları (sim/sonar/test/test_destek.hpp ve onun "vek.hpp"'si).
+  target_include_directories(ida_senaryo_sonar_test PRIVATE "${PROJECT_SOURCE_DIR}/sim/sonar/src")
+  target_link_libraries(ida_senaryo_sonar_test PRIVATE ida_senaryo_sonar nlohmann_json::nlohmann_json)
   ida_senaryo_ayar(ida_senaryo_sonar_test)
   add_test(NAME sim.senaryo.sonar_yukleyici COMMAND ida_senaryo_sonar_test sonar_yukleyici "${PROJECT_SOURCE_DIR}")
+  # W4-sonar-sahne kabul 1–3 (gerçek `havuz` kümesiyle sonar sahnesi).
+  foreach(_ad sonar_sahne_havuz_duvari sonar_sahne_hedef sonar_sahne_k27)
+    add_test(NAME sim.senaryo.${_ad} COMMAND ida_senaryo_sonar_test ${_ad} "${PROJECT_SOURCE_DIR}")
+  endforeach()
 endif()
 
 # Komut satırı aracının çıkış kodları (0 geçerli, 1 geçersiz, 2 kullanım, 3 G/Ç).
