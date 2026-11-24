@@ -10,7 +10,8 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg\\.cmake$")
   return()
 endif()
 
-add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp)
+add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_belirlenim.cpp
+  test_a3.cpp a3_istemci.cpp)   # W4-bagla-a3
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -102,4 +103,15 @@ if(NOT WIN32)
   set_tests_properties(butunleme.ida_sim_hil_dosya PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
   set_tests_properties(butunleme.senaryo_hil_pty PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
   set_tests_properties(butunleme.hil_cikarma_takma PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+endif()
+
+# W4-bagla-a3: A3 sunucusunun ida_sim'e bağlanması (kabul 2, 4, 5; sim/sunucu/BENIOKU.md "A3").
+foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+if(NOT WIN32)
+  # Kabul 5 (ölçüm): HIL 1x 60 s, sözde uçbirim (POSIX), A3 açık; zamanlamaya duyarlı.
+  add_test(NAME butunleme.a3_hil_olcum COMMAND ida_butunleme_test a3_hil_olcum)
+  set_tests_properties(butunleme.a3_hil_olcum PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 endif()

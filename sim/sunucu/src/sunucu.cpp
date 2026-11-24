@@ -1745,6 +1745,9 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b)
 // sinir_isle), aynı sırayla, sim zamanı ilerlemeden işlenir. Fizik adımı ve sensörler koşmaz.
 void Calistirici::a3_duraklatma_adimi(std::uint64_t b)
 {
+    if (a_.a3_sinir_kancasi) {
+        a_.a3_sinir_kancasi(b, *a3al_);   // sınama: duraklatılmış sınırda her yoklamada
+    }
     a3_cek();
     a3_calistirma_isle(b);
     if (!duraklatildi_ || a3_durdur_) {

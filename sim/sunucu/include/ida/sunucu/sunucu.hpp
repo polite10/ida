@@ -133,7 +133,8 @@ struct Ayar {
     // Yalnız sınama: sunucu dinlemeye başladı (port, erişim jetonu).
     std::function<void(std::uint16_t port, const std::string& jeton)> a3_hazir;
     // Yalnız sınama: her fizik sınırının başında (dünya iş parçacığı), A3 komutları çekilmeden
-    // önce; sınama komut alıcısına doğrudan istek verebilir.
+    // önce; duraklatılmışken aynı sınırda her yoklamada (≈ 1 ms) ve `a3_bekle`'de `yuklendi`
+    // beklemesinde (b = 0) de çağrılır. Sınama komut alıcısına doğrudan istek verebilir.
     std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
     // Yalnız sınama: A1 bayt akışı (sim → karşı taraf: true; karşı taraf → sim: false).
     std::function<void(bool sim_giden, const std::uint8_t* p, std::size_t n)> a1_bayt_kancasi;
