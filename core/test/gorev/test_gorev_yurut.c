@@ -253,6 +253,86 @@ static void test_hold_suresi_duraklamada_birikmez(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
 }
 
+/* ---- W5-kontrol-acil (mimar kararı): acil durdurma görevi çekirdeğin koşuluyla duraklatır --- */
+
+/* Etkin acil durdurma kısıtlayanken (basılı, bayat ya da hiç gevşememiş: hepsi aynı bit) görev
+   PAUSED olur; öğe süresi ve bitiş ölçütleri ilerlemez, hedef yoktur; kip ve silah değişmez.
+   Değer gevşeyince RESUME beklemeden sürer. Operatör duraklaması acil durdurmanın kalkmasıyla
+   çözülmez. */
+static void test_acil_durdurma_gorevi_duraklatir(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 0.5f, 0.5f, 10.0f, 0.0f, 0.0f);
+    baslat(o, g, 1u);
+    gd_ilerle(o, 10000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_YOK, o->g.gv.hedef.yatay);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MODE_AUTO, o->e.mode);
+    TEST_ASSERT_TRUE(o->e.armed);
+    /* Süre: 200 s acil durdurma öğenin zaman aşımına (110,8 s) girmez. */
+    gd_ilerle(o, 200000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    /* Bitiş ölçütü: kabul yarıçapına girilse de öğe acil durdurma sürerken bitmez. */
+    konum(o, 9.8f, 0.0f);
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    konum(o, 0.0f, 0.0f);
+    gd_ilerle(o, 100);
+    /* Gevşeme: aynı adımda RUNNING (RESUME yok), hedef geri gelir; kalan süre acil durdurmadan
+       önceki 10 s'nin üstüne sayılır. */
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_YOL, o->g.gv.hedef.yatay);
+    asim_bekle(o, (KAT * ((10.0f / 0.5f) + (0.1f / 0.25f) + (0.25f / IVME))) + PAY - 10.0f,
+               IDA_FSR_GEOFENCE);
+
+    /* Operatör duraklaması + acil durdurma: acil durdurma kalkınca görev PAUSED kalır. */
+    gd_kur(o);
+    baslat(o, g, 1u);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_PAUSE));
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 1000);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* HOLD öğesinin biriken süresi acil durdurmada artmaz (bitiş ölçütü ilerlemez). */
+static void test_acil_durdurmada_hold_suresi_birikmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[2]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 60.0f, 5.0f, 0.0f, 0.0f, 0.0f);
+    g[1] = gd_oge((uint8_t)IDA_MI_HOLD, (uint8_t)IDA_MI_FRAME_NONE, 600.0f, 5.0f, 0.0f, 0.0f, 0.0f);
+    baslat(o, g, 2u);
+    gd_ilerle(o, 1000);
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP; /* araç tolerans içinde kalır */
+    gd_ilerle(o, 70000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    /* Birikmiş ~1 s'ye 59 s eklenmeli. */
+    gd_ilerle(o, 57000);
+    TEST_ASSERT_EQUAL_UINT16(0u, o->g.mission_item);
+    gd_ilerle(o, 3000);
+    TEST_ASSERT_EQUAL_UINT16(1u, o->g.mission_item);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
 /* ---- WAIT_GNSS ----------------------------------------------------------------------------- */
 
 static void test_wait_gnss(void)
@@ -506,6 +586,133 @@ static void test_olu_hesap_kipten_cikis(void)
     TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
 }
 
+/* ---- W5-kontrol-acil düzeltme turu (inceleme bulgu 1): engel sırasında operatör duraklaması --
+   Görev çekirdeğin kendi koşuluyla (acil durdurma, konum geçersizliği ve onun HOLD arıza eylemi,
+   ölü hesap beklemesi) PAUSED iken gelen MISSION_CTL PAUSE kabul edilir ve operatör duraklaması
+   kurulur: koşul kalkınca görev kendiliğinden sürmez, açık RESUME ya da SET_MODE(AUTO) bekler.
+   Zaten operatör duraklamasındayken gelen PAUSE var olan kuraldaki gibi BAD_MODE alır. */
+
+static void pause_bekle(gd_t *o, uint16_t neden)
+{
+    const ida_cmd_result_t r =
+        gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_PAUSE);
+    if (neden == (uint16_t)IDA_REASON_NONE) {
+        gd_kabul_bekle(r);
+    } else {
+        gd_ret_bekle(r, neden);
+    }
+}
+
+static void test_acil_sirasinda_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_BAD_MODE); /* zaten operatör duraklaması */
+    gd_ilerle(o, 1000);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 5000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    TEST_ASSERT_EQUAL_UINT8(IDA_GOR_HY_TUT, o->g.gv.hedef.yatay); /* operatör duraklaması tutar */
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+
+    /* Aynı dizi, sürdürme SET_MODE(AUTO) ile. */
+    o->e.kisitli = (uint8_t)IDA_EMN_ESTOP;
+    gd_ilerle(o, 100);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    o->e.kisitli = 0u;
+    gd_ilerle(o, 2000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* Konum geçersizliği: görev hem konum engeliyle hem HOLD arıza eylemiyle duraklar. */
+static void test_konum_kaybinda_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    o->gi.gecerlilik = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_HOLD, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 5000); /* EST_OK_MS (2 s) sonra arıza kalkar */
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_AUTO));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+
+    /* Aynı dizi, sürdürme RESUME ile. */
+    o->gi.gecerlilik = (uint8_t)(gd_gecerlilik_tam() & (uint8_t)(0xFFu ^ IDA_KES_G_KONUM));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    o->gi.gecerlilik = gd_gecerlilik_tam();
+    gd_ilerle(o, 5000);
+    TEST_ASSERT_EQUAL_UINT8(IDA_FS_NONE, o->g.fs_level);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* Ölü hesap beklemesi: taze GNSS beklemeyi bitirir, ama görev operatör duraklamasında kalır. */
+static void test_olu_hesap_beklemesinde_pause_kendiliginden_surmez(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    ida_mission_item_t g[1]; /* MSVC C4204: sabit olmayan başlatıcı yok */
+    g[0] = gd_oge((uint8_t)IDA_MI_WAYPOINT, (uint8_t)IDA_MI_FRAME_LOCAL, 1.0f, 3.0f, 500.0f, 0.0f, 3.0f);
+    baslat(o, g, 1u);
+    o->gi.gnss_taze = false;
+    o->gi.nav_derinlik = 3.0f;
+    for (float n = 5.0f; n <= 210.0f; n += 5.0f) {
+        konum(o, n, 0.0f);
+        gd_ilerle(o, 100);
+    }
+    TEST_ASSERT_TRUE(o->g.gv.dr_bekliyor);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_NONE);
+    TEST_ASSERT_TRUE(o->g.gv.operator_durdu);
+    o->gi.gnss_taze = true;
+    o->gi.nav_derinlik = 0.1f;
+    gd_ilerle(o, 1000);
+    TEST_ASSERT_FALSE(o->g.gv.dr_bekliyor);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_MISSION_CTL, (uint16_t)IDA_MCTL_RESUME));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_RUNNING, o->g.mission_state);
+}
+
+/* AUTO dışında (kip çıkışıyla duraklamış görev) PAUSE var olan kuraldaki gibi BAD_MODE alır. */
+static void test_auto_disinda_pause_reddedilir(void)
+{
+    gd_t *o = &O;
+    gd_kur(o);
+    baslat(o, &UZUN, 1u);
+    gd_kabul_bekle(gd_basit(o, (uint8_t)IDA_CMD_SET_MODE, (uint16_t)IDA_MODE_GUIDED));
+    gd_ilerle(o, 100);
+    TEST_ASSERT_EQUAL_UINT8(IDA_MS_PAUSED, o->g.mission_state);
+    pause_bekle(o, (uint16_t)IDA_REASON_BAD_MODE);
+    TEST_ASSERT_FALSE(o->g.gv.operator_durdu);
+}
+
 static void test_cografi_sinir(void)
 {
     gd_t *o = &O;
@@ -685,6 +892,8 @@ int main(void)
     RUN_TEST(test_surface_bitis_ve_zaman_asimi);
     RUN_TEST(test_hold_sure_olcum_zamaninda);
     RUN_TEST(test_hold_suresi_duraklamada_birikmez);
+    RUN_TEST(test_acil_durdurma_gorevi_duraklatir);
+    RUN_TEST(test_acil_durdurmada_hold_suresi_birikmez);
     RUN_TEST(test_wait_gnss);
     RUN_TEST(test_scan_yurutulmez);
     RUN_TEST(test_ariza_sizinti_ve_batarya_gorevi_iptal_eder);
@@ -693,6 +902,10 @@ int main(void)
     RUN_TEST(test_ariza_konum_kaybi);
     RUN_TEST(test_olu_hesap_yol_siniri);
     RUN_TEST(test_olu_hesap_kipten_cikis);
+    RUN_TEST(test_acil_sirasinda_pause_kendiliginden_surmez);
+    RUN_TEST(test_konum_kaybinda_pause_kendiliginden_surmez);
+    RUN_TEST(test_olu_hesap_beklemesinde_pause_kendiliginden_surmez);
+    RUN_TEST(test_auto_disinda_pause_reddedilir);
     RUN_TEST(test_cografi_sinir);
     RUN_TEST(test_en_az_irtifa);
     RUN_TEST(test_gorev_genisletmez);

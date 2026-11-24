@@ -373,13 +373,22 @@ static void test_sema_ozeti_tablodan_turer(void)
    196 parametre (159 + 32 kestirim + 5 atış); değerler aynı bağımsız hesapla (.def dosyalarından
    kanonik metin). Dalların ayrı ayrı değerleri: kestirim 0xA4B1E4F1ECAADCBB / 2 933 B / 1 552 B
    (191 parametre), atış 0xE0ED504FB6AEA22D / 2 510 B / 1 336 B (164 parametre).
+   W5-kontrol-acil (2026-11-24): kontrolün kalkış rampası parametresi eklendi (0x053B
+   KON_ACIL_RAMPA, U32); 197 parametre. Önceki değerler 0x8F918D01B26C0791, 3 017 B, 1 592 B
+   idi; yenileri aynı bağımsız hesapla (.def dosyalarından kanonik metin; hesap önceki şemada
+   eski değerleri veriyor).
    W5-gorev-yurutucu (2026-11-24): görevin sekiz (0x0411–0x0418) ve güdümün dört (0x0302–0x0305)
    parametresi; 208 parametre. Önceki değerler 0x8F918D01B26C0791, 3 017 B, 1 592 B idi; yeniler
    aynı bağımsız hesapla (.def dosyalarından kanonik metin; hesap önceki şemada eski değerleri
-   veriyor). */
-#define ALTIN_OZET UINT64_C(0xCCBD046F048653C3)
-#define ALTIN_METIN 3238u
-#define ALTIN_BLOK 1688u
+   veriyor).
+   Birleşim (W5-kontrol-acil + W5-gorev-yurutucu, 2026-11-25): iki işin parametreleri birlikte;
+   209 parametre. Aynı bağımsız hesap (.def dosyalarının çekirdekten bağımsız ayrıştırılmasıyla
+   kurulan kanonik metnin SHA-256'sının ilk 8 baytı, küçük uçlu) iki dalın ayrı değerlerini
+   (0x9B82228B17A10955 / 3 039 B; 0xCCBD046F048653C3 / 3 238 B) ve ortak tabanın değerini
+   (0x8F918D01B26C0791 / 3 017 B) yeniden veriyor. */
+#define ALTIN_OZET UINT64_C(0xB8BE4410EC316B66)
+#define ALTIN_METIN 3260u
+#define ALTIN_BLOK 1696u
 #define ALTIN_ILETI                                                                                \
     "Şema bilerek değiştiyse (parametre eklendi, adı, kimliği ya da tipi değişti) bu altın "       \
     "değerleri yeni şemanın bağımsız hesabıyla güncelleyin; bilerek değişmediyse özet hesabı "     \

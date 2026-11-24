@@ -331,9 +331,11 @@ static void test_cekirdekte_adim(void)
     }
 }
 
-/* W3-K1, W3-K4: acil durdurmanın etkin değeri itki kapısında yer almaz. Çekirdekten toplanan
-   girdide acil durdurma etkinken kısıt yoktur; öteki koşullar tutuyorsa itki üretilir. */
-static void test_acil_durdurma_itkiyi_kesmez(void)
+/* W5-K26 (W3-K1 ve W3-K4'ün "acil durdurma itki kapısında yer almaz" maddesinin yerine geçti;
+   bu test önceki kuralı sınıyordu: test_acil_durdurma_itkiyi_kesmez). Çekirdekten toplanan
+   girdide etkin acil durdurma kısıtlayanken acil = true'dur (kisit ayrı kalır: yalnız itkisiz
+   arıza eylemi); öteki koşullar tutsa da itki üretilmez. Ayrıntılı testler test_acil.c'dedir. */
+static void test_acil_durdurma_itkiyi_keser(void)
 {
     TEST_ASSERT_EQUAL(IDA_RC_OK, ds_kur(&C));
     C.emn.armed = true;
@@ -343,8 +345,13 @@ static void test_acil_durdurma_itkiyi_kesmez(void)
     ida_kon_girdi_topla(&C, &g);
     TEST_ASSERT_TRUE(g.armed);
     TEST_ASSERT_FALSE(g.kisit);
-    /* Yer tutucu kestirim INIT ve istek KAPALI verdiği için bu iki koşul elle sağlanır;
-       acil durdurmadan gelen bir kısıt olsaydı kisit alanında görünürdü. */
+    TEST_ASSERT_TRUE(g.acil);
+    /* Fiş ve pim alanları acil durdurma değildir. */
+    C.emn.kisitli = (uint8_t)(IDA_EMN_TUMU ^ IDA_EMN_ESTOP);
+    ida_kon_girdi_t g2;
+    ida_kon_girdi_topla(&C, &g2);
+    TEST_ASSERT_FALSE(g2.acil);
+    /* Yer tutucu kestirim INIT ve istek KAPALI verdiği için bu iki koşul elle sağlanır. */
     int64_t t = 1000 * DS_MS;
     for (uint32_t i = 0u; i < 40u; i++) {
         t += 5 * DS_MS;
@@ -352,9 +359,13 @@ static void test_acil_durdurma_itkiyi_kesmez(void)
         etkin_girdi(&e, t);
         e.armed = g.armed;
         e.kisit = g.kisit;
+        e.acil = g.acil;
         ida_kon_hesapla(&K1, &P, &e);
+        TEST_ASSERT_TRUE(hepsi_sifir(&K1));
+        e.acil = g2.acil;
+        ida_kon_hesapla(&K2, &P, &e);
     }
-    TEST_ASSERT_TRUE(sifirdan_farkli_var(&K1));
+    TEST_ASSERT_TRUE(sifirdan_farkli_var(&K2));
 }
 
 int main(void)
@@ -366,6 +377,6 @@ int main(void)
     RUN_TEST(test_rastgele_dizi);
     RUN_TEST(test_ayri_kosular);
     RUN_TEST(test_cekirdekte_adim);
-    RUN_TEST(test_acil_durdurma_itkiyi_kesmez);
+    RUN_TEST(test_acil_durdurma_itkiyi_keser);
     return UNITY_END();
 }

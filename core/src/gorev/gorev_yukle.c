@@ -303,7 +303,14 @@ static void ctl_komutu(ida_gor_t *g, const ida_emn_t *yetki, const ida_cmd_t *cm
         g->mission_state = (uint8_t)IDA_MS_RUNNING;
         break;
     case IDA_MCTL_PAUSE:
-        if (ms != (uint8_t)IDA_MS_RUNNING) {
+        /* W5-kontrol-acil düzeltme turu (mimar kararı; inceleme bulgu 1): görev AUTO'da
+           çekirdeğin kendi koşuluyla (acil durdurma, konum geçersiz, HOLD arıza eylemi, ölü hesap
+           beklemesi) PAUSED iken de PAUSE kabul edilir ve operatör duraklaması kurulur: koşul
+           kalkınca görev kendiliğinden sürmez, RESUME ya da SET_MODE(AUTO) bekler. Zaten operatör
+           duraklamasında (silahsızlanma dahil) ya da AUTO dışında (kip çıkışı) PAUSED iken
+           BAD_MODE sürer. */
+        if (!((ms == (uint8_t)IDA_MS_RUNNING) ||
+              ((ms == (uint8_t)IDA_MS_PAUSED) && auto_kip && !v->operator_durdu))) {
             ret(r, (uint16_t)IDA_REASON_BAD_MODE);
             return;
         }

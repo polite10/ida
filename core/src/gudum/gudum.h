@@ -104,7 +104,10 @@ void ida_gud_oto_yatay(const ida_gor_hedef_t *h, const float p[2], float yon, fl
                        float delta, float sigma, float kp, float hiz_ne[2], float *yon_ist);
 /* ida_gud_adim'in AUTO kısmı: etkinken (AUTO, silahlı, arıza eylemi HOLD'dan hafif, görev
    hedefi var) referans modeli ve ILOS integrali ölçüm zamanıyla ilerler; değilse ya da iptal
-   biti kuruluyken durum bırakılır (yeniden etkinleşince ölçülen derinlikten kurulur). */
+   biti kuruluyken durum bırakılır (yeniden etkinleşince ölçülen derinlikten kurulur). Etkin
+   acil durdurma kısıtlayanken (W5-kontrol-acil kural 2) referans ve integral sıfırdır ve
+   ilerlemez; değer gevşeyip kontrolün kalkış mandalı kuruluyken durum ölçülen durumdan sıfır
+   adımla yeniden kurulur (kural 3: kalkış isteği acil durdurmanın süresinden bağımsız). */
 void ida_gud_oto_adim(ida_gud_t *g, const ida_core_t *c, bool iptal);
 /* ida_gud_kon_istegi'nin AUTO kısmı: istek (ida_gor_istek) üzerine yön, yatay ve dikey kanallar
    yazılır; yüzey hedefinde yüzeyde yüzey kipine geçilir. */
