@@ -2017,7 +2017,8 @@ struct Cekirdek::Ic {
     // EMNİYET — W4-K19: kısıtlayan emniyet isteği ve daraltıcı yer istasyonu komutu
     // `beklenen_run_id` güncel çalıştırmayla uyuşmasa da (ya da hiç verilmese de) alıcıya iletilir.
     // Uyuşmazlık `uyari` olayıyla kaydedilir (yalnız komut numarası ve iki run_id; jeton ve gövde
-    // yazılmaz) ve kabul yanıtı güncel run_id'yi `guncel_run_id` alanında taşır.
+    // yazılmaz). Kabul yanıtı dondurulmuş 1.0 şemasındaki `yanit_kuyrukta`dır; şemada olmayan
+    // `guncel_run_id` alanı taşınmaz (güncel run_id olayda ve `GET /durum`da).
     Yanit kisitlayan_gonder(Komut& k, std::uint32_t no, std::uint32_t istemci)
     {
         const AnlikDurum a = alici.anlik();
@@ -2031,18 +2032,7 @@ struct Cekirdek::Ic {
             ay.metin("kod", "kisitlayan_run_id_uyusmazligi").metin("ileti", ileti);
             olay_yayinla(son_sim_t_ns, 22, 1, 1, std::numeric_limits<std::uint64_t>::max(), no, istemci, ay.bitir());
         }
-        Yanit y = alici_gonder(k, no);
-        if (uyusmaz && y.http == 202) {
-            json::Nesne n;
-            n.metin("sonuc", "kuyrukta").sayi_u("komut_no", no);
-            if (a.run_id) {
-                n.metin("guncel_run_id", *a.run_id);
-            } else {
-                n.bos("guncel_run_id");
-            }
-            y.govde = n.bitir();
-        }
-        return y;
+        return alici_gonder(k, no);
     }
 
     Yanit alim_yaniti(const AlimSonucu& a, const Komut& k, std::uint32_t no)

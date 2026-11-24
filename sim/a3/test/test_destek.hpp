@@ -72,6 +72,9 @@ struct HttpYanit {
 // `tampon`'un başındaki tek yanıtı ayırır (Content-Length; 101 gövdesiz). Eksikse false.
 // `head`: yanıt bir HEAD isteğinindir; Content-Length olsa da gövde yoktur (RFC 9112 §6.3).
 bool http_yanit_ayir(std::string& tampon, HttpYanit& y, bool head = false);
+// Yanıt gövdesi dondurulmuş katalogdaki `$defs/<tanim>` şemasına uyuyor mu (şemada olmayan alan
+// `additionalProperties: false` ile reddedilir).
+bool semaya_uyar(std::string_view tanim, const std::string& govde, std::string* neden = nullptr);
 
 std::string istek(std::string_view yontem, std::string_view hedef, const std::vector<std::string>& basliklar = {},
                   std::string_view govde = {}, bool varsayilan_basliklar = true);

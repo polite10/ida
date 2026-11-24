@@ -1,6 +1,8 @@
 // test_destek.cpp — bkz. test_destek.hpp.
 #include "test_destek.hpp"
 
+#include "sema.hpp"
+
 #include <atomic>
 #include <cstdlib>
 #include <thread>
@@ -16,6 +18,28 @@ std::string HttpYanit::kod() const
     const json::Deger* h = d.bul("hata");
     const json::Deger* k = h != nullptr ? h->bul("kod") : nullptr;
     return k != nullptr ? k->metin : std::string();
+}
+
+bool semaya_uyar(std::string_view tanim, const std::string& govde, std::string* neden)
+{
+    static const json::Deger katalog = [] {
+        const auto kb = katalog_baytlari();
+        json::CozumSiniri s;
+        s.azami_deger = 2'000'000;
+        json::Deger k;
+        json::coz(std::string_view(reinterpret_cast<const char*>(kb.data()), kb.size()), k, nullptr, s);
+        return k;
+    }();
+    static const Sema sema(katalog);
+    json::Deger v;
+    if (!json::coz(govde, v)) {
+        if (neden != nullptr) {
+            *neden = "JSON çözülemedi";
+        }
+        return false;
+    }
+    const json::Deger* t = sema.tanim(tanim);
+    return t != nullptr && sema.dogrula(*t, v, neden);
 }
 
 bool http_yanit_ayir(std::string& tampon, HttpYanit& y, bool head)

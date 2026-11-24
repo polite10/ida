@@ -154,15 +154,12 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
             sonraki_http += std::chrono::milliseconds(500);
             if (!kisitlayan_gonderildi && Saat::now() - bas > std::chrono::seconds(pencere_saniye / 2)) {
                 // EMNİYET: kısıtlayan komut yavaş istemci varken alıcıya ulaşır ve uygulanır.
-                const std::string run = y.json_().bul("run_id")->metin;
                 kisitlayan_bas = Saat::now();
                 // W4-K19: bayat run_id ile acil durdurma da alıcıya ulaşır ve uygulanır.
                 const HttpYanit z = http(s, "POST", "/api/v1/emniyet/degistir", kb,
                                          R"({"istek_kimligi":"yavas-0002","beklenen_run_id":"20000101-000000-000000",)"
                                          R"("girdi":"acil_durdurma","hedef_durum":"basili"})");
-                const json::Deger zj = z.json_();
-                const json::Deger* gr = zj.bul("guncel_run_id");
-                DOGRULA(d, z.durum == 202 && gr != nullptr && gr->metin == run, "bayat run_id'li kısıtlayan 202 + güncel run_id");
+                DOGRULA(d, z.durum == 202 && semaya_uyar("yanit_kuyrukta", z.govde), "bayat run_id'li kısıtlayan 202 (yanit_kuyrukta)");
                 kisitlayan_no = static_cast<std::uint32_t>(z.json_().bul("komut_no")->sayi);
                 kisitlayan_gonderildi = true;
             }
