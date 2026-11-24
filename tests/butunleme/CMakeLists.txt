@@ -146,6 +146,11 @@ if(IDA_NODE_BUTUNLEME)
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_uctan_uca.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node")
   set_tests_properties(butunleme.a3_uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180)
+  # W4-bagla-sonar kabul 5: sonar kanallarının panel istemcisiyle çözülen değerleri sonar CSV'siyle.
+  add_test(NAME butunleme.a3_sonar_web
+    COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_sonar_web.mjs" "$<TARGET_FILE:ida_sim>"
+            "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_sonar")
+  set_tests_properties(butunleme.a3_sonar_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240)
 endif()
 
 # W4-bagla-sonar (docs/gorevler/W4-bagla-sonar.md kabul 1–6; sim/sunucu/BENIOKU.md "Sonar").

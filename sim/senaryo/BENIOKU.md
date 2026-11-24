@@ -49,3 +49,7 @@ hatasına çevirir; güvenlik sınırı kitaplığın kendisidir, `toml_okuma.cp
 ## Testler
 
 `ctest -R sim.senaryo` (test kodu `test/`; bozuk dosyalar bellekte, örnek dosyalardan üretilir).
+
+## Sonar kurulumu (W4-bagla-sonar)
+
+`sonar_kur(DogrulanmisSenaryo, DosyaKaynagi)` (`include/ida/senaryo/sonar_yukleyici.hpp`, hedef `ida_senaryo_sonar`; yalnız `sim/sonar` varken): `sensor_kur` ile aynı kural (yalnız doğrulanmış senaryo). Sonarlar `arac.sensorler`'in `ping1d` ve `ping360` girdileri (A5 §3.6 alan adları); ortam `ortam.su` (`ses_hizi` verilmemişse W4-K1 formülü sim'de); `kalite.sonar` yalnız `sade` (`tam` hata). Sahne: su yüzeyi ve `ortam.derinlik`'te düz taban; taban malzemesi `ortam.sahne` A7 statik varlığının ilk malzeme atamasıdır (A7 §3.4 akustik alanları; `kalibrasyon.malzeme.<kimlik>.akustik` geçersiz kılar, A5-K13). A7 manifesti `assets/<varliklar.kume>/manifest.json`'dan aynı kaynakla okunur; `varliklar.manifest_ozeti` verilmişse SHA-256'sı ona eşit olmalıdır (A5-K115). Havuz duvarları ve hedef gövdeleri A7 glTF ağlarından kurulur (sonraki dilim; ağlar depoda yok): sahneye girmez, kurulum uyarısı verilir. Etkin sonar yoksa manifest okunmaz, sahne boş kalır. Sınama: `sim.senaryo.sonar_yukleyici`.

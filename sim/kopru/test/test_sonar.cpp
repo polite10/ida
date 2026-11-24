@@ -211,7 +211,7 @@ void parti_denetimi(Denetci& d, const Kayitci& kay, std::size_t bas = 0)
         (void)ida_link_coz(&v.back().c, MAVLINK_MSG_ID_IDA_TIME_FRAME, &tf, sizeof tf);
         DOGRULA(d, bayt <= 1200u, "parti " + s(p) + " baytı ≤ B_pencere: " + s(bayt));
         DOGRULA(d, head <= 1u, "partide en çok bir HEAD (A1-K34)");
-        DOGRULA(d, tf.n_members == uye, "n_members = üye sayısı (A1-K30): " + s(tf.n_members) + " / " + s(uye));
+        DOGRULA(d, static_cast<std::size_t>(tf.n_members) == uye, "n_members = üye sayısı (A1-K30): " + s(tf.n_members) + " / " + s(uye));
         if (p > bas) {
             kredi = std::min<std::int64_t>(kredi + 260, 600);
         }
@@ -625,7 +625,7 @@ int test_sonar_eksik_parca()
             (void)z.k->sinir_isle(z.sinir, z.t);
         }
         if (p % 20 == 5 && seq < 4u) {
-            v.push_back(ornekler(seq == 2u ? 600 : 1200, seq + 50u, seq == 3u ? 300u : 0u));
+            v.push_back(ornekler(static_cast<std::uint16_t>(seq == 2u ? 600u : 1200u), seq + 50u, seq == 3u ? 300u : 0u));
             const std::uint32_t sq = ++seq;
             z.k->ping360_ekle(p360_baslik(sq, z.t), p360_veri(v.back(), static_cast<std::uint16_t>(sq * 10u)));
         }

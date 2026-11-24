@@ -70,3 +70,7 @@ Sensör kümesinin zinciriyle aynı sıra, anlam ve RNG yerleri (A5 Tablo 3.10-A
 ## Yakınsama (MP7 ölçütü)
 
 `sim.sonar.yakinsama_mp7` MP7'nin dondurulmuş ölçütünü (M = 32, 8 açı, δ_E, δ_V, δ_C, bootstrap %95 üst ucu ≤ 0,05, iki adım) MP7 orta sahnesinin çözümsel karşılığında uygular. MP7 prototipi sade kademede satırı 600 örneğe indiriyordu (05 §2.4.7); ölçüt bu yapılandırmada (7 m, n = 600, sp = 622) 5 000 ışında sağlanır. A5-K78'in istediği 1 200 örnekte (sp = 311) aynı sahnede 5 000 ve 10 000 ışında sağlanmaz (`ida_sonar_test yakinsama_mp7 tani`). Bu, A5-K78'in "MP7'de ölçülen yapılandırma" gerekçesiyle çelişir; mimara bildirildi.
+
+## Bağlama (W4-bagla-sonar)
+
+`ida_sim --sonar` kümeyi senaryodan kurar (`senaryo::sonar_kur`; `sim/sunucu/BENIOKU.md` "Sonar"). W4-K18'in ara durumu sürer: model sözleşmeye uyar ve Ping360 satırı varsayılan olarak 1 200 örnektir (A5-K78); ölçülen yapılandırma (600 örnek) sözleşme değişene dek `--ping360-ornek 600` ile seçilir (menzil korunur, örnek periyodu iki katına çıkar). Bu kitaplıkta bağlama için kod değişikliği yapılmadı.

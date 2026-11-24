@@ -348,7 +348,10 @@ struct Sonuc {
     bool sonar_acik = false;
     std::uint64_t sonar_ping1d = 0, sonar_ping360 = 0;   // teslim edilen kayıt (arıza zinciri sonrası)
     std::uint64_t sonar_ping = 0, sonar_isin = 0, sonar_havada = 0, sonar_kayip = 0, sonar_kuyruk_tasma = 0;
-    // Dünya iş parçacığında sonar adımı + boşaltma + köprüye verme, bir sınırdaki süre (duvar; ölçüm).
+    // Dünya iş parçacığında sonar adımının (ping hesabı; sınır b'nin adımı fizik adımı b − 1'den hemen
+    // sonra, sınırın bekleyişinden önce yapılır) süresi (duvar; ölçüm). Boşaltma ve köprüye verme
+    // sınırın içindedir: sonar_bosaltma_en_uzun_ns.
+    std::int64_t sonar_bosaltma_en_uzun_ns = 0;
     std::int64_t sonar_adim_en_uzun_ns = 0;
     std::int64_t sonar_adim_toplam_ns = 0;
     std::uint64_t sonar_adim_ping_sinir = 0;             // en az bir ping atılan sınır

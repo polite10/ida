@@ -553,6 +553,10 @@ private:
         std::int64_t tetik_b = -1;   // koşul sağlandı: bu sınırda başlar (A5-K63)
         std::int64_t baslangic_ns = 0;   // başladığı sınır (A3 ariza/etkin)
         bool reddedildi = false;         // başlatılamadı (sensör arızası reddi)
+        // W4-bagla-sonar: koşullu sonar arızası, sonar adımı önceden hesaplandığı için başlayacağı
+        // sınırın adımından önce (önceki sınırın sonunda) sonar kümesine verilir; sonuç burada.
+        bool sonar_verildi = false;
+        sensor::ArmSonucu sonar_sonuc{};
     };
     std::vector<PlanDurumu> pd_;
     struct IticiAriza {
@@ -580,6 +584,7 @@ private:
     bool sonar_hedefi(const std::string& ad) const;
     bool sonar_kur_();
     void sonar_adimi(std::int64_t t);
+    bool sonar_onceden(std::uint64_t b);
     void sonar_csv_ekle(const sonar::SonarOlcumu& o);
     void a3_sonar_yayinla();
     std::unique_ptr<kopru::Kopru> k_;
@@ -1391,7 +1396,7 @@ void Calistirici::plan_sinir(std::uint64_t b)
             if (!o.zaman_ns) {
                 sensor::SensorArizasi f = o.ariza;
                 f.zaman_ns = t;
-                const sensor::ArmSonucu r = sonar_hedefi(f.hedef) ? sonar_->arm(f) : kume_.arm(f);
+                const sensor::ArmSonucu r = d.sonar_verildi ? d.sonar_sonuc : kume_.arm(f);
                 if (!r.tamam) {
                     // Ön denetimden geçtiği için beklenmez; nedeni olduğu gibi yazılır.
                     const bool hedef = r.hata.find("hedef") != std::string::npos;
@@ -1541,23 +1546,11 @@ bool Calistirici::sinir_on(std::uint64_t b)
     if (sonar_) {
         // W4-bagla-sonar: sonar kümesi aynı sınırda, aynı teslim kuralıyla (t_teslim ≤ t; W4-K9);
         // rastgelelik kendi A5 Ek D akışlarından (öteki sensörlerin dizisi değişmez).
-        // Süre (duvar; ölçüm): adım (ping hesabı) + boşaltma + köprüye verme.
-        const std::uint64_t ping_once = sonar_->sayaclar().ping;
+        // Sınır b'nin adımı (ping hesabı) önceki sınırın sonunda yapıldı (sonar_onceden); burada
+        // yalnız boşaltma ve köprüye verme (kısa; ölçüm: sonar_bosaltma_en_uzun_ns).
         const std::int64_t s0 = gercek();
-        if (sonar_->adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
-            s_.hata = "sonar kümesi adımı başarısız";
-            return false;
-        }
         sonar_adimi(t);
-        const std::int64_t ns = gercek() - s0;
-        s_.sonar_adim_toplam_ns += ns;
-        s_.sonar_adim_en_uzun_ns = std::max(s_.sonar_adim_en_uzun_ns, ns);
-        if (sonar_->sayaclar().ping != ping_once) {
-            ++s_.sonar_adim_ping_sinir;
-            if (s_.sonar_adim_ping_ns.size() < s_.sonar_adim_ping_ns.capacity()) {
-                s_.sonar_adim_ping_ns.push_back(ns);   // yer önceden ayrıldı: döngüde ayırma yok
-            }
-        }
+        s_.sonar_bosaltma_en_uzun_ns = std::max(s_.sonar_bosaltma_en_uzun_ns, gercek() - s0);
     }
     return true;
 }
@@ -1626,6 +1619,45 @@ bool Calistirici::sonar_kur_()
             "tur,sensor_id,inst,seq,t_meas_ns,t_tx_ns,t_hazir_ns,t_teslim_ns,flags,ariza_maskesi,mesafe_m,guven,"
             "scan_start,scan_length,ping_number,tx_offset_ns,aci_grad,n_ornek,ornek_periyodu,darbe_suresi_us,"
             "frekans_khz,kazanc,veri_n,veri_crc32\n";
+    }
+    return true;
+}
+
+// Sonar kümesinin sınır b adımı (ping hesabı; sade kademede ping başına ≈ 0,4–1,4 ms, ölçüm).
+// Sınır b'nin fizik durumu, fizik adımı b − 1 bitince hazırdır; adım o anda (HIL'de sınır b'nin
+// bekleyişinden önce) yapılır ki ping hesabı sınır b'nin işlemini ve TF(n) yazımını geciktirmesin
+// (A1-K39: TF W(t_n)'de; C_sim = 0,4 ms bütçesi). Sonar yalnız fizik durumuna ve kendi arızalarına
+// bağlıdır (köprü, emniyet ve senaryo atamaları ona girmez): sonuç sınır b'nin içinde adımlamakla
+// bayt bayt aynıdır. Koşullu sonar arızası, başlayacağı sınırın (tetik_b = b) adımından önce verilir
+// (A5-K63 ile aynı başlangıç sınırı). Süre ölçülür (duvar; dünya iş parçacığı).
+bool Calistirici::sonar_onceden(std::uint64_t b)
+{
+    const std::int64_t t = static_cast<std::int64_t>(b) * kH;
+    for (std::size_t i = 0; i < plan_.olaylar.size(); ++i) {
+        const PlanOlayi& o = plan_.olaylar[i];
+        PlanDurumu& d = pd_[i];
+        if (o.tur == PlanOlayTuru::sensor && !o.zaman_ns && !d.basladi && !d.sonar_verildi && d.tetik_b >= 0 &&
+            static_cast<std::uint64_t>(d.tetik_b) == b && sonar_hedefi(o.ariza.hedef)) {
+            sensor::SensorArizasi f = o.ariza;
+            f.zaman_ns = t;
+            d.sonar_sonuc = sonar_->arm(f);
+            d.sonar_verildi = true;
+        }
+    }
+    const std::uint64_t ping_once = sonar_->sayaclar().ping;
+    const std::int64_t s0 = gercek();
+    if (sonar_->adim(dn_.durum(), b) != sensor::AdimSonucu::tamam) {
+        s_.hata = "sonar kümesi adımı başarısız";
+        return false;
+    }
+    const std::int64_t ns = gercek() - s0;
+    s_.sonar_adim_toplam_ns += ns;
+    s_.sonar_adim_en_uzun_ns = std::max(s_.sonar_adim_en_uzun_ns, ns);
+    if (sonar_->sayaclar().ping != ping_once) {
+        ++s_.sonar_adim_ping_sinir;
+        if (s_.sonar_adim_ping_ns.size() < s_.sonar_adim_ping_ns.capacity()) {
+            s_.sonar_adim_ping_ns.push_back(ns);   // yer önceden ayrıldı: döngüde ayırma yok
+        }
     }
     return true;
 }
@@ -3721,7 +3753,9 @@ Sonuc Calistirici::kos_ic()
         tf_gec_.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
     }
 
-    for (std::uint64_t b = 0; b <= n_sinir; ++b) {
+    // W4-bagla-sonar: sınır 0'ın sonar adımı (sonrakiler bir önceki fizik adımından hemen sonra).
+    const bool sonar_bas = !sonar_ || sonar_onceden(0);
+    for (std::uint64_t b = 0; sonar_bas && b <= n_sinir; ++b) {
         const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
         // W4-bagla-a3: istek çekme ve çalıştırma denetimi sınırın başında. Duraklatma sınırın
         // olağan işlemi bittikten sonra, fizik adımından önce kurulur (W4-K27 (1)).
@@ -3831,6 +3865,9 @@ Sonuc Calistirici::kos_ic()
         if (a_.kip == Kip::hil) {
             evre_[kEvreFizik] += gercek() - e_f;
             profil_.push_back(evre_);
+        }
+        if (sonar_ && b < n_sinir && !sonar_onceden(b + 1u)) {
+            break;   // W4-bagla-sonar: sınır b + 1'in sonar adımı, o sınırın bekleyişinden önce
         }
     }
     if (yay_ != nullptr) {
