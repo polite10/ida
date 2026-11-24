@@ -12,7 +12,7 @@ target_link_libraries(ida_link_test_oturum_destek PUBLIC
   ida_link_ust ida_link ida_link_altin_veri ida_mavlink_uretilen ida_unity)
 ida_ayar_uygula(ida_link_test_oturum_destek CEKIRDEK)
 
-set(_oturum_testleri oturum parti komut cikti esleme dayaniklilik uctan_uca sol)
+set(_oturum_testleri oturum parti komut cikti esleme dayaniklilik uctan_uca sol crc)
 foreach(_ad IN LISTS _oturum_testleri)
   set(_hedef ida_link_test_ust_${_ad})
   add_executable(${_hedef} test_${_ad}.c)
@@ -29,3 +29,8 @@ foreach(_ad IN LISTS _oturum_testleri)
     add_test(NAME protokol.birim.ust_${_ad} COMMAND ${_hedef})
   endif()
 endforeach()
+
+# W4-param-hiz: ust_crc32'nin tablosu çekirdeğin ida_crc32 tablosuyla aynı mı (yalnız bu test
+# çekirdeğe ve onun iç başlığına bağlanır; ida_link_ust bağlanmaz).
+target_link_libraries(ida_link_test_ust_crc PRIVATE ida_core)
+target_include_directories(ida_link_test_ust_crc PRIVATE "${PROJECT_SOURCE_DIR}/core/src")
