@@ -117,4 +117,5 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/firmware/test" firmware-test)  # kart ya
 add_subdirectory(butunleme)     # W4-kopru: sim sunucusunun bütünleme testleri (Z1 A1 üzerinden, HIL 1x)
 add_subdirectory(kabul/kopru)   # W4-kopru bağımsız kabul testleri (olaylar, emniyet girdileri, aktüatör zamanlaması; EMNİYET)
 add_subdirectory(kabul/atis)    # W5-atis-emniyet bağımsız kabul testleri (atış kontrol emniyet zinciri; EMNİYET)
+add_subdirectory(kabul/kontrol) # W5-kontrol-acil bağımsız kabul testleri (acil durdurmada aktüatör çıktısı; EMNİYET)
 add_subdirectory(z2)            # W4-z2: Z1'in kartta (HIL 1x, seri) ölçüm programı; CTest'e girmez
