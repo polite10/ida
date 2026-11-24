@@ -6,13 +6,17 @@
 //   ida_z2 sil [--sure s] [--tohum n] [--acil s --acil-kalk s] [--json yol]     (süreç içi karşı taraf)
 //
 // Çıktı: insan okunur özet (stdout) ve isteğe bağlı JSON (ölçüm raporu için). Sınır ya da kazanç
-// değiştirmez; yalnız ölçer. HIL koşusu kartı ve gerçek zamanı kullanır (ağır yük altında
+// değiştirmez; yalnız ölçer. İki ayrı hüküm verir: işlevsel ölçütler ve A1-K79 zamanlama
+// geçerliliği (geçersizlik bitleri 0x0). Çıkış kodu: 0 ikisi de geçti, 3 işlevsel kaldı, 4 işlevsel
+// geçti ama zamanlama geçersiz, 5 ikisi de kaldı, 1 kullanım hatası. CTest'e girmez; zamanlama
+// hükmü yerelde ve kartta ölçüttür (W4-K24 yalnız paylaşılan CI koşucusu için). HIL koşusu kartı ve gerçek zamanı kullanır (ağır yük altında
 // sayılar ön değerdir).
 #include "ida/port.h"
 #include "ida/sunucu/sunucu.hpp"
 #include "zincir.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -192,12 +196,39 @@ struct Metin {
     }
 };
 
+// Sayısal seçeneklerin ayrıştırıcısı (sim/sunucu/src/main.cpp ile aynı kural; W4-z2 sol #5):
+// değerin tamamı sayı olmalı, ERANGE hatadır; sonuç sonlu ve [en_az, en_cok] içinde olmalıdır.
+bool sayi_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    if (v.empty()) {
+        return false;
+    }
+    char* son = nullptr;
+    errno = 0;
+    x = std::strtod(v.c_str(), &son);
+    return errno != ERANGE && son != nullptr && *son == '\0' && std::isfinite(x) && x >= en_az && x <= en_cok;
+}
+
+// Tamsayı seçenekleri: aynı ayrıştırıcıyla, ayrıca tam değerli olmalı.
+bool tam_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    return sayi_ayristir(v, en_az, en_cok, x) && x == std::floor(x);
+}
+
 int kullanim()
 {
     std::fprintf(stderr,
                  "kullanım: ida_z2 hil --seri <aygıt> | sil  [--sure s] [--tohum n] [--acil s --acil-kalk s] "
-                 "[--csv yol] [--json yol]\n");
+                 "[--csv yol] [--json yol]\n"
+                 "çıkış kodu: 0 işlevsel ve zamanlama geçti; 3 işlevsel kaldı; 4 işlevsel geçti, zamanlama geçersiz;\n"
+                 "            5 ikisi de; 1 kullanım hatası\n");
     return 1;
+}
+
+int secenek_hatasi(const std::string& ileti)
+{
+    std::fprintf(stderr, "ida_z2: %s\n", ileti.c_str());
+    return kullanim();
 }
 
 }  // namespace
@@ -220,51 +251,118 @@ int main(int argc, char** argv)
         return kullanim();
     }
     std::string json_yolu;
+    // Seçenek ayrıştırması (W4-z2 sol #5; ida_sim önyüzündeki kurallar): her seçenek bir kez;
+    // sayılar tam ve aralıkta; açıkça verilmiş geçersiz değer reddedilir.
+    std::vector<std::string> verilen;
     for (int i = 2; i < argc; ++i) {
         const std::string s = argv[i];
         if (i + 1 >= argc) {
-            return kullanim();
+            return secenek_hatasi(s + " bir değer ister");
         }
+        if (std::find(verilen.begin(), verilen.end(), s) != verilen.end()) {
+            return secenek_hatasi(s + " bir kez verilebilir");
+        }
+        verilen.push_back(s);
         const std::string v = argv[++i];
+        double x = 0.0;
         if (s == "--seri") {
+            if (a.kip != ida::sunucu::Kip::hil || v.empty()) {
+                return secenek_hatasi("--seri yalnız hil kipinde ve boş olmayan bir aygıtla verilir");
+            }
             a.seri = v;
         } else if (s == "--sure") {
-            a.sure_s = std::strtod(v.c_str(), nullptr);
+            if (!sayi_ayristir(v, 0.0, 1e7, x) || !(x > 0.0)) {
+                return secenek_hatasi("--sure pozitif bir süre (s) ister: " + v);
+            }
+            a.sure_s = x;
+            a.sure_verildi = true;
         } else if (s == "--tohum") {
-            a.tohum = std::strtoull(v.c_str(), nullptr, 10);
-        } else if (s == "--acil") {
-            a.acil_durdurma_s = std::strtod(v.c_str(), nullptr);
-        } else if (s == "--acil-kalk") {
-            a.acil_kalkar_s = std::strtod(v.c_str(), nullptr);
+            if (!tam_ayristir(v, 0.0, 9007199254740991.0, x)) {   // A5-K82: 0 … 2⁵³−1
+                return secenek_hatasi("--tohum 0 … 2^53−1 bir tamsayı ister: " + v);
+            }
+            a.tohum = static_cast<std::uint64_t>(x);
+            a.tohum_verildi = true;
+        } else if (s == "--acil" || s == "--acil-kalk") {
+            if (!sayi_ayristir(v, 0.0, 1e7, x)) {
+                return secenek_hatasi(s + " sonlu ve ≥ 0 bir süre (s) ister: " + v);
+            }
+            if (s == "--acil") {
+                a.acil_durdurma_s = x;
+                a.acil_verildi = true;
+            } else {
+                a.acil_kalkar_s = x;
+                a.acil_kalk_verildi = true;
+            }
         } else if (s == "--csv") {
+            if (v.empty()) {
+                return secenek_hatasi("--csv bir yol ister");
+            }
             a.csv_yolu = v;
         } else if (s == "--json") {
+            if (v.empty()) {
+                return secenek_hatasi("--json bir yol ister");
+            }
             json_yolu = v;
         } else {
-            return kullanim();
+            return secenek_hatasi("bilinmeyen seçenek " + s);
         }
     }
     if (a.kip == ida::sunucu::Kip::hil && a.seri.empty()) {
-        return kullanim();
+        return secenek_hatasi("hil kipi --seri <aygıt> ister");
+    }
+    // Acil durdurma denemesi (W4-z2 sol #1): istenen olay koşu süresine sığmalı ve basılmadan önce
+    // etkin itki bulunmalı (Z1'de ARM + GUIDED 3,2 s'de; olay ondan sonra); kalkış basıştan sonra.
+    if (a.acil_kalk_verildi && !a.acil_verildi) {
+        return secenek_hatasi("--acil-kalk yalnız --acil ile verilir");
+    }
+    if (a.acil_verildi) {
+        if (!(a.acil_durdurma_s > a.z1.t_sp_s + 1.0)) {
+            return secenek_hatasi("--acil, etkin itkinin başladığı andan (GUIDED_SP + 1 s) sonra olmalı");
+        }
+        if (!(a.acil_durdurma_s + 1.0 < a.sure_s)) {
+            return secenek_hatasi("--acil koşu süresine sığmıyor (en geç süre − 1 s)");
+        }
+        if (a.acil_kalk_verildi && !(a.acil_kalkar_s > a.acil_durdurma_s && a.acil_kalkar_s + 1.0 < a.sure_s)) {
+            return secenek_hatasi("--acil-kalk, --acil'den sonra ve koşu süresinden en az 1 s önce olmalı");
+        }
     }
     a.csv_uret = true;
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
     const ida::kopru::Sayaclar& c = s.sayac;
-    const bool tam_z1 = a.sure_s >= a.z1.t_disarm_s + 2.0 && a.acil_durdurma_s < 0.0;
+    const bool tam_z1 = a.sure_s >= a.z1.t_disarm_s + 2.0 && !a.acil_verildi;
     olcu("kosu tamam", s.tamam ? 1.0 : 0.0, "= 1 " + s.hata, s.tamam);
     if (tam_z1) {
         const ida::zincir::Ayar za = zincir_ayari(a);
         z1_olc(s, ida::zincir::ozetle(zincir_sonucu(s), za), za);
+    } else if (!a.acil_verildi) {
+        // Ne Z1 ne acil durdurma denemesi: hiçbir işlevsel ölçüt uygulanmadan "GECTI" verilmez.
+        olcu("Z1 olcutleri uygulandi", 0.0, "sure >= DISARM + 2 s", false);
     }
-    if (a.acil_durdurma_s >= 0.0) {
+    if (a.acil_verildi) {
         std::size_t istek_notr_disi = 0;
         std::size_t fiz_notr_disi = 0;
         std::size_t thr_valid_satir = 0;
         std::size_t satir = 0;
+        std::size_t once_etkin_itki = 0;   // basılmadan önceki etkin itki satırı (sol #1)
+        double t_ilk_estop = -1.0;
+        double t_son_estop = -1.0;
+        std::size_t kalkis_sonrasi_satir = 0;
         for (const ida::sunucu::Satir& r : s.satirlar) {
             if (r.estop == 0u) {
+                if (r.t_s >= a.z1.t_sp_s && r.t_s < a.acil_durdurma_s) {
+                    bool etkin = false;
+                    for (std::size_t i = 0; i < 8; ++i) {
+                        etkin = etkin || std::abs(r.pwm_fiz[i] - 1500) > 25;
+                    }
+                    once_etkin_itki += etkin ? 1u : 0u;
+                }
+                if (a.acil_kalk_verildi && r.t_s >= a.acil_kalkar_s) {
+                    ++kalkis_sonrasi_satir;
+                }
                 continue;
             }
+            t_ilk_estop = t_ilk_estop < 0.0 ? r.t_s : t_ilk_estop;
+            t_son_estop = r.t_s;
             ++satir;
             thr_valid_satir += r.thr_valid != 0u ? 1u : 0u;
             for (std::size_t i = 0; i < 8; ++i) {
@@ -272,18 +370,29 @@ int main(int argc, char** argv)
                 fiz_notr_disi += r.pwm_fiz[i] != 1500 ? 1u : 0u;
             }
         }
-        olcu("acil: etkin fizik adimi", static_cast<double>(s.estop_adim), "(bilgi)", true);
+        // Olayın gerçekleştiği (sol #1): boş bir deneme "ihlal 0" ile geçmez.
+        olcu("acil: basilmadan once etkin itki satiri", static_cast<double>(once_etkin_itki), "> 0",
+             once_etkin_itki > 0u);
+        olcu("acil: etkin fizik adimi", static_cast<double>(s.estop_adim), "> 0", s.estop_adim > 0u);
+        olcu("acil: etkin kontrol satiri", static_cast<double>(satir), "> 0", satir > 0u);
+        olcu("acil: ilk etkin satir - basma s", t_ilk_estop >= 0.0 ? t_ilk_estop - a.acil_durdurma_s : -1.0,
+             "0..0.1", t_ilk_estop >= a.acil_durdurma_s && t_ilk_estop <= a.acil_durdurma_s + 0.1);
+        if (a.acil_kalk_verildi) {
+            olcu("acil: son etkin satir - kalkis s", t_son_estop >= 0.0 ? t_son_estop - a.acil_kalkar_s : -1.0,
+                 "< 0.1", t_son_estop >= 0.0 && t_son_estop < a.acil_kalkar_s + 0.1);
+            olcu("acil: kalkistan sonra etkin olmayan satir", static_cast<double>(kalkis_sonrasi_satir), "> 0",
+                 kalkis_sonrasi_satir > 0u);
+        }
         olcu("acil: ihlal (notr disi fizik adimi)", static_cast<double>(s.ihlal_estop), "= 0", s.ihlal_estop == 0u);
         olcu("acil: fizige giden notr disi (satir x kanal)", static_cast<double>(fiz_notr_disi), "= 0", fiz_notr_disi == 0u);
         olcu("acil: kopru yururlukteki notr disi istek (satir x kanal)", static_cast<double>(istek_notr_disi),
              "(bilgi; W3-K1 acik nokta)", true);
-        olcu("acil: kontrol satiri", static_cast<double>(satir), "(bilgi)", true);
         olcu("acil: thr_valid satiri", static_cast<double>(thr_valid_satir), "(bilgi)", true);
         // Kalkıştan sonra fiziğe giden itkinin geri geldiği ilk satır (W4-K3: kalkıştan sonra
         // gönderilen partinin yanıtıyla) ve kartın atış kontrol durumu akışı (gözlem).
         double t_geri = -1.0;
         for (const ida::sunucu::Satir& r : s.satirlar) {
-            if (a.acil_kalkar_s >= 0.0 && r.t_s >= a.acil_kalkar_s && r.estop == 0u) {
+            if (a.acil_kalk_verildi && r.t_s >= a.acil_kalkar_s && r.estop == 0u) {
                 bool notr_disi = false;
                 for (std::size_t i = 0; i < 8; ++i) {
                     notr_disi = notr_disi || r.pwm_fiz[i] != 1500;
@@ -415,12 +524,22 @@ int main(int argc, char** argv)
     if (!s.evre_ozeti.empty()) {
         std::printf("evre ozeti: %s\n", s.evre_ozeti.c_str());
     }
-    std::printf("ida_z2 %s: %d kalan\n", kalan == 0 ? "GECTI" : "KALDI", kalan);
+    // İki ayrı hüküm (W4-z2 sol #2): işlevsel ölçütler ve A1-K79 zamanlama geçerliliği. Zamanlama
+    // kabulü yalnız geçersizlik bitleri 0x0 iken verilir. W4-K24: paylaşılan CI koşucusunda
+    // zamanlama hükmü ölçüt değildir; bu program CTest'e girmez, yerelde ve kartta ölçüttür.
+    const bool islevsel = kalan == 0;
+    const bool zamanlama = c.calistirma_gecersiz == 0u;
+    std::printf("ida_z2 islevsel: %s (%d kalan)\n", islevsel ? "GECTI" : "KALDI", kalan);
+    std::printf("ida_z2 zamanlama (A1-K79): %s (gecersizlik 0x%x)\n", zamanlama ? "GECERLI" : "GECERSIZ",
+                c.calistirma_gecersiz);
+    std::printf("ida_z2 %s\n", islevsel && zamanlama ? "GECTI" : "KALDI");
     if (!json_yolu.empty()) {
         Metin f;
         {
-            f("{\"kip\": \"%s\", \"tohum\": %llu, \"sure_s\": %.3f, \"kalan\": %d, \"olcu\": {", kip.c_str(),
-                         static_cast<unsigned long long>(a.tohum), a.sure_s, kalan);
+            f("{\"kip\": \"%s\", \"tohum\": %llu, \"sure_s\": %.3f, \"kalan\": %d, \"islevsel\": %s, "
+              "\"zamanlama_gecerli\": %s, \"olcu\": {",
+              kip.c_str(), static_cast<unsigned long long>(a.tohum), a.sure_s, kalan, islevsel ? "true" : "false",
+              zamanlama ? "true" : "false");
             for (std::size_t i = 0; i < g_olcu.size(); ++i) {
                 f("%s\"%s\": [%.6f, %s]", i == 0 ? "" : ", ", g_olcu[i].ad.c_str(), g_olcu[i].deger,
                              g_olcu[i].gecti ? "true" : "false");
@@ -467,5 +586,8 @@ int main(int argc, char** argv)
             std::ofstream(json_yolu, std::ios::binary) << f.s;
         }
     }
-    return kalan == 0 ? 0 : 3;
+    if (!islevsel) {
+        return zamanlama ? 3 : 5;
+    }
+    return zamanlama ? 0 : 4;
 }
