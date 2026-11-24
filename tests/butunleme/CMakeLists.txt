@@ -33,6 +33,19 @@ add_test(NAME butunleme.ida_sim_gecersiz_senaryo
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=3
           "-DARGUMANLAR=--senaryo;tests/butunleme/veri/gecersiz.toml;--kok;${PROJECT_SOURCE_DIR}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# EMNİYET (sol #1): yerleşik plana özgü seçenekler dosyayla birlikte başlamadan reddedilir.
+foreach(_secenek acil acil-kalk ariza)
+  if(_secenek STREQUAL "ariza")
+    set(_deger "4,0")
+  else()
+    set(_deger "12")
+  endif()
+  add_test(NAME butunleme.ida_sim_${_secenek}_ve_senaryo
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
+            "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--${_secenek};${_deger};--kok;${PROJECT_SOURCE_DIR}"
+            "-DILETI=--${_secenek} senaryo dosyasıyla birlikte kullanılamaz"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+endforeach()
 add_test(NAME butunleme.ida_sim_tohum_ve_senaryo
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
           "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--tohum;2;--kok;${PROJECT_SOURCE_DIR}"

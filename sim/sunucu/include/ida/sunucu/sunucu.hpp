@@ -75,9 +75,12 @@ struct Ayar {
     std::string depo_koku = ".";
     std::shared_ptr<const senaryo::DosyaKaynagi> senaryo_kaynagi;   // sınama: bellekteki dosyalar
     bool kip_verildi = false, karsi_verildi = false, tohum_verildi = false, sure_verildi = false;
+    bool ariza_verildi = false;   // --ariza (yalnız yerleşik z1)
     std::uint64_t tohum = 1;        // A5 rastgelelik.ana_tohum (sensörler, A1-K114)
     double sure_s = 90.0;
     Z1 z1{};
+    // Yalnız yerleşik senaryoda (EMNİYET, W4-sim-senaryo sol #1): senaryo dosyasıyla birlikte
+    // verilirse başlamadan kullanım hatasıdır (davranış özetine girmeyen emniyet olayı olmaz).
     double acil_durdurma_s = -1.0;  // senaryo: sanal acil durdurma basılır (< 0: yok)
     double acil_kalkar_s = -1.0;    // senaryo: acil durdurma kalkar
     std::string csv_yolu;           // boşsa dosya yazılmaz

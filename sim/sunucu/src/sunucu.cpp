@@ -558,6 +558,25 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
 // A5 dosyası: çözümleme ve doğrulama (A5-K90), plan; komut satırı çelişkileri. false: s_ hatalı.
 bool Calistirici::dosya_plani()
 {
+    // EMNİYET (sol #1): yalnız yerleşik planda anlamı olan seçenekler dosyalı koşuda sessizce yok
+    // sayılmaz; başlamadan kullanım hatasıdır. Dosyanın emniyet ve arıza olayları yalnız
+    // dosyadadır (davranış özetine girer).
+    {
+        std::string secenek;
+        if (a_.acil_durdurma_s >= 0.0) {
+            secenek = "--acil";
+        } else if (a_.acil_kalkar_s >= 0.0) {
+            secenek = "--acil-kalk";
+        } else if (a_.ariza_verildi) {
+            secenek = "--ariza";
+        }
+        if (!secenek.empty()) {
+            s_.hata = secenek + " senaryo dosyasıyla birlikte kullanılamaz (emniyet ve arıza olayları "
+                                "dosyanın `olaylar` dizisindedir)";
+            s_.hata_turu = HataTuru::kullanim;
+            return false;
+        }
+    }
     std::shared_ptr<const senaryo::DosyaKaynagi> kaynak = a_.senaryo_kaynagi;
     if (!kaynak) {
         kaynak = std::make_shared<senaryo::DiskKaynagi>(a_.depo_koku);

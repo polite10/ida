@@ -104,6 +104,7 @@ int main(int argc, char** argv)
             }
         } else if (s == "--ariza") {
             const std::string v = deger();
+            a.ariza_verildi = true;
             a.z1.ariza_kanallari.clear();
             if (v != "yok") {
                 std::size_t p = 0;

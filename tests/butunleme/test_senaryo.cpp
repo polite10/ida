@@ -198,6 +198,26 @@ int test_gecersiz()
          "kosul = { buyukluk = \"gorev_ogesi\", karsilastirma = \">=\", deger = 1.0 }\n";
     s = sunucu::kos(dosya_ayari(kaynak(m)));
     dogrula(s.hata_turu == sunucu::HataTuru::senaryo_yurutulemez, "kosul.buyukluk = gorev_ogesi yürütülemez: " + s.hata);
+    // EMNİYET (sol #1): yerleşik plana özgü seçenekler dosyayla birlikte başlamadan reddedilir;
+    // oturum açılmaz, ileti seçeneği adlandırır.
+    {
+        sunucu::Ayar b = dosya_ayari(kaynak(z1_metni()));
+        b.acil_durdurma_s = 12.0;
+        sunucu::Sonuc r = sunucu::kos(b);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--acil ") == 0u &&
+                    r.sayac.parti_gonderilen == 0u,
+                "--acil + senaryo: başlamadan kullanım hatası: " + r.hata);
+        b = dosya_ayari(kaynak(z1_metni()));
+        b.acil_kalkar_s = 18.0;
+        r = sunucu::kos(b);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--acil-kalk") == 0u,
+                "--acil-kalk + senaryo: kullanım hatası");
+        b = dosya_ayari(kaynak(z1_metni()));
+        b.ariza_verildi = true;
+        r = sunucu::kos(b);
+        dogrula(r.hata_turu == sunucu::HataTuru::kullanim && r.hata.find("--ariza") == 0u,
+                "--ariza + senaryo: kullanım hatası");
+    }
     // Komut satırı: --tohum dosyayla verilemez.
     sunucu::Ayar a = dosya_ayari(kaynak(z1_metni()));
     a.tohum_verildi = true;

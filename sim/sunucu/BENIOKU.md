@@ -28,7 +28,7 @@ ida_sim --kip hil --seri /dev/cu.usbmodemXXXX --csv z2.csv
 ida_sim --kip hil --karsi pty --sure 60
 ```
 
-Seçenekler: `--sure <s>` (90), `--tohum <n>` (1; sensör gürültüsü ve A1-K114 türetimleri), `--senaryo z1|bos|<dosya.toml>`, `--kok <dizin>` (depo kökü; senaryo dosyası için, varsayılan `.`), `--ariza <k1,k2|yok>` (Z1 itici arızası; varsayılan 4,0), `--acil <s>` ve `--acil-kalk <s>` (sanal acil durdurma), `--gunluk 0..2`. Çıkış kodu: 0 tamam, 1 komut satırı (senaryo dosyasıyla `--tohum`, `--sure` ya da çelişen `--kip` dahil), 2 çalıştırma hatası, 3 geçersiz senaryo (A5 §3.14 doğrulama raporu standart hataya; oturum açılmaz), 4 senaryo bu dilimde yürütülemez (başlamadan; aşağıdaki liste).
+Seçenekler: `--sure <s>` (90), `--tohum <n>` (1; sensör gürültüsü ve A1-K114 türetimleri), `--senaryo z1|bos|<dosya.toml>`, `--kok <dizin>` (depo kökü; senaryo dosyası için, varsayılan `.`), `--ariza <k1,k2|yok>` (Z1 itici arızası; varsayılan 4,0), `--acil <s>` ve `--acil-kalk <s>` (sanal acil durdurma), `--gunluk 0..2`. Çıkış kodu: 0 tamam, 1 komut satırı (senaryo dosyasıyla `--tohum`, `--sure`, `--acil`, `--acil-kalk`, `--ariza` ya da çelişen `--kip` dahil; yalnız yerleşik senaryoda anlamı olan seçenekler dosyalı koşuda sessizce yok sayılmaz), 2 çalıştırma hatası, 3 geçersiz senaryo (A5 §3.14 doğrulama raporu standart hataya; oturum açılmaz), 4 senaryo bu dilimde yürütülemez (başlamadan; aşağıdaki liste).
 
 ## Senaryo dosyası (A5; W4-sim-senaryo)
 
