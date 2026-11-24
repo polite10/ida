@@ -25,7 +25,6 @@
  *       ulaşmış APPLIED izinle)
  *   (g) silahlıyken emniyet parametresi değişmez
  */
-#include <stdio.h>
 #include <string.h>
 
 #include "atis_duzenek.h"
@@ -50,6 +49,28 @@ static ida_core_t C;
 static ida_in_t IN;
 static ida_out_t OUT;
 static ds_rastgele_t R;
+
+/* İletiye metin ve onluk sayı ekler (snprintf kartta bellek ayırır; elle yazılır). */
+static void ek(char *m, size_t boy, size_t *k, const char *metin, uint32_t v)
+{
+    for (size_t i = 0u; (metin[i] != '\0') && ((*k + 1u) < boy); i++) {
+        m[*k] = metin[i];
+        (*k)++;
+    }
+    char rakam[10];
+    uint32_t n = 0u;
+    do {
+        rakam[n] = (char)('0' + (char)(v % 10u));
+        n++;
+        v /= 10u;
+    } while ((v != 0u) && (n < 10u));
+    while ((n > 0u) && ((*k + 1u) < boy)) {
+        n--;
+        m[*k] = rakam[n];
+        (*k)++;
+    }
+    m[*k] = '\0';
+}
 
 static uint32_t zar(uint32_t n)
 {
@@ -861,12 +882,18 @@ static void test_ozellik_degismezler_a_f(void)
         }
     }
     char ileti[384];
-    (void)snprintf(ileti, sizeof(ileti),
-                   "tohum 0x%08X, %u adım: FIRE %u, SAFETY_OPEN %u, PERMIT_OPEN çağrısı %u, kilitten "
-                   "çıkış %u, neden sürerken FC_RESET %u, TEST çağrısı %u, daraltıcı sonucu %u, "
-                   "daraltıcı kapanması %u, acil durdurmalı çağrı %u, bayat çağrı %u",
-                   OZ_TOHUM, OZ_ADIM, S_FIRE, S_ACIK, S_PERMIT, S_FAULT_CIKIS, S_RESET_KILIT,
-                   S_TEST, S_DARALT, S_DARALT_ETKI, S_ESTOP, S_BAYAT);
+    size_t k = 0u;
+    ileti[0] = '\0';
+    ek(ileti, sizeof(ileti), &k, "200000 adım (tohum 0x5EED2026): FIRE ", S_FIRE);
+    ek(ileti, sizeof(ileti), &k, ", SAFETY_OPEN ", S_ACIK);
+    ek(ileti, sizeof(ileti), &k, ", PERMIT_OPEN çağrısı ", S_PERMIT);
+    ek(ileti, sizeof(ileti), &k, ", kilitten çıkış ", S_FAULT_CIKIS);
+    ek(ileti, sizeof(ileti), &k, ", neden sürerken FC_RESET ", S_RESET_KILIT);
+    ek(ileti, sizeof(ileti), &k, ", TEST çağrısı ", S_TEST);
+    ek(ileti, sizeof(ileti), &k, ", daraltıcı sonucu ", S_DARALT);
+    ek(ileti, sizeof(ileti), &k, ", daraltıcı kapanması ", S_DARALT_ETKI);
+    ek(ileti, sizeof(ileti), &k, ", acil durdurmalı çağrı ", S_ESTOP);
+    ek(ileti, sizeof(ileti), &k, ", bayat çağrı ", S_BAYAT);
     TEST_MESSAGE(ileti);
     /* Değişmezler boş geçmedi. */
     TEST_ASSERT_TRUE(S_FIRE > 10u);
@@ -952,8 +979,10 @@ static void test_ozellik_degismez_g(void)
         }
     }
     char ileti[160];
-    (void)snprintf(ileti, sizeof(ileti), "%u adım: silahlı çağrı %u, parametre değişimi %u", OZ_ADIM,
-                   silahli_cagri, degisim);
+    size_t k = 0u;
+    ileti[0] = '\0';
+    ek(ileti, sizeof(ileti), &k, "200000 adım: silahlı çağrı ", silahli_cagri);
+    ek(ileti, sizeof(ileti), &k, ", parametre değişimi ", degisim);
     TEST_MESSAGE(ileti);
     TEST_ASSERT_TRUE(degisim > 100u);
     TEST_ASSERT_TRUE(silahli_cagri > 1000u);
