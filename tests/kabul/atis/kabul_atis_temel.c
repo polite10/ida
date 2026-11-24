@@ -139,9 +139,9 @@ static void cesitli_dizi(void (*denetim)(const ida_in_t *))
         if (z < 3u) {
             ka_ayar.estop = 1u;
         } else if (z < 5u) {
-            ka_ayar.tup[kc_rng_aralik(&r, 2u) & 1u] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PLUG_IN);
+            ka_ayar.tup[kc_rng_aralik(&r, 2u) & 1u] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PLUG_IN)));
         } else if (z < 7u) {
-            ka_ayar.tup[kc_rng_aralik(&r, 2u) & 1u] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+            ka_ayar.tup[kc_rng_aralik(&r, 2u) & 1u] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
         }
         ka_ayar.tick = kc_rng_aralik(&r, 20u) == 0u;
         ida_in_t *in;
@@ -615,7 +615,7 @@ static void t_gc09_kapanma_birlesimi(void)
     ka_adimlar(2);
     /* (1) SESSION_END + acil durdurma + fiş: tek ALL. */
     ka_ayar.estop = 1u;
-    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PLUG_IN);
+    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PLUG_IN)));
     ida_in_t *in = ka_girdi();
     in->plat.link_event = (uint8_t)IDA_LINKEV_SESSION_END;
     in->plat.link_state = (uint8_t)IDA_LINK_NONE;
@@ -626,8 +626,8 @@ static void t_gc09_kapanma_birlesimi(void)
     /* (2) iki tüpün pimi: tüp başına bir kapanma, ALL yok. */
     gevsek();
     ka_adimlar(2);
-    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
-    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
+    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
     (void)ka_adim();
     KA_DOGRULA(ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_CLOSE, 0) == 1 &&
                    ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_CLOSE, 1) == 1 &&
@@ -638,7 +638,7 @@ static void t_gc09_kapanma_birlesimi(void)
     gevsek();
     ka_adimlar(2);
     ka_ayar.estop = 1u;
-    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
     (void)ka_adim();
     KA_DOGRULA(ka_out()->n_events == 1u && ka_olay_say(ka_out(), (uint8_t)IDA_EVT_SAFETY_CLOSE, IDA_TUBE_ALL) == 1,
                "pim + acil durdurma: tek SAFETY_CLOSE(ALL) bekleniyordu (G-Ç09), %u olay", (unsigned)ka_out()->n_events);

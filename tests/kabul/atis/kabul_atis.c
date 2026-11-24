@@ -675,7 +675,7 @@ static uint8_t geri_okuma(unsigned tube, int64_t t)
 {
     uint8_t b = (uint8_t)(ka_ayar.tup[tube] & (IDA_TUBE_LOADED | IDA_TUBE_PLUG_IN | IDA_TUBE_PIN_OUT));
     if (!ka_ayar.loaded_elle && A.atildi[tube]) {
-        b = (uint8_t)(b & (uint8_t)~IDA_TUBE_LOADED);
+        b = (uint8_t)(b & (uint8_t)(0xFFu ^ (IDA_TUBE_LOADED)));
     }
     if (ka_ayar.permit_elle) {
         if (ka_ayar.permit_deger[tube] != 0u) {
@@ -852,7 +852,7 @@ static void emniyet_cagri(const ida_in_t *in, bool kabul_cagri, ka_cagri_emniyet
         /* Kabul (A4-K33, K34): yalnız inst 0'ın gevşetmesi etkilidir. */
         bool kabul = kabul_cagri && s->hdr.inst == 0u && (s->hdr.flags & IDA_HF_VALID) != 0u &&
                      s->u.safety.estop <= 1u &&
-                     (s->u.safety.tube[0] & (uint8_t)~0x0Fu) == 0u && (s->u.safety.tube[1] & (uint8_t)~0x0Fu) == 0u &&
+                     (s->u.safety.tube[0] & 0xF0u) == 0u && (s->u.safety.tube[1] & 0xF0u) == 0u &&
                      s->hdr.window_ns == 0u && s->hdr.t_rx.ns <= now && s->hdr.t_meas.ns >= 0 &&
                      (!in->tf.present || s->hdr.t_meas.ns <= in->tf.t.ns);
         if (kabul && K.iz_var) {
@@ -1543,7 +1543,7 @@ void ka_kilitle(void)
     ka_ayar.estop = 0u;
     (void)ka_adim();
     KA_DOGRULA(!ka_model_pim_takili(0u) && !ka_model_estop(), "ka_kilitle: emniyet girdileri gevşek değil");
-    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
     (void)ka_adim();
     KA_DOGRULA(ka_kapanma_var(ka_out(), 0u), "ka_kilitle: tüp 0'ın pimi takılınca SAFETY_CLOSE yok (G-Ç15; A4-K111)");
     ka_ayar.permit_elle = true;

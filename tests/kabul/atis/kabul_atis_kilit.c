@@ -29,7 +29,7 @@ static const ka_olay_t *kapanma_uret(void)
 {
     gevsek();
     ka_adimlar(2);
-    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+    ka_ayar.tup[1] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
     (void)ka_adim();
     const ka_olay_t *e = ka_son_olay((uint8_t)IDA_EVT_SAFETY_CLOSE, -1);
     KA_DOGRULA(e != NULL && e->cagri == ka_cagri_no(), "tüp 1'in pimi takılınca SAFETY_CLOSE çıkmadı (G-Ç15)");
@@ -151,14 +151,14 @@ static void guvenli_donus_uygula(int d)
         ka_ayar.estop = 0u;
         break;
     case GD_FIS:
-        ka_ayar.tup[1] = (uint8_t)(ka_ayar.tup[1] & (uint8_t)~IDA_TUBE_PLUG_IN);
+        ka_ayar.tup[1] = (uint8_t)(ka_ayar.tup[1] & (uint8_t)(0xFFu ^ (IDA_TUBE_PLUG_IN)));
         (void)ka_adim();
         KA_DOGRULA(ka_kapanma_var(ka_out(), 1u), "kilitliyken fiş: SAFETY_CLOSE yok (G-Ç19)");
         ka_adimlar(5);
         ka_ayar.tup[1] = KC_TUP_ACIK;
         break;
     case GD_PIM:
-        ka_ayar.tup[1] = (uint8_t)(ka_ayar.tup[1] & (uint8_t)~IDA_TUBE_PIN_OUT);
+        ka_ayar.tup[1] = (uint8_t)(ka_ayar.tup[1] & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
         (void)ka_adim();
         KA_DOGRULA(ka_kapanma_var(ka_out(), 1u), "kilitliyken pim: SAFETY_CLOSE yok (G-Ç19)");
         ka_adimlar(5);
@@ -327,7 +327,7 @@ static void t_gc27_durum_gunlugu(void)
     ka_oturum_baslat();
     gevsek();
     ka_adimlar(2);
-    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)~IDA_TUBE_PIN_OUT);
+    ka_ayar.tup[0] = (uint8_t)(KC_TUP_ACIK & (uint8_t)(0xFFu ^ (IDA_TUBE_PIN_OUT)));
     (void)ka_adim();
     ka_ayar.permit_elle = true;
     ka_ayar.permit_deger[0] = 1u;
