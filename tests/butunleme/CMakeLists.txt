@@ -86,7 +86,9 @@ set_tests_properties(butunleme.sil_oturum_dusme_belirlenim PROPERTIES TIMEOUT 90
 # (FIN ve yazma hatası akıştaki yerinde) ve alım sınırları (kesintisiz 0x00).
 # sil_hazirlik_suresi: el sıkışma süre sınırı hazırlık oturumunun süresini kapsamaz; hazırlığın
 # kendi sınırı ayrı (W4-K26 mimar kararı).
-foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli sil_hazirlik_suresi sil_butce_konumu)
+# Sol 3. denetim: sil_eof_konumu (#1), sil_hazirlik_tekrar (#2), sil_hata_kapanisi (#3).
+foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli sil_hazirlik_suresi sil_butce_konumu
+            sil_eof_konumu sil_hazirlik_tekrar sil_hata_kapanisi)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 endforeach()
