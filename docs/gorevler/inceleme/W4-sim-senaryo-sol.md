@@ -1,0 +1,32 @@
+# sol incelemesi: sunucu
+
+## Hüküm
+
+**Düzeltme gerekli: 3 kritik, 2 önemli bulgu.** İnceleme yalnız `9ca0312 → 31357e9` değişikliklerini kapsar.
+
+Dosya değiştirilmedi; derleme ve test çalıştırılmadı. Sayısal sonuçlar kaynak koddan bağımsız olarak yeniden hesaplandı. Windows C++20 `/W4 /WX` derlemesi doğrulanmadı.
+
+## Düzeltilmesi gerekenler
+
+| # | Yer | Sorun | Doğrusu / önerilen düzeltme | Önem |
+|---|---|---|---|---|
+| 1 | `sim/sunucu/src/main.cpp:121`; `sim/sunucu/src/sunucu.cpp:1076`; `sim/sunucu/src/senaryo_plani.cpp:425` | **Dosyalı koşuda `--acil` sessizce yok sayılıyor.** Örneğin `--senaryo scenarios/z1.toml --acil 12` kabul ediliyor; ancak bu seçenek yalnız `yerlesik_plan` tarafından olaya çevriliyor. Dosya seçilince beklenen acil durdurma uygulanmıyor. `--acil-kalk` da aynı durumda. | Dosyalı koşuda bu seçenekleri başlamadan açık kullanım hatasıyla reddet veya tanımlı çelişki kurallarıyla plana ekle. Sessizce atlama. Komut satırından dosyalı koşuya verilen acil durdurmayı sınayan kabul testi ekle. | kritik |
+| 2 | `sim/sunucu/src/sunucu.cpp:642`, `sim/sunucu/src/sunucu.cpp:649`, `sim/sunucu/src/sunucu.cpp:759` | **Koşullu sensör arızaları tetiklenince daima reddediliyor.** Ön denetim canlı kümeye `arm` yapıp `disarm` ediyor. `SensorKumesi::disarm` kaydı silmiyor; yalnız bitişini değiştiriyor (`sim/sensor/src/sensor_kumesi.cpp:879`). Sonraki `arm`, saklanan aynı kimliği bulup “arıza kimliği tekil değil” diyor (`:857`). Yürütücü bunu ayrıca yanlış biçimde `desteklenmiyor` diye raporluyor. Örneğin koşullu `baro0/ofset` hiç uygulanmaz. | Ön denetimi ayrı, geçici bir sensör kümesinde yap; canlı kümede kimliği tüketme. Koşullu arızanın beklenen sınırda gerçekten ölçümü değiştirdiğini ve süresi sonunda kalktığını sınayan test ekle. A5-K63 korunmalı. | kritik |
+| 3 | `sim/sunucu/src/sunucu.cpp:856` | **A5 `itki_carpani`, sözleşmedeki etkiyi uygulamıyor.** PWM’i süzgeçten önce küçültmek, Tablo 3.10-A’nın “süzgeç ve β sonrası `F_i ← carpan·F_i`; akım arızasız itkiden” tanımına aykırı. Başlangıç/bitiş geçişleri yanlış; yön değiştirmede arızasız koşudan daha büyük mutlak itki bile oluşabiliyor. PWM değişikliği elektrik modelinin gördüğü akımı da değiştiriyor. `test_senaryo.cpp:253` yalnız çarpan listesini sınadığı için bunu yakalamıyor. | Çarpanı fizik modelinde süzgeç ve β sonrasındaki mekanik kuvvete uygula; elektrik hesabını arızasız komut üzerinden koru. Gerekli fizik arayüzü eklenene kadar bu A5 türünü açıkça yürütülemez say. Başlangıç, bitiş, yön değiştirme ve akım davranışını sınayan testler ekle. | kritik |
+| 4 | `sim/sunucu/src/sunucu.cpp:568`, `sim/sunucu/src/sunucu.cpp:610` | **Geçerli senaryonun doğrulama uyarıları kayboluyor.** Rapor yalnız geçersizlik dalında saklanıyor; `senaryo_uyarilari` ise sadece planın yürütme uyarılarını alıyor. Böylece A5-K71’in fiş takılı/pim çıkık başlangıçları ve gevşeten atamalar için ürettiği uyarılar ne `Sonuc`’ta ne komut satırı çıktısında kalıyor. | Geçerli senaryonun doğrulama raporunu da değiştirmeden sakla; doğrulama uyarılarını kaynak ve alan bilgileriyle çıktıya taşı. Gevşek başlangıç durumu ve gevşeten olay içeren senaryoyla denetle. | önemli |
+| 5 | `sim/sunucu/src/main.cpp:219`; `sim/sunucu/src/sunucu.cpp:595` | **Dosyadan seçilen HIL kipinin ölçüm özeti yazılmıyor.** Çalıştırıcı kendi `Ayar` kopyasında kipi dosyadan güncelliyor; `main` ise özgün `a.kip` değerine bakıyor. `--senaryo hil.toml --seri …` kullanımında gerçek koşu HIL olsa da TF, gecikme, yanıt süresi ve evre özetleri atlanıyor. | Etkin kipi `Sonuc` üzerinden döndürüp raporlama kararını ondan ver. Komut satırında `--kip` bulunmayan dosyalı HIL kullanımını sınayan çıktı testi ekle. | önemli |
+
+## Yeniden hesaplananlar
+
+- **Adım sınırı:** `h = 1 250 000 ns`. Başlangıç `ceil(zaman_ns/h)·h` olduğundan `10 000 000 001 ns`, **8001. sınırda**, `10 001 250 000 ns`’de başlar. Beş saniyelik süre **12001. sınırda**, `15 001 250 000 ns`’de biter. Testteki bu beklentiler doğru.
+- **Koşul:** İlk fizik adımının sonunda sağlanan koşul `tetik_b = 1` üretir; olay `1 250 000 ns` sınırında başlar. `t = 0` zamanlı olaylar 0. sınırda işlenir.
+- **Acil durdurma:** `[12 s, 18 s)` aralığı **4800 adım** eder. Bırakış sınırı **14400**, aynı sınırda gönderilen partinin `L_act = 10 ms` sonraki uygulama sınırı **14408**’dir.
+- **İtki karşı örneği:** Depodaki İDA-0 polinomu ve transfer fonksiyonu kullanıldı. Sabit `15,6 V`, tamamen batık itici (`β = 1`), başlangıçta yerleşmiş `1700 µs` komutundan `1300 µs`’ye geçiş ve aynı anda `carpan = 0,4` varsayıldı. Mevcut dönüşüm yeni PWM’i **1379 µs** yapıyor. Geçişten **18,75 ms** sonra arızasız süzgeç çıkışı yaklaşık **−1,17245 N**; A5’in istediği **−0,46898 N**, mevcut yolun sonucu ise **+6,26570 N**. Bunlar model hesabıdır, donanım ölçümü değildir. Hesap küçük adımlı integrasyon ve matris üsteli serisiyle ayrı ayrı aynı sonucu verdi. Kullanılan yuvarlama davranışı [Microsoft’un `round` belgesinden](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/round-roundf-roundl?view=msvc-170) canlı denetlendi.
+
+## İskelete ya da diğer bölümlere notlar
+
+- İncelenen sunucu çağrı yolunda `emniyet_baslangic`, taşıma açılmadan önce çağrılıyor. İlk fizik sınırından sonra `sinir_var` koruması yeniden başlangıç atamasını engelliyor. Bu yolda A1-K85/K106 veya W4-K12’yi dolanan ek bir gevşetme yolu saptanmadı.
+- Senaryo atamaları mevcut köprü sırasına giriyor. Revizyon artınca gevşetmeler reddediliyor; planın `basladi` işareti ve bekleyen atamaların temizlenmesi yeniden denemeyi önlüyor.
+- `z1_esitligi`, CSV dizgilerini gerçekten bayt bayt karşılaştırıyor (`test_senaryo.cpp:153`, `:165`). GUIDED_SP’siz karşılık, `y.z1.guided_sp = false` ile yerleşik plan üretilerek kuruluyor; bu, W4-K17’ye uygun. Karşılaştırma ham fizik ve sensör izlerinin bit eşitliğini ayrıca kanıtlamıyor.
+- Görev yüklemesinin ret sonrası çalıştırmayı sürdürmesi W4-K17’de açıkça kabul edilmiş. Mevcut test, başarılı ACK zincirini bütünüyle doğrulamıyor: alan taşıma testi bekleme yolunu devre dışı bırakıyor; normal yol bugünkü çekirdekte ilk `UNSUPPORTED` sonucunda duruyor.
+- **#1 acil durdurma girdisinin uygulanmasına dokunuyor; düzeltmesi K20 kapsamındaki dar ikinci emniyet incelemesine girmeli.**

@@ -168,6 +168,8 @@ struct Dunya::Ic {
     std::array<std::int64_t, kIticiSayisi> notr_basi{};
     std::array<double, kIticiSayisi> pwm{};  // kanal sırası
     std::vector<std::pair<std::uint64_t, std::array<double, kIticiSayisi>>> bekleyen;
+    std::array<double, kIticiSayisi> carpan{};  // itki çarpanı, kanal sırası (W4-K20)
+    std::vector<std::pair<std::uint64_t, std::array<double, kIticiSayisi>>> bekleyen_carpan;
     DurumAnlik anlik;
     bool kuruldu = false;
     bool hatali = false;
@@ -479,6 +481,8 @@ std::string Dunya::Ic::kur(const AracParametreleri& a, const OrtamParametreleri&
     adim = 0;
     pwm.fill(static_cast<double>(a.esc.pwm_notr_us));
     bekleyen.clear();
+    carpan.fill(1.0);
+    bekleyen_carpan.clear();
     q_sapma = 0;
     hatali = false;
     // Açılışta komut nötrdür (t = 0'dan beri); başlatma süresi 0 ise ESC hemen hazırdır.
@@ -606,13 +610,13 @@ void Dunya::Ic::turev(const X& xs, const Y& y, X& d, Cikti* c) const
     geri_getirici(p, R, f, mo, &bs);
     const double s = std::clamp(bs.hacim / tam_hacim, 0.0, 1.0);
 
-    // İticiler: F_i = β(h_i/R) · K(s) F_ss,i
+    // İticiler: F_i = c_i · β(h_i/R) · K(s) F_ss,i (c_i: itki çarpanı, W4-K20; arızasızda 1)
     V f_it{}, m_it{};
     for (int i = 0; i < kIticiSayisi; ++i) {
         const auto u = static_cast<std::size_t>(i);
         const double derinlik = p.z + R.m[2][0] * r_i[u].x + R.m[2][1] * r_i[u].y + R.m[2][2] * r_i[u].z;
         const double beta = model.havalanma(derinlik);
-        const double F = beta * y[u];
+        const double F = beta * y[u] * carpan[static_cast<std::size_t>(kanal[u])];
         f_it += F * e_i[u];
         m_it += F * rxe_i[u];
         if (c != nullptr) {
@@ -819,6 +823,10 @@ AdimDurumu Dunya::adim()
         d.pwm = d.bekleyen.front().second;
         d.bekleyen.erase(d.bekleyen.begin());
     }
+    while (!d.bekleyen_carpan.empty() && d.bekleyen_carpan.front().first <= d.adim) {
+        d.carpan = d.bekleyen_carpan.front().second;
+        d.bekleyen_carpan.erase(d.bekleyen_carpan.begin());
+    }
     d.esc_guncelle();
     const Ic::Girdi gi = d.girdi_kur();
 
@@ -894,6 +902,27 @@ bool Dunya::itici_komutu_ver(std::uint64_t adim_no, const std::array<double, kIt
         it->second = pwm_us;
     } else {
         d.bekleyen.insert(it, {adim_no, pwm_us});
+    }
+    return true;
+}
+
+bool Dunya::itki_carpani_ver(std::uint64_t adim_no, const std::array<double, kIticiSayisi>& carpan)
+{
+    Ic& d = *ic_;
+    if (!d.kuruldu || adim_no < d.adim) {
+        return false;
+    }
+    for (double c : carpan) {
+        if (!(c >= 0.0 && c <= 1.0)) {
+            return false;
+        }
+    }
+    auto it = std::lower_bound(d.bekleyen_carpan.begin(), d.bekleyen_carpan.end(), adim_no,
+                               [](const auto& e, std::uint64_t a) { return e.first < a; });
+    if (it != d.bekleyen_carpan.end() && it->first == adim_no) {
+        it->second = carpan;
+    } else {
+        d.bekleyen_carpan.insert(it, {adim_no, carpan});
     }
     return true;
 }

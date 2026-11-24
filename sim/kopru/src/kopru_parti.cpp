@@ -296,7 +296,11 @@ void Kopru::Ic::pencere_ac(std::int64_t t_onceki)
             toplu.pop_front();
             continue;
         }
-        const std::int64_t boy = k.msgid == MAVLINK_MSG_ID_IDA_CMD_GUIDED ? 56 : k.msgid == MAVLINK_MSG_ID_IDA_CMD_FC ? 29 : k.msgid == MAVLINK_MSG_ID_IDA_CMD_PARAM_SET ? 26 : 22;
+        const std::int64_t boy = k.msgid == MAVLINK_MSG_ID_IDA_CMD_GUIDED          ? 56
+                                 : k.msgid == MAVLINK_MSG_ID_IDA_CMD_MISSION_ITEM ? 59
+                                 : k.msgid == MAVLINK_MSG_ID_IDA_CMD_FC           ? 29
+                                 : k.msgid == MAVLINK_MSG_ID_IDA_CMD_PARAM_SET    ? 26
+                                                                                  : 22;
         if (kredi < boy) {
             break;
         }
@@ -607,6 +611,10 @@ std::size_t Kopru::Ic::komut_yaz(Komut& k)
         k.fc.sess = sess_;
         cerceve(k.msgid, &k.fc, sizeof k.fc, &n);
         break;
+    case MAVLINK_MSG_ID_IDA_CMD_MISSION_ITEM:
+        k.gorev.sess = sess_;
+        cerceve(k.msgid, &k.gorev, sizeof k.gorev, &n);
+        break;
     default:
         return 0;
     }
@@ -643,7 +651,7 @@ std::uint32_t Kopru::Ic::komut_ekle(Komut k)
     if (c == 0u) {
         c = 1u;
     }
-    k.basit.cmd_id = k.guided.cmd_id = k.param.cmd_id = k.fc.cmd_id = k.cmd_id;
+    k.basit.cmd_id = k.guided.cmd_id = k.param.cmd_id = k.fc.cmd_id = k.gorev.cmd_id = k.cmd_id;
     if (durum != OturumDurumu::kosuyor) {
         yerel_sonuc(k.cmd_id, static_cast<std::uint8_t>(IDAW_ACK_REJECTED),
                     static_cast<std::uint16_t>(IDAW_REASON_LINK_SESSION_END));
@@ -712,6 +720,26 @@ std::uint32_t Kopru::komut_guided(const GuidedHedef& h, std::int64_t t_ns, std::
     k.guided.yaw = h.yaw;
     k.guided.yaw_rate = h.yaw_rate;
     k.guided.source = kaynak;
+    return ic_->komut_ekle(k);
+}
+
+std::uint32_t Kopru::komut_gorev_ogesi(const GorevOgesi& g, std::int64_t t_ns, std::uint8_t kaynak)
+{
+    Komut k;
+    k.msgid = MAVLINK_MSG_ID_IDA_CMD_MISSION_ITEM;
+    k.t_hazir = t_ns;   // nötr sınıf (A1 Tablo 3.6): toplu
+    k.gorev.index = g.index;
+    k.gorev.item_type = g.item_type;
+    k.gorev.frame = g.frame;
+    for (std::size_t j = 0; j < 4; ++j) {
+        k.gorev.p[j] = g.p[j];
+    }
+    k.gorev.lat_e7 = g.lat_e7;
+    k.gorev.lon_e7 = g.lon_e7;
+    k.gorev.north_m = g.north_m;
+    k.gorev.east_m = g.east_m;
+    k.gorev.depth = g.depth;
+    k.gorev.source = kaynak;
     return ic_->komut_ekle(k);
 }
 

@@ -22,8 +22,14 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
+
+namespace ida::senaryo {
+class DosyaKaynagi;
+}
 
 namespace ida::sunucu {
 
@@ -51,6 +57,7 @@ struct Z1 {
     double ariza_carpani = 0.4;
     double hb_ilk_s = 0.5;          // yer istasyonu canlılığı 1 Hz (A1-K70)
     double t_hb_kes_s = -1.0;
+    bool guided_sp = true;          // yalnız sınama: GUIDED_SP adımları (A5'te karşılığı yok)
 };
 
 struct Ayar {
@@ -60,10 +67,24 @@ struct Ayar {
     std::string sil_yolu;           // tcp: ida_sil programı (boşsa dışarıdan bağlanılması beklenir)
     std::string sil_depo;           // tcp + sil_yolu: koşucunun --depo yolu (boşsa bellek)
     std::string seri;               // seri: aygıt yolu
-    std::string senaryo = "z1";     // z1 | bos
+    std::string senaryo = "z1";     // yerleşik: z1 | bos (senaryo_dosyasi boşken)
+    // A5 senaryo dosyası (W4-sim-senaryo): verilirse kurulum ve zaman çizelgesi dosyadan
+    // (çözümleyici `ida_senaryo`); yol depo köküne göre göreli. Kip, süre ve tohum dosyadandır;
+    // komut satırında ayrıca verilen ve dosyayla çelişen kip, ya da verilen tohum/süre hatadır.
+    std::string senaryo_dosyasi;
+    std::string depo_koku = ".";
+    std::shared_ptr<const senaryo::DosyaKaynagi> senaryo_kaynagi;   // sınama: bellekteki dosyalar
+    bool kip_verildi = false, karsi_verildi = false, tohum_verildi = false, sure_verildi = false;
+    // Yalnız yerleşik senaryoda anlamı olan seçeneklerin verildiği (değerden ve yinelemeden
+    // bağımsız kalıcı bayraklar; EMNİYET, W4-sim-senaryo sol #1 ve dar denetimi).
+    bool ariza_verildi = false;      // --ariza (yalnız yerleşik z1)
+    bool acil_verildi = false;       // --acil
+    bool acil_kalk_verildi = false;  // --acil-kalk
     std::uint64_t tohum = 1;        // A5 rastgelelik.ana_tohum (sensörler, A1-K114)
     double sure_s = 90.0;
     Z1 z1{};
+    // Yalnız yerleşik senaryoda (EMNİYET, W4-sim-senaryo sol #1): senaryo dosyasıyla birlikte
+    // verilirse başlamadan kullanım hatasıdır (davranış özetine girmeyen emniyet olayı olmaz).
     double acil_durdurma_s = -1.0;  // senaryo: sanal acil durdurma basılır (< 0: yok)
     double acil_kalkar_s = -1.0;    // senaryo: acil durdurma kalkar
     std::string csv_yolu;           // boşsa dosya yazılmaz
@@ -79,7 +100,22 @@ struct Ayar {
     // Yalnız sınama (sol #13): ic kipinde karşı tarafın çekirdek çağrısı girdileri; tcp kipinde
     // dinleme başlayınca port ve karşı tarafın A1 tohumu (dışarıdan koşucu başlatmak için).
     std::function<void(int tur, const ida_in_t& girdi)> ic_cagri_kancasi;
+    std::function<void(int tur, const ida_in_t& girdi, ida_out_t& cikti)> ic_cikti_kancasi;
     std::function<void(std::uint16_t port, std::uint64_t a1_tohum)> tcp_hazir;
+    // Yalnız sınama (W4-sim-senaryo): her fizik sınırında fiziğe verilen darbe genişlikleri
+    // (acil durdurma engeli ve itici arızasından sonra) ve sensör kümesinin teslim ettiği kayıtlar.
+    struct SinirGozlemi {
+        std::uint64_t b = 0;
+        double derinlik = 0.0;                 // yer gerçeği O_b derinliği, sınır b'deki durum
+        std::array<double, 8> pwm{};           // fiziğe verilen
+        std::array<double, 8> itici_carpani{}; // etkin itici arızalarının çarpımı (1: arıza yok)
+        bool acil_durdurma = false;
+    };
+    std::function<void(const SinirGozlemi&)> sinir_kancasi;
+    std::function<void(const sensor::Olcum& o)> olcum_kancasi;
+    // Yalnız sınama: görev iletileri sonuç beklenmeden (sınır başına bir) gönderilir; köprünün ve
+    // kartın dönüştürücüsünün alanları taşıdığını sınamak için (çekirdek görevi desteklemese de).
+    bool gorev_beklemeden = false;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -108,6 +144,7 @@ struct Satir {
     std::uint8_t fc_state = 0;                // kartın IDA_FC_STATUS'u (son alınan; gözlem)
     std::uint32_t fc_inhibit = 0;
     std::uint8_t sim_izin = 0;                // sim'in yetkili izinleri: bit 0 tüp 0, bit 1 tüp 1
+    std::array<double, 8> itki_carpani{};     // fizikteki itici arızası çarpanı (W4-K20; CSV'ye yazılmaz)
 };
 
 // HIL zamanlama ölçümü (duvar saati; bu makinedeki ölçüm).
@@ -130,9 +167,58 @@ struct ZamanOlcumu {
     std::vector<std::int64_t> sira_boslugu_t_ns;   // oturum içi ilk üç sıra boşluğunun sim zamanı
 };
 
+// A5 §3.15 kayıtları (taşıyıcıları A3/A6'nındır; burada Sonuc'ta tutulur).
+struct OlaySonucu {
+    std::string kimlik;
+    std::string sonuc;               // uygulandi | reddedildi | uygulanmadi
+    std::int64_t t_ns = -1;          // uygulandığı/reddedildiği sınır; uygulanmadi'da çalıştırma sonu
+    std::string neden;               // gevsetme_reddedildi, desteklenmiyor, hedef_yok, kosul_saglanmadi
+};
+struct AtamaCeliskisi {
+    std::int64_t t_ns = 0;
+    std::string alan;
+    std::vector<bool> degerler;
+    std::vector<std::string> olay_kimlikleri;
+    bool uygulanan_deger = false;
+};
+struct GevsetmeReddi {
+    std::int64_t t_ns = 0;
+    std::string olay_kimligi;
+    std::string alan;
+    bool istenen_deger = false;
+    std::uint32_t revizyon_adim_basi = 0;
+    std::uint32_t revizyon_adim_3_sonu = 0;
+};
+
+enum class HataTuru { yok, calisma, kullanim, senaryo_gecersiz, senaryo_yurutulemez };
+
+// Doğrulama raporunun bir bulgusu (A5 §3.14; geçerli senaryonun uyarıları dahil, ör. A5-K71).
+struct DogrulamaBulgusu {
+    std::string kural;
+    std::string onem;    // hata | uyari
+    std::string dosya;
+    std::string yol;
+    std::int64_t satir = -1;   // −1: yok
+    std::string ileti;
+};
+
 struct Sonuc {
     bool tamam = false;
     std::string hata;
+    HataTuru hata_turu = HataTuru::yok;
+    // Senaryo dosyası (W4-sim-senaryo).
+    std::string dogrulama_raporu;                        // A5 §3.14 JSON, değiştirilmeden (geçerli ya da geçersiz)
+    std::vector<DogrulamaBulgusu> dogrulama_bulgulari;   // aynı raporun bulguları (uyarılar dahil)
+    Kip kip = Kip::sil;                                  // etkin kip (dosyadan seçilebilir; sol #5)
+    std::string davranis_ozeti;                          // A5-K17
+    std::map<std::string, std::string> kaynak_ozetleri;  // dosya → SHA-256
+    std::vector<std::string> senaryo_uyarilari;
+    std::vector<OlaySonucu> olay_sonuclari;
+    std::vector<AtamaCeliskisi> atama_celiskileri;
+    std::vector<GevsetmeReddi> gevsetme_retleri;
+    std::string gorev_durumu = "yok";                    // yok | tamamlandi | reddedildi | bitmedi | gonderildi
+    int gorev_basarisiz_adim = -1;                       // A3 mission_upload `adim` (0'dan)
+    int gorev_ack = -1, gorev_neden = -1;                // başarısız adımın sonucu (IDAW_ACK, IDAW_REASON)
     std::vector<Satir> satirlar;
     std::string csv;
     kopru::Sayaclar sayac;

@@ -134,6 +134,7 @@ struct Sayaclar {
     // sonradan gelirse sira_disi, gelmeden pencereden çıkarsa kayip. Yeni oturumda sıfırlanır.
     std::uint64_t rx_sira_disi = 0, rx_kayip = 0;
     std::uint64_t estop_iptal = 0;              // W4-K3: acil durdurmayla iptal edilen komut ve yuvalar
+    std::uint64_t gevsetme_reddedildi = 0;      // A5-K63: reddedilen gevşetme (sınır başına bir)
     std::uint64_t emniyet_rev_eslesmedi = 0;     // W4-K12: uygun revizyon bulunamadı
     std::uint64_t emniyet_rev_duzeltme = 0;      // W4-K12, W4-K15 (5): revizyonu kaydınkinden farklı seçilen emniyet örneği
     std::uint64_t gecersiz_ornek = 0;           // VALID = 0 gönderilen sensör üyesi (çekirdek reddeder)
@@ -272,6 +273,25 @@ struct SinirSonucu {
     bool yuva_uygulandi = false;      // bu sınırda bir yuva uygulandı
     bool yuva_kacirildi = false;      // bu sınırda bir yuva kaçırıldı (A1-K75)
     std::uint32_t yuva_seq = 0;       // bu sınırın yuvası (varsa)
+    // Senaryo zaman çizelgesi (A5-K63, §3.15 `gevsetme_reddedildi`): bu sınırın gevşeten
+    // atamaları revizyon 1–3. adımlarda arttığı için reddedildi; adım başı ve 3. adım sonu
+    // revizyonları.
+    bool gevsetme_reddedildi = false;
+    std::uint32_t rev_adim_basi = 0;
+    std::uint32_t rev_adim3_sonu = 0;
+};
+
+// Görev öğesi (A1 Tablo 3.6a; A5-K55): IDA_CMD_MISSION_ITEM alanları.
+struct GorevOgesi {
+    std::uint16_t index = 0;
+    std::uint8_t item_type = 0;      // IDAW_MI_TYPE
+    std::uint8_t frame = 0;          // IDAW_MI_FRAME
+    std::array<float, 4> p{};
+    std::int32_t lat_e7 = 0;
+    std::int32_t lon_e7 = 0;
+    float north_m = 0.0F;
+    float east_m = 0.0F;
+    float depth = 0.0F;
 };
 
 class Kopru {
@@ -335,6 +355,10 @@ public:
 
     // ---- Emniyet (iskelet §3.2, §5) ----
     void emniyet_ata(const EmniyetAtama& a);
+    // Senaryonun başlangıç emniyet durumu (A5-K86, K87): yalnız ilk fizik sınırından önce;
+    // revizyon 1 kalır ve yetkili geçmişin ilk kaydı bu durumla kurulur. false: geç çağrı.
+    bool emniyet_baslangic(bool acil_durdurma, const std::array<bool, 2>& fis, const std::array<bool, 2>& pim,
+                           const std::array<bool, 2>& dolu);
     sensor::DisDurum dis_durum() const;
     bool acil_durdurma() const;
     bool tup_dolu(int tup) const;
@@ -345,6 +369,8 @@ public:
     std::uint32_t komut_basit(std::uint8_t type, std::uint16_t arg, std::int64_t t_ns,
                               std::uint8_t kaynak = 255);
     std::uint32_t komut_guided(const GuidedHedef& h, std::int64_t t_ns, std::uint8_t kaynak = 255);
+    // Görev yüklemesinin öğesi (A1-K69; toplu sınıf). MISSION_BEGIN/END komut_basit'le gider.
+    std::uint32_t komut_gorev_ogesi(const GorevOgesi& g, std::int64_t t_ns, std::uint8_t kaynak = 255);
     std::uint32_t komut_param_set(std::uint16_t param_id, std::uint8_t param_type,
                                   std::uint32_t value_bits, std::int64_t t_ns,
                                   std::uint8_t kaynak = 250);
