@@ -53,6 +53,7 @@ add_executable(ida_kopru_test
   test/test_emniyet2.cpp
   test/test_tasima.cpp
   test/test_operator.cpp
+  test/test_duran.cpp   # W4-duraklat
   test/test_sonar.cpp)   # W4-bagla-sonar
 target_include_directories(ida_kopru_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/test")
 target_link_libraries(ida_kopru_test PRIVATE ida_kopru_karsi)
@@ -121,7 +122,15 @@ set(_ida_kopru_testleri
   seri_cikis_bosalt  # W4-K28 sol-3 #3 EMNİYET: seri gönderim kuyruğu son tarihle boşaltılır
   operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
   operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
-  operator_artimli  # W4-K27 (1) EMNİYET: duraklatmada artımlı emniyet işlemi
+  duran_operator_basili_kalir  # W4-duraklat EMNİYET: sol-1 #1, duran kip aynı sinir_isle
+  duran_bas_birak  # W4-duraklat EMNİYET: W4-K3, aynı turda kısıtlayan önce
+  duran_oturum_sonu  # W4-duraklat EMNİYET: sol-2 #3, HIL oturum sonu duran turda
+  duran_kapanis_esz  # W4-duraklat EMNİYET: sol-2 #3, SAFETY_CLOSE ve eşzamansız çıktı
+  duran_daraltici_tel  # W4-duraklat EMNİYET: A1-K41, daraltıcı tele çıkmaz, revizyon hemen
+  duran_esz_sinirli  # W4-duraklat: sol-2 #4, ilk TF öncesi duran kipte bellek sınırlı
+  gec_kapanis_calisirken  # W4-K30 (2) EMNİYET: geç SAFETY_CLOSE çalışırken uygulanır
+  duran_gec_kapanis_sim  # W4-K30 (2) EMNİYET: duran kipte sim zamanı sınırını aşan SAFETY_CLOSE
+  duran_gec_kapanis_duvar  # W4-K30 (2) EMNİYET: uzun HIL duraklatmasında ızgara SAFETY_CLOSE
   esz_sinirli  # W4-K27 (3): bekleyen eşzamansız çıktı sınırlı
   esz_ilk_parti_oncesi  # W4-K28 (3) EMNİYET: ilk parti öncesi muafiyet belleği sabit
   sonar_parcalama  # W4-bagla-sonar kabul 4: A1-K49 parçalama, parti bütçesi, kredi

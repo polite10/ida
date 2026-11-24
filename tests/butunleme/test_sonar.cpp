@@ -872,7 +872,9 @@ int test_hil_olcum(int ornek)
     const Gozlem g = gozle(a, false);
     const sunucu::Sonuc& r = g.s;
     dogrula(r.tamam && r.sonar_acik, "HIL 1x (sözde uçbirim) sonar koşusu tamam " + r.hata);
-    dogrula(r.zaman.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + s(r.zaman.tf_sayisi) + ")");
+    // ZAMANLAMA (W4-K24, K29): 60 s'deki TF sayısı duvar saatine bağlıdır; ölçüt değilse yalnız ölçüm.
+    dogrula(ida::test::zamanlama(r.zaman.tf_sayisi >= 11'990u, "sonar_hil_olcum.tf_sayisi", "60 s'de " + std::to_string(r.zaman.tf_sayisi) + " TF (≥ 11 990; ≈ 12 000)"),
+            "60 s'de ≈ 12 000 TF (zamanlama)");
     const kopru::Sayaclar& c = r.sayac;
     dogrula(c.ping360_satir > 0u && r.sonar_ping1d > 0u, "Ping360 satırı ve Ping1D gitti");
     dogrula(c.parti_bayt_en_buyuk <= 1200u && c.pencere_tasma == 0u, "parti bütçesi (en büyük " + s(c.parti_bayt_en_buyuk) + " B)");

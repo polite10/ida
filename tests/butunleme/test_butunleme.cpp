@@ -662,7 +662,9 @@ int test_hil_pty()
                     static_cast<unsigned long long>(e.adim), e.out_seq, static_cast<unsigned>(e.act_flags),
                     e.onceki_out_seq, e.ilk_yanit_alindi ? 1 : 0);
     }
-    dogrula(z.tf_sayisi >= 11'990u, "60 s'de ≈ 12 000 TF (" + std::to_string(z.tf_sayisi) + ")");
+    // ZAMANLAMA (W4-K24, K29): 60 s'deki TF sayısı duvar saatine bağlıdır; ölçüt değilse yalnız ölçüm.
+    dogrula(ida::test::zamanlama(z.tf_sayisi >= 11'990u, "hil_pty.tf_sayisi", "60 s'de " + std::to_string(z.tf_sayisi) + " TF (≥ 11 990; ≈ 12 000)"),
+            "60 s'de ≈ 12 000 TF (zamanlama)");
     dogrula(s.sayac.alan_ret == 0u && s.sayac.bag_ret == 0u, "Tablo 4.6 retleri yok");
     return 0;
 }
@@ -736,6 +738,7 @@ int sil_belirlenim_testi(const std::string& ad, int argc, char** argv);   // tes
 int sil_alim_testi(const std::string& ad, int argc, char** argv);   // test_sil_alim.cpp
 int a3_testi(const std::string& ad, int argc, char** argv);   // test_a3.cpp (W4-bagla-a3)
 int sonar_testi(const std::string& ad, int argc, char** argv);   // test_sonar.cpp (W4-bagla-sonar)
+int duraklat_testi(const std::string& ad, int argc, char** argv);   // test_duraklat.cpp (W4-duraklat)
 int gorev_sil_testi(const std::string& ad, int argc, char** argv);   // test_gorev_sil.cpp (W5-gorev-yurutucu)
 
 int main(int argc, char** argv)
@@ -762,6 +765,10 @@ int main(int argc, char** argv)
         return r == 0 ? 0 : 1;
     }
     if (const int r = sonar_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = duraklat_testi(ad, argc, argv); r >= 0) {
         std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
         return r == 0 ? 0 : 1;
     }

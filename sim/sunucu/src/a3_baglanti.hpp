@@ -40,14 +40,10 @@ namespace ida::sunucu {
 namespace a3b {
 
 // Tablo 4.7a: komutun bu durumda geçerli olup olmadığı (izleme ve tekrar kipleri bu dilimde yok).
-// W4-K28 (1): duraklatma bu dilimde kapalıdır; `duraklat`, `surdur` ve `adimla` hiçbir durumda
-// geçerli değildir (komut girişinde `gecersiz_durum`), `duraklatildi` durumuna girilmez.
+// W4-duraklat: `duraklat` kosuyor'dan, `surdur` ve `adimla` duraklatildi'dan; kip kuralları (Tablo
+// 4.7b: HIL'de adimla ve hiz `kipte_gecersiz`, duraklat `gecersizligi_onayla` ister) ayrıca.
 bool gecis_gecerli(a3::CalistirmaDurumu d, a3::KomutTuru t);
-bool duraklatma_mi(a3::KomutTuru t);   // duraklat, surdur, adimla
-inline constexpr const char* kDuraklatmaYokIleti =
-    "bu sürümde desteklenmiyor (duraklatma sonraki dilimde: W4-duraklat)";
-inline constexpr const char* kDuraklatmaYokAyrinti = "{\"desteklenmiyor\":\"duraklatma\",\"dilim\":\"W4-duraklat\"}";
-bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor (duraklatildi bu dilimde erişilemez)
+bool canli(a3::CalistirmaDurumu d);   // hazirlaniyor, kosuyor, duraklatildi (A3-K91)
 const char* durum_adi(a3::CalistirmaDurumu d);
 bool calistirma_mi(a3::KomutTuru t);
 
@@ -185,7 +181,9 @@ public:
     // tutar. Dünya, koşu dışındaki bir iç geçişte (hazırlık tamamlandı → kosuyor) bu kilidi alıp son
     // bir çekiş yapar ve yeni görüntüyü yazar: eski görüntüyle denetlenmiş her istek ya bu çekişte
     // alınır ya da yeni görüntüyle denetlenir (iç geçiş kabul edilmiş isteği bayatlatamaz). Sınır
-    // döngüsünde alınmaz (W4-K27 (5)).
+    // döngüsünde alınmaz (W4-K27 (5)); tek istisna SIL'de `adimla`'nın iç geçişidir (adımlama bitti →
+    // duraklatildi; mimar kararı, W4-duraklat düzeltme turu): yalnız SIL'de, kısa süre ve sim zamanı
+    // durmuşken alınır (HIL döngüsünde hiçbir zaman).
     std::unique_lock<std::mutex> gecis_kilidi() { return std::unique_lock<std::mutex>(uretici_m_); }
 
 private:

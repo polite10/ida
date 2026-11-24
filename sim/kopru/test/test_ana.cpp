@@ -64,7 +64,15 @@ int test_pty_tasima();
 int test_seri_cikis_bosalt();
 int test_operator_emniyet();
 int test_operator_ve_senaryo();
-int test_operator_artimli();
+int test_duran_operator_basili_kalir();
+int test_duran_bas_birak();
+int test_duran_oturum_sonu();
+int test_duran_kapanis_esz();
+int test_duran_daraltici_tel();
+int test_duran_esz_sinirli();
+int test_gec_kapanis_calisirken();
+int test_duran_gec_kapanis_sim();
+int test_duran_gec_kapanis_duvar();
 int test_esz_sinirli();
 int test_esz_ilk_parti_oncesi();
 int test_sonar_parcalama();
@@ -144,7 +152,15 @@ const Test kTestler[] = {
     {"seri_cikis_bosalt", test_seri_cikis_bosalt},
     {"operator_emniyet", test_operator_emniyet},
     {"operator_ve_senaryo", test_operator_ve_senaryo},
-    {"operator_artimli", test_operator_artimli},
+    {"duran_operator_basili_kalir", test_duran_operator_basili_kalir},
+    {"duran_bas_birak", test_duran_bas_birak},
+    {"duran_oturum_sonu", test_duran_oturum_sonu},
+    {"duran_kapanis_esz", test_duran_kapanis_esz},
+    {"duran_daraltici_tel", test_duran_daraltici_tel},
+    {"duran_esz_sinirli", test_duran_esz_sinirli},
+    {"gec_kapanis_calisirken", test_gec_kapanis_calisirken},
+    {"duran_gec_kapanis_sim", test_duran_gec_kapanis_sim},
+    {"duran_gec_kapanis_duvar", test_duran_gec_kapanis_duvar},
     {"esz_sinirli", test_esz_sinirli},
     {"esz_ilk_parti_oncesi", test_esz_ilk_parti_oncesi},
     {"sonar_parcalama", test_sonar_parcalama},

@@ -201,7 +201,7 @@ int test_arguman_surec(const char* kendi)
 }  // namespace
 
 int test_a3_kesim();   // test_a3_alici.cpp (W4-K27 (2))
-int test_a3_duraklatma_kapali();   // test_a3_alici.cpp (W4-K28 (1))
+int test_a3_duraklatma_tablo();   // test_a3_alici.cpp (W4-duraklat)
 
 int main(int argc, char** argv)
 {
@@ -219,8 +219,8 @@ int main(int argc, char** argv)
         (void)test_arguman_surec(argv[0]);
     } else if (ad == "a3_kesim") {
         g_hata += test_a3_kesim();
-    } else if (ad == "a3_duraklatma_kapali") {
-        g_hata += test_a3_duraklatma_kapali();
+    } else if (ad == "a3_duraklatma_tablo") {
+        g_hata += test_a3_duraklatma_tablo();
     } else {
         std::printf("bilinmeyen test: %s\n", ad.c_str());
         return 2;

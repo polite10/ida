@@ -454,7 +454,21 @@ public:
     bool parti_gonderildi() const;   // bu oturumda en az bir TF gönderildi
 
     // ---- Fizik sınırı (A1-K85) ----
+    // Sınırın iki kipi (W4-duraklat; W4-K28 (2); EMNİYET): ilerleyen kipte (olağan) sınır bir kez
+    // işlenir. Duran kipte (`duraklatma_ayarla(true)`; çalıştırma duraklatılmış) AYNI işlev aynı
+    // sınırla yeniden çağrılır ve A1-K85'in beş adımını aynı sırayla yeniden yürütür (oturum sonu ve
+    // süresi dolan izinler; kısıtlayan komutlar ve yuvalar; kart olayları; gevşetmeler revizyon
+    // kuralıyla; sürekli çıktılar). Duran kipte atlanan yalnız üye gönderimidir (bekleyen daraltıcı
+    // komut tele yazılmaz; A1-K41); ayrıca SAFETY_CLOSE, yuvasının sınırını beklemez (A1-K87, A3-K95:
+    // duraklatılmışken emniyet işlemi beklemez). Sim zamanı ve fizik çağıran tarafta ilerlemez.
+    // SAFETY_CLOSE iki kipte de son geçerlilik denetimine (A1-K84) girmez (W4-K30 (2); EMNİYET).
     SinirSonucu sinir_isle(std::uint64_t adim_no, std::int64_t duvar_ns);
+    // W4-duraklat: duran kip (true) ya da ilerleyen kip (false). Duran kipte `komut_*` ile verilen
+    // daraltıcı komut tele yazılmaz, tür başına bekler (A1-K61 birleştirmesiyle; düşmez) ve revizyonu
+    // yine sonraki sinir_isle'nin 2. adımında artırır (A3-K117 (1)); kip kalkınca ilk sinir_isle'de
+    // kova izin verdikçe yazılır. Toplu komutlar zaten yalnız TF'den sonra yazılır.
+    void duraklatma_ayarla(bool duran);
+    bool duran_kip() const;
     // W4-K26 (1) (EMNİYET, yalnız SIL; HIL'de etkisiz): sınır adim_no'nun yuva beklemesinde
     // işlenen kısıtlayan çerçevelerin (oturum sonu, eşzamansız güvenli çıktı) etkisini fizik o
     // sınırdan ilerlemeden uygular; dönen komut aynı adımın itici girdisidir.
@@ -488,13 +502,8 @@ public:
     std::uint64_t olay_karari_atilan() const;
     // HIL'de kullanıcı duraklatması (A1-K41, K79): çalıştırma zamanlama bakımından geçersiz.
     void hil_duraklatma_bildir();
-    // W4-K27 (1) (EMNİYET): duraklatılmış sınırda operatör emniyet istekleri, sınır yeniden
-    // işlenmeden, yalnız emniyet adımlarıyla (sinir_isle'nin kodu) artımlı işlenir: önce
-    // kısıtlayanlar (koşulsuz, istek başına revizyon), sonra gevşetenler (`beklenen_rev` güncel
-    // revizyona eşitse); acil durdurmanın etkinleşmesi/kalkması W4-K3'e göre işlenir. Senaryo
-    // atamaları ve bekleyen atamalar bu işleme girmez; parti, olay ve sürekli çıktı işlenmez.
-    // `sonuc` en az n öğe; dönüş yazılan sonuç sayısı. Bellek ayırmaz.
-    std::size_t emniyet_artimli(const EmniyetAtama* a, std::size_t n, OperatorSonucu* sonuc);
+    // (W4-bagla-a3'ün ayrı artımlı emniyet işlemi `emniyet_artimli` W4-duraklat'ta kaldırıldı: duran
+    // kip `sinir_isle`'nin kendisidir; iki ayrı karar yolu yoktur.)
     // W4-K27 (3): bekleyen eşzamansız güvenli çıktı sayısı (en çok 1).
     std::size_t esz_bekleyen_sayisi() const;
     // Yürürlükte (nötr dışı olabilecek) itki komutu var mı (A1-K74–K77); oturum sonunda silinmesi

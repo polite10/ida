@@ -47,4 +47,4 @@ add_test(NAME sim.sunucu.arguman_kacisi COMMAND ida_sunucu_test arguman_kacisi)
 add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)
 # W4-K27 (2) (EMNİYET): A3 alıcısının tutarlı kesimi, belirlenimci iş parçacığı sırasıyla.
 add_test(NAME sim.sunucu.a3_kesim COMMAND ida_sunucu_test a3_kesim)
-add_test(NAME sim.sunucu.a3_duraklatma_kapali COMMAND ida_sunucu_test a3_duraklatma_kapali)
+add_test(NAME sim.sunucu.a3_duraklatma_tablo COMMAND ida_sunucu_test a3_duraklatma_tablo)
