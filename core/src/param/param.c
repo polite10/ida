@@ -162,14 +162,14 @@ static void ozet_ondalik(ida_sha256_t *s, uint32_t x)
     }
 }
 
-uint64_t ida_prm_sema_ozeti(void)
+uint64_t ida_prm_sema_ozeti_tablo(const ida_param_desc_t *tablo, uint16_t sayi)
 {
     ida_sha256_t s;
     ida_sha256_basla(&s);
     const uint8_t sekme = (uint8_t)'\t';
     const uint8_t satir = (uint8_t)'\n';
-    for (uint16_t i = 0u; i < (uint16_t)IDA_PRM_SAYI; i++) {
-        const ida_param_desc_t *d = &TABLO[i];
+    for (uint16_t i = 0u; i < sayi; i++) {
+        const ida_param_desc_t *d = &tablo[i];
         ozet_ondalik(&s, d->id);
         ida_sha256_ekle(&s, &sekme, 1u);
         for (uint32_t j = 0u; (j < IDA_PARAM_NAME_MAX) && (d->name[j] != '\0'); j++) {
@@ -189,6 +189,34 @@ uint64_t ida_prm_sema_ozeti(void)
     return sonuc;
 }
 
+uint64_t ida_prm_sema_ozeti(void)
+{
+    return ida_prm_sema_ozeti_tablo(TABLO, (uint16_t)IDA_PRM_SAYI);
+}
+
+void ida_prm_kur(ida_param_t *p)
+{
+    p->sema_ozeti = ida_prm_sema_ozeti(); /* tablo derlemede sabit: çağrı başına yeniden yok */
+    p->sema_ozeti_tumleyen = UINT64_MAX ^ p->sema_ozeti;
+}
+
+bool ida_prm_ozet_al(const ida_param_t *p, uint64_t *ozet)
+{
+    /* Her alan tam bir kez okunur (volatile): denetlenen değer ile kullanılan değer aynıdır. */
+    const volatile uint64_t *o = &p->sema_ozeti;
+    const volatile uint64_t *t = &p->sema_ozeti_tumleyen;
+    const uint64_t okunan = *o;
+    const uint64_t tumleyen = *t;
+    *ozet = okunan;
+    return tumleyen == (UINT64_MAX ^ okunan);
+}
+
+bool ida_prm_tutarli(const ida_param_t *p)
+{
+    uint64_t ozet = 0u;
+    return ida_prm_ozet_al(p, &ozet);
+}
+
 /* ---- Grup denetimleri (A4-K80 md. 8) ----------------------------------------------------- */
 
 uint8_t ida_prm_grup(const ida_prm_kume_t *k)
@@ -202,21 +230,6 @@ uint8_t ida_prm_grup(const ida_prm_kume_t *k)
         return 1u;
     }
     return 0u;
-}
-
-/* ---- CRC-32/ISO-HDLC --------------------------------------------------------------------- */
-
-uint32_t ida_crc32(const uint8_t *veri, uint32_t uzunluk)
-{
-    uint32_t crc = 0xFFFFFFFFu;
-    for (uint32_t i = 0u; i < uzunluk; i++) {
-        crc ^= (uint32_t)veri[i];
-        for (uint32_t b = 0u; b < 8u; b++) {
-            const uint32_t maske = 0u - (crc & 1u);
-            crc = (crc >> 1) ^ (0xEDB88320u & maske);
-        }
-    }
-    return crc ^ 0xFFFFFFFFu;
 }
 
 /* ---- Kodlanmış blok (A4 §3.10) ----------------------------------------------------------- */
@@ -250,7 +263,8 @@ static void yaz32(uint8_t *b, uint32_t x)
     b[3] = (uint8_t)(x >> 24);
 }
 
-uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, ida_prm_kume_t *k)
+uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, uint64_t sema_ozeti,
+                         ida_prm_kume_t *k)
 {
     /* (1) başlık okunabilir, magic, fmt_ver = 1, rsv = 0 */
     if ((blok == NULL) || (uzunluk < IDA_PBLOB_HDR_SIZE)) {
@@ -261,7 +275,7 @@ uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, ida_prm_kume_t *
         return 1u;
     }
     /* (2) şema özeti */
-    if (oku64(&blok[8]) != ida_prm_sema_ozeti()) {
+    if (oku64(&blok[8]) != sema_ozeti) {
         return 2u;
     }
     /* (3) boy */
@@ -313,22 +327,27 @@ uint8_t ida_prm_blok_coz(const uint8_t *blok, uint32_t uzunluk, ida_prm_kume_t *
     return 0u;
 }
 
-uint32_t ida_prm_blok_kodla(const ida_prm_kume_t *k, uint8_t *blok)
+uint32_t ida_prm_blok_kodla(const ida_prm_kume_t *k, uint64_t sema_ozeti, uint8_t *blok)
 {
-    const uint32_t yuk = IDA_PBLOB_REC_SIZE * (uint32_t)IDA_PRM_SAYI;
+    return ida_prm_blok_kodla_tablo(TABLO, (uint16_t)IDA_PRM_SAYI, k->ham, sema_ozeti, blok);
+}
+
+uint32_t ida_prm_blok_kodla_tablo(const ida_param_desc_t *tablo, uint16_t sayi,
+                                  const uint32_t *ham, uint64_t sema_ozeti, uint8_t *blok)
+{
+    const uint32_t yuk = IDA_PBLOB_REC_SIZE * (uint32_t)sayi;
     yaz32(&blok[0], IDA_PBLOB_MAGIC);
     yaz16(&blok[4], IDA_PBLOB_FMT_VER);
     yaz16(&blok[6], 0u);
-    const uint64_t ozet = ida_prm_sema_ozeti();
-    yaz32(&blok[8], (uint32_t)ozet);
-    yaz32(&blok[12], (uint32_t)(ozet >> 32));
+    yaz32(&blok[8], (uint32_t)sema_ozeti);
+    yaz32(&blok[12], (uint32_t)(sema_ozeti >> 32));
     yaz32(&blok[16], yuk);
-    for (uint32_t r = 0u; r < (uint32_t)IDA_PRM_SAYI; r++) {
+    for (uint32_t r = 0u; r < (uint32_t)sayi; r++) {
         uint8_t *kay = &blok[IDA_PBLOB_HDR_SIZE + (r * IDA_PBLOB_REC_SIZE)];
-        yaz16(kay, TABLO[r].id);
-        kay[2] = TABLO[r].type;
+        yaz16(kay, tablo[r].id);
+        kay[2] = tablo[r].type;
         kay[3] = 0u;
-        yaz32(&kay[4], k->ham[r]);
+        yaz32(&kay[4], ham[r]);
     }
     yaz32(&blok[20], ida_crc32(&blok[IDA_PBLOB_HDR_SIZE], yuk));
     return IDA_PBLOB_HDR_SIZE + yuk;

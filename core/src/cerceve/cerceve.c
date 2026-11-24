@@ -43,7 +43,7 @@ static int32_t butunluk(const ida_core_t *c)
     if ((c->koruma_bas != IDA_KORUMA_BAS) || (c->koruma_son != IDA_KORUMA_SON)) {
         return 1;
     }
-    if (c->kurulu_tumleyen != (uint32_t)~c->kurulu) {
+    if ((c->kurulu_tumleyen != (uint32_t)~c->kurulu) || !ida_prm_tutarli(&c->prm)) {
         return 2;
     }
     /* Emniyet/FC alanları (b)'den önceki denetimle aynı; ardından modüllerin kendi
@@ -77,6 +77,23 @@ static int32_t ustune_yazilacak_bozuk(const ida_core_t *c)
 static void gunluk(ida_core_t *c, const ida_log_t *k)
 {
     ida_gun_ekle(&c->gun, k);
+}
+
+/* A4-K89: saptanan bozulmayı (bozuk ≠ 0) çağrının bütünlük sonucuna taşır: core_ok mandallı
+   olarak 0 olur, CORE_INTEGRITY o bozulma için bir kez yazılır. Çağrı başındaki denetim ve
+   çağrı içinde (PARAM_SAVE'in özet denetimi) saptanan bozulma aynı yoldan geçer. */
+static void butunluk_bildir(ida_core_t *c, ida_cagri_t *cg, int32_t bozuk)
+{
+    ida_cerceve_t *k = &c->cer;
+    if ((bozuk != 0) && k->core_ok) {
+        const ida_log_t g = {.t_w = cg->now,
+                             .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
+                             .arg0 = bozuk,
+                             .arg1 = 0};
+        gunluk(c, &g);
+    }
+    cg->core_ok = (bozuk == 0) && k->core_ok;
+    k->core_ok = cg->core_ok;
 }
 
 /* A4-K10: kullanılan now_w = max(önceki, verilen); aralık içi her çağrı izi günceller. */
@@ -144,13 +161,15 @@ ida_rc_t ida_core_init(ida_core_t *c, const ida_init_in_t *in)
     c->koruma_son = IDA_KORUMA_SON;
 
     /* Parametreler (A4-K78, K80): blok yoksa ya da geçersizse derlenmiş varsayılanlar. */
+    ida_prm_kur(&c->prm);
     ida_prm_varsayilan(&c->prm.yururluk);
     uint8_t denetim = 0u;
     if ((in->param_blob != NULL) && (in->param_len > 0u)) {
         if (in->param_len > IDA_PARAM_BLOB_MAX) {
             denetim = 3u;
         } else {
-            denetim = ida_prm_blok_coz(in->param_blob, in->param_len, &c->prm.yururluk);
+            denetim = ida_prm_blok_coz(in->param_blob, in->param_len, c->prm.sema_ozeti,
+                                       &c->prm.yururluk);
         }
         c->prm.param_ok = (denetim == 0u);
     } else {
@@ -487,7 +506,10 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
         .sonuc_indisi = 0u,
         .armed = c->emn.armed};
     pb.k = &kb; /* yerel değişkenin adresi küme ilklendiricisine yazılmaz (MSVC C4221) */
-    ida_prm_cagri_sonu(&c->prm, &pb, out, &k->cnt);
+    const int32_t save_bozuk = ida_prm_cagri_sonu(&c->prm, &pb, out, &k->cnt);
+    if (save_bozuk != 0) {
+        butunluk_bildir(c, cg, save_bozuk); /* aynı çağrının health ve günlüğünde */
+    }
     if (ida_emn_cagri_sonu(&c->emn)) {
         k->cnt.narrow_from_rejected++;
     }
@@ -580,15 +602,7 @@ ida_rc_t ida_cer_cagri(ida_core_t *c, const ida_in_t *in, ida_out_t *out, uint8_
     if (bozuk == 0) {
         bozuk = butunluk(c);
     }
-    cg.core_ok = (bozuk == 0) && k->core_ok;
-    if ((bozuk != 0) && k->core_ok) {
-        const ida_log_t g = {.t_w = cg.now,
-                             .code = (uint16_t)IDA_LOG_CORE_INTEGRITY,
-                             .arg0 = bozuk,
-                             .arg1 = 0};
-        gunluk(c, &g);
-    }
-    k->core_ok = cg.core_ok;
+    butunluk_bildir(c, &cg, bozuk);
 
     cagri_izleri(c, in, &cg);
 

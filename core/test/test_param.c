@@ -491,7 +491,8 @@ static void test_save_ve_k78(void)
     TEST_ASSERT_NOT_NULL(r->save.blob);
     TEST_ASSERT_EQUAL_UINT32(IDA_PRM_BLOB_BOYU, r->save.len);
     ida_prm_kume_t k;
-    TEST_ASSERT_EQUAL_UINT8(0u, ida_prm_blok_coz(r->save.blob, r->save.len, &k)); /* A4-K100 */
+    TEST_ASSERT_EQUAL_UINT8(0u, ida_prm_blok_coz(r->save.blob, r->save.len, ida_prm_sema_ozeti(),
+                                                 &k)); /* A4-K100 */
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_ONE_PER_CALL, sonuc_al(6u)->reason);
     /* Kayıt sürerken (BUSY) PARAM_SAVE: PARAM_BUSY (A4-K82) */
     IN.n_cmds = 0u;
