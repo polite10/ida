@@ -28,6 +28,7 @@ namespace ida::a3 {
 
 using Zaman = std::chrono::steady_clock::time_point;
 using BagId = std::uint64_t;
+enum class KabulKarari : std::uint8_t { kabul, bekle, reddet };
 
 // Mimari seçimleri (A3 §8 md.1; tahmin) ve bu uygulamanın sınırları.
 namespace sinir {
@@ -50,6 +51,12 @@ inline constexpr std::size_t okuma_esigi = std::size_t{4} << 20u;    // çıkı�
 // Bağlantı başına çerçevelenmiş ama sırası gelmemiş HTTP istekleri (bu uygulama; W4-K23 3):
 // aşılırsa bağlantı kapanır.
 inline constexpr std::size_t http_sira = 32;
+inline constexpr std::size_t statik_azami = std::size_t{16} << 20u;  // A3-K11 statik dosya (bu uygulama)
+// Bağlantı başına bekleyen HTTP çıkışının kesin tavanı (W4-K23 3'): sıra yalnız çıkış eşiğinin
+// altındayken işlenir; en büyük tek yanıt statik dosyadır.
+inline constexpr std::size_t http_cikis_tavani = okuma_esigi + statik_azami + (std::size_t{64} << 10u);
+// Kimliği doğrulanmamış bağlantıların bekleyen çıkış toplamı (W4-K23 3''; hedef bilgisayar 8 GB, K16).
+inline constexpr std::size_t dogrulanmamis_cikis_toplami = std::size_t{64} << 20u;
 inline constexpr std::size_t http_sira_bayt = std::size_t{8} << 20u;
 }  // namespace sinir
 
@@ -104,6 +111,8 @@ public:
     std::size_t okuma_butcesi(BagId id) const;
     // Bağlantı sınırı dolu ve kapatılabilecek bağlantı yokken yeni bağlantıya yazılacak 503 yanıtı.
     std::string dolu_yaniti() const;
+    // Dinleyicide bekleyen bir bağlantının bu turda kabul edilip edilmeyeceği (W4-K23 2'').
+    KabulKarari kabul_karari(Zaman simdi) const;
 
 private:
     struct Ic;

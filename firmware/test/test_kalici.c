@@ -239,6 +239,96 @@ static void sayac_kaydi_koy(uint32_t ofs, uint32_t n)
     }
 }
 
+/* CRC-32/ISO-HDLC denetim değeri (tablolu hesap). */
+static void test_crc32_denetim_degeri(void)
+{
+    TEST_ASSERT_EQUAL_HEX32(0xCBF43926u, ida_kal_crc32("123456789", 9u));
+    TEST_ASSERT_EQUAL_HEX32(0x00000000u, ida_kal_crc32("", 0u));
+}
+
+/* Bağımsız bit bit referans (W4-K16 öncesi ida_kal_crc32'nin hesabı). */
+static uint32_t crc32_bit_bit(const uint8_t *b, size_t n)
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0u; i < n; i++) {
+        crc ^= b[i];
+        for (uint32_t j = 0u; j < 8u; j++) {
+            crc = (crc & 1u) != 0u ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+    }
+    return ~crc;
+}
+
+/* W4-z2 sol #4: tablonun 256 girdisinin her biri tek baytlık girdiyle sınanır (bayt b, tabloda
+   ~b dizinini kullanır; tek girdinin bozulması yakalanır); ayrıca uzun ve karışık bir girdi. */
+static void test_crc32_tablo_bit_bit_referansla_ayni(void)
+{
+    for (uint32_t v = 0u; v < 256u; v++) {
+        const uint8_t b = (uint8_t)v;
+        TEST_ASSERT_EQUAL_HEX32_MESSAGE(crc32_bit_bit(&b, 1u), ida_kal_crc32(&b, 1u), "tek bayt");
+    }
+    static uint8_t uzun[1296];
+    for (uint32_t i = 0u; i < sizeof uzun; i++) {
+        uzun[i] = (uint8_t)(i * 151u + (i >> 3));
+    }
+    for (uint32_t n = 0u; n <= sizeof uzun; n += 97u) {
+        TEST_ASSERT_EQUAL_HEX32(crc32_bit_bit(uzun, n), ida_kal_crc32(uzun, n));
+    }
+    TEST_ASSERT_EQUAL_HEX32(crc32_bit_bit(uzun, sizeof uzun), ida_kal_crc32(uzun, sizeof uzun));
+}
+
+/* W4-z2 sol #4 altın veri: W4-K16'dan önceki imajın (origin/main 638cf70, bit bit CRC) yazdığı
+   flash içeriği. Üretim: o commit'teki firmware/app/kalici.c, host'ta bu dosyadaki modelin
+   kesintisiz alt kümesiyle (sil/yaz16/durum, ECC yok) derlendi; boş flash'ta iki kez
+   ida_kal_acilis, ardından ida_kal_kaydet(61 B, b[i] = 0x5A + 13·i, kuşak 9) ve ida_kal_adim ile
+   bitirildi; programlanmış her quad-word (ofset, 16 bayt) yazdırıldı. İki sayaç kaydı (açılış 1
+   ve 2), sayfa 2'de blok başlığı + 61 B blob, sayfa sonunda tamamlanma (CMIT) kaydı. */
+static const struct {
+    uint32_t ofs;
+    uint8_t q[IDA_KAL_QW];
+} eski_imaj[] = {
+    {0x0000u, {0x42, 0x4F, 0x4F, 0x54, 0x01, 0x00, 0x00, 0x00, 0xFE, 0xFF, 0xFF, 0xFF, 0x66, 0x09, 0x9F, 0x08}},
+    {0x0010u, {0x42, 0x4F, 0x4F, 0x54, 0x02, 0x00, 0x00, 0x00, 0xFD, 0xFF, 0xFF, 0xFF, 0x6B, 0xA1, 0xA5, 0x94}},
+    {0x4000u, {0x49, 0x44, 0x50, 0x42, 0x3D, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x3A, 0x1E, 0xF0, 0xC8}},
+    {0x4010u, {0x5A, 0x67, 0x74, 0x81, 0x8E, 0x9B, 0xA8, 0xB5, 0xC2, 0xCF, 0xDC, 0xE9, 0xF6, 0x03, 0x10, 0x1D}},
+    {0x4020u, {0x2A, 0x37, 0x44, 0x51, 0x5E, 0x6B, 0x78, 0x85, 0x92, 0x9F, 0xAC, 0xB9, 0xC6, 0xD3, 0xE0, 0xED}},
+    {0x4030u, {0xFA, 0x07, 0x14, 0x21, 0x2E, 0x3B, 0x48, 0x55, 0x62, 0x6F, 0x7C, 0x89, 0x96, 0xA3, 0xB0, 0xBD}},
+    {0x4040u, {0xCA, 0xD7, 0xE4, 0xF1, 0xFE, 0x0B, 0x18, 0x25, 0x32, 0x3F, 0x4C, 0x59, 0x66, 0xFF, 0xFF, 0xFF}},
+    {0x5FF0u, {0x43, 0x4D, 0x49, 0x54, 0x09, 0x00, 0x00, 0x00, 0xF6, 0xFF, 0xFF, 0xFF, 0x53, 0x53, 0x07, 0x38}},
+};
+
+static void test_eski_imajin_blogu_acilir(void)
+{
+    for (size_t i = 0u; i < sizeof eski_imaj / sizeof eski_imaj[0]; i++) {
+        const uint32_t ofs = eski_imaj[i].ofs;
+        if (sinirda(ofs, IDA_KAL_QW) && ofs <= BELLEK_BAYT - IDA_KAL_QW) {
+            memcpy(&bellek[ofs], eski_imaj[i].q, IDA_KAL_QW);
+            yazildi[ofs / IDA_KAL_QW] = 1u;
+        }
+    }
+    ac();
+    /* Sayaç kayıtlarının CRC'si tutmasaydı sayaç 1'den yeniden başlardı. */
+    TEST_ASSERT_EQUAL_UINT32(3u, k.boot_count);
+    TEST_ASSERT_EQUAL_UINT8(1u, k.boot_count_ok);
+    TEST_ASSERT_EQUAL_INT8(2, k.gecerli_sayfa);
+    TEST_ASSERT_EQUAL_UINT32(61u, k.blok_len);
+    TEST_ASSERT_EQUAL_UINT32(9u, k.blok_gen);
+    TEST_ASSERT_EQUAL_HEX32(0xC8F01E3Au, k.blok_crc); /* eski imajın bit bit hesabı */
+    uint8_t b[61];
+    for (uint32_t i = 0u; i < sizeof b; i++) {
+        b[i] = (uint8_t)(0x5Au + i * 13u);
+    }
+    uint32_t len = 0u;
+    const uint8_t *p = ida_kal_blob(&k, &len);
+    TEST_ASSERT_NOT_NULL(p);
+    if (p == NULL) {
+        return;
+    }
+    TEST_ASSERT_EQUAL_UINT32(sizeof b, len);
+    TEST_ASSERT_EQUAL_MEMORY(b, p, sizeof b);
+    TEST_ASSERT_EQUAL_HEX32(0xC8F01E3Au, ida_kal_crc32(b, sizeof b));
+}
+
 static void test_bos_flash_sayac_artar(void)
 {
     ac();
@@ -705,6 +795,9 @@ static void test_cok_buyuk_ve_flash_hatasi(void)
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_crc32_denetim_degeri);
+    RUN_TEST(test_crc32_tablo_bit_bit_referansla_ayni);
+    RUN_TEST(test_eski_imajin_blogu_acilir);
     RUN_TEST(test_bos_flash_sayac_artar);
     RUN_TEST(test_sayac_sayfa_degisimi);
     RUN_TEST(test_yarim_sayac_kaydi_atlanir);

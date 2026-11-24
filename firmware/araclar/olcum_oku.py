@@ -32,18 +32,37 @@ SINAMA = {"iwdg": 0x49574447, "hata": 0x48415441, "kayit_iwdg": 0x4B495744, "tx_
           "temizle": 0}
 
 
-def duzen():
+def duzen(olcum=False):
+    """Blok düzeni (sözcük adları). olcum=True: fw-measure (IDA_OLCUM) imajı; bloğun sonuna
+    IDA_FW_OLCUM_ALANLARI_OLCUM sözcükleri eklenir (sürüm imajında yoktur)."""
     metin = open(OLCUM_H, encoding="utf-8").read()
     m = re.search(r"#define IDA_FW_OLCUM_ALANLARI\(X, XK\)(.*?)\n/\* clang-format on", metin, re.S)
     if not m:
         raise SystemExit("olcum.h: X-makrosu bulunamadı")
+    govde = m.group(1)
+    if olcum:
+        m2 = re.search(r"#define IDA_FW_OLCUM_ALANLARI_OLCUM\(X\)(.*?)\n/\* clang-format on", metin, re.S)
+        if not m2:
+            raise SystemExit("olcum.h: ölçüm derlemesinin X-makrosu bulunamadı")
+        govde += m2.group(1)
     adlar = []
-    for tur, ad in re.findall(r"\b(XK|X)\((\w+)\)", m.group(1)):
+    for tur, ad in re.findall(r"\b(XK|X)\((\w+)\)", govde):
         if tur == "XK":
             adlar += ["%s[%d]" % (ad, i) for i in range(16)]
         else:
             adlar.append(ad)
     return adlar
+
+
+def olcum_imaji_mi(elf):
+    """fw-measure imajı mı: ida_fw_sinama_komutu yalnız IDA_OLCUM derlemesinde vardır."""
+    return simge(elf, "ida_fw_sinama_komutu") is not None
+
+
+def derleme_denetle(d, olcum):
+    if d["derleme_olcum"] != (1 if olcum else 0):
+        raise SystemExit("derleme_olcum %d, ELF %s imajı gösteriyor (imaj ve ELF aynı mı?)"
+                         % (d["derleme_olcum"], "ölçüm" if olcum else "sürüm"))
 
 
 def arac(*arg):
@@ -177,6 +196,19 @@ def ozet(d):
                   "turu_en_kotu_us": d.get("cagri_turu_en_kotu_us"),
                   "turu_asim_param_save": d.get("cagri_turu_asim_ps"),
                   "turu_param_save_en_kotu_us": d.get("cagri_turu_ps_en_kotu_us")}
+    # W4-K16 (b): PARAM_SAVE'i işleyen son çağrı ve olağan step çağrılarında "çağrı turu − step"
+    # (yalnız fw-measure imajında; sürüm imajının bloğunda bu sözcükler yoktur).
+    if "ps_sayi" in d:
+        n = d["ol_fark_sayi"]
+        toplam = d["ol_fark_toplam_cevrim_lo"] + (d["ol_fark_toplam_cevrim_hi"] << 32)
+        o["param_save_cagrisi"] = {
+            "sayi": d["ps_sayi"], "son_tur_us": us(d["ps_son_tur_cevrim"]),
+            "son_step_us": us(d["ps_son_step_cevrim"]), "son_skart_us": d["ps_son_skart_us"],
+            "son_dongu_turu_us": us(d["ps_son_dongu_cevrim"]),
+            "son_kaydet_us": us(d["ps_son_kaydet_cevrim"]),
+            "son_tur_eksi_step_us": us(d["ps_son_tur_cevrim"] - d["ps_son_step_cevrim"])}
+        o["olagan_tur_eksi_step"] = {"sayi": n, "en_kotu_us": us(d["ol_fark_en_kotu_cevrim"]),
+                                     "ortalama_us": (us(toplam) / n) if n else None}
     o["blok"] = _sure(d, "blok")
     o["blok"]["en_kotu_blok_bayt"] = d["blok_en_kotu_bayt"]
     if d.get("blok_bayt"):
@@ -251,13 +283,15 @@ def main(argv):
                          "-w32", "0x%08X" % adres, "0x%08X" % SINAMA[a.sinama])
         print(cikti[-400:])
         return 0 if rc == 0 else 1
-    adlar = duzen()
+    olcum = olcum_imaji_mi(elf)
+    adlar = duzen(olcum)
     adres = simge(elf, "ida_fw_olcum")
     if adres is None:
         raise SystemExit("ida_fw_olcum simgesi yok: " + elf)
     sira_indis = adlar.index("yayin_sira")
     s = tutarli_oku(lambda: ham_oku(adres, len(adlar), sira_indis), sira_indis)
     d = coz(adlar, s)
+    derleme_denetle(d, olcum)
     if d["sozcuk_sayisi"] != len(adlar):
         raise SystemExit("blok boyu uyuşmuyor: kart %d, olcum.h %d (imaj ve kaynak aynı mı?)"
                          % (d["sozcuk_sayisi"], len(adlar)))
@@ -272,12 +306,15 @@ def main(argv):
 def ozet_oku(onayar="fw-release", elf=None):
     """Başka araçlar için (duman.py --olcum): tutarlı ölçüm bloğunu okur, ham sözlük döner."""
     elf = elf or os.path.join(KOK, "build", onayar, "firmware", "ida_fw.elf")
-    adlar = duzen()
+    olcum = olcum_imaji_mi(elf)
+    adlar = duzen(olcum)
     adres = simge(elf, "ida_fw_olcum")
     if adres is None:
         raise SystemExit("ida_fw_olcum simgesi yok: " + elf)
     sira_indis = adlar.index("yayin_sira")
-    return coz(adlar, tutarli_oku(lambda: ham_oku(adres, len(adlar), sira_indis), sira_indis))
+    d = coz(adlar, tutarli_oku(lambda: ham_oku(adres, len(adlar), sira_indis), sira_indis))
+    derleme_denetle(d, olcum)
+    return d
 
 
 if __name__ == "__main__":

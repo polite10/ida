@@ -105,6 +105,8 @@ struct Baglanti {
     bool eof = false;  // karşı taraf gönderim yönünü kapattı
     Zaman eof_bas{};
     bool eksik_islendi = false;
+    bool okuma_firsati = false;  // kabulden sonra soketten en az bir kez veri okundu (W4-K23 2')
+    bool hic_dogrulandi = false;  // geçerli Bearer taşıyan bir istek başlığı çerçevelendi (W4-K23 3'')
     // İşleme bağlamı (istek_isle ve işleyiciler)
     http::Istek istek;
     std::string govde;
@@ -378,10 +380,61 @@ struct Cekirdek::Ic {
         return y;
     }
 
+    // EMNİYET (W4-K23 3'): HTTP bağlantısında bekleyen çıkış kesin tavanlıdır; ekleme tavanı
+    // aşacaksa eklenmez ve bağlantı kapatılır.
+    bool cikisa_ekle(Baglanti& b, std::string_view s)
+    {
+        if (!b.ws && b.bekleyen_cikis() + s.size() > sinir::http_cikis_tavani) {
+            ++say.cikis_tavani_kapanisi;
+            b.kapanacak = true;
+            b.okuma_kapali = true;
+            return false;
+        }
+        // EMNİYET (W4-K23 3''): kimliği doğrulanmamış bağlantıların bekleyen çıkış toplamı kesin
+        // tavanlıdır; aşılacaksa en eski kimliği doğrulanmamış bağlantı (çıkışı atılarak) kapatılır.
+        while (!b.ws && !b.hic_dogrulandi) {
+            std::size_t toplam = 0;
+            Baglanti* en_eski = nullptr;
+            for (auto& [id, xp] : bag) {
+                (void)id;
+                Baglanti& x = *xp;
+                if (x.ws || x.hic_dogrulandi) {
+                    continue;
+                }
+                toplam += x.bekleyen_cikis();
+                if (x.bekleyen_cikis() > 0 &&
+                    (en_eski == nullptr || x.olusma < en_eski->olusma || (x.olusma == en_eski->olusma && x.id < en_eski->id))) {
+                    en_eski = &x;
+                }
+            }
+            if (toplam + s.size() <= sinir::dogrulanmamis_cikis_toplami) {
+                break;
+            }
+            ++say.toplam_cikis_kapanisi;
+            if (en_eski == nullptr || en_eski == &b) {
+                zorla_kapat(b);
+                return false;
+            }
+            zorla_kapat(*en_eski);
+        }
+        b.cikis += s;
+        return true;
+    }
+
+    // Bağlantı çıkışı atılarak kapatılır (G/Ç döngüsü sonraki turda soketi kapatır).
+    void zorla_kapat(Baglanti& x)
+    {
+        x.cikis.clear();
+        x.cikis_bas = 0;
+        x.kapanacak = true;
+        x.okuma_kapali = true;
+        sira_birak(x);
+    }
+
     void yaz(Baglanti& b, const Yanit& y)
     {
         std::string_view tur = y.govde.empty() ? std::string_view{} : std::string_view("application/json");
-        b.cikis += http::yanit(y.http, tur, y.govde, y.kapat, y.ek, b.istek.yontem == "HEAD");
+        cikisa_ekle(b, http::yanit(y.http, tur, y.govde, y.kapat, y.ek, b.istek.yontem == "HEAD"));
         if (y.kapat) {
             b.kapanacak = true;
             b.okuma_kapali = true;
@@ -391,7 +444,7 @@ struct Cekirdek::Ic {
     void yaz_ham(Baglanti& b, int http, std::string_view tur, std::string_view govde, bool kapat = false,
                  const std::vector<std::pair<std::string, std::string>>& ek = {})
     {
-        b.cikis += http::yanit(http, tur, govde, kapat, ek, b.istek.yontem == "HEAD");
+        cikisa_ekle(b, http::yanit(http, tur, govde, kapat, ek, b.istek.yontem == "HEAD"));
         if (kapat) {
             b.kapanacak = true;
             b.okuma_kapali = true;
@@ -512,18 +565,58 @@ struct Cekirdek::Ic {
     // ---- bağlantılar ---------------------------------------------------------------------------
 
     // Kimliği doğrulanmış (geçerli Bearer) ve isteği süren bağlantı: gövdesi gelmekte olan ya da
-    // sırada işlenmemiş isteği var.
+    // sırada işlenmemiş isteği var, ya da isteği işlenmiş ve yanıtı henüz yazılmamış.
     static bool dogrulanmis_suren(const Baglanti& x)
     {
         if (x.asama != Asama::baslik && x.cer_dogrulandi) {
             return true;
         }
         for (const auto& e : x.sira) {
-            if (!e.islendi && e.dogrulandi) {
+            if (e.dogrulandi) {
                 return true;
             }
         }
-        return false;
+        return x.hic_dogrulandi && x.bekleyen_cikis() > 0;
+    }
+
+    // EMNİYET (W4-K23 2', 2''): yer açmak için kapatılabilecek bağlantı. Kimliği doğrulanmış ve
+    // isteği süren bağlantı (yanıtı yazılmayı bekleyen dahil) kapatılmaz. Öteki bağlantı ancak
+    // kabulden sonra soketten en az bir kez veri okunduysa ya da başlık süresi (2 s) kadar
+    // yaşlandıysa kapatılabilir: yalnız "yoklanmış" olmak yetmez (verisi henüz gelmemiş meşru
+    // bağlantı korunur; sessiz bağlantı başlık süresinden sonra kapatılabilir olur). İsteği bitmiş,
+    // boşta bekleyen kimliği doğrulanmış (keep-alive) bağlantı kapatılabilir.
+    static bool tahliye_edilebilir(const Baglanti& x, Zaman simdi)
+    {
+        return !x.ws && !dogrulanmis_suren(x) && (x.okuma_firsati || simdi - x.olusma >= sure::baslik);
+    }
+
+    // EMNİYET (W4-K23 2''): sınır doluyken kapatılabilecek bağlantı yoksa, henüz kapatılabilir
+    // olmayan kimliği doğrulanmamış bağlantı varsa kabul o turda bırakılır (bekle); sınırı yalnız
+    // kimliği doğrulanmış bağlantılar dolduruyorsa yeni bağlantı reddedilir (503).
+    KabulKarari kabul_karari(Zaman simdi) const
+    {
+        if (kapaniyor) {
+            return KabulKarari::reddet;
+        }
+        std::size_t http_sayisi = 0;
+        bool aday = false;
+        bool korunan = false;
+        for (const auto& [id, bp] : bag) {
+            (void)id;
+            const Baglanti& x = *bp;
+            if (x.ws) {
+                continue;
+            }
+            ++http_sayisi;
+            if (dogrulanmis_suren(x)) {
+                continue;  // yalnız bunlar sınırı dolduruyorsa 503
+            }
+            (tahliye_edilebilir(x, simdi) ? aday : korunan) = true;
+        }
+        if (ayar.azami_http == 0 || http_sayisi < ayar.azami_http || aday) {
+            return KabulKarari::kabul;
+        }
+        return korunan ? KabulKarari::bekle : KabulKarari::reddet;
     }
 
     BagId ac(Zaman simdi, std::vector<BagId>& kapatilacak)
@@ -539,33 +632,18 @@ struct Cekirdek::Ic {
             }
         }
         if (http_sayisi >= ayar.azami_http && ayar.azami_http > 0) {
-            // EMNİYET (W4-K23 2): yer açmak için yalnız kimliği doğrulanmamış bağlantı kapatılır
-            // (zaten kapanmakta olan, boşta olan, isteğinin başlığı tamamlanmamış ya da geçerli
-            // Bearer taşımayan; sınıf sırasıyla, her sınıfta en eskisi). Kimliği doğrulanmış ve isteği
-            // süren bağlantı kapatılmaz; kapatılacak yoksa yeni bağlantı reddedilir (çağıran 503
-            // yazmayı dener ve kapatır).
+            // EMNİYET (W4-K23 2'): kapatılabilir bağlantılar (tahliye_edilebilir) arasından yalnız
+            // yaş sırasıyla en eskisi kapatılır; yaş saatten bağımsız kabul sıra numarasıdır (BagId
+            // artan). Kapatılacak yoksa yeni bağlantı reddedilir (çağıran 503 yazmayı dener).
             Baglanti* secilen = nullptr;
-            int secilen_sinif = 4;
-            Zaman secilen_zaman{};
             for (const auto& [id, bp] : bag) {
                 (void)id;
                 const Baglanti& x = *bp;
-                if (x.ws) {
+                if (!tahliye_edilebilir(x, simdi)) {
                     continue;
                 }
-                int sinif = 2;
-                Zaman z = x.istek_var ? x.istek_bas : x.son_etkinlik;
-                if (x.kapanacak) {
-                    sinif = 0;
-                } else if (dogrulanmis_suren(x)) {
-                    continue;
-                } else if (!x.istek_var && x.girdi.empty() && x.sira.empty() && x.bekleyen_cikis() == 0) {
-                    sinif = 1;
-                }
-                if (secilen == nullptr || sinif < secilen_sinif || (sinif == secilen_sinif && z < secilen_zaman)) {
+                if (secilen == nullptr || x.id < secilen->id) {
                     secilen = bp.get();
-                    secilen_sinif = sinif;
-                    secilen_zaman = z;
                 }
             }
             if (secilen == nullptr) {
@@ -573,6 +651,14 @@ struct Cekirdek::Ic {
                 return 0;
             }
             ++say.yer_acmak_icin_kapatilan;
+            if (ayar.gunluk) {
+                gunluk("yer açmak için kapatıldı: bağlantı " + std::to_string(secilen->id) + ", okundu " +
+                       std::to_string(secilen->okuma_firsati ? 1 : 0) + ", yaş " +
+                       std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(simdi - secilen->olusma).count()) +
+                       " ms, aşama " + std::to_string(static_cast<int>(secilen->asama)) + ", sıra " +
+                       std::to_string(secilen->sira.size()) + ", bekleyen çıkış " + std::to_string(secilen->bekleyen_cikis()) +
+                       " B; yeni bağlantı " + std::to_string(sonraki_bag));
+            }
             baglanti_birak(*secilen);
             kapatilacak.push_back(secilen->id);
             bag.erase(secilen->id);
@@ -592,6 +678,7 @@ struct Cekirdek::Ic {
             return;
         }
         b.son_etkinlik = simdi;
+        b.okuma_firsati = true;
         b.girdi.append(reinterpret_cast<const char*>(veri), n);
         if (b.ws) {
             ws_isle(b, simdi);
@@ -610,7 +697,14 @@ struct Cekirdek::Ic {
     // sırada kalan kısıtlayan istekler atılmadan işlenir.
     void http_isle(Baglanti& b, Zaman simdi)
     {
-        cercevele(b, simdi);
+        // Her tam istekten sonra sıra işlenir: sıra yalnız işleme bekletildiğinde (çıkış baskısı)
+        // büyür; ardışık (pipelined) istekler sıra sınırına takılmaz.
+        while (cercevele(b, simdi, true)) {
+            sirayi_isle(b, simdi);
+            if (b.kapanacak || b.ws) {
+                break;
+            }
+        }
         sirayi_isle(b, simdi);
     }
 
@@ -632,6 +726,13 @@ struct Cekirdek::Ic {
 
     void cerceve_hatasi(Baglanti& b, std::string neden)
     {
+        // W4-K23 (4'): kimliği doğrulanmış gevşetme isteği çerçeveleme hatasıyla biterse jetonu
+        // okunamamıştır: istemcinin bekleyen bütün jetonları geçersizleşir.
+        if (b.cer_dogrulandi && gevsetme_ucu(b.cer_istek.yol)) {
+            istemci_jetonlarini_sil(b.cer_istek);
+        }
+        b.cer_dogrulandi = false;
+        b.cer_istek = http::Istek{};
         Baglanti::Bekleyen e;
         e.hatali = true;
         e.hata = std::move(neden);
@@ -643,12 +744,17 @@ struct Cekirdek::Ic {
         b.girdi.clear();
     }
 
-    void cercevele(Baglanti& b, Zaman simdi)
+    // `tek`: bir istek sıraya girince durur ve true döndürür.
+    bool cercevele(Baglanti& b, Zaman simdi, bool tek = false)
     {
+        bool eklendi = false;
         while (!b.cerceve_durdu && !b.kapanacak && !b.ws) {
+            if (tek && eklendi) {
+                return true;
+            }
             if (b.asama == Asama::baslik) {
                 if (b.girdi.empty()) {
-                    return;
+                    return eklendi;
                 }
                 if (!b.istek_var) {
                     b.istek_var = true;
@@ -660,19 +766,20 @@ struct Cekirdek::Ic {
                 std::string neden;
                 const auto s = http::baslik_ayristir(b.girdi, r, blok, neden);
                 if (s == http::Sonuc::eksik) {
-                    return;
+                    return eklendi;
                 }
                 if (s == http::Sonuc::hata) {
                     cerceve_hatasi(b, "HTTP isteği bozuk: " + neden);
-                    return;
+                    return true;
                 }
                 b.girdi.erase(0, blok);
                 b.cer_istek = std::move(r);
                 b.cer_dogrulandi = jeton_dogru(b.cer_istek);
+                b.hic_dogrulandi = b.hic_dogrulandi || b.cer_dogrulandi;
                 http::GovdeBilgisi g;
                 if (!http::govde_bilgisi(b.cer_istek, g, neden)) {
                     cerceve_hatasi(b, "HTTP gövde çerçevelemesi: " + neden);
-                    return;
+                    return true;
                 }
                 b.cer_govde.clear();
                 b.cer_asildi = false;
@@ -681,6 +788,7 @@ struct Cekirdek::Ic {
                 b.govde_siniri = b.cer_istek.yol.rfind("/api/v1/senaryo", 0) == 0 ? sinir::senaryo_govde : sinir::govde;
                 if (g.tur == http::GovdeBilgisi::Tur::yok) {
                     istek_tamamla(b);
+                    eklendi = true;
                     continue;
                 }
                 if (g.tur == http::GovdeBilgisi::Tur::uzunluk) {
@@ -697,6 +805,7 @@ struct Cekirdek::Ic {
                         b.cer_asildi = true;
                         b.okuma_kapali = true;
                         istek_tamamla(b);
+                        eklendi = true;
                         continue;
                     }
                     b.kalan = g.uzunluk;
@@ -713,9 +822,10 @@ struct Cekirdek::Ic {
                 b.kalan -= al;
                 b.okunan_govde += al;
                 if (b.kalan > 0) {
-                    return;
+                    return eklendi;
                 }
                 istek_tamamla(b);
+                eklendi = true;
                 continue;
             }
             if (b.asama == Asama::govde_parcali) {
@@ -728,15 +838,17 @@ struct Cekirdek::Ic {
                     b.girdi.clear();
                 } else if (b.parcali->hata()) {
                     cerceve_hatasi(b, "chunked gövde bozuk");
-                    return;
+                    return true;
                 } else if (!b.parcali->bitti()) {
-                    return;
+                    return eklendi;
                 }
                 istek_tamamla(b);
+                eklendi = true;
                 continue;
             }
-            return;
+            return eklendi;
         }
+        return eklendi;
     }
 
     // Çerçevelenen isteği sıraya koyar. Yükseltme, kapatma ya da sınırı aşan istekten sonra
@@ -777,7 +889,7 @@ struct Cekirdek::Ic {
     void sira_cikar(Baglanti& b)
     {
         const Baglanti::Bekleyen& e = b.sira.front();
-        const std::size_t n = e.govde.size() + e.istek.hedef.size() + 64;
+        const std::size_t n = e.govde.size() + e.istek.hedef.size() + 64 + e.cikis.size();
         b.sira_bayt = b.sira_bayt > n ? b.sira_bayt - n : 0;
         b.sira.pop_front();
     }
@@ -826,6 +938,7 @@ struct Cekirdek::Ic {
         e.cikis = std::move(b.cikis);
         e.kapat = kapatma_istenir(e.istek) || b.kapanacak;
         e.islendi = true;
+        b.sira_bayt += e.cikis.size();  // saklanan yanıt sıra tavanına dahil (W4-K23 3')
         b.cikis = std::move(asil_cikis);
         b.cikis_bas = asil_bas;
         b.istek = std::move(asil_istek);
@@ -841,7 +954,14 @@ struct Cekirdek::Ic {
         while (!b.sira.empty() && !b.kapanacak && !b.ws) {
             Baglanti::Bekleyen& on = b.sira.front();
             if (on.islendi) {
-                b.cikis += on.cikis;
+                // Öne alınmış yanıt da çıkış eşiğine ve tavanına uyar (W4-K23 3').
+                if (b.bekleyen_cikis() > sinir::okuma_esigi) {
+                    ++say.http_baski_bekleme;
+                    break;
+                }
+                if (!cikisa_ekle(b, on.cikis)) {
+                    break;
+                }
                 const bool kapat = on.kapat;
                 sira_cikar(b);
                 b.son_etkinlik = simdi;
@@ -874,11 +994,19 @@ struct Cekirdek::Ic {
             return;
         }
         // EMNİYET: sırası gelmeden bekleyen (çıkış baskısı, kapanış ya da sıra taşması) kısıtlayan
-        // istekler hemen işlenir; kapanışta yanıtları atılır, etkileri atılmaz.
+        // istekler hemen işlenir; kapanışta yanıtları atılır, etkileri atılmaz. Yalnız kimliği
+        // doğrulanmış (geçerli Bearer) istek öne alınır; doğrulanmamış olan olağan sırada reddedilir
+        // (W4-K23 3').
         for (auto& e : b.sira) {
-            if (!e.islendi && e.kisitlayan) {
+            if (!e.islendi && e.kisitlayan && e.dogrulandi) {
                 one_isle(b, e, simdi);
             }
+        }
+        if (b.sira_bayt > sinir::http_sira_bayt && !b.sira_tasti) {
+            b.sira_tasti = true;
+            b.cerceve_durdu = true;
+            b.okuma_kapali = true;
+            ++say.http_sira_tasmasi;
         }
         if (b.sira_tasti && !b.kapanacak) {
             b.kapanacak = true;
@@ -980,8 +1108,9 @@ struct Cekirdek::Ic {
     //     metninde jeton aranmaz.
     std::optional<Jeton> jeton_sunumu(const http::Istek& r, const std::string& govde, bool asildi)
     {
-        if (!gevsetme_ucu(r.yol)) {
-            return std::nullopt;
+        std::uint32_t istemci = 0;
+        if (!gevsetme_ucu(r.yol) || !istemci_basligi(r, istemci)) {
+            return std::nullopt;  // istemci kimliği eksik/geçersiz: istek reddedilir, jetonlara dokunulmaz
         }
         json::Deger g;
         if (!asildi && json::coz(govde, g) && g.nesne_mi()) {
@@ -990,8 +1119,9 @@ struct Cekirdek::Ic {
             }
             const json::Deger* jet = g.bul("onay_jetonu");
             if (jet != nullptr && jet->tur == json::Tur::metin) {
+                // Jeton onu isteyen istemciye bağlıdır; yalnız aynı kimlikle sunulduğunda tüketilir.
                 const auto it = jetonlar.find(jet->metin);
-                if (it != jetonlar.end()) {
+                if (it != jetonlar.end() && it->second.istemci == istemci) {
                     Jeton j = it->second;
                     jetonlar.erase(it);
                     return j;
@@ -1003,25 +1133,45 @@ struct Cekirdek::Ic {
         return std::nullopt;
     }
 
-    // `Ida-Istemci` ile tanımlanan istemcinin bekleyen bütün onay jetonları silinir; başlık yoksa
-    // ya da istemci kayıtlı değilse (istemci belirlenemez) en kısıtlayan okumayla bütün jetonlar.
+    // `Ida-Istemci` ile tanımlanan istemcinin bekleyen bütün onay jetonları silinir. İstemci
+    // kimliği eksik ya da geçersizse hiçbir jetona dokunulmaz (W4-K23 4': kimliksiz istek hiçbir
+    // jetonu kullanamaz; bir istemcinin hatalı isteği ötekilerin onayını bozmaz).
     void istemci_jetonlarini_sil(const http::Istek& r)
     {
         std::uint32_t istemci = 0;
-        const bool belli = istemci_basligi(r, istemci);
+        if (!istemci_basligi(r, istemci)) {
+            return;
+        }
         for (auto it = jetonlar.begin(); it != jetonlar.end();) {
-            it = !belli || it->second.istemci == istemci ? jetonlar.erase(it) : std::next(it);
+            it = it->second.istemci == istemci ? jetonlar.erase(it) : std::next(it);
         }
         ++say.jeton_toplu_gecersiz;
     }
 
     void onay_jetonu_tuket(Baglanti& b) { istek_jetonu = jeton_sunumu(b.istek, b.govde, b.govde_asildi); }
 
+    // EMNİYET — W4-K23 (4''): geçerli Bearer ve geçerli istemci kimliği taşıyan gevşetme isteği
+    // jetonu okunmadan bir erişim/erken retle (kapanış, Host, Origin) dönerse o istemcinin bekleyen
+    // bütün jetonları geçersizleşir; ret yanıtı değişmez. Biçimden kısıtlayan istekte dokunulmaz.
+    void erken_ret_jetonlari(const Baglanti& b)
+    {
+        const http::Istek& r = b.istek;
+        if (!gevsetme_ucu(r.yol) || !jeton_dogru(r)) {
+            return;
+        }
+        json::Deger g;
+        if (!b.govde_asildi && json::coz(b.govde, g) && g.nesne_mi() && kisitlayan_bicim(r.yol, g)) {
+            return;
+        }
+        istemci_jetonlarini_sil(r);
+    }
+
     void istek_isle(Baglanti& b, Zaman simdi)
     {
         istek_jetonu.reset();
         const http::Istek& r = b.istek;
         if (kapaniyor) {
+            erken_ret_jetonlari(b);
             Yanit y = ret("mesgul", "sunucu kapanıyor");
             y.kapat = true;
             yaz(b, y);
@@ -1029,11 +1179,13 @@ struct Cekirdek::Ic {
         }
         // EMNİYET — A3-K08: Host; A3-K09: Origin (varsa).
         if (r.baslik_sayisi("host") != 1 || izinli_host.count(*r.baslik("host")) == 0) {
+            erken_ret_jetonlari(b);
             erisim_reddi(b, Neden::host, r.yol, simdi);
             return;
         }
         const std::size_t origin_sayisi = r.baslik_sayisi("origin");
         if (origin_sayisi > 1 || (origin_sayisi == 1 && izinli_origin.count(*r.baslik("origin")) == 0)) {
+            erken_ret_jetonlari(b);
             erisim_reddi(b, Neden::origin, r.yol, simdi);
             return;
         }
@@ -1107,7 +1259,7 @@ struct Cekirdek::Ic {
         // EMNİYET — A3-K11: açılan dosya kök altında kalır; yolda simgesel bağ/reparse noktası olan
         // hiçbir dosya sunulmaz (statik.hpp).
         std::string icerik;
-        if (!statik_kok.oku(goreli, std::size_t{16} << 20u, icerik)) {
+        if (!statik_kok.oku(goreli, sinir::statik_azami, icerik)) {
             yaz(b, ret("bulunamadi", "dosya yok"));
             return;
         }
@@ -1884,7 +2036,8 @@ struct Cekirdek::Ic {
     // EMNİYET — W4-K19: kısıtlayan emniyet isteği ve daraltıcı yer istasyonu komutu
     // `beklenen_run_id` güncel çalıştırmayla uyuşmasa da (ya da hiç verilmese de) alıcıya iletilir.
     // Uyuşmazlık `uyari` olayıyla kaydedilir (yalnız komut numarası ve iki run_id; jeton ve gövde
-    // yazılmaz) ve kabul yanıtı güncel run_id'yi `guncel_run_id` alanında taşır.
+    // yazılmaz). Kabul yanıtı dondurulmuş 1.0 şemasındaki `yanit_kuyrukta`dır; şemada olmayan
+    // `guncel_run_id` alanı taşınmaz (güncel run_id olayda ve `GET /durum`da).
     Yanit kisitlayan_gonder(Komut& k, std::uint32_t no, std::uint32_t istemci)
     {
         const AnlikDurum a = alici.anlik();
@@ -1898,18 +2051,7 @@ struct Cekirdek::Ic {
             ay.metin("kod", "kisitlayan_run_id_uyusmazligi").metin("ileti", ileti);
             olay_yayinla(son_sim_t_ns, 22, 1, 1, std::numeric_limits<std::uint64_t>::max(), no, istemci, ay.bitir());
         }
-        Yanit y = alici_gonder(k, no);
-        if (uyusmaz && y.http == 202) {
-            json::Nesne n;
-            n.metin("sonuc", "kuyrukta").sayi_u("komut_no", no);
-            if (a.run_id) {
-                n.metin("guncel_run_id", *a.run_id);
-            } else {
-                n.bos("guncel_run_id");
-            }
-            y.govde = n.bitir();
-        }
-        return y;
+        return alici_gonder(k, no);
     }
 
     Yanit alim_yaniti(const AlimSonucu& a, const Komut& k, std::uint32_t no)
@@ -3149,6 +3291,8 @@ void Cekirdek::kapandi(BagId id)
     }
     ic_->bag.erase(id);
 }
+
+KabulKarari Cekirdek::kabul_karari(Zaman simdi) const { return ic_->kabul_karari(simdi); }
 
 std::string Cekirdek::dolu_yaniti() const
 {
