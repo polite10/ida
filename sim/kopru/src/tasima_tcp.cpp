@@ -26,6 +26,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <string>
 
@@ -186,6 +188,40 @@ public:
 
     void giris_bosalt() override {}
     bool acik() const override { return s_ != kGecersiz; }
+    // W4-K25 (5): shutdown(SHUT_WR / SD_SEND), karşı taraf kapatana (recv = 0) ya da hataya ya
+    // da süre sınırına dek oku-at, sonra kapat. Okunmamış veriyle close: XNU tcp_disconnect
+    // bağlantıyı düşürür (RST); Winsock'ta düzgün kapanış sırası shutdown + recv + closesocket.
+    void kapat_duzgun(std::int64_t sure_us) override
+    {
+        if (s_ == kGecersiz) {
+            return;
+        }
+#if defined(_WIN32)
+        (void)::shutdown(s_, SD_SEND);
+#else
+        (void)::shutdown(s_, SHUT_WR);
+#endif
+        const auto son = std::chrono::steady_clock::now() + std::chrono::microseconds(std::max<std::int64_t>(sure_us, 0));
+        std::array<char, 4096> t{};
+        for (;;) {
+#if defined(_WIN32)
+            const int k = ::recv(s_, t.data(), static_cast<int>(t.size()), 0);
+#else
+            const ssize_t k = ::recv(s_, t.data(), t.size(), 0);
+#endif
+            if (k > 0) {
+                continue;   // atılır (işlenmez)
+            }
+            if (k == 0 || !bekliyor_hatasi(son_hata())) {
+                break;      // karşı taraf kapattı ya da hata
+            }
+            const auto kalan = std::chrono::duration_cast<std::chrono::microseconds>(son - std::chrono::steady_clock::now());
+            if (kalan.count() <= 0 || bekle(s_, false, kalan.count()) <= 0) {
+                break;      // süre sınırı: asılma yok
+            }
+        }
+        kapat();
+    }
     void kapat() override
     {
         if (s_ != kGecersiz) {

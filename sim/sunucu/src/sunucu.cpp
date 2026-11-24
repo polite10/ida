@@ -357,6 +357,8 @@ private:
     std::size_t sil_gelen_k_ = 0;           // sil_gelen_'de verilmiş önek
     bool sil_akis_bitti_ = false;           // SIL: karşı uç kapattı (kuyruktan sonra işlenir)
     static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB
+    // W4-K25 (5): düzgün kapanışta karşı tarafın kapatması en çok bu kadar beklenir (TCP).
+    static constexpr std::int64_t kKapanisBosaltmaUs = 500'000;
     std::array<std::int64_t, kEvreSayisi> evre_{};
     std::vector<std::array<std::int64_t, kEvreSayisi>> profil_;   // HIL: sınır başına
     std::vector<std::pair<std::int64_t, std::uint64_t>> tf_gec_;   // HIL: (TF geç yazım, sınır)
@@ -612,7 +614,7 @@ bool Calistirici::yuva_bekle(std::uint32_t seq)
                 return false;
             }
             if (tas_) {
-                tas_->kapat();
+                tas_->kapat_duzgun(kKapanisBosaltmaUs);   // W4-K25 (5)
                 tas_.reset();
             }
             sil_gelen_temizle();
@@ -1494,7 +1496,8 @@ Sonuc Calistirici::kos()
     yaz();
     pompa(0);
     if (tas_) {
-        tas_->kapat();
+        // W4-K25 (5): düzgün kapanış; SIL'de alım kuyruğu artık işlenmez, atılan baytlar da.
+        tas_->kapat_duzgun(kKapanisBosaltmaUs);
     }
     dur_ = true;
     if (karsi_is_.joinable()) {

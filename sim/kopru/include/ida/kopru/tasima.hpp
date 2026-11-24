@@ -45,6 +45,12 @@ public:
     virtual void giris_bosalt() = 0;
     virtual bool acik() const = 0;
     virtual void kapat() = 0;
+    // Düzgün kapanış (W4-K25 (5)): yazma yönü kapatılır (gönderilmiş baytlar ve ardından FIN
+    // gider), karşı taraf kapatana ya da en çok sure_us geçene dek gelen baytlar okunup atılır,
+    // sonra kapat(). Okunmamış gelen veriyle kapatma bağlantıyı RST ile keser (RFC 1122
+    // §4.2.2.13); karşı tarafın yazımı hata alır ve son çerçeveyi okumadan kapanabilir. Atılan
+    // baytlar işlenmez. TCP dışındaki taşımalarda (seri port, bellek) kapat() ile aynıdır.
+    virtual void kapat_duzgun(std::int64_t /*sure_us*/) { kapat(); }
     virtual std::string ad() const = 0;
 };
 

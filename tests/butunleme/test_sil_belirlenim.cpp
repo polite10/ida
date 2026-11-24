@@ -8,6 +8,8 @@
 // rastgelelik) gecikmeyle teslim edilir (partiye göre 0–1,5 ms pencereden); sıra korunur. Geliş zamanı her koşuda farklı
 // olduğundan oturumun bitiş anı, kapanış çerçevesi ve yeniden başlama anı geliş zamanına
 // bağlıysa akış koşudan koşuya değişir. Koşuların yarısı arka planda 6 meşgul döngüyle koşar.
+// W4-K25 (5): aktarıcı sim'in SESSION_CLOSE(SHUTDOWN)'ını görünce karta yazdırır gibi 200
+// çerçeve daha yollar; sim düzgün kapatmalıdır (yazım hata almaz, son çerçeve karşıya ulaşır).
 //
 //   sil_oturum_dusme_belirlenim [n]   n koşu yüksüz + n koşu yük altında (varsayılan 10 + 10)
 #include "ida/kopru/tasima.hpp"
@@ -47,6 +49,7 @@ constexpr std::uint32_t kMsgTimeFrame = 46010;
 constexpr std::uint32_t kMsgActuator = 46060;
 constexpr std::uint32_t kMsgLog = 46066;
 constexpr std::uint8_t kCloseProtocol = 3;
+constexpr std::uint8_t kCloseShutdown = 1;
 
 // Sim ile ida_sil koşucusu arasına giren aktarıcı: iki yönü kaydeder, kart → sim yönüne
 // belirlenimci ihlal katar ve ACTUATOR sonrası çerçeveleri rastgele gecikmeyle teslim eder.
@@ -59,6 +62,7 @@ public:
         din_ = ida::kopru::tcp_dinle(0, hata);
         sim_port_ = sim_port;
         (void)ida_link_alici_kur(&alici_, IDA_LINK_ROL_SIM);
+        (void)ida_link_alici_kur(&sim_alici_, IDA_LINK_ROL_KART);
         (void)ida_link_gonderici_kur(&g_, IDA_LINK_ROL_KART);
         g_.seq = 0x80;
         if (din_) {
@@ -84,6 +88,8 @@ public:
     const std::vector<std::uint8_t>& sim_kart() const { return sim_kart_; }
     const std::vector<std::uint8_t>& kart_sim() const { return kart_sim_; }
     std::uint64_t enjekte_edilen() const { return enjekte_edilen_; }
+    std::uint64_t sim_yazma_hatasi() const { return sim_yazma_hatasi_; }
+    bool sim_eof() const { return sim_eof_; }
 
 private:
     using Saat = std::chrono::steady_clock;
@@ -103,20 +109,42 @@ private:
         kuyruk_.push_back({std::move(b), son_birak_});
     }
 
-    void enjekte_et()
+    // Sim'in SESSION_CLOSE(SHUTDOWN)'ı görülünce kart çıktısını sürdürür (gerçek kart son
+    // çağrının çıktısını yazarken sim kapanabilir): 200 IDA_LOG, gecikmesiz. Sim okunmamış
+    // veriyle kapatırsa (RST) bu yazımlar hata alır (W4-K25 (5)).
+    void kapanis_ara(const std::uint8_t* p, std::size_t n)
+    {
+        std::size_t k = 0;
+        while (k < n) {
+            std::size_t tuk = 0;
+            ida_link_cerceve_t c{};
+            const ida_link_rc_t rc = ida_link_al(&sim_alici_, p + k, n - k, &tuk, &c);
+            k += tuk;
+            if (rc != IDA_LINK_CERCEVE) {
+                break;
+            }
+            if (c.msgid == kMsgSessionClose && c.yuk[2] == kCloseShutdown) {
+                log_kat(200, false);
+            }
+        }
+    }
+
+    void enjekte_et() { log_kat(150, true); }
+
+    void log_kat(int adet, bool geciktir)
     {
         ida_link_mesaj_bilgisi_t mb{};
         if (ida_link_mesaj_bilgisi(kMsgLog, &mb) != IDA_LINK_TAMAM) {
             return;
         }
         std::vector<std::uint8_t> yuk(mb.yapi_boyu, 0);
-        for (int k = 0; k < 150; ++k) {
+        for (int k = 0; k < adet; ++k) {
             yuk[0] = static_cast<std::uint8_t>(k + 1);   // kırpılmasın diye sıfırdan farklı ilk bayt
             std::uint8_t b[IDA_LINK_CERCEVE_AZAMI];
             std::size_t n = 0;
             if (ida_link_gonder(&g_, kMsgLog, yuk.data(), yuk.size(), b, sizeof b, &n) == IDA_LINK_TAMAM) {
-                kuyruga(std::vector<std::uint8_t>(b, b + n), true);
-                ++enjekte_edilen_;
+                kuyruga(std::vector<std::uint8_t>(b, b + n), geciktir);
+                enjekte_edilen_ += geciktir ? 1u : 0u;
             }
         }
     }
@@ -141,10 +169,12 @@ private:
                 const ida::kopru::OkumaSonucu r = sim->oku(t.data(), t.size(), 0, n);
                 if (r == ida::kopru::OkumaSonucu::kapandi) {
                     sim_kapandi = true;
+                    sim_eof_ = true;   // sim kapattı ve okunacak bayt kalmadı (yazım hatasız)
                     sessiz = Saat::now();
                 } else if (r == ida::kopru::OkumaSonucu::tamam) {
                     is_var = true;
                     sim_kart_.insert(sim_kart_.end(), t.data(), t.data() + n);
+                    kapanis_ara(t.data(), n);
                     if (!kart->yaz(t.data(), n)) {
                         break;
                     }
@@ -185,7 +215,10 @@ private:
             const auto simdi = Saat::now();
             while (!kuyruk_.empty() && kuyruk_.front().birak <= simdi) {
                 if (!sim_kapandi && !sim->yaz(kuyruk_.front().bayt.data(), kuyruk_.front().bayt.size())) {
+                    // Sim okunmamış veriyle kapattı (RST): taşıma soketi kapatır, sim'in son
+                    // baytları okunmadan kalabilir (W4-K25 (5)).
                     sim_kapandi = true;
+                    ++sim_yazma_hatasi_;
                 }
                 kuyruk_.pop_front();
                 is_var = true;
@@ -203,6 +236,7 @@ private:
     std::unique_ptr<ida::kopru::TcpDinleyici> din_;
     std::uint16_t sim_port_ = 0;
     ida_link_alici_t alici_{};
+    ida_link_alici_t sim_alici_{};   // sim → kart yönü (kapanış çerçevesini görmek için)
     ida_link_gonderici_t g_{};
     std::thread is_;
     std::atomic<bool> dur_{false};
@@ -214,6 +248,8 @@ private:
     std::vector<std::uint8_t> kart_sim_;
     std::uint64_t act_ = 0;
     std::uint64_t enjekte_edilen_ = 0;
+    std::uint64_t sim_yazma_hatasi_ = 0;
+    bool sim_eof_ = false;
 };
 
 struct KosuSonucu {
@@ -221,6 +257,8 @@ struct KosuSonucu {
     std::vector<std::uint8_t> sim_kart;
     std::vector<std::uint8_t> kart_sim;
     std::uint64_t enjekte = 0;
+    std::uint64_t yazma_hatasi = 0;
+    bool eof = false;
 };
 
 KosuSonucu ihlalli_kos(const ida::sunucu::Ayar& a, const std::vector<std::uint64_t>& enjekte)
@@ -254,6 +292,8 @@ KosuSonucu ihlalli_kos(const ida::sunucu::Ayar& a, const std::vector<std::uint64
         k.sim_kart = ak->sim_kart();
         k.kart_sim = ak->kart_sim();
         k.enjekte = ak->enjekte_edilen();
+        k.yazma_hatasi = ak->sim_yazma_hatasi();
+        k.eof = ak->sim_eof();
     }
     return k;
 }
@@ -385,6 +425,12 @@ int test_sil_oturum_dusme_belirlenim(int n)
         dogrula_sb(k.enjekte == 150u * enjekte.size() && k.s.sayac.sil_tampon_tasma == enjekte.size(),
                    ad + "altı ihlal katıldı ve hepsi tampon taşması olarak algılandı");
         dogrula_sb(kapanis_p == static_cast<int>(enjekte.size()), ad + "her ihlalde SESSION_CLOSE(PROTOCOL) gönderildi (" + std::to_string(kapanis_p) + ")");
+        // W4-K25 (5): son çerçeve SESSION_CLOSE(SHUTDOWN) karşı tarafa ulaşır; sim düzgün
+        // kapatır (karşı tarafın yazımı hata almaz, okuması EOF ile biter).
+        const bool son_kapanis = !sk.empty() && sk.back().msgid == kMsgSessionClose && sk.back().yuk[2] == kCloseShutdown;
+        dogrula_sb(son_kapanis && k.yazma_hatasi == 0u && k.eof,
+                   ad + "son SESSION_CLOSE(SHUTDOWN) karşı tarafa ulaştı, kapanış düzgün (yazma hatası " +
+                       std::to_string(k.yazma_hatasi) + ", EOF " + std::to_string(k.eof ? 1 : 0) + ")");
         dogrula_sb(hello == board_hello, ad + "her el sıkışma tek SIM_HELLO (SIM_HELLO " + std::to_string(hello) +
                                              ", BOARD_HELLO " + std::to_string(board_hello) + ")");
         if (r == 0) {
