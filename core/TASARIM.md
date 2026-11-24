@@ -5,7 +5,7 @@
 | İş | W2-cekirdek (`docs/gorevler/W2-cekirdek.md`); birinci aşama notu mimarca kabul edildi, ikinci aşama uygulandı |
 | Yazan | `ida-uygulayici` (Opus) |
 | Başvuru | `docs/sozlesmeler/A4-port.md` 1.0-aday, dondurma öncesi son tur (130 kural), `core/include/ida/port.h`, `core/include/ida/algilama_kaydi.h`; iskelet §3.1, §3.2, §4, §5 |
-| Kapsam | Çağrı çerçevesi, emniyet daraltması, örnek kapısı ve IMU zamanlaması, olay altyapısı, parametreler ve komutları, zaman/seri aritmetik, matematik, günlük. Kestirim, güdüm, görev/kip/arıza, kontrol, atış kontrol ve sonar yer tutucudur |
+| Kapsam | Çağrı çerçevesi, emniyet daraltması, örnek kapısı ve IMU zamanlaması, olay altyapısı, parametreler ve komutları, zaman/seri aritmetik, matematik, günlük (W2). W3'te kestirim, güdüm (GUIDED_SP), görev/kip/arıza ve kontrol yazıldı ve birbirine bağlandı (W3-zincir, §9); atış kontrol ve sonar yer tutucudur |
 
 Bu belgede ölçülmüş olmayan süre rakamı yoktur. Boyutlar §3'te ölçüm kaynağıyla verilir.
 
@@ -30,16 +30,16 @@ Her modül `core/src/<modül>/` dizinindedir ve her dosyanın tek sahibi vardır
 | Zaman | `zaman/zaman.h` (yalnız `static inline`) | W2 | tam |
 | Matematik | `mat/`: `mat.{c,h}`, `ida_math.{c,h}` | W2 | tam (çekirdek küme) |
 | Günlük | `telemetri/`: `telemetri.h`, `gunluk.c` | W2 | tam |
-| Kestirim | `kestirim/` | W3 kestirim | yer tutucu |
-| Güdüm | `gudum/` | W3 güdüm ve görev | yer tutucu |
-| Görev, kip, arıza | `gorev/` | W3 güdüm ve görev | yer tutucu |
-| Kontrol, tahsis | `kontrol/` | W3 kontrol | yer tutucu |
+| Kestirim | `kestirim/`: `kestirim.{c,h}`, `kes_eskf.c`, `kes_ufuk.c`, `kes_ic.h` | W3 kestirim | dilim 1 (yönelim, derinlik, dikey hız; yatay hız ve konum yok) |
+| Güdüm | `gudum/`: `gudum.{c,h}` (GUIDED_SP, kontrol isteğinin tek erişimcisi) | W3-zincir | GUIDED_SP; görev öğeleri ve `AUTO` yok |
+| Görev, kip, arıza | `gorev/`: `gorev.{c,h}`, `kip.c`, `ariza.c`, `istek.c`, `gorev_ic.h` | W3 güdüm ve görev | dilim 1 (kipler, ARM, arıza güvenliği, kontrol isteği); `MISSION_*` yok |
+| Kontrol, tahsis | `kontrol/`: `kontrol.{c,h}`, `tahsis.{c,h}` | W3 kontrol | tam (dilim 1); `MANUAL` komutu yok |
 | Atış kontrol | `atis/` | W4 atış kontrol | yer tutucu (yalnız sınır) |
 | Sonar, arka plan işi | `sonar/` | W4 sonar | yer tutucu |
 
 Durum, sağlık ve fc alanlarının yazımı `cerceve/cikti.c`'dedir (çekirdek tarafı W2'de tam; M10c). `src/iskelet.{c,h}` W2-depo'nun firmware yer tutucusu (`firmware/yer_tutucu/main.c`) için korunmuştur.
 
-Yetki alanları (`armed`, `mode`) `ida_emn_t`'dedir. Emniyet modülü bunlara yalnız kısıtlayan yönde yazar; genişletme yönünde yalnız görev/kip modülü (W3) yazar (`ida_gor_komut` ve `ida_gor_adim` kancaları `ida_emn_t *` alır). Gevşetme W4'ün `ida_fc_emniyet_ornegi` kancasından, `cagri_kisit` alanlarını gevşetmeden yapılır (M9).
+Yetki alanları (`armed`, `mode`) `ida_emn_t`'dedir. Emniyet modülü bunlara yalnız kısıtlayan yönde yazar; genişletme yönünde yalnız görev/kip modülü (W3) yazar. Görev kancaları çekirdek işaretçisi alır: `ida_gor_adim(ida_gor_t *g, ida_emn_t *yetki, ida_core_t *c)` (c'den kestirim, IMU zamanlaması ve parametreler okunur, yalnız günlük yazılır) ve `ida_gor_komut(ida_core_t *c, const ida_komut_baglam_t *b, const ida_cmd_t *cmd, ida_cmd_result_t *r)` (yazılanlar: görev durumu, `armed`/`mode` genişletme yönü, günlük; FAILSAFE_RESET mandalları temizlediğinde kestirimin sayısal çökme mandalı da kaldırılır, `ida_kes_ariza_temizle`). Gevşetme W4'ün `ida_fc_emniyet_ornegi` kancasından, `cagri_kisit` alanlarını gevşetmeden yapılır (M9).
 
 ## 2. Step ve tick'in sırası (`ida_cer_cagri`)
 
@@ -59,10 +59,10 @@ Sıra: koruma sözcüğü, kurulu işareti ve tümleyeni, çerçeve, emniyet, ol
 
 | Ölçüm | Değer | Kaynak |
 |---|---|---|
-| `sizeof(ida_core_t)` | 2160 B (Cortex-M33 ve macOS arm64 aynı); hizalama 8 | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2`, Apple Clang) |
-| Çekirdek arşivi, fw-release | text 19 820 B, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
-| Çekirdek arşivi, fw-debug | text 21 166 B, data 0, bss 0 | aynı |
-| En büyük yığın çerçevesi (fw-release) | 344 B (`blok_isle`, SHA-256) | `-fstack-usage` |
+| `sizeof(ida_core_t)` | W2: 2160 B. W3-zincir sonrası (2026-11-21): **12 568 B** (Cortex-M33 ve macOS arm64 aynı); hizalama 8. Büyük parçalar: kestirim 5960 B, kontrol 1592 B, görev 272 B, güdüm 40 B | Derleyicinin çıktısındaki sabit (GCC 14.3.1 `-O2` `.rodata`, Apple Clang `__const`) |
+| Çekirdek arşivi, fw-release | W2: text 19 820 B. W3-zincir sonrası: **text 59 985 B**, data 0, bss 0 | `arm-none-eabi-size -t libida_core.a` |
+| Çekirdek arşivi, fw-debug | W2: text 21 166 B. W3-zincir sonrası: **text 61 775 B**, data 0, bss 0 | aynı |
+| En büyük yığın çerçevesi (fw-release) | W2: 344 B. W3-zincir sonrası: **720 B** (`ida_kon_hesapla` ve `ida_kes_saglam`); sonra `ida_prm_blok_coz` 680 B, `commit_karari` ve `kayit_isle_d` 672 B. Tek çerçevedir, çağrı zincirinin toplamı değildir | `-fstack-usage` (.su) |
 
 `ida_core_info`: port 1.0, `core_size` = `sizeof`, `core_align` = `_Alignof`, `param_schema_hash` her çağrıda hesaplanır (önbellek yok), `core_version` = `0x000100` (0.1.0).
 
@@ -99,6 +99,8 @@ Kayıt durumu (A4-K83; sol bulgu 2): `plat.param_gen`, `param_store`'un bildirdi
 Parametre komutları (A4-K81, K82, 3.17): PARAM_SET ve PARAM_GET komut anında yanıtlanır (GET çağrı başındaki uygulanmış değeri okur). PARAM_COMMIT ve PARAM_SAVE'in kararı kabul edilen çağrının sonundadır ve girdideki sıradan bağımsızdır: commit o anda bekleyen bütün değerleri (aynı çağrının sonraki PARAM_SET'leri dahil) doğrular; aynı çağrıdaki bütün commit'ler aynı sonucu ve her biri bir PARAM_COMMIT günlüğü alır; bekleyen değer yokken ACCEPTED olan commit uygulanmış sayılır. PARAM_SAVE'in sırayla belirlenen koşulları (ONE_PER_CALL, ARMED, PARAM_BUSY) komut anında, PARAM_INVALID (aynı çağrının kabul edilen commit'i sayılır) ve `gen` doyması çağrı sonunda değerlendirilir; kabulde commit sonrası küme kodlanır. `armed` koşulları komutun `cmds[]` sırasında işlendiği andaki `armed`'la (commit'lerden biri silahlıyken işlendiyse commit `ARMED`) ve girdideki her `ARM` (yinelenen ya da NARROWED alan dahil) sayılarak denetlenir. `gen` = max(çekirdeğin son `gen`'i (yoksa 0), `plat.param_gen`) + 1; max(…) = 0xFFFFFFFF ise SAVE `REJECTED` / `OUT_OF_RANGE` alır ve blok üretilmez (ret nedeni A4 3.17 PARAM_SAVE satırından ve A4-K82'den). Çağrı sonunda karara bağlanan sonuçların reddi `cnt.cmd_rejected`'e orada sayılır.
 
 ## 6. Yer tutucu çekirdeğin görünen davranışı
+
+> W2 kaydıdır. W3'te görev, güdüm, kestirim ve kontrol yazıldığı için ARM, SET_MODE(GUIDED/AUTO), HEARTBEAT, FAILSAFE_RESET ve GUIDED_SP satırları artık modüllerinindir (§9); `MANUAL`, `MISSION_*` ve FC satırları bu tablodaki gibidir.
 
 İtki yok, genişletici olay yok: `armed`'ı 1 yapan bir yol yoktur, `thr_cmd` yalnız `armed ∧ ¬is_safe` iken kontrolün önerisinden kopyalanır, olay kapısı yalnız siler. Kabul md.4'ü `cekirdek.birim.belirlenimcilik` sınar (sabit tohum, 2 × 20 000 karışık çağrı).
 
@@ -193,6 +195,8 @@ Aynı turun öteki kararları: tanımsız olay sonucu yok sayılır (A4-K69; `ol
 **W3 platform notu (D-17, A4-K105, A1-K63).** Platform bir daraltıcı komutu mandala aldığı anda, kendisinden önce alınmış ve henüz hiçbir çekirdek çağrısına girmemiş bütün genişletici komutları — açık partide, kapanmış ama çağrılmamış (bekleyen) partide ve erteleme tamponunda — atar ve her biri için `REJECTED` / `NARROWED` sonucunu kendisi üretir; nötr komutlar etkilenmez. Bu bir platform kuralıdır; çekirdek kodu değişmez: mandaldan sonra alınıp mandalla aynı çağrıya düşen genişleticiyi çekirdek A4-K45 ile reddeder.
 
 ## 8. Kural dağılımı tablosu
+
+> W2 kaydıdır; W3'te sınıfı değişen satırlar §9'dadır (ör. K50 artık güdümde uygulanır).
 
 Sınıflar: **i** bu işte tam; **ii → iş** yer tutucu; **iii** platformun. Bölünmüş satırda ilk sınıf baskındır.
 
@@ -330,3 +334,31 @@ Sınıflar: **i** bu işte tam; **ii → iş** yer tutucu; **iii** platformun. B
 | K130 | Taşınan emniyet örneği (`VALID` = 0) | i + iii | Kapı ve (b) W2; teslim platformun |
 
 Sayım: 130 kural (K01–K130, boşluk ve yineleme yok; betikle denetlendi). Baskın sınıfa göre i 87, ii 17, iii 26 (bölünmüş satırlar: K14 iii + i, K122 iii + ii; i + ii: K34, K36, K40, K47, K66, K70, K72, K87, K116, K124, K127; i + iii: K83, K130).
+
+## 9. W3 bütünleştirmesi (W3-zincir, 2026-11-21)
+
+**Hedef iptal mandalı** (sol W3-zincir bulguları 1, 2 ve 2.–3. tur bulguları; EMNİYET). `ida_emn_t.hedef_iptal` tüketici başına bir mandal bitidir: `IDA_EMN_IPTAL_GUD` (güdümün GUIDED_SP hedefi), `IDA_EMN_IPTAL_GOR` (görevin tutma hedefleri), `IDA_EMN_IPTAL_KON` (kontrolün türetilmiş belleği: derinlik ve yön referansı, öteleme integralleri). `ida_emn_kusak_artir` her silahsızlandırma girdisinde (DISARM, SESSION_END; (b) adımında, reddedilen ve `out` NULL çağrılar dahil), her kip daralmasında ve değişiminde ((b)'de NARROW_MODE, görevin kip düşmesi ve kip değişimi), görevin kendi silahsızlandırmasında ve SESSION_START'ta ((b3)) üç biti de kurar; init'te üçü kuruludur. Kontrol biti ayrıca görevin tutma hedefini her yeniden yakalayışında (kip, arıza düzeyi değişimi, ARM, FAILSAFE_RESET), derinleşme yasağı başladığında ve güdümün saklı hedefi silindiğinde kurulur. Bit kuruluyken o tüketicinin saklı durumu kullanılmaz; tüketici bitini yalnız saklı durumunu sildikten (güdüm), yeniden yakaladıktan (görev) ya da belleğini sıfırladıktan (kontrol: `ida_kon_adim`, `ida_kon_hesapla`'dan sonra; etkin değilse `dongu_sifirla`, etkinse `referans_yenile`) sonra temizler. Aynı çağrıda daraltmadan sonra işlenen GUIDED_SP geçerli yeni hedeftir. Kuşak sayacı (`kusak`, tümleyeniyle) yalnız tanı içindir, sarabilir ve hiçbir karar ona dayanmaz; iç tutarlılık denetimi mandalda tanımsız bit ve tümleyeni denetler. Kontrol, bit kuruluyken derinlik ve yön referanslarını ölçülen durumdan yeniden kurar, öteleme integrallerini sıfırlar, açısal hız integrallerini korur (HOLD geçişinde moment değişimi itki değişim hızı sınırının içinde; `zincir.z1` HOLD testi). `dalis_yasak` boyunca derinlik referansı ölçülen derinlikten derin olamaz, aşağı yönlü dikey hız isteği üretilmez ve dikey integral aşağı yönde birikmez. Değişmez (sol 3. tur bulgu 2): bütün kanallar (derinlik, dikey hız, doğrudan kuvvet X/Y/Z, tutum, yatay hız) birleşip gövde ekseni kırpmalarından geçtikten sonra NED aşağı kuvvet ≤ max(`BUOY_FF`, 0) (aracı yerinde tutan, net aşağı ivme üretmeyen yüzerlik dengelemesi). Tahsis girdisinde önce gövde Z yukarı çekilir (LIM_FZ içinde), yetmezse X ve Y aynı oranda küçültülür; tahsisin gerçekleştirdiği kuvvet (τ = B f; doyma, öncelik ve değişim hızı penceresi yüzünden istenenden sapabilir) yine aşıyorsa bütün itici kuvvetleri aynı oranda, yuvarlama payıyla sınırın biraz altına (× 0,999) küçültülür ve gerçekleşen kuvvet yeniden doğrulanır; dört denemede sağlanmazsa itki sıfırlanır. Tolerans yoktur: değişmez binary32 hesabında tam sağlanır (sol 4. tur). Değişim hızı sınırlayıcısının belleği (önceki f[]) yasak başlarken bilinçli olarak korunur (yasaksız eksenlerde yumuşak geçiş); aşağı yönü bu küçültme sınırlar ve o adımda pencere aşılabilir (emniyet önceliklidir). Rastgele taramada ikinci adım gereklidir: yalnız girdi korumasıyla değişmez değişim hızı penceresinde bozulur. Testler: `cekirdek.birim.gudum_gecis` (gerçek çekirdek, itki isteği düzeyinde: reddedilen çağrıda DISARM, SESSION_END ve daraltıcı kip; kuşağın tam turu; daraltmadan sonra gelen GUIDED_SP; HOLD'a giriş, hedef iptali, derinleşme yasağı), `cekirdek.birim.kontrol_dalis_yasak` (sol'un hareketli derinlik karşı örneği, eğik duruşta hız ve doğrudan kuvvet karşı örnekleri, değişim sınırlayıcısı etkinken yasak başlangıcı, sabit tohumlu rastgele duruş, istek ve geçiş taramaları; tahsisin gerçekleştirdiği kuvvete kadar, toleranssız), `zincir.z1` HOLD geçişi (fizikte yön momenti ve aşağı kuvvet).
+
+**Veri yokken ARM reddi** (mimar kararı W4-K13; EMNİYET). Arıza tablosunda `SIZINTI_BAYAT` (sızıntı algılayıcısından hiç örnek yok ya da bayat) ve `BATT_BAYAT` (batarya ölçerinden hiç örnek yok ya da bayat) satırları arm reddi gerektirir (`gorev/ariza.c` `OZELLIK`): ARM `REJECTED` / `NOT_ARMABLE` alır. Neden bitleri (`IDA_FSR_LEAK`, `IDA_FSR_BATT_LOW`) ve eylem düzeyleri (WARN; sızıntı bayatsa derinleşme yasağı) değişmedi; koşullar mandallı değildir: silahlıyken bayatlama silahsızlandırmaz, ilk taze örnekle ret kendiliğinden kalkar. "Veri yok" ile gerçek sızıntı ya da düşük bataryanın aynı neden bitini paylaşması A4'ün küçük sürüm notudur. Testler: `cekirdek.birim.gorev_arm` (`test_w4k13_*`).
+
+**Sayısal çökme ve FAILSAFE_RESET.** Kestirim, yayımlanan düzeyden (`ida_kes_duzey`; çökme mandalı kuruluyken hep FAULT) ayrı olarak süzgecin mandaldan bağımsız düzeyini tutar (`ida_kes_suzgec_duzey`: hizalanmamışsa INIT, hizalanmışsa OK, DEGRADED ya da BAD). Görev modülünün "kestirim sağlıklı" sayacı (EST_KOTU ve SAYISAL mandallarının temizleme koşulu, EST_OK_MS) yayımlanan düzey FAULT iken bu süzgeç düzeyini sayar: yeniden hizalanmış süzgeç EST_OK_MS boyunca kesintisiz sağlıklıysa FAILSAFE_RESET kabul edilir ve kestirimin mandalı kaldırılır; aksi hâlde NOT_ARMABLE (EMNİYET). Önceden süzgeç mandal yüzünden hep FAULT göründüğü için araç init'e kadar arıza eyleminde kalıyordu. Test: `cekirdek.birim.gorev_cokme`.
+
+**Bağlama.** Görev modülünün geçici tanımları kaldırıldı: kontrol isteği `ida_kon_istek_t` (`kontrol/kontrol.h`), bileşen geçerliliği `IDA_KES_G_*` ve `ida_kes_gecerlilik` (W3-K5). Kontrolün `istek_al`'ı güdümün erişimcisini (`ida_gud_kon_istegi`), itici maskesi `ida_gor_itici_disi`'ni okur. Kabul edilen ve mandalları gerçekten temizleyen FAILSAFE_RESET kestirimin sayısal çökme mandalını da kaldırır (`ida_kes_ariza_temizle`; etkisiz kabulde çağrılmaz, EMNİYET).
+
+**Çağrı içi akış** (değişmedi, §2 (e)): kestirim → `ida_gor_adim` (kısıtlayan her şey) → komutlar (`ida_gor_komut`, `ida_gud_komut`, …) → `ida_gud_adim` (hedefin silinme kuralları) → step OK'ta `ida_kon_adim` → `ida_kon_girdi_topla` → `ida_gud_kon_istegi` → `ida_gor_istek` + GUIDED_SP kanalları.
+
+**GUIDED_SP** (`gudum/`; A4-K50, 3.17, 3.4; W3-K7):
+
+| Konu | Uygulama |
+|---|---|
+| Ret sırası | `mask` = 0, bit 0x80, maskeli alanın 3.4 aralığı → `OUT_OF_RANGE`; sonra kip `GUIDED` değil → `BAD_MODE`. Kip komutun işlendiği andaki kiptir (aynı çağrıda önce gelen SET_MODE(GUIDED) görülür): kanca görev kancaları gibi çekirdek işaretçisi alır (dağıtıcıda `komut.c` tek satır, mimar izniyle), `ida_gud_komut(ida_core_t *c, …)`; dağıtıcının bağlamındaki `mode` yalnız komutlardan önceki kiptir |
+| `yaw` aralığı | −π < yaw ≤ π (double'da) ⇔ float için −3,14159250f ≤ yaw ≤ 3,14159250f (0x40490FDA); float π (0x40490FDB) aralık dışı |
+| Saklama | Maskesiz alan o kanalın saklı hedefini değiştirmez; kanal içi öncelik DEPTH > ALTITUDE > VEL_D, YAW > YAW_RATE, POS_NE > VEL_NE |
+| Uygulama | Yalnız `GUIDED`, silahlı, arıza eylemi < HOLD; maskeli kanal görev modülünün tutma isteğinin üzerine yazılır, maskesiz kanal görev modülünün tutma hedefinde kalır |
+| Geçerlilik yok (W3-K7) | Kanal sönümlü, sıfır hedefli: önce hız 0 (dikey hız, açısal hız, yatay hız geçerliyse), değilse kuvvet/moment 0; bileşen geçerli olunca hedefe döner. İrtifa kestirimi bu sürümde yok: ALTITUDE hep sönümlü |
+| Silinme | Kip GUIDED değil, arıza eylemi HOLD ve üstü, `armed` 1 → 0, SESSION_START. EMNİYET: silinen hedefe kendiliğinden dönülmez |
+| Parametre | `GUD_POS_KP` (0x0301, F32, A, 0–5, 0,3 1/s; TAHMİN): konum hatasından yatay hız isteği |
+
+**Kazanç ayarı** (`kontrol/kontrol_param.def`): W_KP 60 → 120, W_KI 30 → 15, W_DAMP_FF 40 → 80, ATT_KP_Y 1,5 → 3, RATE_KP_R 4 → 8; **bu fizik modeline göre** (sim/fizik dilim 1, `scenarios/ida0.toml`) Z1 koşusunda ayarlandı, gerçek araçta ölçülmedi. `test_sol_bulgulari.c`'nin iki testi ilk varsayılanlarla yazılmış beklenen değerleri koruyarak o kazançları kendi kurulumunda sabitler.
+
+**Kapalı çevrim düzeneği** `tests/zincir/` (C++20): fizik + sade sensörler + gerçek çekirdek + platform taklidi; CTest `zincir.z1`, araç `ida_zincir_deneme` (CSV). Senaryo: dalış 1,5 m / +90°, 40 s tutma; manevra 2,5 m / −90° ve aynı anda itici arızası (itki × 0,4; şekil polinomunun tersiyle darbe genişliği ölçeklenir), 40 s tutma; DISARM. Test dört koşuyu karşılaştırır: arızasız, dikey t5, yatay t1, ikisi. Parametre bloğu SIL yoluyla verilir (A4-K78): geçici bir örnek PARAM_SET/COMMIT/SAVE ile bloğu üretir; senaryonun yapılandırması `YER_G` = 9,82 (havuz, A5 Ek E) ve `BARO_KAL_D` = yüzer denge derinliğidir.

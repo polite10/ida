@@ -4,9 +4,13 @@
   "description": "İDA simülasyon laboratuvarı, PC tarafı bağımlılıkları (W2-depo)",
   "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
   "dependencies": [
-    "eigen3"
+    "eigen3",
+    "tomlplusplus",
+    "nlohmann-json"
   ],
   "overrides": [
-    { "name": "eigen3", "version": "5.0.1" }
+    { "name": "eigen3", "version": "5.0.1" },
+    { "name": "tomlplusplus", "version": "3.4.0", "port-version": 1 },
+    { "name": "nlohmann-json", "version": "3.12.0", "port-version": 2 }
   ]
 }

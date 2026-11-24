@@ -51,26 +51,32 @@ target_compile_definitions(ida_fw_baslangic PRIVATE
 add_library(ida_fw_saf STATIC
   link/alim.c
   bsp/acilis_kaydi.c
+  bsp/ecc.c
+  bsp/rng.c
   app/istatistik.c
-  app/tanilama.c
-  app/saglik.c)
+  app/saglik.c
+  app/gonderim.c
+  app/kapanis.c
+  app/kalici.c)
 ida_ayar_uygula(ida_fw_saf CEKIRDEK)
 target_compile_options(ida_fw_saf PRIVATE -fstack-usage -Wshadow)
 target_include_directories(ida_fw_saf PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/link" "${CMAKE_CURRENT_SOURCE_DIR}/bsp"
   "${CMAKE_CURRENT_SOURCE_DIR}/app")
-target_link_libraries(ida_fw_saf PUBLIC ida_link ida_core)
+target_link_libraries(ida_fw_saf PUBLIC ida_link_ust ida_link ida_core)
+target_compile_options(ida_fw_saf PRIVATE -Wimplicit-fallthrough)
 
 # ---- BSP, bağlantı sürücüsü, uygulama ----------------------------------------------------
 add_library(ida_fw_uygulama STATIC
   bsp/bsp.c
   bsp/zaman.c
   bsp/hata.c
+  bsp/flash.c
   link/seri.c
   app/cagirici.c
   app/main.c)
 _ida_fw_ayar(ida_fw_uygulama)
-target_link_libraries(ida_fw_uygulama PRIVATE ida_fw_saf ida_core ida_link ida_fw_hal)
+target_link_libraries(ida_fw_uygulama PRIVATE ida_fw_saf ida_core ida_link_ust ida_link ida_fw_hal)
 target_compile_definitions(ida_fw_uygulama PRIVATE "IDA_FW_GIT=${IDA_FW_GIT}u")
 if(IDA_OLCUM)
   target_compile_definitions(ida_fw_uygulama PRIVATE IDA_OLCUM=1)
@@ -87,7 +93,7 @@ add_executable(ida_fw)
 # çekilmez).
 target_link_options(ida_fw PRIVATE
   "LINKER:--whole-archive" "$<TARGET_FILE:ida_fw_uygulama>" "LINKER:--no-whole-archive")
-target_link_libraries(ida_fw PRIVATE ida_fw_uygulama ida_fw_saf ida_link ida_core ida_fw_hal)
+target_link_libraries(ida_fw PRIVATE ida_fw_uygulama ida_fw_saf ida_link_ust ida_link ida_core ida_fw_hal)
 set(IDA_FW_BAGLAYICI_BETIGI "${CMAKE_CURRENT_SOURCE_DIR}/bsp/stm32u5a9_ida.ld")
 ida_fw_elf_kur(ida_fw)
 

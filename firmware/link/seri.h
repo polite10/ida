@@ -74,6 +74,9 @@ bool ida_seri_bekleyen(void);
 /* Tam çerçeveyi gönderim halkasına yazar; yer yoksa hiçbir şey yazmaz ve false döner. */
 bool ida_seri_yaz(const uint8_t *veri, size_t n);
 size_t ida_seri_yazma_yeri(void);
+/* Önceki çerçevelerin son baytı hatta çıktı mı (DMA boşta, gönderim halkası ve USART boş;
+   A1-K110'un "sürücüye aynı anda en çok bir çerçeve" kuralı için). */
+bool ida_seri_gonderim_bos(void);
 
 void ida_seri_sayaclar(ida_seri_sayac_t *s);
 

@@ -26,6 +26,14 @@
 #define IDA_EMN_PIM_T1 0x10u /* tüp 1 pimi takılı         */
 #define IDA_EMN_TUMU   0x1Fu
 
+/* Hedef iptal mandalının tüketici bitleri (ida_emn_t.hedef_iptal; sol W3-zincir 2. tur
+   bulgu 1; EMNİYET). */
+#define IDA_EMN_IPTAL_GUD  0x01u /* güdümün saklı GUIDED_SP hedefi             */
+#define IDA_EMN_IPTAL_GOR  0x02u /* görev modülünün tutma hedefleri             */
+#define IDA_EMN_IPTAL_KON  0x04u /* kontrolün türetilmiş belleği (derinlik ve yön referansı,
+                                    öteleme integralleri; sol 3. tur bulgu 1)  */
+#define IDA_EMN_IPTAL_TUMU 0x07u
+
 /* SAFETY_CLOSE isteği (olay modülüne): A4-K125 birleştirmesinin girdisi. */
 #define IDA_KAPAT_T0  0x01u
 #define IDA_KAPAT_T1  0x02u
@@ -57,6 +65,19 @@ typedef struct {
     bool oturum_kapali;   /* SESSION_END işlendi, henüz SESSION_START gelmedi: sonraki
                              SESSION_END yeni kapanma olayı üretmez (A4-K73)               */
     ida_daralt_t d;       /* bu çağrının daraltma kaydı                                    */
+    /* Hedef iptal mandalı (sol W3-zincir bulgu 1 ve 2. tur bulgu 1; EMNİYET): her
+       silahsızlandırma girdisinde (DISARM, SESSION_END, görev modülünün kendi
+       silahsızlandırması), her kip değişiminde ve daralmasında ve SESSION_START'ta bütün
+       tüketici bitleri (IDA_EMN_IPTAL_*) kurulur; çağrı reddedilse ya da out NULL olsa da
+       (b)/(b3)'te kurulur. Kontrol biti ayrıca görevin tutma hedefini her yeniden yakalayışında,
+       derinleşme yasağı başladığında ve güdümün saklı hedefi silindiğinde kurulur; kontrol onu
+       belleğini sıfırladıktan sonra temizler. Bit kuruluyken o tüketicinin saklı hedefi uygulanmaz; tüketici bitini
+       ancak saklı hedefini sildikten sonra temizler. Emniyet kararı yalnız bu mandala dayanır. */
+    uint8_t hedef_iptal;
+    /* Daraltma kuşağı: mandalla birlikte artar; yalnız tanı içindir (sarabilir), karar
+       vermez. Tümleyen kopya iç tutarlılık içindir (A4-K89). */
+    uint32_t kusak;
+    uint32_t kusak_tumleyen;
 } ida_emn_t;
 
 typedef struct {
@@ -69,6 +90,8 @@ void ida_emn_kur(ida_emn_t *e);
 /* SESSION_START (3.11 (b3)): yalnız A4-K73'ün "arada SESSION_START" izini siler; etkin
    emniyet değerlerine, armed'a ve kipe dokunmaz. */
 void ida_emn_oturum_basi(ida_emn_t *e);
+/* Daraltma: bütün hedef iptal bitlerini kurar ve tanı kuşağını bir artırır (tümleyeniyle). */
+void ida_emn_kusak_artir(ida_emn_t *e);
 
 /* (b) adımı (A4-K113): in->narrow'un tanımlı bitleri; cmds[]'in ilk min(n_cmds, 8)
    girdisindeki daraltıcı komutlar; SESSION_END; samples[]'in ilk min(n_samples, 16)

@@ -1,0 +1,246 @@
+# Ek E — normatif varsayılanlar (A5-K16). Sayılar binary64 değerlerinin en kısa gidiş-dönüş ondalığıdır.
+surum = "1.0"
+
+# K99: senaryoda yoksa üretilen kök tablolar (adım 3)
+[eksik_tablolar]
+hedefler = {}
+olaylar = []
+emniyet_girdileri = {}
+baglanti = {etkin_profil = "ideal", profiller = {ideal = {kademe = "L0"}}}
+kalibrasyon = {}
+kalite = {}
+baslangic = {}
+otopilot = {}
+
+# Koşulsuz varsayılanlar (adım 4): yol yoksa ve ebeveyni varsa yazılır; '*' anahtarlı koleksiyonun,
+# '[]' dizinin her elemanı; sıra ebeveyn önce.
+[kosulsuz]
+"otopilot.parametreler" = []
+"ortam.sahne_poz" = {}
+"ortam.sahne_poz.konum" = [0.0, 0.0, 0.0]
+"ortam.sahne_poz.yonelim" = [1.0, 0.0, 0.0, 0.0]
+"ortam.su_optigi" = {}
+"ortam.su_optigi.surum" = 1
+"ortam.isik" = {}
+"ortam.yercekimi" = 9.82
+"ortam.atmosfer_basinci" = 101325.0
+"ortam.hava_yogunlugu" = 1.225
+"ortam.su.ph" = 8.0
+"ortam.dalga" = {}
+"ortam.dalga.spektrum" = "yok"
+"ortam.dalga.yayilim" = "cos2s"
+"ortam.dalga.yayilim_s" = 10.0
+"ortam.dalga.bilesen_sayisi" = 64
+"ortam.akinti" = {}
+"ortam.akinti.hiz_ned" = [0.0, 0.0, 0.0]
+"ortam.akinti.gauss_markov" = {}
+"ortam.akinti.gauss_markov.etkin" = false
+"ortam.ruzgar" = {}
+"ortam.ruzgar.hiz_ned" = [0.0, 0.0, 0.0]
+"ortam.ruzgar.gauss_markov" = {}
+"ortam.ruzgar.gauss_markov.etkin" = false
+"hedefler.*.sinif" = "bilinmiyor"
+"hedefler.*.yonelim_rastgele" = false
+"hedefler.*.hareket" = {}
+"hedefler.*.hareket.tur" = "sabit"
+"gorev.yukleme_zamani_ns" = 0
+"emniyet_girdileri.acil_durdurma" = false
+"emniyet_girdileri.fis" = {}
+"emniyet_girdileri.fis.f1" = false
+"emniyet_girdileri.fis.f2" = false
+"emniyet_girdileri.pim" = {}
+"emniyet_girdileri.pim.f1" = true
+"emniyet_girdileri.pim.f2" = true
+"baglanti.profiller.*.tasima" = "datagram"
+"baglanti.profiller.*.yukari" = {}
+"baglanti.profiller.*.yukari.gecikme_taban_ns" = 0
+"baglanti.profiller.*.yukari.titresim_ns" = 0
+"baglanti.profiller.*.yukari.kayip_modeli" = "yok"
+"baglanti.profiller.*.asagi" = {}
+"baglanti.profiller.*.asagi.gecikme_taban_ns" = 0
+"baglanti.profiller.*.asagi.titresim_ns" = 0
+"baglanti.profiller.*.asagi.kayip_modeli" = "yok"
+"kalibrasyon.malzeme" = {}
+"kalite.gorunum" = "sade"
+"kalite.kamera" = "sade"
+"kalite.sonar" = "sade"
+"kalite.kayit" = "telemetri"
+"kalite.kamera_kareleri" = "kapali"
+"kalite.kamera_gerekli" = false
+"baslangic.konum" = [0.0, 0.0, 0.0]
+"baslangic.yonelim" = [1.0, 0.0, 0.0, 0.0]
+"baslangic.hiz" = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+"baslangic.yuklu_tupler" = ["f1", "f2"]
+"baslangic.batarya_soc" = 1.0
+"baslangic.batarya_v1" = 0.0
+"arac.kutle.trim_kutlesi" = 0.0
+"arac.hidrodinamik.sapma" = {}
+"arac.hidrodinamik.sapma.eklenmis_kutle" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.hidrodinamik.sapma.dogrusal_sonum" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.hidrodinamik.sapma.karesel_sonum" = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+"arac.sensorler.*.etkin" = true
+
+# Koşullu varsayılanlar (adım 5). kosul.yol, yol '[]' içeriyorsa dizi elemanına göredir; deger ya da icinde;
+# sil = true ise yol çıkarılır. Koşul, adım 4'ten sonraki değere bakar.
+[[kosullu]]
+yol = "ortam.su.yogunluk"
+kosul = {yol = "ortam.tur", deger = "havuz"}
+deger = 1000.0
+[[kosullu]]
+yol = "ortam.su.yogunluk"
+kosul = {yol = "ortam.tur", deger = "acik_su"}
+deger = 1025.0
+[[kosullu]]
+yol = "ortam.su.tuzluluk"
+kosul = {yol = "ortam.tur", deger = "havuz"}
+deger = 0.0
+[[kosullu]]
+yol = "ortam.su.tuzluluk"
+kosul = {yol = "ortam.tur", deger = "acik_su"}
+deger = 0.035
+[[kosullu]]
+yol = "ortam.dalga.gamma"
+kosul = {yol = "ortam.dalga.spektrum", deger = "jonswap"}
+deger = 3.3
+[[kosullu]]
+yol = "calistirma.sil_hiz_carpani"
+kosul = {yol = "calistirma.kip", deger = "sil"}
+deger = 1.0
+[[kosullu]]
+yol = "calistirma.sil_azami_hiz"
+kosul = {yol = "calistirma.kip", deger = "sil"}
+deger = false
+[[kosullu]]
+yol = "kalite.sonar_tam"
+kosul = {yol = "kalite.sonar", deger = "sade"}
+sil = true
+[[kosullu]]
+yol = "kalite.sonar_tam"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = {}
+[[kosullu]]
+yol = "kalite.sonar_tam.azami_sekme"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 2
+[[kosullu]]
+yol = "kalite.sonar_tam.hucre_kenari"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 0.01
+[[kosullu]]
+yol = "kalite.sonar_tam.yuzey_yamasi_araligi"
+kosul = {yol = "kalite.sonar", deger = "tam"}
+deger = 0.05
+[[kosullu]]
+yol = "olaylar[].sure_ns"
+kosul = {yol = "sinif", icinde = ["sensor", "aktuator", "guc", "protokol"]}
+deger = 0
+[[kosullu]]
+yol = "olaylar[].sure_ns"
+kosul = {yol = "tur", deger = "kesinti"}
+deger = 0
+[[kosullu]]
+yol = "olaylar[].zaman_deseni"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = {}
+[[kosullu]]
+yol = "olaylar[].zaman_deseni.tur"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = "surekli"
+[[kosullu]]
+yol = "olaylar[].sira_boz"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = false
+[[kosullu]]
+yol = "olaylar[].kanal_maskesi"
+kosul = {yol = "sinif", deger = "sensor"}
+deger = 4294967295
+
+# Ürün profilleri (adım 5): arac.sensorler.<ad> için tur'a göre. hiz_hz yalnız verilmişse yazılır;
+# saat_kaymasi_ppm imu dışında 0; ayar anahtarları yoksa yazılır.
+[profil.imu]
+profil = "icm42688p"
+saat_kaymasi_ppm = "yok"
+ayar = {jiroskop_yogunluk = 4.887e-5, ivme_yogunluk = [0.0006374, 0.0006374, 0.0006865], jiroskop_acilis_bias_siniri = 0.008727, ivme_acilis_bias_siniri = 0.1961, jiroskop_sicaklik_kats_siniri = 8.727e-5, ivme_sicaklik_kats_siniri = 0.001471, jiroskop_olcek_siniri = 0.005, jiroskop_eksenler_arasi_siniri = 0.0125, ivme_olcek_siniri = 0.005, ivme_eksenler_arasi_siniri = 0.01, jiroskop_dogrusalsizlik = 0.001, ivme_dogrusalsizlik = 0.0, jiroskop_gm_tau_ns = 1000000000000, ivme_gm_tau_ns = 300000000000, jiroskop_gm_sigma = 4.848e-5, ivme_gm_sigma = 0.001, jiroskop_aralik = 8.7266, ivme_aralik = 39.2266, bit = 16, suzgec_etkin = false, dunya_donusu_etkin = true}
+[profil.manyetometre]
+profil = "rm3100"
+hiz_hz = 100.0
+saat_kaymasi_ppm = 0.0
+ayar = {gurultu_sigma = 2e-8, yumusak_demir = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], sert_demir = [0.0, 0.0, 0.0], sicaklik_kats = 0.0, itici_girisim_orani = 0.2, teslim_gecikmesi_ns = 1000000}
+[profil.basinc]
+profil = "ms5837_30ba"
+hiz_hz = 25.0
+saat_kaymasi_ppm = 0.0
+ayar = {gurultu_sigma = 20.0, mutlak_dogruluk_siniri = 5000.0, sicaklik_kats = 0.0, kuantalama = 10.0, donusum_penceresi_ns = 18750000, okuma_suresi_ns = 1000000, dinamik_basinc_kats = 0.0, sicaklik_ofset_siniri = 4.0}
+[profil.gnss]
+profil = "neo_m9n"
+hiz_hz = 5.0
+saat_kaymasi_ppm = 0.0
+ayar = {cep = 2.0, gm_tau_ns = 60000000000, gm_varyans_payi = 0.9, dusey_carpan = 1.5, hiz_sigma = 0.05, teslim_gecikmesi_ns = 120000000, uydu_sayisi = 20, n_sv_ref = 12, w50 = 0.03, w_gecis = 0.005, t_kisa_ns = 10000000000, t_efemeris_ns = 7200000000000, hizli_medyan_ns = 1000000000, sicak_medyan_ns = 2000000000, soguk_medyan_ns = 24000000000, t_edinim_ns = 0, yakinsama_baslangic_hatasi = 0.0, rapor_carpani = 1.0}
+[profil.dvl]
+profil = "a50"
+saat_kaymasi_ppm = 0.0
+ayar = {isin_acisi = 0.39269908169872414, yari_guc_genisligi = 0.07679448708775051, azimut_ofseti = 0.7853981633974483, alt_isin_sayisi = 7, gelis_acisi_siniri = 1.0471975511965976, sigma0 = 0.001, k_r = 0.0002, k_u = 0.001, uzun_donem_olcek_siniri = 0.0101, kappa = 1.0, islem_suresi_ns = 5000000, uc_isinla_cozum = false, su_takibi = false, baglanti = "seri", seri_baud = 115200, mod_histerezis_ping = 3, kilit_arama_ping = 3, yakin_mod_deneme_ns = 10000000000}
+[profil.ping1d]
+profil = "ping1d"
+saat_kaymasi_ppm = 0.0
+ayar = {kutu_sayisi = 200, ping_araligi_ns = 50000000, oto_menzil_carpani = 1.5, islem_suresi_ns = 0}
+[profil.ping360]
+profil = "ping360"
+saat_kaymasi_ppm = 0.0
+ayar = {baglanti = "usb", t_m0_ns = 0, t_grad_ns = 0, islem_suresi_ns = 0, gurultu_tabani = 0.0, yakin_alan_genligi = 0.0, tvg_a = 20.0}
+[profil.kamera]
+profil = "kamera_on"
+saat_kaymasi_ppm = 0.0
+ayar = {l_sonrasi_ns = 0, l_alg_ns = 50000000, bozulma_modeli = "yok", bozulma = [0.0, 0.0, 0.0, 0.0, 0.0], kalibrasyon_surumu = 1}
+[profil.batarya_olcer]
+profil = "psm"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {gerilim_bolucu = 11.0, akim_ofseti = 0.33, akim_olcegi = 37.8788, analog_gurultu_sigma = 0.002, adc_bit = 12, adc_referans = 3.3, sicaklik_kats = 0.0, teslim_gecikmesi_ns = 1000000}
+[profil.sizinti]
+profil = "sos_leak"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {prob_sayisi = 2, algilama_gecikmesi_ns = 1000000000, sahte_pozitif_orani = 0.0}
+[profil.firlatici_geri_okuma]
+profil = "firlatici_io"
+hiz_hz = 10.0
+saat_kaymasi_ppm = 0.0
+ayar = {anahtar_gecikmesi_ns = 10000000, teslim_gecikmesi_ns = 1000000}
+
+# Kopya varsayılanlar (adım 5): koleksiyon elemanında kosul sağlanır ve hedef yoksa kaynak kopyalanır.
+[[kopya]]
+koleksiyon = "arac.sensorler"
+kosul = {yol = "tur", deger = "kamera"}
+hedef = "ayar.nominal_montaj"
+kaynak = "montaj"
+
+# Ortamın kalibre edilmemiş değerleri (A5-K101): yol yoksa yazılır ve listelenir.
+[kalibre_edilmedi_ortam]
+"ortam.su_optigi.beta_d_m" = [0.0, 0.0, 0.0]
+"ortam.su_optigi.beta_b_m" = [0.0, 0.0, 0.0]
+"ortam.su_optigi.b_sonsuz_rgb_dogrusal" = [0.0, 0.0, 0.0]
+"ortam.su_optigi.bulaniklik_olcegi" = 0.0
+"ortam.isik.gunes_yonu_n" = [0.0, 0.0, -1.0]
+"ortam.isik.gunes_isinimi_w_m2" = 1000.0
+"ortam.isik.ortam_isigi_rgb_dogrusal" = [0.0, 0.0, 0.0]
+
+# Kalibre edilmedi (A5-K101): verilmemişse ideal değer yazılır ve etkin sensörde yolu listelenir;
+# yazilmaz listesindekiler yazılmaz, yalnız listelenir.
+[kalibre_edilmedi]
+gnss = {deger = {t_edinim_ns = 0, yakinsama_baslangic_hatasi = 0.0}, yazilmaz = []}
+dvl = {deger = {}, yazilmaz = ["c_ayar"]}
+ping1d = {deger = {islem_suresi_ns = 0}, yazilmaz = []}
+ping360 = {deger = {t_m0_ns = 0, t_grad_ns = 0, islem_suresi_ns = 0, gurultu_tabani = 0.0, yakin_alan_genligi = 0.0}, yazilmaz = ["baud"]}
+kamera = {deger = {l_sonrasi_ns = 0}, yazilmaz = []}
+
+# Doğrulanmamış varsayılanlar (A5-K108): etkin sensörde verilmemişse yolu listelenir, değer yazılmaz.
+[dogrulanmamis]
+ping1d = ["sogurma"]
+ping360 = ["sogurma"]
+
+# Ölçüm kanıtları (A5-K79)
+[olcum_kanitlari]
+sade = {yol = "kalite.sonar", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.3–4.4 (sade, N = 5 000)"}
+tam = {yol = "kalite.sonar_tam.isin_sayisi", kaynak = "docs/olcumler/MP7-sonar-suresi.md §4.6"}
+tam_olculmus = [20000, 40000, 80000, 160000]
