@@ -1,6 +1,7 @@
 // ida_sim — başsız sim sunucusu (W4-kopru). Kullanım: sim/sunucu/BENIOKU.md.
 #include "ida/sunucu/sunucu.hpp"
 
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,26 @@ void kullanim()
         "  --gunluk <0..2>          stderr günlüğü (varsayılan 1)\n"
         "çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo (doğrulama raporu\n"
         "standart hataya), 4 senaryo bu dilimde yürütülemez\n");
+}
+
+// Sayısal seçeneklerin tek ayrıştırıcısı (sol #1 üçüncü dar denetimi): değerin tamamı sayı
+// olmalı, `errno` dönüşümden önce sıfırlanır ve ERANGE (taşma ya da alt taşma; ör. −1e−999'un
+// sessizce 0 olması) hatadır; sonuç sonlu ve [en_az, en_cok] içinde olmalıdır.
+bool sayi_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    if (v.empty()) {
+        return false;
+    }
+    char* son = nullptr;
+    errno = 0;
+    x = std::strtod(v.c_str(), &son);
+    return errno != ERANGE && son != nullptr && *son == '\0' && std::isfinite(x) && x >= en_az && x <= en_cok;
+}
+
+// Tamsayı seçenekleri: aynı ayrıştırıcıyla, ayrıca tam değerli olmalı.
+bool tam_ayristir(const std::string& v, double en_az, double en_cok, double& x)
+{
+    return sayi_ayristir(v, en_az, en_cok, x) && x == std::floor(x);
 }
 
 }  // namespace
@@ -75,7 +96,13 @@ int main(int argc, char** argv)
                 return 1;
             }
         } else if (s == "--a1-port") {
-            a.a1_port = static_cast<std::uint16_t>(std::strtoul(deger().c_str(), nullptr, 10));
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 65535.0, x)) {
+                std::fprintf(stderr, "ida_sim: --a1-port 0–65535 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.a1_port = static_cast<std::uint16_t>(x);
         } else if (s == "--sil") {
             a.sil_yolu = deger();
         } else if (s == "--sil-depo") {
@@ -86,10 +113,22 @@ int main(int argc, char** argv)
                 a.karsi = ida::sunucu::Karsi::seri;
             }
         } else if (s == "--tohum") {
-            a.tohum = std::strtoull(deger().c_str(), nullptr, 0);
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 9007199254740991.0, x)) {   // A5-K82: 0 … 2⁵³−1
+                std::fprintf(stderr, "ida_sim: --tohum 0 … 2^53−1 bir tamsayı ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.tohum = static_cast<std::uint64_t>(x);
             a.tohum_verildi = true;
         } else if (s == "--sure") {
-            a.sure_s = std::strtod(deger().c_str(), nullptr);
+            const std::string v = deger();
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 1e7, x) || !(x > 0.0)) {
+                std::fprintf(stderr, "ida_sim: --sure pozitif bir süre (s) ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.sure_s = x;
             a.sure_verildi = true;
         } else if (s == "--kok") {
             a.depo_koku = deger();
@@ -111,12 +150,12 @@ int main(int argc, char** argv)
                 std::size_t p = 0;
                 while (p < v.size()) {
                     const std::size_t q = v.find(',', p);
-                    const int k = std::atoi(v.substr(p, q == std::string::npos ? std::string::npos : q - p).c_str());
-                    if (k < 0 || k > 7) {
+                    double k = 0.0;
+                    if (!tam_ayristir(v.substr(p, q == std::string::npos ? std::string::npos : q - p), 0.0, 7.0, k)) {
                         std::fprintf(stderr, "ida_sim: kanal 0–7 olmalı\n");
                         return 1;
                     }
-                    a.z1.ariza_kanallari.push_back(k);
+                    a.z1.ariza_kanallari.push_back(static_cast<int>(k));
                     p = q == std::string::npos ? v.size() : q + 1;
                 }
             }
@@ -129,9 +168,8 @@ int main(int argc, char** argv)
             }
             verildi = true;
             const std::string v = deger();
-            char* son = nullptr;
-            const double x = std::strtod(v.c_str(), &son);
-            if (v.empty() || son == nullptr || *son != '\0' || !std::isfinite(x) || x < 0.0) {
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 1e7, x)) {
                 std::fprintf(stderr, "ida_sim: %s sonlu ve ≥ 0 bir süre (s) ister: %s\n", s.c_str(), v.c_str());
                 return 1;
             }
@@ -139,7 +177,13 @@ int main(int argc, char** argv)
         } else if (s == "--csv") {
             a.csv_yolu = deger();
         } else if (s == "--gunluk") {
-            a.gunluk = std::atoi(deger().c_str());
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 0.0, 2.0, x)) {
+                std::fprintf(stderr, "ida_sim: --gunluk 0..2 ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.gunluk = static_cast<int>(x);
         } else if (s == "--yardim" || s == "-h") {
             kullanim();
             return 0;

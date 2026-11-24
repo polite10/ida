@@ -63,6 +63,14 @@ ida_sim_kullanim_testi(yerlesik_acil_sayi_degil "--acil sonlu" --acil 12x)
 ida_sim_kullanim_testi(yerlesik_acil_sonsuz "--acil sonlu" --acil inf)
 ida_sim_kullanim_testi(yerlesik_kalk_once "--acil-kalk --acil'den sonra" --acil 12 --acil-kalk 10)
 ida_sim_kullanim_testi(yerlesik_acil_yinelenen "--acil bir kez verilebilir" --acil 12 --acil 13)
+# Üçüncü dar denetim: strtod alt taşması (−1e−999 → 0, ERANGE) ve taşma; aynı ayrıştırıcı.
+ida_sim_kullanim_testi(yerlesik_acil_alt_tasma "--acil sonlu" --acil -1e-999)
+ida_sim_kullanim_testi(yerlesik_acil_alt_tasma_pozitif "--acil sonlu" --acil 1e-999)
+ida_sim_kullanim_testi(yerlesik_acil_kalk_tasma "--acil-kalk sonlu" --acil 1 --acil-kalk 1e999)
+ida_sim_kullanim_testi(sure_alt_tasma "--sure pozitif" --sure 1e-999)
+ida_sim_kullanim_testi(tohum_kesirli "--tohum" --tohum 1.5)
+ida_sim_kullanim_testi(gunluk_sayi_degil "--gunluk" --gunluk x)
+ida_sim_kullanim_testi(ariza_kanal_sayi_degil "kanal 0–7" --ariza 4,x)
 add_test(NAME butunleme.ida_sim_tohum_ve_senaryo
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
           "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--tohum;2;--kok;${PROJECT_SOURCE_DIR}"
