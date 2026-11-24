@@ -98,6 +98,8 @@ struct Sunucu::Ic {
         }
     }
 
+    std::uint64_t kabul_bekletme = 0;
+
     void dongu()
     {
         std::vector<std::uint8_t> tampon(64 * 1024);
@@ -183,11 +185,19 @@ struct Sunucu::Ic {
             if (!kapanis_basladi) {
                 if (liste[1].okunabilir) {
                     for (int n = 0; n < 64; ++n) {
+                        // W4-K23 (2''): kapatılabilecek bağlantı yoksa ve okuma fırsatı bekleyen
+                        // bağlantı varsa kabul bu turda bırakılır (bekleyenler dinleme kuyruğunda kalır).
+                        const KabulKarari karar = cekirdek->kabul_karari();
+                        if (karar == KabulKarari::bekle) {
+                            ++kabul_bekletme;
+                            break;
+                        }
                         const ag::Tutamac t = ag::kabul(dinleyici);
                         if (t == ag::gecersiz()) {
                             break;
                         }
                         std::vector<BagId> kapatilacak;
+                        // reddet: `ac` yer bulamaz, reddi sayar ve 0 döndürür (aşağıda 503).
                         const BagId id = cekirdek->ac(simdi, kapatilacak);
                         for (const BagId k : kapatilacak) {
                             const auto it = soketler.find(k);
@@ -222,6 +232,7 @@ struct Sunucu::Ic {
             {
                 std::lock_guard<std::mutex> k(sayac_kilidi);
                 son_sayaclar = cekirdek->sayaclar();
+                son_sayaclar.kabul_bekletme = kabul_bekletme;
             }
         }
         for (const auto& [id, t] : soketler) {
