@@ -232,6 +232,11 @@ void GPDMA1_Channel1_IRQHandler(void)
     tx_basla_kilitli();
 }
 
+bool ida_seri_gonderim_bos(void)
+{
+    return tx_okunan == tx_yazilan && tx_aktif == 0u && (USART1->ISR & USART_ISR_TC) != 0u;
+}
+
 size_t ida_seri_yazma_yeri(void)
 {
     return IDA_SERI_TX_N - (tx_yazilan - tx_okunan);

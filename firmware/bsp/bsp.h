@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "acilis_kaydi.h"
+#include "rng.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,8 @@ void ida_bsp_calisma_kipi(void);
 const ida_acilis_sonuc_t *ida_bsp_acilis(void);
 /* .noinit'teki kayıt (salt okunur; hata alanları önceki açılışın arızası olabilir). */
 const ida_acilis_kaydi_t *ida_bsp_kayit(void);
+/* Kararlı çalışmadan sonra ardışık arıza sayacını sıfırlar (01 §2.8; kayıt CRC'siyle). */
+void ida_bsp_ardisik_temizle(void);
 
 /* ---- zaman (01 §2.5) ---------------------------------------------------------------------- */
 /* Duvar saati: açılıştan beri µs (TIM2 1 MHz + taşma sayacı); azalmaz. */
@@ -58,6 +61,10 @@ void ida_bsp_cevrim_ve_zaman(uint32_t *cevrim, uint64_t *t_us);
 /* ---- gözetim (01 §2.8) -------------------------------------------------------------------- */
 void ida_bsp_iwdg_besle(void);
 
+/* Planlı yeniden başlatma (A1-K17 REBOOT): sistem sıfırlaması; sonraki açılışın nedeni
+   SOFTWARE'dir ve ardışık arıza sayacı sıfırlanır (01 §2.8). Dönmez. */
+void ida_bsp_yeniden_baslat(void);
+
 /* ---- LED (PE0 yeşil, PE1 kırmızı) --------------------------------------------------------- */
 void ida_bsp_led_yesil(bool yak);
 void ida_bsp_led_kirmizi(bool yak);
@@ -65,7 +72,12 @@ void ida_bsp_led_yesil_cevir(void);
 
 /* ---- rastgelelik -------------------------------------------------------------------------- */
 /* Sıfırdan farklı 32 bit gerçek rastgele sayı; RNG hata verirse 0 döner. */
-uint32_t ida_bsp_rastgele(void);
+/* Gerçek rastgele 32 bit, sıfırdan farklı (bsp/rng.c). 0: tamam; < 0: kurtarılamayan RNG hatası
+   (çağıran güvenli beklemeye geçer; A1-K13: sabit nonce kullanılmaz). */
+int ida_bsp_rastgele(uint32_t *deger);
+/* RNG başlatılamadı (HAL_RNG_Init). */
+bool ida_bsp_rng_baslatma_hatasi(void);
+const ida_rng_sayac_t *ida_bsp_rng_sayac(void);
 
 /* ---- hata kaydı --------------------------------------------------------------------------- */
 /* Hata işleyicisinin kaydına girecek çekirdek çağrısı sayacı (çağırıcı artırır). */
@@ -88,6 +100,7 @@ uint32_t ida_bsp_nvic_bekci(void);
 /* Kesme öncelikleri (01 §2.4 tablosu; 0 en acil). */
 #define IDA_BSP_ONCELIK_ZAMAN 1u
 #define IDA_BSP_ONCELIK_SERI  3u
+#define IDA_BSP_ONCELIK_FLASH 4u /* ECC düzeltme kesmesi (bsp/flash.c) */
 
 /* ---- yığın (01 §2.10) --------------------------------------------------------------------- */
 /* Ana yığının boyu ve açılıştan beri en yüksek kullanımı (boyama deseniyle; bayt). */

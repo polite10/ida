@@ -68,6 +68,8 @@ static int32_t ustune_yazilacak_bozuk(const ida_core_t *c)
                          bool_bayti_gecerli(&c->emn.inst0_var) &&
                          (((uint32_t)c->emn.inst0_tube[0] & ~tup_tanimli) == 0u) &&
                          (((uint32_t)c->emn.inst0_tube[1] & ~tup_tanimli) == 0u) &&
+                         (c->emn.kusak_tumleyen == (0xFFFFFFFFu ^ c->emn.kusak)) &&
+                         (((uint32_t)c->emn.hedef_iptal & ~(uint32_t)IDA_EMN_IPTAL_TUMU) == 0u) &&
                          ida_fc_tutarli(&c->fc);
     return gecerli ? 0 : 3;
 }
@@ -453,7 +455,7 @@ static void olagan(ida_core_t *c, const ida_in_t *in, ida_out_t *out, ida_cagri_
     };
     const ida_komut_baglam_t kb = {
         .now_w = cg->now,
-        .daraldi = c->emn.d.herhangi,
+        .daraldi = c->emn.d.herhangi || ida_gor_daraldi(&c->gor), /* A4-K45; W3-K9 */
         .imu_red = cg->imu_red,
         .imu_lag = cg->imu_lag,
         .armed = c->emn.armed,

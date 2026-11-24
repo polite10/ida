@@ -153,7 +153,7 @@ void ida_cik_yaz(ida_core_t *c, const ida_cagri_t *cg, const ida_in_t *in, ida_o
     }
     const ida_olay_kapi_t kapi = {
         .genis_serbest = step_ok,
-        .daraldi = c->emn.d.herhangi,
+        .daraldi = c->emn.d.herhangi || (kabul && ida_gor_daraldi(&c->gor)), /* A4-K45; W3-K9 */
         .imu_lag = cg->imu_lag,
         .fire_serbest = armed && !is_safe,
         .kisitli_tupler = kisitli,

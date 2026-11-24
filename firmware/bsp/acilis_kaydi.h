@@ -22,8 +22,8 @@
  * vermede de PINRSTF kurulabilir. Ham bayraklar ayrıca bildirilir (BOARD_HELLO.reset_flags).
  *
  * Ardışık arıza sayacı (01 §2.8): FAULT ve WATCHDOG bir artırır (255'te doyar); POWER_ON, PIN
- * ve SOFTWARE sıfırlar; UNKNOWN değiştirmez. Kararlı çalışmayla sıfırlanması (oturumla 30 s)
- * oturum modülüyle birlikte gelir (dilim 2).
+ * ve SOFTWARE sıfırlar; UNKNOWN değiştirmez. Kararlı çalışmayla (NORMAL ve RUNNING oturumla
+ * kesintisiz 30 s) ana döngü ida_kayit_ardisik_temizle ile sıfırlar.
  */
 #ifndef IDA_FW_ACILIS_KAYDI_H
 #define IDA_FW_ACILIS_KAYDI_H
@@ -84,6 +84,10 @@ int ida_kayit_gecerli(const ida_acilis_kaydi_t *k);
 void ida_kayit_muhurle(ida_acilis_kaydi_t *k);
 /* Geçersiz kaydı sıfır içerikle kurar ve mühürler. */
 void ida_kayit_kur(ida_acilis_kaydi_t *k);
+
+/* Kararlı çalışmadan sonra (01 §2.8: NORMAL ve RUNNING oturumla kesintisiz 30 s) ardışık arıza
+   sayacını sıfırlar ve yeniden mühürler; hata alanları korunur. Kayıt geçersizse kurulur. */
+void ida_kayit_ardisik_temizle(ida_acilis_kaydi_t *k);
 
 /* Sıfırlama nedeni (A4 IDA_RESET_*). */
 uint8_t ida_sifirlama_nedeni(uint32_t csr, int ariza_bekliyor);

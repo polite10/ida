@@ -11,6 +11,7 @@
  */
 #include "bsp.h"
 
+#include "flash.h"
 #include "stm32u5xx.h"
 
 extern ida_acilis_kaydi_t ida_bsp_noinit_kayit; /* bsp.c */
@@ -54,4 +55,16 @@ __attribute__((noreturn)) void ida_bsp_hata_isle(uint32_t *cerceve, uint32_t exc
     ida_kayit_muhurle(k);
     __DSB();
     NVIC_SystemReset();
+}
+
+/* NMI: kalıcı bellek bölgesinde çift bit ECC hatası (yarım yazılmış quad-word; güç kesintisi ya
+   da kayıt sırasında sıfırlama) ise bayrak temizlenir ve dönülür: okuyan kod kaydı geçersiz sayar
+   (01 §2.9). Başka her NMI hata kaydı ve sıfırlamadır (yığın çerçevesi okunmaz). */
+void NMI_Handler(void);
+void NMI_Handler(void)
+{
+    if (ida_flash_ecc_nmi()) {
+        return;
+    }
+    ida_bsp_hata_isle((uint32_t *)0, 0u);
 }
