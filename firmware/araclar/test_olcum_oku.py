@@ -48,6 +48,33 @@ class TutarlilikTesti(unittest.TestCase):
         self.assertFalse(olcum_oku.tutarli_mi(4, 6))
 
 
+class DuzenTesti(unittest.TestCase):
+    """W4-z2 sol #3: PARAM_SAVE ayrıntısı yalnız fw-measure imajında, bloğun sonunda."""
+
+    def test_surum_duzeninde_olcum_sozcukleri_yok(self):
+        adlar = olcum_oku.duzen()
+        self.assertNotIn("ps_sayi", adlar)
+        self.assertNotIn("ol_fark_sayi", adlar)
+        self.assertEqual(adlar[-1], "rx_durdu")
+
+    def test_olcum_duzeni_surum_duzeninin_uzantisi(self):
+        surum = olcum_oku.duzen()
+        olcum = olcum_oku.duzen(True)
+        self.assertEqual(olcum[:len(surum)], surum)
+        self.assertEqual(olcum[len(surum):], [
+            "ps_sayi", "ps_son_tur_cevrim", "ps_son_step_cevrim", "ps_son_skart_us", "ps_son_dongu_cevrim",
+            "ps_son_kaydet_cevrim", "ol_fark_sayi", "ol_fark_en_kotu_cevrim", "ol_fark_toplam_cevrim_lo",
+            "ol_fark_toplam_cevrim_hi"])
+
+    def test_derleme_turu_uyusmazsa_hata(self):
+        olcum_oku.derleme_denetle({"derleme_olcum": 1}, True)
+        olcum_oku.derleme_denetle({"derleme_olcum": 0}, False)
+        with self.assertRaises(SystemExit):
+            olcum_oku.derleme_denetle({"derleme_olcum": 0}, True)
+        with self.assertRaises(SystemExit):
+            olcum_oku.derleme_denetle({"derleme_olcum": 1}, False)
+
+
 if __name__ == "__main__":
     # Çıktı konsol kodlamasından bağımsız (Windows'ta cp1252 Türkçe karakteri yazamaz).
     for _akis in (sys.stdout, sys.stderr):

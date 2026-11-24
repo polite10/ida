@@ -41,8 +41,6 @@
     X(cagri_rc_hata) X(cagri_son_rc) X(cagri_tur_en_kotu_cevrim) \
     X(cagri_turu_sayi) X(cagri_turu_asim) X(cagri_turu_asim_ps) X(cagri_turu_en_kotu_us) \
     X(cagri_turu_ps_en_kotu_us) X(cagri_turu_sinir_us) \
-    X(ps_sayi) X(ps_son_tur_cevrim) X(ps_son_step_cevrim) X(ps_son_skart_us) X(ps_son_dongu_cevrim) X(ps_son_kaydet_cevrim) \
-    X(ol_fark_sayi) X(ol_fark_en_kotu_cevrim) X(ol_fark_toplam_cevrim_lo) X(ol_fark_toplam_cevrim_hi) \
     X(bg_sayisi) X(bg_en_kotu_cevrim) X(bg_more) \
     X(skart_sayisi) X(skart_en_kotu_cevrim) X(skart_en_iyi_cevrim) \
     X(skart_toplam_cevrim_lo) X(skart_toplam_cevrim_hi) XK(skart_kutu) \
@@ -83,9 +81,24 @@
     X(sinama_komutu) X(sinama_sonuc) X(nvic_yeniden) X(rx_yeniden) X(rx_durdu)
 /* clang-format on */
 
+/* Yalnız fw-measure (IDA_OLCUM) imajında bloğun sonuna eklenen sözcükler: PARAM_SAVE'i işleyen son
+   çağrının ayrıntısı ve olağan step çağrılarında "çağrı turu − step" farkı (W4-K16 (b) ölçümü).
+   Sürüm imajında bu alanlar, sayaçları ve DWT okumaları yoktur; blok düzeni ve boyu öncekiyle
+   aynıdır. Okuyucu (olcum_oku.py) düzeni ELF'te ida_fw_sinama_komutu simgesinin varlığından seçer
+   ve bloğun derleme_olcum sözcüğüyle denetler. */
+#if defined(IDA_OLCUM)
+/* clang-format off */
+#define IDA_FW_OLCUM_ALANLARI_OLCUM(X) \
+    X(ps_sayi) X(ps_son_tur_cevrim) X(ps_son_step_cevrim) X(ps_son_skart_us) X(ps_son_dongu_cevrim) X(ps_son_kaydet_cevrim) \
+    X(ol_fark_sayi) X(ol_fark_en_kotu_cevrim) X(ol_fark_toplam_cevrim_lo) X(ol_fark_toplam_cevrim_hi)
+/* clang-format on */
+#else
+#define IDA_FW_OLCUM_ALANLARI_OLCUM(X)
+#endif
+
 #define IDA_FW_OLCUM_X(ad) IDA_OL_##ad,
 #define IDA_FW_OLCUM_XK(ad) IDA_OL_##ad, IDA_OL_##ad##_son = IDA_OL_##ad + 15,
-enum { IDA_FW_OLCUM_ALANLARI(IDA_FW_OLCUM_X, IDA_FW_OLCUM_XK) IDA_OL_SAYI };
+enum { IDA_FW_OLCUM_ALANLARI(IDA_FW_OLCUM_X, IDA_FW_OLCUM_XK) IDA_FW_OLCUM_ALANLARI_OLCUM(IDA_FW_OLCUM_X) IDA_OL_SAYI };
 #undef IDA_FW_OLCUM_X
 #undef IDA_FW_OLCUM_XK
 
