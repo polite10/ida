@@ -24,7 +24,8 @@ using ic::topla;
 
 constexpr double kBaryEps = 1e-9;          // ortak kenarda sızıntı olmasın (barisentrik pay)
 constexpr std::uint32_t kYaprak = 4;       // yaprak başına en çok üçgen
-constexpr int kYiginDerinligi = 64;        // ortanca bölmeyle derinlik ≤ ⌈log₂ n⌉ + 1
+constexpr int kYiginDerinligi = 64;        // ağaç derinliği ≤ kSahDerinligi + ⌈log₂ n⌉ + 1 < 64
+constexpr std::uint32_t kSahDerinligi = 24; // bu derinlikten sonra ortanca bölme (derinlik sınırı)
 
 std::int32_t hucre(double x, double kenar)
 {
@@ -39,25 +40,30 @@ Vek3 birim(const Vek3& a)
     return l > 0.0 ? olcekle(a, 1.0 / l) : Vek3{0.0, 0.0, 0.0};
 }
 
-// Kutu–ışın (dilim yöntemi); [t_min, t_ust] ile kesişiyorsa true.
-bool kutu_kesis(const Vek3& mn, const Vek3& mx, const Vek3& o, const Vek3& ters, const Vek3& d, double t_min,
-                double t_ust)
+// Kutu–ışın (dilim yöntemi, dalsız); [t_min, t_ust] ile kesişiyorsa true ve giriş uzaklığı `t_giris`.
+// `ters` sonludur: doğrultu bileşeni 0 ise ±10³⁰⁰ (eksene paralel ışın; dilimin dışındaysa her iki sınır
+// da aynı işaretli çok büyük değer olur ve ret çıkar, içindeyse kısıt oluşmaz; sınırın kendisi içeride).
+bool kutu_kesis(const Vek3& mn, const Vek3& mx, const Vek3& o, const Vek3& ters, double t_min, double t_ust,
+                double& t_giris)
 {
     double t0 = t_min;
     double t1 = t_ust;
     for (std::size_t k = 0; k < 3; ++k) {
-        if (d[k] == 0.0) {
-            if (o[k] < mn[k] || o[k] > mx[k]) return false;
-            continue;
-        }
-        double a = (mn[k] - o[k]) * ters[k];
-        double b = (mx[k] - o[k]) * ters[k];
-        if (a > b) std::swap(a, b);
-        t0 = std::max(t0, a);
-        t1 = std::min(t1, b);
-        if (t0 > t1) return false;
+        const double a = (mn[k] - o[k]) * ters[k];
+        const double b = (mx[k] - o[k]) * ters[k];
+        t0 = std::max(t0, std::min(a, b));
+        t1 = std::min(t1, std::max(a, b));
     }
-    return true;
+    t_giris = t0;
+    return t0 <= t1;
+}
+
+double ters_bilesen(double d) { return d != 0.0 ? 1.0 / d : std::copysign(1e300, d); }
+
+double alan(const Vek3& mn, const Vek3& mx)
+{
+    const double x = mx[0] - mn[0], y = mx[1] - mn[1], z = mx[2] - mn[2];
+    return 2.0 * (x * y + y * z + z * x);
 }
 
 }  // namespace
@@ -143,8 +149,8 @@ bool AgSahnesi::govde_ekle(const AgGovdesi& g, std::string* hata)
         t.w_ekseni = eksenler[it->second].second;
         n.ucgenler.push_back(t);
     }
-    n.dugumler.reserve(2u * (n.ucgenler.size() / kYaprak + 1u));
-    (void)agac_kur(n, 0u, static_cast<std::uint32_t>(n.ucgenler.size()));
+    n.dugumler.reserve(2u * n.ucgenler.size());
+    (void)agac_kur(n, 0u, static_cast<std::uint32_t>(n.ucgenler.size()), 0u);
     govdeler_.push_back(std::move(n));
     if (!govde_pozu_kur(g.kimlik, g.konum, g.yonelim, g.hareket)) {
         govdeler_.pop_back();
@@ -153,28 +159,24 @@ bool AgSahnesi::govde_ekle(const AgGovdesi& g, std::string* hata)
     return true;
 }
 
-std::uint32_t AgSahnesi::agac_kur(Govde& g, std::uint32_t bas, std::uint32_t son)
+std::uint32_t AgSahnesi::agac_kur(Govde& g, std::uint32_t bas, std::uint32_t son, std::uint32_t derinlik)
 {
     const std::uint32_t idx = static_cast<std::uint32_t>(g.dugumler.size());
     g.dugumler.push_back({});
-    Vek3 mn{std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
-            std::numeric_limits<double>::infinity()};
-    Vek3 mx{-mn[0], -mn[1], -mn[2]};
-    Vek3 cmn = mn, cmx = mx;
-    for (std::uint32_t i = bas; i < son; ++i) {
-        const Ucgen& t = g.ucgenler[i];
+    const double sonsuz = std::numeric_limits<double>::infinity();
+    auto kutu_genislet = [](Vek3& mn, Vek3& mx, const Ucgen& t) {
         const Vek3 p[3] = {t.v0, topla(t.v0, t.e1), topla(t.v0, t.e2)};
-        for (std::size_t k = 0; k < 3; ++k) {
-            double c = 0.0;
-            for (const Vek3& q : p) {
+        for (const Vek3& q : p) {
+            for (std::size_t k = 0; k < 3; ++k) {
                 mn[k] = std::min(mn[k], q[k]);
                 mx[k] = std::max(mx[k], q[k]);
-                c += q[k];
             }
-            cmn[k] = std::min(cmn[k], c / 3.0);
-            cmx[k] = std::max(cmx[k], c / 3.0);
         }
-    }
+    };
+    Vek3 mn{sonsuz, sonsuz, sonsuz};
+    Vek3 mx{-sonsuz, -sonsuz, -sonsuz};
+    for (std::uint32_t i = bas; i < son; ++i) kutu_genislet(mn, mx, g.ucgenler[i]);
+    const double ust_alan = alan(mn, mx);
     // Barisentrik payla kabul edilen kenar kesişimleri kutudan dışarıda kalmasın.
     for (std::size_t k = 0; k < 3; ++k) {
         const double pay = 1e-9 * (std::abs(mn[k]) + std::abs(mx[k]) + 1.0);
@@ -184,26 +186,77 @@ std::uint32_t AgSahnesi::agac_kur(Govde& g, std::uint32_t bas, std::uint32_t son
     g.dugumler[idx].mn = mn;
     g.dugumler[idx].mx = mx;
     const std::uint32_t n = son - bas;
-    std::size_t eks = 0;
-    for (std::size_t k = 1; k < 3; ++k) {
-        if (cmx[k] - cmn[k] > cmx[eks] - cmn[eks]) eks = k;
-    }
-    if (n <= kYaprak || !(cmx[eks] - cmn[eks] > 0.0)) {
+    auto yaprak = [&]() {
         g.dugumler[idx].ilk = bas;
         g.dugumler[idx].sayi = n;
         return idx;
+    };
+    if (n <= kYaprak) return yaprak();
+    // Yüzey alanı sezgisi (SAH): her eksende (ağırlık merkezi, sıra) sırasıyla bütün bölme noktaları;
+    // maliyet A_sol n_sol + A_sağ n_sağ. Sıralama anahtarı tam bir sıradır (belirlenimci yapı).
+    auto sirala = [&](std::size_t eks) {
+        auto merkez = [eks](const Ucgen& t) { return 3.0 * t.v0[eks] + t.e1[eks] + t.e2[eks]; };
+        std::sort(g.ucgenler.begin() + bas, g.ucgenler.begin() + son, [&](const Ucgen& a, const Ucgen& b) {
+            const double x = merkez(a), y = merkez(b);
+            return x < y || (x == y && a.sira < b.sira);
+        });
+    };
+    double en_iyi = sonsuz;
+    std::size_t en_eks = 0;
+    std::uint32_t en_bolme = n / 2u;
+    if (derinlik >= kSahDerinligi) {
+        // Derinlik sınırı: ağırlık merkezlerinin en geniş ekseninde ortanca bölme (derinlik ⌈log₂ n⌉).
+        Vek3 cmn{sonsuz, sonsuz, sonsuz}, cmx{-sonsuz, -sonsuz, -sonsuz};
+        for (std::uint32_t i = bas; i < son; ++i) {
+            const Ucgen& t = g.ucgenler[i];
+            for (std::size_t k = 0; k < 3; ++k) {
+                const double c = 3.0 * t.v0[k] + t.e1[k] + t.e2[k];
+                cmn[k] = std::min(cmn[k], c);
+                cmx[k] = std::max(cmx[k], c);
+            }
+        }
+        for (std::size_t k = 1; k < 3; ++k) {
+            if (cmx[k] - cmn[k] > cmx[en_eks] - cmn[en_eks]) en_eks = k;
+        }
+        sirala(en_eks);
+        (void)agac_kur(g, bas, bas + en_bolme, derinlik + 1u);
+        const std::uint32_t sag = agac_kur(g, bas + en_bolme, son, derinlik + 1u);
+        g.dugumler[idx].sag = sag;
+        g.dugumler[idx].sayi = 0;
+        g.dugumler[idx].eks = static_cast<std::uint32_t>(en_eks);
+        return idx;
     }
-    // Ortanca bölme; sıralama anahtarı (ağırlık merkezi, sıra) tam bir sıradır (belirlenimci yapı).
-    auto merkez = [eks](const Ucgen& t) { return 3.0 * t.v0[eks] + t.e1[eks] + t.e2[eks]; };
-    std::sort(g.ucgenler.begin() + bas, g.ucgenler.begin() + son, [&](const Ucgen& a, const Ucgen& b) {
-        const double x = merkez(a), y = merkez(b);
-        return x < y || (x == y && a.sira < b.sira);
-    });
-    const std::uint32_t orta = bas + n / 2u;
-    (void)agac_kur(g, bas, orta);
-    const std::uint32_t sag = agac_kur(g, orta, son);
+    std::vector<double> sol_alan(n);
+    for (std::size_t eks = 0; eks < 3; ++eks) {
+        sirala(eks);
+        Vek3 a{sonsuz, sonsuz, sonsuz}, b{-sonsuz, -sonsuz, -sonsuz};
+        for (std::uint32_t i = 0; i < n; ++i) {
+            kutu_genislet(a, b, g.ucgenler[bas + i]);
+            sol_alan[i] = alan(a, b);
+        }
+        a = {sonsuz, sonsuz, sonsuz};
+        b = {-sonsuz, -sonsuz, -sonsuz};
+        for (std::uint32_t i = n - 1u; i >= 1u; --i) {   // sağ: [i, n), sol: [0, i)
+            kutu_genislet(a, b, g.ucgenler[bas + i]);
+            const double m = sol_alan[i - 1u] * static_cast<double>(i) + alan(a, b) * static_cast<double>(n - i);
+            if (m < en_iyi) {
+                en_iyi = m;
+                en_eks = eks;
+                en_bolme = i;
+            }
+        }
+    }
+    // Bölmek yaprağa göre kazandırmıyorsa (ve yaprak küçükse) yaprak.
+    if (!(en_iyi < ust_alan * static_cast<double>(n)) && n <= 4u * kYaprak) {
+        sirala(en_eks);   // yaprak içi sıra da belirlenimci
+        return yaprak();
+    }
+    sirala(en_eks);
+    (void)agac_kur(g, bas, bas + en_bolme, derinlik + 1u);
+    const std::uint32_t sag = agac_kur(g, bas + en_bolme, son, derinlik + 1u);
     g.dugumler[idx].sag = sag;
     g.dugumler[idx].sayi = 0;
+    g.dugumler[idx].eks = static_cast<std::uint32_t>(en_eks);
     return idx;
 }
 
@@ -294,21 +347,24 @@ bool AgSahnesi::kesis(const Vek3& o, const Vek3& d, double t_min, double t_maks,
         const Vek3 p = konum_(g, t_ns);
         const Vek3 ol = carp_t(g.r, cikar(o, p));
         const Vek3 dl = carp_t(g.r, d);
-        const Vek3 ters{1.0 / dl[0], 1.0 / dl[1], 1.0 / dl[2]};
+        const Vek3 ters{ters_bilesen(dl[0]), ters_bilesen(dl[1]), ters_bilesen(dl[2])};
         const Ucgen* en = nullptr;
         double t_en = en_yakin;
+        // Yığıt: düğüm kutusu çekilince sınanır (bulunan isabetten ötedeyse atlanır); çocuklardan ışın
+        // yönünde bölme ekseninin yakın tarafındaki önce gezilir.
         std::uint32_t yigin[kYiginDerinligi];
         int ust = 0;
         yigin[ust++] = 0u;
         while (ust > 0) {
-            const Dugum& dg = g.dugumler[yigin[--ust]];
-            if (!kutu_kesis(dg.mn, dg.mx, ol, ters, dl, t_min, t_en)) continue;
+            const std::uint32_t di = yigin[--ust];
+            const Dugum& dg = g.dugumler[di];
+            double t0 = 0.0;
+            if (!kutu_kesis(dg.mn, dg.mx, ol, ters, t_min, t_en, t0)) continue;
             if (dg.sayi == 0u) {
-                const std::uint32_t sol = static_cast<std::uint32_t>(&dg - g.dugumler.data()) + 1u;
-                if (ust + 2 > kYiginDerinligi) std::abort();   // ortanca bölmeyle ulaşılamaz
-                // Sol çocuk önce; seçilen üçgen ziyaret sırasından bağımsızdır (eşitlik kuralı).
-                yigin[ust++] = dg.sag;
-                yigin[ust++] = sol;
+                if (ust + 2 > kYiginDerinligi) std::abort();   // derinlik sınırıyla ulaşılamaz
+                const bool sol_once = dl[dg.eks] >= 0.0;
+                yigin[ust++] = sol_once ? dg.sag : di + 1u;
+                yigin[ust++] = sol_once ? di + 1u : dg.sag;
                 continue;
             }
             for (std::uint32_t i = dg.ilk; i < dg.ilk + dg.sayi; ++i) {

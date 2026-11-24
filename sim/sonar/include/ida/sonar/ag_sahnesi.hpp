@@ -3,7 +3,8 @@
 //
 // Gövdeler: su yüzeyi (z = 0 sonsuz düzlemi; A7'de su yüzeyi malzemesi yoktur, sonar modelinin
 // yüzey malzemesi kullanılır) ve üçgen ağlı gövdeler (statik sahne varlığı, hedef varlıkları).
-// Her ağlı gövdenin sınır kutusu ağacı (BVH) gövde çerçevesinde, `govde_ekle`'de BİR KEZ kurulur;
+// Her ağlı gövdenin sınır kutusu ağacı (BVH; yüzey alanı sezgisiyle bölme, derinlik sınırından sonra
+// ortanca) gövde çerçevesinde, `govde_ekle`'de BİR KEZ kurulur;
 // hareketli gövdede ağaç yeniden kurulmaz, ışın gövde çerçevesine çevrilir (görev belgesi kapsam
 // 2). `kesis` bellek ayırmaz (W4-K27 (5)) ve durum değiştirmez (aynı anda birden çok okuyucu
 // güvenlidir; `govde_ekle` ve `govde_pozu_kur` okuyucularla eşzamanlı çağrılmaz).
@@ -97,6 +98,7 @@ private:
         std::uint32_t ilk = 0;     // yaprak: ilk üçgen
         std::uint32_t sayi = 0;    // yaprak: üçgen sayısı; 0 → iç düğüm (sol = bu + 1)
         std::uint32_t sag = 0;     // iç düğüm: sağ çocuk
+        std::uint32_t eks = 0;     // iç düğüm: bölme ekseni (sol çocuk bu eksende küçük taraf)
     };
     struct Govde {
         std::uint32_t kimlik = 0;
@@ -108,7 +110,7 @@ private:
         Hareket hareket{};
     };
 
-    std::uint32_t agac_kur(Govde& g, std::uint32_t bas, std::uint32_t son);
+    std::uint32_t agac_kur(Govde& g, std::uint32_t bas, std::uint32_t son, std::uint32_t derinlik);
     Vek3 konum_(const Govde& g, std::int64_t t_ns) const;
     bool kimlik_bos(std::uint32_t kimlik) const;
 
