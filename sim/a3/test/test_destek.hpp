@@ -173,4 +173,29 @@ struct CanliSunucu {
     std::string yetki() const;
 };
 
+// Ortam değişkeni tanımlı ve boş değil mi (MSVC'de `_dupenv_s`, C4996; ötekilerde `std::getenv`).
+// Kural sim/kopru/test/zamanlama_olcutu.hpp'deki `paylasilan_ci` ile aynıdır.
+bool ortam_var(const char* ad);
+
+// ASan/TSan'lı derleme mi (sim/kopru/test/zamanlama_olcutu.hpp'deki `sanitizer_derlemesi` ile aynı
+// kural; önişlemciye bağlı olduğu için başlıkta).
+inline bool sanitizer_derlemesi()
+{
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    return true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+    return true;
+#else
+    return false;
+#endif
+#else
+    return false;
+#endif
+}
+
+// W4-K24: duvar saatine bağlı eşikler bu ortamda ölçüt mü (paylaşılan CI koşucusunda ve
+// sanitizer'lı derlemede değil; köprü yardımcısıyla aynı kural).
+inline bool zamanlama_olcut_mu() { return !ortam_var("GITHUB_ACTIONS") && !sanitizer_derlemesi(); }
+
 }  // namespace ida::a3::test

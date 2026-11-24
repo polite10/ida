@@ -256,10 +256,12 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
     // 71/115); bu sözleşmedeki seyreltmedir (A3-K40), yavaş istemcinin etkisi değil. İşlevsel
     // ölçütler her ortamda geçerlidir: hızlı istemcide teslim pencerenin sonuna dek sürer, sıra
     // numaraları artar ve her boşluk sunucunun bu bağlantı için saydığı ezilen değerlerle açıklanır.
-    const bool ci = std::getenv("GITHUB_ACTIONS") != nullptr;
+    // Sanitizer'lı derlemede de ölçüt değildir (köprü yardımcısıyla aynı kural; test_destek.hpp).
+    const bool olcut = zamanlama_olcut_mu();
     auto zamanlama = [&](bool kosul, const std::string& ad) {
-        if (ci) {
-            std::printf("  ZAMANLAMA (W4-K24, CI'da ölçüt değil): %s: %s\n", ad.c_str(), kosul ? "tuttu" : "TUTMADI");
+        if (!olcut) {
+            std::printf("  ZAMANLAMA (W4-K24, CI'da ya da sanitizer'lı derlemede ölçüt değil): %s: %s\n", ad.c_str(),
+                        kosul ? "tuttu" : "TUTMADI");
         } else {
             DOGRULA(d, kosul, ad);
         }
