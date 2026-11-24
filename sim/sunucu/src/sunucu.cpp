@@ -206,9 +206,15 @@ private:
     // sınırına (`son`, gercek() ölçeğinde) dek tamamlar. Kısmi ya da 0 yazımda karşı tarafın
     // baytları okunmaya devam eder (iki yönün tamponları dolup kilitlenmesin) ve 1 ms sonra
     // yeniden denenir. Süre dolarsa ya da bağlantı koparsa açıkça sonuçlanır: sayılır, günlüğe
-    // yazılır, false döner (çağıran yine kapatır). true: hepsi yazıldı.
+    // yazılır, false döner (çağıran yine kapatır). true: hepsi yazıldı ve (seri portta) işletim
+    // sisteminin gönderim kuyruğu da boşaldı (W4-K28 sol-3 #3: uygulama tamponunun boşalması
+    // telin boşalması sayılmaz). Taşıma yoksa yapılacak iş yoktur (true). Son tarih her turda
+    // denetlenir; tur sınırlıdır (pompa'nın okuma işi HIL'de de sınırlı: sol-3 #2).
     bool cikisi_bitir(std::int64_t son)
     {
+        if (!tas_) {
+            return true;
+        }
         yaz();
         while (tas_ && cikis_k_ < cikis_.size()) {
             if (gercek() >= son) {
@@ -225,6 +231,11 @@ private:
         }
         if (!tas_) {
             ++s_.kapanis_yazim_eksik;
+            return false;
+        }
+        if (!tas_->cikis_bosalt(std::max<std::int64_t>(son - gercek(), 0) / 1000)) {
+            ++s_.kapanis_yazim_eksik;
+            gunluk(1, "kapanış: işletim sisteminin gönderim kuyruğu süre sınırında boşalmadı");
             return false;
         }
         return true;
@@ -288,8 +299,10 @@ private:
         const std::int64_t e0 = gercek();
         std::size_t bu_tur = 0;
         for (;;) {
-            if (sil && bu_tur >= kSilOkumaTuru) {
-                break;   // W4-K26 (3): bir turun işi sınırlı; gözetim denetimine dönülür
+            if (bu_tur >= (sil ? kSilOkumaTuru : kHilOkumaTuru)) {
+                // W4-K26 (3), W4-K28 sol-3 #2: bir turun işi sınırlı (HIL'de de: sürekli veri basan
+                // karşı taraf dünya döngüsünü ve kapanışın son tarih denetimini kilitleyemez).
+                break;
             }
             std::size_t n = 0;
             const kopru::OkumaSonucu r = tas_->oku(alim_.data(), alim_.size(), bekle_us, n);
@@ -312,6 +325,7 @@ private:
                     sil_gelen_.insert(sil_gelen_.end(), alim_.data(), alim_.data() + n);
                     s_.sil_kuyruk_en_cok = std::max<std::uint64_t>(s_.sil_kuyruk_en_cok, sil_gelen_.size() - sil_gelen_k_);
                 } else {
+                    bu_tur += n;
                     k_->al(alim_.data(), n, duvar());
                 }
                 continue;
@@ -485,6 +499,10 @@ private:
     std::uint64_t sil_beslenen_ = 0;        // SIL: köprüye verilen toplam bayt
     static constexpr std::size_t kSilGelenAzami = std::size_t{1} << 26U;   // 64 MiB (W4-K26 (3))
     static constexpr std::size_t kSilOkumaTuru = std::size_t{1} << 20U;    // pompa turu başına en çok 1 MiB
+    // W4-K28 sol-3 #2: HIL pompa turu başına en çok 256 KiB (3 Mbaud hatta ≈ 0,85 s; olağan
+    // akışta bir periyotta bir kaç KiB gelir, sınır yalnız bozuk/sürekli akışta devreye girer;
+    // kalan baytlar işletim sisteminin tamponunda kalır, sonraki pompada okunur).
+    static constexpr std::size_t kHilOkumaTuru = std::size_t{1} << 18U;
     // W4-K26 (3): bir yuva beklemesinde, yuva tamamlanmadan işlenebilecek en çok bayt (kartın bir
     // çağrısının meşru çıktısı birkaç KiB; W4-K14'ün 128 çerçevelik sınırının bayt karşılığından çok
     // büyük). Aşılırsa oturum protokol hatasıyla biter (akış sırasına bağlı, belirlenimci).

@@ -822,6 +822,7 @@ public:
         ic_->kapat_duzgun(sure_us);
     }
     std::string ad() const override { return "cimri(" + ic_->ad() + ")"; }
+    bool cikis_bosalt(std::int64_t sure_us) override { return ic_->cikis_bosalt(sure_us); }
     int son_hata_kodu() const override { return ic_->son_hata_kodu(); }
 
 private:
@@ -879,6 +880,64 @@ int test_a3_hazirlik_kapanis()
     dogrula_a3(yazilan == k.sim_giden,
                "sıraya giren bütün baytlar yazıldı (" + std::to_string(yazilan.size()) + "/" + std::to_string(k.sim_giden.size()) + ")");
     dogrula_a3(duzgun && k.s.kapanis_yazim_eksik == 0u, "taşıma düzgün kapandı; süre sınırına takılmadı");
+    return 0;
+}
+
+// Sürekli okunabilir (her okuma 4 KiB çöp döner), yazımı ilerlemeyen sahte taşıma; `sel` açılınca.
+class SelTasima final : public ida::kopru::Tasima {
+public:
+    SelTasima(std::unique_ptr<ida::kopru::Tasima> ic, std::atomic<bool>& sel) : ic_(std::move(ic)), sel_(sel) {}
+    long long yaz_biraz(const std::uint8_t* p, std::size_t n) override { return sel_ ? 0 : ic_->yaz_biraz(p, n); }
+    ida::kopru::OkumaSonucu oku(std::uint8_t* p, std::size_t n, std::int64_t bekle_us, std::size_t& okunan) override
+    {
+        if (!sel_) {
+            return ic_->oku(p, n, bekle_us, okunan);
+        }
+        okunan = std::min<std::size_t>(n, 4096u);
+        std::memset(p, 0x55, okunan);
+        return ida::kopru::OkumaSonucu::tamam;
+    }
+    void giris_bosalt() override { ic_->giris_bosalt(); }
+    bool acik() const override { return ic_->acik(); }
+    void kapat() override { ic_->kapat(); }
+    void kapat_duzgun(std::int64_t sure_us) override { ic_->kapat_duzgun(sure_us); }
+    std::string ad() const override { return "sel(" + ic_->ad() + ")"; }
+    bool cikis_bosalt(std::int64_t sure_us) override { return ic_->cikis_bosalt(sure_us); }
+    int son_hata_kodu() const override { return ic_->son_hata_kodu(); }
+
+private:
+    std::unique_ptr<ida::kopru::Tasima> ic_;
+    std::atomic<bool>& sel_;
+};
+
+// W4-K28 sol-3 #2 (EMNİYET): kapanış yazımı ilerlemezken HIL taşıması sürekli veri döndürse de
+// kapanış mutlak süre sınırında sonuçlanır (HIL pompa turu da sınırlı). İşlevsel ölçüt: kos()
+// döndü ve eksik kapanış sayıldı; süre W4-K24 yardımcısıyla.
+int test_a3_kapanis_sel()
+{
+    ida::sunucu::Ayar a;
+    a.gunluk = 1;
+    a.kip = ida::sunucu::Kip::hil;
+    a.karsi = ida::sunucu::Karsi::pty;
+    a.sure_s = 1.0;
+    std::atomic<bool> sel{false};
+    std::chrono::steady_clock::time_point bas{};
+    a.tasima_sarmalayici = [&sel](std::unique_ptr<ida::kopru::Tasima> t) -> std::unique_ptr<ida::kopru::Tasima> {
+        return std::make_unique<SelTasima>(std::move(t), sel);
+    };
+    a.sinir_kancasi = [&](const ida::sunucu::Ayar::SinirGozlemi& g) {
+        if (g.b == 800u && !sel) {   // son sınır (1 s): kapanış yolu sel altında
+            sel = true;
+            bas = std::chrono::steady_clock::now();
+        }
+    };
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    dogrula_a3(sel.load(), "ön koşul: kapanış sel altında (son sınırdan sonra)");
+    dogrula_a3(s.kapanis_yazim_eksik >= 1u, "kapanış döndü; eksik kapanış sayıldı (" + std::to_string(s.kapanis_yazim_eksik) + ")");
+    // Bütçe: 20 ms son okuma + 500 ms kapanış yazımı + 500 ms düzgün kapanış + pay.
+    dogrula_a3(ida::test::zamanlama(sure < 1.5, "a3_kapanis_sel.donus", std::to_string(sure) + " s (< 1,5 s)"),
+               "kapanış süre sınırı içinde döndü (zamanlama)");
     return 0;
 }
 
@@ -1205,6 +1264,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_calistirma();
     } else if (ad == "a3_hil_olcum") {
         (void)test_a3_hil_olcum();
+    } else if (ad == "a3_kapanis_sel") {
+        (void)test_a3_kapanis_sel();
     } else if (ad == "a3_durdur_dolu_depo") {
         (void)test_a3_durdur_dolu_depo();
     } else if (ad == "a3_kisitlayan_ardisik") {
