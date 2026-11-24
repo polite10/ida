@@ -67,7 +67,10 @@ int test_kurulum_hatalari()
     red(a, "birim olmayan kuaterniyon (A5-K32)");
     a = ida0_sensor_kumesi();
     a.ortam.su.ses_hizi.reset();
-    red(a, "DVL ses hızı yok");
+    {
+        SensorKumesi k;
+        DOGRULA(d, k.kur(a).tamam, "ses hızı yokken DVL kurulur: formülden (W4-K1)");
+    }
     a = ida0_sensor_kumesi();
     ayar_govdesi<DvlAyar>(a, SensorTuru::dvl).su_takibi = true;
     red(a, "su takibi (bu dilimde yok)");
