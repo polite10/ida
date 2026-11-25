@@ -93,8 +93,10 @@ struct Plan {
 };
 
 // Dosyadan plan. false: bu dilimde yürütülemeyen bir öğe var (hata: olay kimliği ve neden).
+// `komut_sil_hizi`: komut satırındaki `--sil-hiz` çarpanı (> 0 ise verilmiştir; 0: verilmedi). Verilmişse
+// senaryonun SIL hız alanlarının uygulanmama uyarısı gerçek durumu söyler (W5-K38).
 bool plan_kur(const senaryo::DogrulanmisSenaryo& dz, const senaryo::DogrulamaRaporu& rapor, Plan& p,
-              std::string& hata);
+              std::string& hata, double komut_sil_hizi = 0.0);
 
 // Yerleşik senaryo (z1, bos) ve komut satırı atamaları (--acil, --acil-kalk).
 Plan yerlesik_plan(const Ayar& a);

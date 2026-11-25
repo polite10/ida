@@ -22,6 +22,8 @@
 //   a2_duraklat    kabul 4: duraklat → `duraklat` olayı, `durum` yok, nabız sürer; adımla → her adım bir
 //                  `durum`; sürdür → akış kaldığı sınırdan; CSV duraklatmasız A2'siz koşuyla aynı; A3'ün
 //                  görünüm kademesi alanı (kapsam 6)
+//   a2_3b_senaryo  `scenarios/gorev-havuz-3b.toml` (havuz kümesi) A2 ile başlar, hosgeldin manifest özeti tutar;
+//                  `--sil-hiz` varken SIL hız alanı uyarısı komut satırını söyler
 //   sil_hiz        `--sil-hiz` (kapsam 7'nin gerçek zamana yakın SIL'i): yalnız bekleme; CSV ve A1 akışı aynı
 //   a2_kapanis     kabul 5: koşunun ortasında bağlanan istemci tutarlı tam durum alır; kapanış isteğinde
 //                  istemci son durumu `durdu` ile ve veda(sim_kapaniyor) görür; port dolu ve kilit
@@ -506,6 +508,66 @@ int test_belirlenim()
         dogrula(k.s.a2.sayac.biten_oturum == 1u && k.s.a2.sayac.son_kopma_nedeni == KopmaNedeni::karsi_kapatti,
                 std::string("ölen istemci: sunucu kopmayı gördü (") + kopma_nedeni_adi(k.s.a2.sayac.son_kopma_nedeni) + ")");
     }
+    return g_hata;
+}
+
+// W5-bagla-a2: görselleştirilebilir senaryo `scenarios/gorev-havuz-3b.toml` SIL'de `--a2-port` (sınama
+// portu) ile başlar ve istemcinin hosgeldin'indeki manifest yolu ve özeti `havuz` kümesinindir (özet
+// dosyadan yeniden hesaplanır; sunucu `ret(manifest)` vermez, el sıkışma akışa varır). `--sil-hiz` verilince
+// senaryonun SIL hız alanlarının uygulanmama uyarısı hızın komut satırından geldiğini söyler (W5-K38).
+int test_3b_senaryo()
+{
+    const char* dosya = "scenarios/gorev-havuz-3b.toml";
+    Kosu k(dosya);
+    k.a2_ac();
+    k.a.sil_hiz = 40.0;
+    k.a.csv_uret = false;
+    std::atomic<bool> hazir{false};
+    sinir0da_tut(k, hazir);
+    k.baslat();
+    const bool port = k.port_bekle();
+    dogrula(port && k.dinliyor.load(), "3B senaryosu: A2 dinliyor (port " + std::to_string(k.port.load()) + ")");
+    SoketIstemci c(static_cast<std::uint16_t>(port ? k.port.load() : 1));
+    const bool akis = port && akisa_getir(c);
+    dogrula(akis, "3B senaryosu: gerçek istemci el sıkışmayı tamamladı (manifest özeti tuttu: ret(manifest) yok)");
+    if (akis) {
+        const viz::HosgeldinIleti& h = c.ist.hosgeldin();
+        viz::Ozet dosya_ozeti{};
+        const bool oku = manifest_ozeti(h, dosya_ozeti);
+        const std::filesystem::path beklenen =
+            (std::filesystem::absolute(std::filesystem::path(IDA_DEPO_KOKU)) / "assets" / "havuz" / "manifest.json").lexically_normal();
+        const std::u8string by = beklenen.u8string();
+        dogrula(oku && std::memcmp(dosya_ozeti.data(), h.h.manifest_sha256, 32) == 0 &&
+                    std::string(h.h.manifest_yolu) == std::string(by.begin(), by.end()),
+                std::string("3B senaryosu: hosgeldin manifest yolu assets/havuz ve özet dosyanın SHA-256'sı: ") + h.h.manifest_yolu);
+    }
+    hazir.store(true);
+    sunucu::kapanis_iste();
+    sonuna_kadar(c, k);
+    k.bekle();
+    sunucu::kapanis_sifirla();
+    // Uyarı metni: senaryo `sil_azami_hiz = false` (uygulanmayan alan) ile kısa iki koşu; bayraksız metin eskisi gibi.
+    const auto uyari_metni = [](double hiz) {
+        Kosu u(kGorev, kaynak(kGorev, [](std::string& m) {
+            sure(1.0)(m);
+            degistir(m, "sil_azami_hiz = true", "sil_azami_hiz = false");
+        }));
+        u.a.sil_hiz = hiz;
+        u.a.csv_uret = false;
+        u.kos();
+        std::string r;
+        for (const std::string& w : u.s.senaryo_uyarilari) {
+            if (w.rfind("calistirma.sil_hiz_carpani", 0) == 0) {
+                r = w;
+            }
+        }
+        return r;
+    };
+    dogrula(uyari_metni(0.0) == "calistirma.sil_hiz_carpani/sil_azami_hiz uygulanmaz: SIL olabildiğince hızlı koşar (sonuçları değiştirmez)",
+            "bayraksız: SIL hız alanı uyarı metni değişmedi");
+    const std::string m40 = uyari_metni(40.0);
+    dogrula(m40.find("--sil-hiz ile belirlenir (40x") != std::string::npos && m40.find("olabildiğince hızlı") == std::string::npos,
+            "--sil-hiz verilince SIL hız alanı uyarısı hızın komut satırından geldiğini söyler: " + m40);
     return g_hata;
 }
 
@@ -1085,6 +1147,42 @@ int test_kapanis()
                 "kilit başkasında: öteki sunucu etkilenmedi");
     }
     {
+        // W5-bagla-a2 K-3: A2 nesnesi var ama dinlemiyorken A3 anlık görüntüsünde görünüm kademesi 0
+        // (senaryonunki, sade = 1, yalnız A2 gerçekten dinliyorken yazılır).
+        (void)ag::baslat();
+        ag::Tutamac dolu = ag::gecersiz();
+        std::uint16_t pt = 0;
+        std::string hata;
+        const bool acildi = ag::dinle(0, dolu, pt, hata);
+        SunucuDuzenegi baska;
+        for (int durum = 0; durum < 2; ++durum) {
+            Kosu k(kGorev, kaynak(kGorev, sure(2.0)));
+            k.a2_ac();
+            if (durum == 0) {
+                k.a.a2_sinama_bos_port = false;
+                k.a.a2_port = pt;
+            } else {
+                k.a.a2_kilit_dosyasi = baska.kilit;
+            }
+            k.a.a3_acik = true;
+            k.a.a3_port = 0;
+            k.a.a3_kapanis_bekleme_s = 0.0;
+            std::atomic<int> kademe{-1};
+            k.a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+                if (b > 0u) {
+                    kademe.store(al.anlik().kademe_gorunum);
+                }
+            };
+            k.kos();
+            const std::string etiket = durum == 0 ? "port dolu" : "kilit başkasında";
+            dogrula(k.s.tamam && !k.dinliyor.load(), etiket + " (A3 açık): koşu tamam, A2 dinlemiyor: " + k.s.a2.durum);
+            dogrula(kademe.load() == 0, etiket + ": A3 anlık görüntüsünde 3B görünüm kademesi 0 (A2 dinlemiyor): " + std::to_string(kademe.load()));
+        }
+        if (acildi) {
+            ag::kapat(dolu);
+        }
+    }
+    {
         // Aralık dışı port (A2-K93): koşu başlamaz.
         Kosu k(kGorev, kaynak(kGorev, kisa));
         k.a2_ac();
@@ -1102,7 +1200,7 @@ int test_kapanis()
 int main(int argc, char** argv)
 {
     if (argc < 2) {
-        std::printf("kullanım: ida_butunleme_a2_test <a2_varsayilan|a2_belirlenim|a2_hil_donuk|a2_uctan_uca|a2_duraklat|a2_kapanis|sil_hiz>\n");
+        std::printf("kullanım: ida_butunleme_a2_test <a2_varsayilan|a2_belirlenim|a2_hil_donuk|a2_uctan_uca|a2_duraklat|a2_kapanis|a2_3b_senaryo|sil_hiz>\n");
         return 2;
     }
     const std::string ad = argv[1];
@@ -1120,6 +1218,8 @@ int main(int argc, char** argv)
         (void)test_duraklat();
     } else if (ad == "a2_kapanis") {
         (void)test_kapanis();
+    } else if (ad == "a2_3b_senaryo") {
+        (void)test_3b_senaryo();
     } else if (ad == "sil_hiz") {
         (void)test_sil_hiz();
     } else {

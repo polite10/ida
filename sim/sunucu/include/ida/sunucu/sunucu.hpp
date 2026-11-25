@@ -193,6 +193,7 @@ struct Ayar {
     bool a2_acik = false;
     std::uint16_t a2_port = 47210;     // A2-K01, K93: 1024 … 65 535 (aralık dışında koşu başlamaz)
     bool a2_sinama_bos_port = false;   // yalnız sınama: işletim sisteminin verdiği boş port
+    bool a2_port_verildi = false;      // yalnız main.cpp: --a2-port verildi (sinama seçeneğiyle çakışma denetimi)
     std::string a2_kilit_dosyasi;      // yalnız sınama: sahiplik kilidinin yolu (boş: A2-K77'deki sabit yer)
     std::size_t a2_gonderme_kuyrugu_bayt = 0;   // yalnız sınama: 0 → A2-K26 (8 MiB)
     // Yalnız sınama: A2 sunucusu başlatıldı (dinlenen port; A2'sizken 0 ve dinliyor = false).

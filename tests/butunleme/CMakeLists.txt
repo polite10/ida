@@ -240,6 +240,8 @@ if(NOT WIN32)
             "-DILETILER=ida_sim: kapanış: hata|oturum 0, kapanış yazımı eksik 0, son hata: seri_ac("
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 endif()
+add_test(NAME butunleme.senaryo_3b_dosyasi COMMAND ida_butunleme_test senaryo_3b_dosyasi)
+set_tests_properties(butunleme.senaryo_3b_dosyasi PROPERTIES TIMEOUT 180)
 if(NOT WIN32)
   # Kapsam 1 / kabul 1 (HIL, sözde uçbirim; gerçek zamanlı ≈ 4–6 s) ve kapsam 4 / kabul 4.
   add_test(NAME butunleme.hil_sinyal_kapanisi COMMAND ida_butunleme_test hil_sinyal_kapanisi)
@@ -270,7 +272,7 @@ ida_ayar_uygula(ida_butunleme_a2_test)
 if(NOT MSVC)
   target_compile_options(ida_butunleme_a2_test PRIVATE -Wshadow)
 endif()
-foreach(_ad a2_varsayilan a2_belirlenim a2_uctan_uca a2_duraklat a2_kapanis sil_hiz)
+foreach(_ad a2_varsayilan a2_belirlenim a2_uctan_uca a2_duraklat a2_kapanis a2_3b_senaryo sil_hiz)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_a2_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
@@ -283,6 +285,14 @@ endif()
 add_test(NAME butunleme.ida_sim_a2_port_gecersiz
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port 1024–65535"
           "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-port;80;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_a2_port_cakisma
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port ile --a2-sinama-bos-port birlikte verilemez"
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-port;47998;--a2-sinama-bos-port;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_a2_port_cakisma_ters
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port ile --a2-sinama-bos-port birlikte verilemez"
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-sinama-bos-port;--a2-port;47998;--kok;${PROJECT_SOURCE_DIR}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 add_test(NAME butunleme.ida_sim_a2_yerlesik_senaryo
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port senaryo dosyası ister"

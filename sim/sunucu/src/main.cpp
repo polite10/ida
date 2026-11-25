@@ -37,8 +37,6 @@ void kullanim()
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
         "  --a2-port <port>         A2 sunucusu (görselleştirici; yalnız 127.0.0.1; 1024–65535, A2-K93); yalnız\n"
         "                           senaryo dosyasıyla; bayrak yoksa A2 açılmaz (kilit alınmaz, port açılmaz)\n"
-        "  --a2-sinama-bos-port     yalnız sınama: A2 işletim sisteminin verdiği boş portta açılır\n"
-        "  --a2-sinama-kilit <yol>  yalnız sınama: A2 sahiplik kilidinin dosyası\n"
         "  --sil-hiz <çarpan>       SIL hız çarpanının başlangıcı (1: gerçek zaman; 0: olabildiğince hızlı, varsayılan)\n"
         "  --sonar[=acik|kapali]    senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
         "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla); değersiz = acik;\n"
@@ -251,6 +249,7 @@ int main(int argc, char** argv)
                 return 1;
             }
             a.a2_acik = true;
+            a.a2_port_verildi = true;
             a.a2_port = static_cast<std::uint16_t>(x);
         } else if (s == "--a2-sinama-bos-port") {
             // Yalnız sınama: sabit port yerine işletim sisteminin verdiği boş port (port günlüğe yazılır).
@@ -331,6 +330,10 @@ int main(int argc, char** argv)
     }
     if (!a.a3_acik && (!a.a3_kok.empty() || a.a3_bekle)) {
         std::fprintf(stderr, "ida_sim: --a3-kok ve --a3-bekle --a3-port ister\n");
+        return 1;
+    }
+    if (a.a2_port_verildi && a.a2_sinama_bos_port) {
+        std::fprintf(stderr, "ida_sim: --a2-port ile --a2-sinama-bos-port birlikte verilemez\n");
         return 1;
     }
     if (!a.a2_acik && !a.a2_kilit_dosyasi.empty()) {

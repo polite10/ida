@@ -1264,7 +1264,7 @@ bool Calistirici::dosya_plani()
         return false;
     }
     std::string hata;
-    if (!plan_kur(*cs.cozumlenmis, cs.rapor, plan_, hata)) {
+    if (!plan_kur(*cs.cozumlenmis, cs.rapor, plan_, hata, a_.sil_hiz)) {
         s_.hata = "senaryo bu dilimde yürütülemez: " + hata;
         s_.hata_turu = HataTuru::senaryo_yurutulemez;
         return false;
@@ -2430,7 +2430,9 @@ void Calistirici::a3_anlik_guncelle()
     p.gecerlilik_nedenleri = a3_gecerlilik_;
     p.durum_rev = a3d_.durum_rev;
     p.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar: 0 kapali, 1 sade
-    p.kademe_gorunum = a2_ ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};   // W5-bagla-a2
+    // W5-bagla-a2: yalnız A2 gerçekten dinliyorken senaryonun kademesi; nesne var ama dinlemiyorsa
+    // (kilit başkasında, port dolu, tanım yok) görünüm kapalıdır: 0.
+    p.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
     if (k_) {
         const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
         p.emniyet_rev = e.emniyet_revizyonu;
@@ -3379,9 +3381,9 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.gercek_zamani_kacirdi = a3_rt_kacirdi_ ? 1u : 0u;
     c.gecerlilik_nedenleri = a3_gecerlilik_;
     c.tekrar_guvencesi = 0;   // kayıt (A6) yok: güvence yok
-    // W5-bagla-a2: A2 açıksa senaryonun görünüm kademesi (A3 §3.4: 0 kapali, 1 sade, 2 tam); A2
-    // açılmadıysa (bayrak yok, görünüm kapalı) 0.
-    c.kademe_gorunum = a2_ ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
+    // W5-bagla-a2: A2 gerçekten dinliyorsa senaryonun görünüm kademesi (A3 §3.4: 0 kapali, 1 sade,
+    // 2 tam); bayrak yoksa ya da A2 açılamadıysa (kilit başkasında, port dolu, tanım yok) 0.
+    c.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
     c.kademe_kamera = 0;
     c.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar (A3 §3.4: 0 kapali, 1 sade)
     c.kademe_kayit = 0;

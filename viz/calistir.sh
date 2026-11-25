@@ -12,9 +12,10 @@
 # Godot aynı porta bağlanır. Pencerede "SAHTE VERİ" etiketi görünmez (veri fizik çekirdeğindendir).
 # Senaryo yolu depo köküne göre görelidir (`--kok` ile başka bir kök verilebilir); senaryonun
 # varlık kümesinin (`varliklar.kume`) ikili dosyaları bulunmalıdır (`assets/ornek` kümesinin .glb
-# dosyaları yoktur: görselleştirici onu yükleyemez). Görünüm kademesi senaryonun
+# dosyaları yoktur: görselleştirici onu yükleyemez; örnek: `viz/calistir.sh --sim
+# scenarios/gorev-havuz-3b.toml`, havuz kümeli görev senaryosu). Görünüm kademesi senaryonun
 # `kalite.gorunum` alanındandır (`--kademe` bu kipte kullanılmaz). Pencere kapanınca sim düzgün
-# kapatılır (SIGINT) ve kapanış özeti yazdırılır; senaryo süresi dolarsa sim kendiliğinden biter
+# kapatılır (SIGINT; terminalde Ctrl-C sim'e doğrudan ulaşır, betik yinelemez) ve kapanış özeti yazdırılır; senaryo süresi dolarsa sim kendiliğinden biter
 # ve pencere son sahneyle açık kalır.
 #
 # Ortam değişkenleri:
@@ -111,7 +112,25 @@ if [ -n "$SIM_SENARYO" ]; then
     fi
     SIM_PID=""
   }
-  trap sim_kapat EXIT INT TERM
+  # Terminalde Ctrl-C ya da süreç grubuna giden TERM sim'e zaten doğrudan ulaşır (aynı süreç grubu);
+  # tuzak sinyali YİNELEMEZ (ikinci SIGINT sim'i _exit ile hemen düşürür, veda/özet satırı kaybolur).
+  # Yalnız sim'in kendi düzgün kapanışını (en çok 10 s) bekler; süre dolarsa tek bir TERM yollar.
+  SINYAL=""
+  sim_sinyal_bekle() {
+    SINYAL=1
+    if [ -n "$SIM_PID" ]; then
+      J=0
+      while kill -0 "$SIM_PID" 2>/dev/null && [ "$J" -lt 100 ]; do
+        sleep 0.1
+        J=$((J + 1))
+      done
+      if kill -0 "$SIM_PID" 2>/dev/null; then kill -TERM "$SIM_PID" 2>/dev/null || true; fi
+      wait "$SIM_PID" 2>/dev/null || true
+    fi
+    SIM_PID=""
+  }
+  trap sim_kapat EXIT
+  trap sim_sinyal_bekle INT TERM
   # shellcheck disable=SC2086  # IDA_SIM_SECENEKLER bilerek sözcüklere ayrılır
   "$SIM" --senaryo "$SIM_SENARYO" --kok "$SIM_KOK" --a2-port "$PORT" --sil-hiz "$SIM_HIZ" --gunluk 1 \
     ${IDA_SIM_SECENEKLER:-} 2> "$GUNLUK" &
@@ -120,6 +139,11 @@ if [ -n "$SIM_SENARYO" ]; then
   # uyku yok; en çok 60 s yoklanır). A2 açılamadıysa ya da sim bittiyse nedeni günlüktedir.
   I=0
   until grep -q "A2 127.0.0.1:$PORT adresinde dinliyor" "$GUNLUK" 2>/dev/null; do
+    if [ -n "$SINYAL" ]; then
+      echo "calistir.sh: kesildi; sim günlüğü ($GUNLUK):" >&2
+      cat "$GUNLUK" >&2
+      exit 130
+    fi
     if ! kill -0 "$SIM_PID" 2>/dev/null || grep -q "A2'siz çalışılıyor\|dinleyici açılmadı" "$GUNLUK" 2>/dev/null \
        || [ "$I" -ge 600 ]; then
       echo "calistir.sh: ida_sim A2 dinleyicisini açmadı; sim günlüğü ($GUNLUK):" >&2

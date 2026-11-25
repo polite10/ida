@@ -157,6 +157,63 @@ std::vector<std::string> govde_satirlari(const std::string& m)
     return r;
 }
 
+// 3B eşi (W5-bagla-a2): gorev-havuz.toml'dan yalnız `[meta]` `ad`/`aciklama` ve `[varliklar]` `kume`/
+// `manifest_ozeti` satırları farklı olabilir; başka hiçbir (yorum dışı) satır farklı olamaz.
+std::vector<std::string> govde_satirlari_3b(const std::string& m)
+{
+    std::vector<std::string> r;
+    std::string tablo;
+    std::size_t i = 0;
+    while (i < m.size()) {
+        std::size_t j = m.find('\n', i);
+        if (j == std::string::npos) {
+            j = m.size();
+        }
+        const std::string l = m.substr(i, j - i);
+        i = j + 1u;
+        if (!l.empty() && l[0] == '[') {
+            tablo = l.substr(0, l.find(']') + 1u);
+        }
+        const bool meta = tablo == "[meta]" && (l.rfind("ad = ", 0) == 0 || l.rfind("aciklama = ", 0) == 0);
+        const bool var = tablo == "[varliklar]" && (l.rfind("kume = ", 0) == 0 || l.rfind("manifest_ozeti = ", 0) == 0);
+        if (l.empty() || l[0] == '#' || meta || var) {
+            continue;
+        }
+        r.push_back(l);
+    }
+    return r;
+}
+
+int test_senaryo_3b_dosyasi()
+{
+    ida::senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
+    const std::string a = d.oku("scenarios/gorev-havuz.toml").value_or("");
+    const std::string b = d.oku("scenarios/gorev-havuz-3b.toml").value_or("");
+    dogrula_sk(!a.empty() && !b.empty() && govde_satirlari_3b(a) == govde_satirlari_3b(b),
+               "gorev-havuz-3b.toml: gorev-havuz.toml'dan yalnız ad, aciklama, varlık kümesi ve manifest özeti farklı");
+    dogrula_sk(b.find("kume = \"havuz\"") != std::string::npos && b.find("kume = \"ornek\"") == std::string::npos,
+               "gorev-havuz-3b.toml: varlık kümesi havuz");
+    // Özet, kümenin manifest dosyasının SHA-256'sına eşit olmalı: senaryo doğrulaması kaynak özetini bununla karşılaştırır.
+    ida::sunucu::Ayar ay;
+    ay.gunluk = 0;
+    ay.senaryo_dosyasi = "scenarios/gorev-havuz-3b.toml";
+    ay.depo_koku = IDA_DEPO_KOKU;
+    ay.sinir_kancasi = [](const ida::sunucu::Ayar::SinirGozlemi& g) {
+        if (g.b == 8u) {
+            ida::sunucu::kapanis_iste();
+        }
+    };
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(ay);
+    ida::sunucu::kapanis_sifirla();
+    bool hata_bulgusu = false;
+    for (const auto& bl : s.dogrulama_bulgulari) {
+        hata_bulgusu = hata_bulgusu || bl.onem == "hata";
+    }
+    dogrula_sk(s.hata_turu == ida::sunucu::HataTuru::yok && !hata_bulgusu && !s.davranis_ozeti.empty(),
+               "gorev-havuz-3b.toml: senaryo geçerli ve kuruldu (hata '" + s.hata + "')");
+    return 0;
+}
+
 int test_senaryo_hil_dosyalari()
 {
     ida::senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
@@ -311,6 +368,10 @@ int sunucu_kucuk_testi(const std::string& ad, int, char**)
         return g_hata_sk;
     }
 #endif
+    if (ad == "senaryo_3b_dosyasi") {
+        (void)test_senaryo_3b_dosyasi();
+        return g_hata_sk;
+    }
     if (ad == "kabul_son_dilim_sinyali") {
         (void)test_kabul_son_dilim_sinyali();
         return g_hata_sk;

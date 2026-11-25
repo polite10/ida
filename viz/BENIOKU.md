@@ -24,12 +24,15 @@ ile başlatır, sim'in günlüğünde A2 dinleyicisinin açıldığını görün
 (`--sahte` verilmez: "SAHTE VERİ" etiketi görünmez). Seçenekler: `--hiz <çarpan>` (SIL hız
 çarpanı; varsayılan 1), `--kok <dizin>` (senaryonun depo kökü; varsayılan bu depo), `--a2-port`,
 `--cozunurluk`, `--derle`; `IDA_SIM_SECENEKLER` ile sim'e ek seçenek verilir (ör. `"--a3-port 47100"`).
-Görünüm kademesi senaryonun `kalite.gorunum` alanındandır. Pencere kapanınca sim `SIGINT` ile
-düzgün kapatılır ve günlüğü (kapanış özeti, A2 sayaçları) yazdırılır; senaryonun süresi dolarsa
+Görünüm kademesi senaryonun `kalite.gorunum` alanındandır. Pencere kapanınca sim tek `SIGINT` ile
+düzgün kapatılır (terminalde Ctrl-C hem Godot'ya hem sim'e doğrudan ulaşır; betik sinyali yinelemez, sim'in
+kapanışını en çok 10 s bekler, süre dolarsa tek `SIGTERM` yollar) ve günlüğü (kapanış özeti, A2 sayaçları) yazdırılır; senaryonun süresi dolarsa
 sim biter ve pencere "BAĞLANTI YOK" uyarısıyla son sahnede kalır. Senaryonun varlık kümesinin
 ikili dosyaları bulunmalıdır: `assets/ornek` kümesinin `.glb` dosyaları yoktur, onu gösteren
 senaryolar (`scenarios/z1.toml`, `gorev-havuz.toml`) sim'de koşar ama görselleştirici sahneyi
-kuramaz (`EKSIK_VARLIK`; sim `ret(manifest)` verir); `assets/havuz` kümesini gösteren
+kuramaz (`EKSIK_VARLIK`; sim `ret(manifest)` verir); gösterilebilir görev senaryosu
+`scenarios/gorev-havuz-3b.toml`'dur (`gorev-havuz.toml`'un `havuz` kümeli eşi:
+`viz/calistir.sh --sim scenarios/gorev-havuz-3b.toml`); `assets/havuz` kümesini gösteren
 `scenarios/sonar-havuz.toml` yüklenir (zaman çizelgesindeki sonar arızaları yüzünden sim'e
 `--sonar` verilmelidir: `IDA_SIM_SECENEKLER="--sonar"`). Bugün fizik dünyasında yalnız araç
 vardır: hedef ve torpido gövdesi yayınlanmaz (`sim/sunucu/BENIOKU.md` "A2 sunucusu").
