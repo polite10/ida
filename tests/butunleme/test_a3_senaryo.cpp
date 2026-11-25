@@ -906,9 +906,26 @@ int test_kayit()
     const json od1 = json::parse(o.get("/on_denetim").govde, nullptr, false);
     // Sıfırla; koşu 2: yarıda sıfırlanır.
     dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "sıfırla");
-    dogrula(o.kontrol("baslat").durum == 202 && o.durum_bekle("kosuyor") && o.kontrol("hiz", "\"carpan\":1").durum == 202, "koşu 2 başladı (gerçek zaman)");
+    // `hiz` kuyruğa girer ve dünya onu uygularken `durum_rev` artar (A3-K122); uygulanmadan alınan bir görüntüyle
+    // gönderilen `sifirla` durum_rev_uyusmuyor ile reddedilir. Yavaş koşuda (ASan) bu yarış görünür: koşunun
+    // bitmesini beklemek yerine `hiz`ın uygulandığı olaya bağlanır.
+    dogrula(o.kontrol("baslat").durum == 202 && o.durum_bekle("kosuyor"), "koşu 2 başladı");
+    const std::uint64_t rev_hiz_once = o.durum().value("durum_rev", 0u);
+    dogrula(o.kontrol("hiz", "\"carpan\":1").durum == 202 &&
+                o.durum_bekle([&](const json& d) { return d.value("durum_rev", 0u) > rev_hiz_once; }),
+            "koşu 2 gerçek zamana alındı (hiz uygulandı: durum_rev arttı)");
     const json od2 = json::parse(o.get("/on_denetim").govde, nullptr, false);
-    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "koşu 2 yarıda sıfırlandı");
+    // Koşu 90 sn gerçek zamanlıdır; sıfırlama isteği olay sırasıyla (kosuyor + hiz uygulandı) gider. Bayat görüntü
+    // yarışını (başka bir iç geçiş araya girerse) yalnız durum_rev_uyusmuyor için taze görüntüyle yeniden dener.
+    bool sifirla_kabul = false;
+    for (int deneme = 0; deneme < 50 && !sifirla_kabul; ++deneme) {
+        const auto y = o.kontrol("sifirla");
+        sifirla_kabul = y.durum == 202;
+        if (!sifirla_kabul && y.kod() != "durum_rev_uyusmuyor") {
+            break;
+        }
+    }
+    dogrula(sifirla_kabul && o.durum_bekle("yuklendi"), "koşu 2 yarıda sıfırlandı");
     Cikti kismi;
     dogrula(kosu_bekle(o, gorulen, kismi) && kismi.calistirma_sonu == "yuklendi" && kismi.kayit_bitis == "durduruldu",
             "yarıda sıfırlanan koşunun kaydı durduruldu ile kapandı (A6-K45; " + kismi.kayit_bitis + ")");
