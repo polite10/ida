@@ -2,6 +2,7 @@
 // çağrılar, sabit boylu yapıların taşması, küme değişimleri, A2'siz yayıncı.
 #include "takvim.hpp"
 #include "test_destek.hpp"
+#include "zamanlama_olcutu.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -446,7 +447,10 @@ int test_son_deger()
     std::uint64_t farkli = 0;
     int hata = 0;
     const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(700);
-    while (std::chrono::steady_clock::now() < son) {
+    // Kapsama hedefe göre (W5-K35): en az 700 ms ve yarış hedefi dolana kadar; asılma süresi cömert.
+    const auto tavan = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    const auto hedefte = [&] { return okuma > 10'000 && farkli > 100 && yazilan.load() > 1000; };
+    while ((std::chrono::steady_clock::now() < son || !hedefte()) && std::chrono::steady_clock::now() < tavan) {
         for (int i = 0; i < 2000; ++i) {
             const Deger& g = depo.tuttur();
             const std::uint64_t ilk = g.a[0];
@@ -468,7 +472,9 @@ int test_son_deger()
     dur.store(true);
     yazar.join();
     DOGRULA(d, hata == 0, "yırtık ya da gerileyen değer görülmedi; ihlal " + std::to_string(hata));
-    DOGRULA(d, okuma > 10'000 && farkli > 100 && yazilan.load() > 1000, "yazar ve okur gerçekten yarıştı");
+    DOGRULA(d, ida::test::zamanlama(hedefte(), "son değer yarışı kapsaması",
+                                    std::to_string(okuma) + " okuma, " + std::to_string(farkli) + " farklı, " + std::to_string(yazilan.load()) + " yazım"),
+            "yazar ve okur gerçekten yarıştı");
     std::printf("  ölçüm (bu Mac): %llu okuma, %llu farklı değer, %llu yazım\n", static_cast<unsigned long long>(okuma),
                 static_cast<unsigned long long>(farkli), static_cast<unsigned long long>(yazilan.load()));
     return d.hata;

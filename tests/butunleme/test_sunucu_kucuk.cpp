@@ -332,27 +332,42 @@ int test_sonar_acik_su_dosyasi()
 // Koşucusuz TCP SIL; bağlantı payı tek dilimdir (100 ms) ve kapanış isteği o dilimin ortasında gelir
 // (kabul `select` ile bekler, bayrak onu uyandırmaz: dilim zaman aşımıyla biter). Düzeltmeden önce
 // koşu "SIL koşucusu bağlanmadı" hatasıyla ve `sinyal_kesti = false` ile bitiyordu (çıkış 2, özet
-// `kapanış: hata`). Zamanlama: istek kurulum bitmeden gelirse sınıflama yine sinyaldir (test geçer);
-// tipik sürede istek son dilimin ortasına düşer ve düzeltme sınanır.
+// `kapanış: hata`). İstek, dinleyici hazır olunca (`tcp_hazir`; kurulum süresi hesaba girmez) 30 ms
+// sonra gelir. Aşırı yüklü bir koşucuda istek dilimden sonra kalırsa koşu meşru olarak "bağlanmadı"
+// ile biter (karar, istekten önce verilmiştir); bu durum yeniden denenir. Düzeltme geri alınırsa
+// istek her denemede dilimin içine düşer ve hiçbir deneme sinyal sınıflamasına varmaz: test düşer.
 int test_kabul_son_dilim_sinyali()
 {
-    ida::sunucu::kapanis_sifirla();
-    ida::sunucu::Ayar a;
-    a.gunluk = 0;
-    a.kip = ida::sunucu::Kip::sil;
-    a.karsi = ida::sunucu::Karsi::tcp;
-    a.a1_port = 0;
-    a.sure_s = 5.0;
-    a.baglanti_bekleme_ns = 100'000'000;
-    std::thread t([] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
-        ida::sunucu::kapanis_iste();
-    });
-    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
-    t.join();
-    ida::sunucu::kapanis_sifirla();
-    std::printf("  son dilim sinyali: tamam %d, sinyal_kesti %d, hata '%s', oturum %llu\n", s.tamam ? 1 : 0,
-                s.sinyal_kesti ? 1 : 0, s.hata.c_str(), static_cast<unsigned long long>(s.sayac.oturum_kurulan));
+    constexpr int kDenemeAzami = 20;
+    ida::sunucu::Sonuc s;
+    int deneme = 0;
+    for (; deneme < kDenemeAzami; ++deneme) {
+        ida::sunucu::kapanis_sifirla();
+        ida::sunucu::Ayar a;
+        a.gunluk = 0;
+        a.kip = ida::sunucu::Kip::sil;
+        a.karsi = ida::sunucu::Karsi::tcp;
+        a.a1_port = 0;
+        a.sure_s = 5.0;
+        a.baglanti_bekleme_ns = 100'000'000;
+        std::thread t;
+        a.tcp_hazir = [&t](std::uint16_t, std::uint64_t) {
+            t = std::thread([] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                ida::sunucu::kapanis_iste();
+            });
+        };
+        s = ida::sunucu::kos(a);
+        if (t.joinable()) {
+            t.join();
+        }
+        ida::sunucu::kapanis_sifirla();
+        if (s.sinyal_kesti) {
+            break;
+        }
+    }
+    std::printf("  son dilim sinyali: %d. denemede; tamam %d, sinyal_kesti %d, hata '%s', oturum %llu\n", deneme + 1,
+                s.tamam ? 1 : 0, s.sinyal_kesti ? 1 : 0, s.hata.c_str(), static_cast<unsigned long long>(s.sayac.oturum_kurulan));
     dogrula_sk(!s.tamam && s.sinyal_kesti && s.hata == "sinyalle kesildi",
                "bağlantı beklerken gelen sinyal 'bağlanmadı' değil sinyal olarak sınıflandı (" + s.hata + ")");
     dogrula_sk(s.sayac.oturum_kurulan == 0u, "oturum kurulmadı");
