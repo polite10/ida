@@ -111,15 +111,16 @@ jobs:
           echo "derleme_sn=$sure" >>"$GITHUB_OUTPUT"
           echo "Yapılandırma + derleme süresi: ${sure} s (CPM önbelleği isabeti: ${{ steps.cpm_onbellek.outputs.cache-hit || 'false' }}, derleme önbelleği tam isabet: ${{ steps.derleme_onbellek.outputs.cache-hit || 'false' }})"
 
+      # Bağlama aşamasında düşse bile godot-cpp nesneleri önbelleğe girer (her deneme kotadan yer).
       - name: Önbellekleri kaydet
-        if: ${{ !cancelled() && steps.derleme.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.derleme.outcome != 'skipped' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/viz
           key: ${{ steps.derleme_onbellek.outputs.cache-primary-key }}
 
       - name: CPM önbelleğini kaydet
-        if: ${{ !cancelled() && steps.derleme.outcome == 'success' && steps.cpm_onbellek.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && steps.derleme.outcome != 'skipped' && steps.cpm_onbellek.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CPM_SOURCE_CACHE }}

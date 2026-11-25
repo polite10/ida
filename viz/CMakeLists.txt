@@ -12,6 +12,13 @@
 
 option(IDA_VIZ "Görselleştirici eklentisini (godot-cpp) ve soketli araçları derle" OFF)
 
+if(MSVC AND IDA_VIZ)
+  # godot-cpp MSVC'de statik CRT (/MT) ile derlenir (Godot'nun resmî derlemeleri gibi; hedef
+  # makinede VC++ çalışma zamanı kurulumu gerekmez). Eklentiye bağlanan tüm viz hedefleri aynı
+  # çalışma zamanını kullanmalı (LNK2038). Bu değişken yalnız bu dizindeki hedefleri etkiler.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 function(ida_viz_uyarilar hedef)
   ida_ayar_uygula(${hedef})
   if(NOT MSVC)
