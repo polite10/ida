@@ -68,6 +68,8 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 
 **2026-11-24 kullanıcı kararı (K23):** Emniyet zincirine (acil durdurma, silahlandırma, atış izni) dokunmayan dilimlerde tek tam sol incelemesi ve tek düzeltme turu yapılır; dar denetim açılmaz, CI yeşilse PR birleştirmeye hazır sayılır. Emniyet zincirine dokunan dilimlerde K21 aynen sürer. Dilimin sınıfını görev belgesi yazar; emniyet dışı bir dilimin incelemesinde K21 sınıfında bir bulgu çıkarsa dar denetim açılır.
 
+**2026-11-25 kullanıcı kararı (K27):** Opus 5.5 bu depoda model güvenlik filtresine takılıyor (olgu; neden doğrulanmadı). W5-a2-sunucu `ida-kritik-uygulayici` (Fable) ile, W4-sunucu-kucuk `ida-hafif-uygulayici` (Sonnet) ile yazılır. `ida-inceleyici` (Opus) her PR'da bir kez denenir; takılırsa iş `docs/gorevler/W5-ortak.md` sol inceleme borcuna yazılır ve CI yeşil PR birleştirilir; emniyet zincirine dokunan dilim incelemesiz birleştirilmez.
+
 1. Mimar oturum kullanıcıyla kararları netleştirir, fikir yapısını kurar, görev belgelerini yazar, alt agent'ları gönderir ve çıktıları denetler. Kod yazmaz ve commit atmaz.
 2. Araştırma ve uygulama işleri alt agent'lara verilir. Codex `gpt-6.1-sol` yalnızca inceleme için değil kodlama için de kullanılabilir.
 3. Yazan ile inceleyen farklı model ailesinden olur: Claude'un yazdığını sol, sol'un yazdığını Claude inceler. Aynı iş iki modele yazdırılmaz.
