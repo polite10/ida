@@ -774,6 +774,49 @@ export class SahteDunya {
     );
   }
 
+  /**
+   * Operatörün (panel) emniyet isteği: yetkili durumu değiştirir, `emniyet_rev`'i bir artırır
+   * (A3-K117 md. 1 ve 6), olayı üretir ve `emniyet/girdiler` çerçevesini hemen yayına koyar.
+   * Girdi o değerdeyse de revizyon artar (A3-K92). Dönüş: emniyeti artıran yön mü.
+   */
+  emniyetOperatorUygula(girdi: 'acil_durdurma' | 'silahlandirma_fisi' | 'emniyet_pimi', tup: number | null, deger: number): boolean {
+    const y = this.yetkili;
+    const acil = girdi === 'acil_durdurma';
+    const dizi = girdi === 'silahlandirma_fisi' ? y.fis : y.pim;
+    const onceki = acil ? y.acil : dizi[tup ?? 0]!;
+    if (acil) y.acil = deger;
+    else dizi[tup ?? 0] = deger;
+    const artiran = acil ? deger === 1 : girdi === 'silahlandirma_fisi' ? deger === 0 : deger === 1;
+    this.emniyet_rev++;
+    y.sonAdim = this.adim_no;
+    y.sonKaynak = 2;
+    const ad = (v: number): string => (acil ? (v === 1 ? 'basili' : 'serbest') : v === 1 ? 'takili' : 'cikarilmis');
+    this.olay(
+      7,
+      3,
+      1,
+      {
+        girdi,
+        ...(acil ? {} : { tup: (tup ?? 0) === 0 ? 'f1' : 'f2' }),
+        onceki: ad(onceki),
+        sonraki: ad(deger),
+        kaynak: 'operator',
+        yon: artiran ? 'artiran' : 'azaltan',
+        uygulama_adimi: this.adim_no,
+        emniyet_rev: this.emniyet_rev,
+      },
+      this.adim_no,
+    );
+    this.koy('emniyet/girdiler', this.emniyetGirdileri());
+    return artiran;
+  }
+
+  /** Yalnız testler: başka bir kısıtlamanın kabulünü (revizyon artışı) öykünür. */
+  emniyetRevZorlaArtir(): void {
+    this.emniyet_rev++;
+    this.koy('emniyet/girdiler', this.emniyetGirdileri());
+  }
+
   // ---- Yük üretimi ----
 
   private sira(anahtar: string): number {

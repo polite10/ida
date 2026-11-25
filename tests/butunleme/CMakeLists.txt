@@ -169,8 +169,13 @@ if(IDA_NODE_BUTUNLEME)
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_sonar_web.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_sonar")
   set_tests_properties(butunleme.a3_sonar_web PROPERTIES TIMEOUT 240)
+  # W5-web-emniyet kabul 2: panelin emniyet komut katmanı gerçek sim'e karşı.
+  add_test(NAME butunleme.a3_emniyet_web
+    COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_emniyet_web.mjs" "$<TARGET_FILE:ida_sim>"
+            "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_emniyet")
+  set_tests_properties(butunleme.a3_emniyet_web PROPERTIES TIMEOUT 180)
   if(NOT IDA_BAGIMLILIK_ZORUNLU)  # CI'da 77 (atlama) hata sayılır
-    set_tests_properties(butunleme.a3_uctan_uca_web butunleme.a3_sonar_web PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(butunleme.a3_uctan_uca_web butunleme.a3_sonar_web butunleme.a3_emniyet_web PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 endif()
 
