@@ -6,7 +6,10 @@
 #include "ida/a3/kodlayici.hpp"
 #include "ida/kayit/coz.hpp"
 #include "ida/kayit/okuyucu.hpp"
+#include "ida/kopru/kopru.hpp"
 #include "ida_link/dialect.h"
+
+#include <Eigen/Core>
 
 #include <nlohmann/json.hpp>
 
@@ -196,19 +199,65 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
         hata = "A1 ekleri okunamadı (protocol/komutlar.json, protocol/ida.xml; --kok: " + kok.generic_string() + ")";
         return nullptr;
     }
-    // Ön denetim raporu: bu sim'de A3 ön denetimi yoktur (A3-K62; ön denetim = A1 el sıkışması ve
-    // `baslat` sonrasıdır). Dosya el sıkışmadan ÖNCE açıldığı için rapor yalnız kayıt katmanının kendi
-    // doğruladığı maddeyi taşır: dosya oluşturuldu (A6-K01). Eksik maddeler uydurulmaz.
+    // Dizin ve boş alan (A3 §3.8 `kayit_disk_alani`): ölçülür, sınırın altındaysa çalıştırma başlamaz.
+    std::error_code ec;
+    std::filesystem::create_directories(ayar.dizin, ec);
+    if (ec) {
+        hata = "kayıt dizini oluşturulamadı: " + ayar.dizin.generic_string() + ": " + ec.message();
+        return nullptr;
+    }
+    std::error_code ec_alan;
+    const std::filesystem::space_info alan = std::filesystem::space(ayar.dizin, ec_alan);
+    const bool olculdu = !ec_alan;
+    const std::uint64_t bos = olculdu ? static_cast<std::uint64_t>(alan.available) : 0u;
+    if (olculdu && bos < ayar.disk_siniri_bayt) {
+        hata = "ön denetim kaldı: kayit_disk_alani: " + ayar.dizin.generic_string() + " dizininde boş alan " + std::to_string(bos) +
+               " bayt, en az " + std::to_string(ayar.disk_siniri_bayt) + " bayt gerekir (A3 §3.8)";
+        return nullptr;
+    }
+    // Ön denetim raporu (A3 §3.8): bu sim'de A3 ön denetimi yoktur (A3-K62; ön denetim = A1 el sıkışması ve
+    // `baslat` sonrasıdır) ve kayıt dosyası el sıkışmadan ÖNCE açılır. Rapor yalnız bu noktada gerçekten
+    // yapılan denetimleri `gecti` gösterir: senaryonun A5 doğrulaması (kayıt girdisi onsuz kurulamaz) ve boş
+    // alan ölçümü. Yapılmayanlar şemanın `atlandi` durumuyla ve nedeniyle yazılır; `gecti` uydurulmaz.
     const std::string rapor_kimligi = senaryo::sha256_hex(ayar.run_id).substr(0, 16);
+    nlohmann::json maddeler = nlohmann::json::array();
+    maddeler.push_back({{"kod", "senaryo_gecerli"},
+                        {"durum", "gecti"},
+                        {"ileti", "senaryo A5 doğrulamasından geçti; doğrulama raporu dosyada (dogrulama_raporu.json)"},
+                        {"dayanak", "A5"}});
+    if (olculdu) {
+        maddeler.push_back({{"kod", "kayit_disk_alani"},
+                            {"durum", "gecti"},
+                            {"olculen", bos},
+                            {"sinir", ayar.disk_siniri_bayt},
+                            {"birim", "bayt"},
+                            {"ileti", "kayıt dizininde yeterli boş alan"},
+                            {"dayanak", "A3 §3.8; 8. başlık md.6"}});
+    } else {
+        maddeler.push_back({{"kod", "kayit_disk_alani"},
+                            {"durum", "uyari"},
+                            {"sinir", ayar.disk_siniri_bayt},
+                            {"birim", "bayt"},
+                            {"ileti", "boş alan ölçülemedi: " + ec_alan.message()},
+                            {"dayanak", "A3 §3.8; 8. başlık md.6"}});
+    }
+    for (const char* kod : {"surum_uyumu", "kontrol_hizi", "a1_bant_payi", "a7_manifest", "ping360_zamanlama", "gorsellestirici",
+                            "algilama_bileseni"}) {
+        maddeler.push_back({{"kod", kod},
+                            {"durum", "atlandi"},
+                            {"ileti", "yapılmadı: bu sim'de A3 ön denetimi yok ve kayıt dosyası A1 el sıkışmasından önce açılır (A3-K62)"},
+                            {"dayanak", "A3 §3.8"}});
+    }
+    bool kaldi = false;
+    for (const nlohmann::json& m : maddeler) {
+        kaldi = kaldi || m.at("durum") == "kaldi";
+    }
     nlohmann::json on_denetim = {{"rapor_surumu", "1.0"},
                                  {"rapor_kimligi", rapor_kimligi},
-                                 {"sonuc", "gecti"},
+                                 {"sonuc", kaldi ? "kaldi" : "gecti"},
                                  {"kip", ayar.kip},
                                  {"olusturma_utc", utc_simdi()},
-                                 {"maddeler", nlohmann::json::array({{{"kod", "kayit_disk_alani"},
-                                                                       {"durum", "gecti"},
-                                                                       {"ileti", "kayıt dosyası oluşturuldu"},
-                                                                       {"dayanak", "A6-K01"}}})}};
+                                 {"maddeler", maddeler}};
     const std::string on_denetim_json = on_denetim.dump();
     const auto ek = [](const char* ad, const std::string& s) {
         return kayit::Ek{ad, std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(s.data()), s.size())};
@@ -221,7 +270,8 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
     // ---- açılış üst verisi (A6 §3.5): elde olanlar; olmayanlar "bilinmiyor" (zorunlu anahtar boş olamaz) ----
     kayit::AcilisUstVerisi uv;
     uv.a3_surumu = "1.0";
-    uv.a1_proto_surumu = "1.0";   // köprünün el sıkışmada bildirdiği (kopru.cpp: proto_major 1, minor 0)
+    // Köprünün SIM_HELLO'da bildirdiği (kopru.cpp: proto_major 1, proto_minor 0); köprüde adlandırılmış sabit yok.
+    uv.a1_proto_surumu = "1.0";
     uv.a1_dialect_hash = std::to_string(static_cast<std::uint64_t>(IDA_LINK_DIALECT_HASH));
     uv.a5_sema_surumu = ayar.girdi.a5_sema_surumu;
     uv.a7_manifest_ozeti = "sha256:" + ayar.girdi.manifest_ozeti;
@@ -242,9 +292,11 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
     uv.derleme_bayraklari = "bilinmiyor";   // fizik yolunu etkileyen bayraklar (04 §2.13) derlemeye gömülü değil
     uv.rng_surumu = "bilinmiyor";           // RNG ve dağılım kodu sürümü tanımlı değil
     uv.dalga_listesi_ozeti = "bilinmiyor";  // 04 dalga listesi özeti tanımlı değil
-    uv.kontrol_hizi_hz = "200";
-    uv.fizik_adimi_ns = "1250000";
-    uv.l_act_ns = "10000000";
+    uv.bagimliliklar = "eigen=" + std::to_string(EIGEN_WORLD_VERSION) + "." + std::to_string(EIGEN_MAJOR_VERSION) + "." +
+                       std::to_string(EIGEN_MINOR_VERSION);   // fizik çekirdeği Eigen'e bağlıdır; mcap ve zstd'yi yazıcı ekler
+    uv.kontrol_hizi_hz = std::to_string(std::int64_t{1'000'000'000} / kopru::kP);
+    uv.fizik_adimi_ns = std::to_string(kopru::kH);
+    uv.l_act_ns = std::to_string(kopru::kLact);
     uv.baslangic_utc = utc_simdi();
 
     kayit::Ayar ya;
@@ -252,13 +304,8 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
     ya.kademe = kademe;
     ya.ureticiler.push_back({"dunya", ayar.halka_bayt != 0 ? ayar.halka_bayt : kVarsayilanHalkaBayt});
     ya.is_parcacigi = true;
+    ya.ilk_sira = ayar.ilk_sira;
 
-    std::error_code ec;
-    std::filesystem::create_directories(ayar.dizin, ec);
-    if (ec) {
-        hata = "kayıt dizini oluşturulamadı: " + ayar.dizin.generic_string() + ": " + ec.message();
-        return nullptr;
-    }
     std::unique_ptr<kayit::Yazici> y = kayit::Yazici::ac(ya, uv, ekler, hata);
     if (!y) {
         return nullptr;
@@ -269,6 +316,14 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
     b->y_ = std::move(y);
     b->a3_acik_ = ayar.a3_acik;
     b->sonar_acik_ = ayar.sonar_acik;
+    b->bilinmeyen_ = bilinmeyen_anahtarlar(uv);
+    b->guvence_siniri_ = b->guvence_hesapla_();   // kanal bağlantıları ve üst veri çalıştırma boyunca değişmez
+    // W5-K41: tavanlı ilk kapanış taslağı, ilk üretici çağrısından ÖNCE. Dosya erken kapanırsa (disk dolu,
+    // yazma hatası, sınır, yıkıcı) kapanış kaydı bu taslağı kullanır; taslak yazılmadan kapanan dosya
+    // tavansız (kademe ve kipin verdiği) güvence yazardı.
+    kayit::KapanisAlanlari ilk;
+    ilk.bitis_durumu = kayit::BitisDurumu::hata;
+    b->taslak_guncelle(ilk);
     return b;
 }
 
@@ -276,7 +331,7 @@ KayitBaglanti::~KayitBaglanti() = default;
 
 void KayitBaglanti::taslak_guncelle(kayit::KapanisAlanlari a)
 {
-    tavan_uygula(eksik_kanallar(true), a);   // erken kapanışta da aynı tavan (W5-K41)
+    tavan_uygula(eksik_kanallar(true), bilinmeyen_, a);   // erken kapanışta da aynı tavan (W5-K41)
     y_->kapanis_taslagi(a);
 }
 
@@ -286,7 +341,7 @@ kayit::KapanisSonucu KayitBaglanti::kapat(kayit::KapanisAlanlari alanlar)
         return sonuc_;
     }
     kapandi_ = true;
-    tavan_uygula(eksik_kanallar(true), alanlar);
+    tavan_uygula(eksik_kanallar(true), bilinmeyen_, alanlar);
     sonuc_ = y_->kapat(alanlar);
     return sonuc_;
 }
@@ -326,18 +381,49 @@ std::vector<std::string> KayitBaglanti::eksik_kanallar(bool yalniz_tekrar_duzeyi
     return r;
 }
 
-void KayitBaglanti::tavan_uygula(const std::vector<std::string>& eksik, kayit::KapanisAlanlari& a)
+void KayitBaglanti::tavan_uygula(const std::vector<std::string>& eksik, const std::vector<std::string>& bilinmeyen,
+                                 kayit::KapanisAlanlari& a)
 {
-    if (eksik.empty()) {
+    if (eksik.empty() && bilinmeyen.empty()) {
         return;
     }
-    // W5-K41: düzeyin gerektirdiği kanalların hepsi üretilmiyor → dosya `fizik` ya da `girdi` iddia edemez.
+    // W5-K41: düzeyin gerektirdiği kanalların hepsi üretilmiyor ya da zorunlu üst veri anahtarı bilinmiyor
+    // (W5-K39: tekrar için gereken sürüm kimliği yok) → dosya `fizik` ya da `girdi` iddia edemez.
     a.guvence_tavani = kayit::Guvence::izleme;
-    std::string n = "kanal_uretilmiyor:";
-    for (std::size_t i = 0; i < eksik.size(); ++i) {
-        n += (i == 0 ? "" : "+") + eksik[i];
+    std::string n;
+    if (!eksik.empty()) {
+        n = "kanal_uretilmiyor:";
+        for (std::size_t i = 0; i < eksik.size(); ++i) {
+            n += (i == 0 ? "" : "+") + eksik[i];
+        }
+    }
+    if (!bilinmeyen.empty()) {
+        n += n.empty() ? "" : ",";
+        n += "ust_veri_bilinmiyor:";
+        for (std::size_t i = 0; i < bilinmeyen.size(); ++i) {
+            n += (i == 0 ? "" : "+") + bilinmeyen[i];
+        }
     }
     a.guvence_tavan_nedeni = n;
+}
+
+std::vector<std::string> KayitBaglanti::bilinmeyen_anahtarlar(const kayit::AcilisUstVerisi& uv)
+{
+    std::vector<std::string> r;
+    for (const auto& [anahtar, deger] : kayit::ust_veri_ciftleri(uv)) {
+        if (deger == "bilinmiyor") {
+            r.emplace_back(anahtar);
+        }
+    }
+    return r;
+}
+
+kayit::Guvence KayitBaglanti::guvence_hesapla_() const
+{
+    kayit::KapanisAlanlari a;
+    tavan_uygula(eksik_kanallar(true), bilinmeyen_, a);
+    const kayit::Guvence beklenen = kayit::beklenen_duzey(y_->kademe(), kip_);
+    return a.guvence_tavani.has_value() && *a.guvence_tavani < beklenen ? *a.guvence_tavani : beklenen;
 }
 
 std::string kayit_sayac_listesi(const a3::yuk_sayac_gercek_zaman& y)

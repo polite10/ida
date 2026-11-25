@@ -211,6 +211,11 @@ struct Ayar {
     std::size_t kayit_halka_bayt = 0;
     // Yalnız sınama: dosya adını (run_id; A3-K63 biçimi) sabitler (var olan dosyanın ezilmediği sınanabilsin).
     std::string kayit_run_id;
+    // Yalnız sınama: kayıt dosyasındaki ilk `sequence` (A6-K12 sınırını enjekte eder; 1: olağan).
+    std::uint32_t kayit_ilk_sira = 1;
+    // Ön denetim `kayit_disk_alani` (A3 §3.8) alt sınırı, bayt: kayıt dizininde bundan az boş alan varsa
+    // madde `kaldi` olur ve çalıştırma başlamaz. Varsayılan 1 GiB (mimari seçimi, tahmin); yalnız sınamada değişir.
+    std::uint64_t kayit_disk_siniri_bayt = std::uint64_t{1} << 30;
     // Yalnız sınama: kayıt açıldı (dosya yolu, run_id); dünya döngüsü başlamadan önce.
     std::function<void(const std::string& yol, const std::string& run_id)> kayit_hazir;
 

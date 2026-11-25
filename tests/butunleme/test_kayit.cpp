@@ -15,6 +15,9 @@
 //                      ileti sayıları; Tablo 3.3 süzgeci; üretilen/eksik kanal tablosu; güvence (W5-K41)
 //   kayit_a3_acik      A3 açık: aynı yapı iki hedefe (W5-K42); olay, çalıştırma durumu ve komut sonucu
 //   kayit_kapanis      kabul 4: olağan, hata, sinyal; (POSIX) `kill -9` sonrası kurtarma okuması
+//   kayit_erken_kapanis  inceleme 1: A6-K12 sınırıyla erken kapanan dosya `fizik` güvencesi yazamaz (W5-K41)
+//   kayit_bitis_durumu   inceleme 2: A3 `durdur` → durduruldu; ön denetimde kalma → on_denetim_kaldi (A6-K45)
+//   kayit_on_denetim     inceleme 3: boş alan ölçülür (olculen/sinir/birim); yapılmayan madde `atlandi`; sınır altında başlamaz
 //   kayit_hil_sayac    kabul 2 (POSIX, kartsız HIL 1x): kaçırılan parti ve bütçe aşımı sayaçları farklı değil
 #include "ida/a3/komut.hpp"
 #include "ida/kayit/coz.hpp"
@@ -429,6 +432,15 @@ int test_icerik()
                 ad + ": güvence nedeni yalnız izlemenin altındaki düzeyde yazılı (guvence_nedenleri " +
                     (oz.kapanis->find("guvence_nedenleri") != oz.kapanis->end() ? oz.kapanis->at("guvence_nedenleri") : "-") + ")");
         dogrula(!oz.kapanis->count("guvence_on_eki_son_adim"), ad + ": önek yok");
+        // Bulgu 4: `bilinmiyor` yazılan zorunlu üst veri anahtarları güvenceyi sınırlar ve nedeni yazılır.
+        const std::string nedenler = oz.kapanis->find("guvence_nedenleri") != oz.kapanis->end() ? oz.kapanis->at("guvence_nedenleri") : "";
+        if (std::string(kademe) != "olaylar") {
+            dogrula(nedenler.find("ust_veri_bilinmiyor:") != std::string::npos && nedenler.find("sim_surumu") != std::string::npos &&
+                        nedenler.find("rng_surumu") != std::string::npos,
+                    ad + ": güvence nedeni bilinmeyen üst veri anahtarlarını da sayar (" + nedenler + ")");
+        }
+        const std::string bag = oz.ust_veri.count("bagimliliklar") != 0u ? oz.ust_veri.at("bagimliliklar") : "";
+        dogrula(bag.find("eigen=") != std::string::npos && bag.find("mcap=") != std::string::npos, ad + ": bagimliliklar Eigen sürümünü taşır (" + bag + ")");
 
         if (std::string(kademe) == "olaylar") {
             dogrula(r.sayilar["senaryo/oge_uygulama"] == 5u, ad + ": senaryo öğeleri (" + sayi(r.sayilar["senaryo/oge_uygulama"]) + ")");
@@ -561,6 +573,12 @@ int test_a3_acik()
         durum_kosuyor = durum_kosuyor || j.at("durum").get<int>() == static_cast<int>(ida::a3::CalistirmaDurumu::kosuyor);
     }
     dogrula(durum_kosuyor, "A3 açık: çalıştırma durumu `kosuyor` dosyada");
+    // Bulgu 7 (ilk madde): kayıt açıkken `calistirma/durum.tekrar_guvencesi` gerçek düzeyi (izleme = 1) taşır.
+    bool guvence_izleme = !r.yukler["calistirma/durum"].empty();
+    for (const nlohmann::json& j : r.yukler["calistirma/durum"]) {
+        guvence_izleme = guvence_izleme && j.at("tekrar_guvencesi").get<int>() == 1;
+    }
+    dogrula(guvence_izleme, "A3 açık: calistirma/durum.tekrar_guvencesi kayıt açıkken izleme (1)");
     const std::set<std::string> eksik(k.s.kayit.eksik_kanallar.begin(), k.s.kayit.eksik_kanallar.end());
     dogrula(eksik.count("olay") == 0u && eksik.count("calistirma/durum") == 0u && eksik.count("a3/komut_sonucu") == 0u &&
                 eksik.count("a3/komut") == 1u && eksik.count("ariza/etkin") == 0u,
@@ -750,8 +768,12 @@ int test_hil_sayac()
                 static_cast<unsigned long long>(k.kayit.cagri_adet),
                 k.kayit.cagri_adet != 0u ? 1e-3 * static_cast<double>(k.kayit.cagri_toplam_ns) / static_cast<double>(k.kayit.cagri_adet) : 0.0,
                 1e-3 * static_cast<double>(k.kayit.cagri_en_kotu_ns));
-    dogrula(ref.tamam && k.tamam && ref.zaman.tf_sayisi >= 2300u && k.zaman.tf_sayisi >= 2300u && k.kayit.acildi && k.kayit.dosya_kapandi,
+    dogrula(ref.tamam && k.tamam && k.kayit.acildi && k.kayit.dosya_kapandi,
             "HIL: iki koşu da tamamlandı, kayıt açıldı ve kapandı (" + k.hata + ")");
+    // TF sayısı duvar saatine bağlıdır: ölçüt değilse yalnız ölçüm (W4-K24, K29; W5-K43).
+    dogrula(ida::test::zamanlama(ref.zaman.tf_sayisi >= 2300u && k.zaman.tf_sayisi >= 2300u, "kayit_hil.tf_sayisi",
+                                 "12 s'de TF: kayıtsız " + sayi(ref.zaman.tf_sayisi) + ", kayıtlı " + sayi(k.zaman.tf_sayisi) + " (≥ 2300)"),
+            "HIL: iki koşuda da yeterli TF (zamanlama)");
     const std::uint64_t pay = 2;   // iki koşu arasındaki gürültü payı (tahmin)
     const auto fark_yok = [&](std::uint64_t kayitli, std::uint64_t taban) { return kayitli <= taban + pay; };
     dogrula(ida::test::zamanlama(fark_yok(k.sayac.parti_kacirildi, ref.sayac.parti_kacirildi), "kayit_hil.parti_kacirildi",
@@ -771,6 +793,148 @@ int test_hil_sayac()
     return g_hata;
 }
 #endif
+
+
+// ------------------------------------------------------------------------------------------------ inceleme 1
+
+// Erken kapanan dosya (A6-K12 sınırı, ilk 1 Hz taslaktan çok önce): kapanış kaydı, açılışta yazılan tavanlı
+// taslaktan alınır; dosya `fizik` güvencesi yazamaz (W5-K41). Beklenen olaya bağlıdır (sınır ~100 iletide).
+int test_erken_kapanis()
+{
+    Gecici g("erken");
+    sunucu::Ayar a = z1_ayari(10.0, "telemetri");
+    a.kayit_acik = true;
+    a.kayit_dizini = g.dizge();
+    a.kayit_ilk_sira = 0xFFFFFFFFu - 400u;   // A6-K12 sınırına 400 ileti kala
+    const Kosu k = kos_et(a);
+    Okunan r = oku(tek_dosya(g.yol));
+    dogrula(k.s.tamam && r.o && r.o->ozet().saglam() && r.o->ozet().kapanis.has_value() &&
+                r.o->ozet().kapanis->at("bitis_durumu") == "sinira_ulasti",
+            "erken kapanış: dosya sınıra ulaşıp kapandı, koşu kayıtsız sürdü (" + k.s.hata + ")");
+    if (!r.o || !r.o->ozet().kapanis.has_value()) {
+        return g_hata;
+    }
+    const kayit::UstVeri& kap = *r.o->ozet().kapanis;
+    const std::string nedenler = kap.count("guvence_nedenleri") != 0u ? kap.at("guvence_nedenleri") : "";
+    dogrula(kap.at("tekrar_guvencesi") == "izleme" && k.s.kayit.guvence == "izleme" && r.o->ozet().guvence == kayit::Guvence::izleme,
+            "erken kapanış: tekrar_guvencesi izleme (kapanış kaydı " + kap.at("tekrar_guvencesi") + ")");
+    dogrula(nedenler.find("kanal_uretilmiyor:") != std::string::npos, "erken kapanış: güvence nedeni üretilmeyen kanalı söyler (" + nedenler + ")");
+    dogrula(!kap.count("guvence_on_eki_son_adim"), "erken kapanış: önek güvencesi yok");
+    return g_hata;
+}
+
+// ------------------------------------------------------------------------------------------------ inceleme 2
+
+int test_bitis_durumu()
+{
+    std::uint32_t komut_no = 9100;
+    const auto a3_ayari = [&](const Gecici& g) {
+        sunucu::Ayar a = z1_ayari(5.0, "telemetri");
+        a.a3_acik = true;
+        a.a3_port = 0;
+        a.a3_kapanis_bekleme_s = 0.0;
+        a.karsi = sunucu::Karsi::tcp;   // karşı taraf yok: hazırlık beklemede kalır
+        a.karsi_verildi = true;
+        a.kayit_acik = true;
+        a.kayit_dizini = g.dizge();
+        return a;
+    };
+    {
+        // A3 `durdur`, hazırlanırken: çalıştırma `yuklendi`'de kalır, başlamaz → bitis_durumu `durduruldu`.
+        Gecici g("durdur");
+        sunucu::Ayar a = a3_ayari(g);
+        a.baglanti_bekleme_ns = 20'000'000'000;   // asılma sınırı; ölçüt değil (durdur olayı bekleyişi bitirir)
+        bool verildi = false;
+        a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+            const ida::a3::AnlikDurum d = al.anlik();
+            if (b == 0 && d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor && !verildi) {
+                ida::a3::Komut k;
+                k.komut_no = ++komut_no;
+                k.istemci_id = 7;
+                k.tur = ida::a3::KomutTuru::calistirma_durdur;
+                k.beklenen_run_id = d.run_id;
+                k.beklenen_durum_rev = d.durum_rev;
+                verildi = al.al(k).tur == ida::a3::AlimSonucu::Tur::kuyrukta;
+            }
+        };
+        const Kosu k = kos_et(a);
+        Okunan r = oku(tek_dosya(g.yol));
+        dogrula(verildi && k.s.calistirma_sonu == "yuklendi" && k.s.satirlar.empty(), "durdur: hazırlıkta kabul edildi, çalıştırma başlamadı (" + k.s.calistirma_sonu + ")");
+        dogrula(r.o && r.o->ozet().saglam() && r.o->ozet().kapanis->at("bitis_durumu") == "durduruldu" && k.s.kayit.bitis_durumu == "durduruldu",
+                "A3 durdur → bitis_durumu durduruldu (" + (r.o && r.o->ozet().kapanis ? r.o->ozet().kapanis->at("bitis_durumu") : std::string("-")) + ")");
+    }
+    {
+        // Ön denetimde kalma (A3-K62): karşı taraf bağlanmıyor, hazırlık başarısız → bitis_durumu `on_denetim_kaldi`.
+        Gecici g("kaldi");
+        sunucu::Ayar a = a3_ayari(g);
+        a.baglanti_bekleme_ns = 500'000'000;
+        const Kosu k = kos_et(a);
+        Okunan r = oku(tek_dosya(g.yol));
+        dogrula(!k.s.tamam && k.s.calistirma_sonu == "yuklendi" && k.s.satirlar.empty(), "ön denetim: çalıştırma yuklendi'de kaldı (" + k.s.hata + ")");
+        dogrula(r.o && r.o->ozet().saglam() && r.o->ozet().kapanis->at("bitis_durumu") == "on_denetim_kaldi" &&
+                    k.s.kayit.bitis_durumu == "on_denetim_kaldi",
+                "ön denetimde kalma → bitis_durumu on_denetim_kaldi (" +
+                    (r.o && r.o->ozet().kapanis ? r.o->ozet().kapanis->at("bitis_durumu") : std::string("-")) + ")");
+    }
+    return g_hata;
+}
+
+// ------------------------------------------------------------------------------------------------ inceleme 3
+
+int test_on_denetim()
+{
+    {
+        Gecici g("on_denetim");
+        sunucu::Ayar a = z1_ayari(2.0, "telemetri");
+        a.kayit_acik = true;
+        a.kayit_dizini = g.dizge();
+        const Kosu k = kos_et(a);
+        Okunan r = oku(tek_dosya(g.yol));
+        std::vector<std::uint8_t> bayt;
+        const bool ek = r.o && r.o->ek_oku("on_denetim_raporu.json", bayt);
+        const nlohmann::json j = ek ? nlohmann::json::parse(std::string(bayt.begin(), bayt.end()), nullptr, false) : nlohmann::json();
+        dogrula(k.s.tamam && ek && j.is_object() && j.contains("maddeler"), "ön denetim raporu ek olarak okundu");
+        if (!j.is_object() || !j.contains("maddeler")) {
+            return g_hata;
+        }
+        std::map<std::string, nlohmann::json> m;
+        for (const nlohmann::json& x : j.at("maddeler")) {
+            m[x.at("kod").get<std::string>()] = x;
+        }
+        const nlohmann::json disk = m.count("kayit_disk_alani") != 0u ? m["kayit_disk_alani"] : nlohmann::json::object();
+        dogrula(disk.value("durum", "") == "gecti" && disk.contains("olculen") && disk.at("olculen").is_number_unsigned() &&
+                    disk.contains("sinir") && disk.at("sinir").is_number_unsigned() && disk.at("sinir").get<std::uint64_t>() == (std::uint64_t{1} << 30) &&
+                    disk.value("birim", "") == "bayt" && disk.at("olculen").get<std::uint64_t>() >= disk.at("sinir").get<std::uint64_t>(),
+                "kayit_disk_alani: ölçülen boş alan, sınır (1 GiB) ve birim yazılı; ölçülen ≥ sınır → gecti (" + disk.dump() + ")");
+        // `gecti` yalnız gerçekten yapılan denetimlerde; ötekiler `atlandi` ve nedeniyle.
+        bool gecti_dogru = true;
+        for (const auto& [kod, x] : m) {
+            if (x.value("durum", "") == "gecti") {
+                gecti_dogru = gecti_dogru && (kod == "senaryo_gecerli" || kod == "kayit_disk_alani");
+            }
+        }
+        dogrula(gecti_dogru && m.count("senaryo_gecerli") == 1u, "yalnız yapılan denetimler gecti (senaryo_gecerli, kayit_disk_alani)");
+        bool atlandi = true;
+        for (const char* kod : {"surum_uyumu", "kontrol_hizi", "a1_bant_payi", "a7_manifest", "ping360_zamanlama", "gorsellestirici", "algilama_bileseni"}) {
+            atlandi = atlandi && m.count(kod) == 1u && m[kod].value("durum", "") == "atlandi" && !m[kod].value("ileti", "").empty();
+        }
+        dogrula(atlandi, "yapılmayan denetimler atlandi ve nedeniyle yazılı");
+        dogrula(j.value("sonuc", "") == "gecti", "rapor sonucu gecti (hiçbir madde kaldi değil)");
+    }
+    {
+        // Sınır, ölçülen boş alanın üstünde (sınamaya açık ayar; gerçek sınır 1 GiB): madde kaldi, çalıştırma başlamaz.
+        Gecici g("on_denetim_az");
+        sunucu::Ayar a = z1_ayari(2.0, "telemetri");
+        a.kayit_acik = true;
+        a.kayit_dizini = g.dizge();
+        a.kayit_disk_siniri_bayt = ~std::uint64_t{0};
+        const Kosu k = kos_et(a);
+        dogrula(!k.s.tamam && k.s.hata.find("kayit_disk_alani") != std::string::npos && !k.s.kayit.acildi && tek_dosya(g.yol).empty() &&
+                    k.s.sayac.parti_gonderilen == 0u && k.s.satirlar.empty(),
+                "boş alan sınırın altında: ön denetim kaldı, dosya yok, çalıştırma başlamadı (" + k.s.hata + ")");
+    }
+    return g_hata;
+}
 
 // ------------------------------------------------------------------------------------------------ kabul 5 (ölçüm)
 
@@ -837,6 +1001,12 @@ int main(int argc, char** argv)
         h = test_icerik();
     } else if (ad == "kayit_a3_acik") {
         h = test_a3_acik();
+    } else if (ad == "kayit_erken_kapanis") {
+        h = test_erken_kapanis();
+    } else if (ad == "kayit_bitis_durumu") {
+        h = test_bitis_durumu();
+    } else if (ad == "kayit_on_denetim") {
+        h = test_on_denetim();
     } else if (ad == "kayit_olcum") {
         h = test_olcum();
     } else if (ad == "kayit_kapanis") {

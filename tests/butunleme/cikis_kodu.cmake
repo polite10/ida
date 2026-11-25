@@ -2,12 +2,18 @@
 #
 #   cmake -DPROGRAM=<ikili> -DBEKLENEN=<kod> [-DARGUMANLAR=<a;b;c>] [-DILETI=<stderr'de aranan>]
 #         [-DILETILER=<a|b|c: hepsi aranır; ';' içeremez>] [-DYOK=<stderr'de bulunmaması gereken>]
-#         -P cikis_kodu.cmake
+#         [-DTEMIZLE=<dizin: koşudan önce ve sonra silinir>] -P cikis_kodu.cmake
+if(DEFINED TEMIZLE)
+  file(REMOVE_RECURSE "${TEMIZLE}")
+endif()
 execute_process(
   COMMAND "${PROGRAM}" ${ARGUMANLAR}
   RESULT_VARIABLE _kod
   OUTPUT_VARIABLE _cikti
   ERROR_VARIABLE _hata)
+if(DEFINED TEMIZLE)
+  file(REMOVE_RECURSE "${TEMIZLE}")   # çıktı dosyaları (ör. .mcap) derleme dizininde birikmesin
+endif()
 if(NOT "${_kod}" STREQUAL "${BEKLENEN}")
   message(FATAL_ERROR "çıkış kodu ${_kod}, beklenen ${BEKLENEN}\nstdout:\n${_cikti}\nstderr:\n${_hata}")
 endif()

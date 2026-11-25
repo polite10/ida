@@ -339,7 +339,7 @@ ida_ayar_uygula(ida_butunleme_kayit_test)
 if(NOT MSVC)
   target_compile_options(ida_butunleme_kayit_test PRIVATE -Wshadow)
 endif()
-foreach(_ad kayit_varsayilan kayit_belirlenim kayit_icerik kayit_a3_acik kayit_olcum)
+foreach(_ad kayit_varsayilan kayit_belirlenim kayit_icerik kayit_a3_acik kayit_erken_kapanis kayit_bitis_durumu kayit_on_denetim kayit_olcum)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_kayit_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
@@ -365,6 +365,7 @@ add_test(NAME butunleme.ida_sim_kayit_yerlesik_senaryo
 add_test(NAME butunleme.ida_sim_kayit_ozet
   COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
           "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--kayit-dizini;${CMAKE_CURRENT_BINARY_DIR}/kayit_ozet;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
-          "-DILETILER=ida_sim: kapanış: düzgün|ida_sim: kayıt: kapandı; dosya |bitiş bitti, güvence izleme (kanal_uretilmiyor:|üretilmeyen kanallar ["
+          "-DTEMIZLE=${CMAKE_CURRENT_BINARY_DIR}/kayit_ozet"
+          "-DILETILER=ida_sim: kapanış: düzgün|ida_sim: kayıt: kapandı; dosya |bitiş bitti, güvence izleme (kanal_uretilmiyor:|,ust_veri_bilinmiyor:sim_surumu+|+dalga_listesi_ozeti); üretilen |üretilmeyen kanallar ["
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 set_tests_properties(butunleme.ida_sim_kayit_yok_cikti butunleme.ida_sim_kayit_yerlesik_senaryo butunleme.ida_sim_kayit_ozet PROPERTIES TIMEOUT 600)

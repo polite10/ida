@@ -56,6 +56,9 @@ struct KayitBaglantiAyari {
     bool a3_acik = false;     // A3 durum makinesine bağlı kanallar yalnız A3 açıkken bağlıdır
     bool sonar_acik = false;
     std::size_t halka_bayt = 0;   // 0: 16 MiB (tahmin)
+    std::uint32_t ilk_sira = 1;   // yalnız sınama: ilk `sequence` (A6-K12 sınırı)
+    // Ön denetim `kayit_disk_alani` (A3 §3.8): kayıt dizininde en az bu kadar boş alan (bayt) gerekir.
+    std::uint64_t disk_siniri_bayt = std::uint64_t{1} << 30;
     KayitGirdisi girdi;
 };
 
@@ -96,11 +99,20 @@ public:
     // `yalniz_tekrar_duzeyi`: yalnız `fizik` ya da `girdi` düzeyinin gerektirdiği kanallar (W5-K41).
     std::vector<std::string> eksik_kanallar(bool yalniz_tekrar_duzeyi = false) const;
 
-    // Kapanış alanlarına konan tavan (W5-K41): üretilmeyen kanal varsa `izleme`.
-    static void tavan_uygula(const std::vector<std::string>& eksik, kayit::KapanisAlanlari& a);
+    // Kapanış alanlarına konan tavan (W5-K41): üretilmeyen kanal varsa ya da zorunlu bir üst veri anahtarı
+    // `bilinmiyor` yazılmışsa `izleme`; nedenler virgülle birleşir (`kanal_uretilmiyor:…`,
+    // `ust_veri_bilinmiyor:<anahtar>+<anahtar>`).
+    static void tavan_uygula(const std::vector<std::string>& eksik, const std::vector<std::string>& bilinmeyen,
+                             kayit::KapanisAlanlari& a);
+    // Açılış üst verisinde `bilinmiyor` yazılmış anahtarlar (katalog sırasıyla).
+    static std::vector<std::string> bilinmeyen_anahtarlar(const kayit::AcilisUstVerisi& uv);
+    // Çalıştırma sürerken dosyanın alabileceği en yüksek güvence düzeyi (kademe, kip ve tavan; önek ve
+    // canlı müdahale gibi kapanışta belli olan kısıtlar hariç). `calistirma/durum.tekrar_guvencesi` için.
+    kayit::Guvence guvence_ust_siniri() const noexcept { return guvence_siniri_; }   // açılışta hesaplanır (bellek ayırmaz)
 
 private:
     KayitBaglanti() = default;
+    kayit::Guvence guvence_hesapla_() const;
     void isaretle_(kayit::Kanal k) noexcept { uretildi_[static_cast<std::size_t>(k)] = true; }
 
     std::unique_ptr<kayit::Yazici> y_;
@@ -110,6 +122,8 @@ private:
     bool a3_acik_ = false;
     bool sonar_acik_ = false;
     bool kapandi_ = false;
+    kayit::Guvence guvence_siniri_ = kayit::Guvence::yok;
+    std::vector<std::string> bilinmeyen_;   // açılış üst verisinde `bilinmiyor` yazılanlar (güvence tavanı)
     kayit::KapanisSonucu sonuc_;
 };
 

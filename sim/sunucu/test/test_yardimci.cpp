@@ -9,6 +9,7 @@
 //                   sıfırlama); ilk istek süreci sonlandırmaz
 //   sinyal_ilk      (POSIX) sinyal_kur() ile SIGINT ve SIGTERM yalnız bayrağı kurar: süreç yaşar
 //   a2_*            W5-bagla-a2: A2 bağlama katmanı (test_a2_baglanti.cpp)
+//   kayit_tavan     W5-bagla-kayit: güvence tavanı, `bilinmiyor` üst veri anahtarları (test_kayit_baglanti.cpp)
 //   sinyal_ikinci   (POSIX) ikinci sinyal süreci hemen kCikisIkinciSinyal koduyla sonlandırır
 //                   (Windows'ta konsol olayı CI'da üretilemez: yalnız bayrak işlevi `kapanis_bayragi`
 //                   ile sınanır; konsol işleyicisi derlenir)
@@ -283,6 +284,7 @@ int test_a2_hiz_donusumu();      // test_a2_baglanti.cpp (W5-bagla-a2)
 int test_a2_fizik_tutarlilik();
 int test_a2_tanim();
 int test_a2_kimlik();
+int test_kayit_tavan();   // test_kayit_baglanti.cpp (W5-bagla-kayit)
 
 int main(int argc, char** argv)
 {
@@ -318,6 +320,8 @@ int main(int argc, char** argv)
         g_hata += test_a2_tanim();
     } else if (ad == "a2_kimlik") {
         g_hata += test_a2_kimlik();
+    } else if (ad == "kayit_tavan") {
+        g_hata += test_kayit_tavan();
     } else {
         std::printf("bilinmeyen test: %s\n", ad.c_str());
         return 2;

@@ -790,6 +790,7 @@ private:
     std::vector<kopru::EmniyetAtama> a3_atama_;   // sınırın operatör emniyet atamaları
     std::vector<kopru::OperatorSonucu> a3_op_sonuc_;
     bool a3_durdur_ = false;
+    bool a3_on_denetim_kaldi_ = false;            // A3-K62: ön denetim kaldı, `baslat` reddedildi (kayıt bitis_durumu)
     double hiz_ = 0.0;                            // SIL hız çarpanı (A3-K66; 0: olabildiğince hızlı)
     std::int64_t hiz_t0_sim_ = 0;
     Saat::time_point hiz_t0_duvar_{};
@@ -3476,7 +3477,8 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.gecerli = a3_gecerli_ ? 1u : 0u;
     c.gercek_zamani_kacirdi = a3_rt_kacirdi_ ? 1u : 0u;
     c.gecerlilik_nedenleri = a3_gecerlilik_;
-    c.tekrar_guvencesi = 0;   // kayıt (A6) yok: güvence yok
+    // Kayıt yoksa 0 (yok); kayıt açıksa dosyanın şu an alabileceği en yüksek düzey (kademe, kip ve W5-K41 tavanı).
+    c.tekrar_guvencesi = kb_ ? static_cast<std::uint8_t>(kb_->guvence_ust_siniri()) : 0u;
     // W5-bagla-a2: A2 gerçekten dinliyorsa senaryonun görünüm kademesi (A3 §3.4: 0 kapali, 1 sade,
     // 2 tam); bayrak yoksa ya da A2 açılamadıysa (kilit başkasında, port dolu, tanım yok) 0.
     c.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
@@ -4260,6 +4262,8 @@ void Calistirici::kayit_oge(std::size_t i, const char* sonuc, std::int64_t t, co
     const PlanOlayi& o = plan_.olaylar[i];
     kayit::yuk_senaryo_oge_uygulama y;
     y.olay_kimligi = o.kimlik;
+    // A6 öğe türü: sensör ve itici arızası 0 (ariza), emniyet girdisi 1. A6'da `gcs_komutu` (ARM, DISARM,
+    // SET_MODE) ve `guided` için açık karşılık yok (`gorev` = görev yüklemesi, `ortam` = ortam olayı), `diger`.
     y.tur = o.tur == PlanOlayTuru::emniyet ? 1u : (o.tur == PlanOlayTuru::sensor || o.tur == PlanOlayTuru::itici) ? 0u : 4u;
     const std::string_view sn(sonuc);
     const std::uint64_t adim = static_cast<std::uint64_t>(t / kH);
@@ -4294,6 +4298,8 @@ bool Calistirici::kayit_baslat()
     ba.a3_acik = yay_ != nullptr;
     ba.sonar_acik = sonar_ != nullptr;
     ba.halka_bayt = a_.kayit_halka_bayt;
+    ba.ilk_sira = a_.kayit_ilk_sira;
+    ba.disk_siniri_bayt = a_.kayit_disk_siniri_bayt;
     ba.girdi = *kayit_girdi_;
     std::string hata;
     kb_ = KayitBaglanti::ac(ba, hata);
@@ -4325,14 +4331,21 @@ void Calistirici::kayit_kapat(Sonuc& r) noexcept
         kayit::BitisDurumu bitis = kayit::BitisDurumu::hata;
         if (r.sinyal_kesti) {
             bitis = kayit::BitisDurumu::sim_kapanisi;
-        } else if (r.calistirma_sonu == "durduruldu" || r.calistirma_sonu == "yuklendi") {
-            bitis = kayit::BitisDurumu::durduruldu;
+        } else if (a3_on_denetim_kaldi_) {
+            bitis = kayit::BitisDurumu::on_denetim_kaldi;   // A6-K45: A3-K62'deki ön denetim kaldı; baslat reddedildi
+        } else if (r.calistirma_sonu == "durduruldu" || a3_durdur_) {
+            bitis = kayit::BitisDurumu::durduruldu;         // A3 `durdur` (koşarken ya da hazırlıkta)
         } else if (r.tamam) {
             bitis = kayit::BitisDurumu::bitti;
         }
-        // Son `sayac/gercek_zaman` (A6-K44): üretici bu iş parçacığıdır, kapanıştan önce.
-        if (k_) {
-            a3_durum_yayinla(static_cast<std::int64_t>(dn_.durum().adim_no) * kH);
+        // Son `sayac/gercek_zaman` (A6-K44): üretici bu iş parçacığıdır, kapanıştan önce. Yayın bir istisna
+        // atarsa `kapat` yine çağrılır (aksi hâlde ~Yazici tavansız bir taslakla kapatırdı).
+        try {
+            if (k_) {
+                a3_durum_yayinla(static_cast<std::int64_t>(dn_.durum().adim_no) * kH);
+            }
+        } catch (...) {
+            r.kayit.hata = "kayıt kapanışında son sayaç yayını başarısız";
         }
         const kayit::KapanisSonucu ks = kb_->kapat(kayit_alanlari(bitis));
         KayitOzeti& o = r.kayit;
@@ -4696,6 +4709,7 @@ Sonuc Calistirici::kos_ic()
         if (yay_ != nullptr) {
             // A3-K62: ön denetim kaldı → yuklendi; `baslat` reddedildi (on_denetim_kaldi).
             a3_gecis(a3::CalistirmaDurumu::yuklendi, "on_denetim_kaldi", true);
+            a3_on_denetim_kaldi_ = true;   // kayıt kapanışı: `on_denetim_kaldi` (A6-K45); `durduruldu` değil
             s_.calistirma_sonu = "yuklendi";   // W4-K27 (4): sonradan kendiliğinden başlamaz
             if (a3_baslat_komutu_) {
                 a3_sonuc(*a3_baslat_komutu_, false, 0, "on_denetim_kaldi");

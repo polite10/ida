@@ -480,14 +480,15 @@ int main(int argc, char** argv)
                 eksik += (eksik.empty() ? "" : " ") + k;
             }
             std::fprintf(stderr,
-                         "ida_sim: kayıt: %s; dosya %s, kademe %s, bitiş %s, güvence %s%s%s; üretilen %llu, kuyruklanan %llu, "
+                         "ida_sim: kayıt: %s; dosya %s, kademe %s, bitiş %s, güvence %s%s%s%s; üretilen %llu, kuyruklanan %llu, "
                          "düşen (halka %llu, geçersiz %llu), süzülen %llu; dosyadaki ileti %llu (kayıt/eksik %llu, bildirilen düşen %llu), "
                          "parça %llu, %llu B; üretici çağrısı %llu, ortalama %.3f µs, en çok %.1f µs, taslak en çok %.1f µs "
                          "(dünya iş parçacığı, duvar; ölçüm); üretilmeyen kanallar [%s]%s%s\n",
                          s.kayit.acildi ? (s.kayit.dosya_kapandi ? "kapandı" : "kapanmadı") : "AÇILAMADI",
                          s.kayit.yol.empty() ? "-" : s.kayit.yol.c_str(), s.kayit.kademe.c_str(), s.kayit.bitis_durumu.c_str(),
                          s.kayit.guvence.c_str(), s.kayit.guvence_nedenleri.empty() ? "" : " (",
-                         s.kayit.guvence_nedenleri.c_str(), static_cast<unsigned long long>(s.kayit.uretilen),
+                         s.kayit.guvence_nedenleri.c_str(), s.kayit.guvence_nedenleri.empty() ? "" : ")",
+                         static_cast<unsigned long long>(s.kayit.uretilen),
                          static_cast<unsigned long long>(s.kayit.kuyruklanan), static_cast<unsigned long long>(s.kayit.dusen_halka),
                          static_cast<unsigned long long>(s.kayit.dusen_gecersiz), static_cast<unsigned long long>(s.kayit.suzulen),
                          static_cast<unsigned long long>(s.kayit.yazilan_ileti), static_cast<unsigned long long>(s.kayit.eksik_kaydi),
