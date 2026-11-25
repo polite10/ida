@@ -10,7 +10,7 @@ cmake --build --preset host-debug --target ida_a3 ida_a3_sahte ida_a3_test
 ctest --preset host-debug -R "sim\.a3\."
 ```
 
-Dış bağımlılık yoktur (vcpkg gerekmez); Windows'ta `ws2_32` ve `bcrypt`. Yük kodlayıcıları ve katalog tabloları derleme zamanında `docs/sozlesmeler/sema/a3-kanallar.json`'dan `arac/uret_katalog.py` ile üretilir (Python 3.9+, yalnız standart kitaplık); alan sırası elle yazılmaz. Katalog (`a3-kanallar.json`) ve A1 komut kataloğu (`protocol/komutlar.json`) ikiliye bayt bayt gömülür (A3-K16, K100).
+Dış bağımlılık yoktur (vcpkg gerekmez); Windows'ta `ws2_32` ve `bcrypt`. Üretilen yük yapıları ve kodlayıcılar ayrı bir hedeftir (`ida_a3_yukler`; `ida_a3` onu bağlar): kayıt kitaplığı ortak yükleri oradan alır (W5-K36). Yük kodlayıcıları ve katalog tabloları derleme zamanında `docs/sozlesmeler/sema/a3-kanallar.json`'dan `arac/uret_katalog.py` ile üretilir (Python 3.9+, yalnız standart kitaplık); alan sırası elle yazılmaz. Katalog (`a3-kanallar.json`) ve A1 komut kataloğu (`protocol/komutlar.json`) ikiliye bayt bayt gömülür (A3-K16, K100).
 
 ## Sahte sunucuyla panelleri denemek
 
@@ -29,6 +29,7 @@ include/ida/a3/
   kaynak.hpp     Yayinci: dünya iş parçacığının yayın işlevleri (yayinla<Kanal>, olay, komut_sonucu)
   komut.hpp      KomutAlicisi (anlik, al), Komut, AlimSonucu, AnlikDurum
   katalog.hpp    üretilen katalog tablolarının tipleri
+  kodlayici.hpp  A3 tel tiplerinin yazıcısı ve okuyucusu (genel başlık: kayıt kitaplığı `sim/kayit` aynı kodlayıcıyı kullanır; W5-K36)
   (üretilen) yukler.hpp   yük yapıları, Kanal kimlikleri, kodlayıcı/çözücü bildirimleri
 src/
   cekirdek.*     soketten bağımsız sunucu çekirdeği (erişim, yönlendirme, komutlar, abonelik, yayın)
