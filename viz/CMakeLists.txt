@@ -60,6 +60,13 @@ endforeach()
 target_compile_definitions(ida_viz_test_dalga PRIVATE
   "IDA_VIZ_DALGA_GOLGELENDIRICI=\"${CMAKE_CURRENT_SOURCE_DIR}/proje/golgelendiriciler/dalga.gdshaderinc\"")
 
+# W5-viz-gorsel: assets/acik_su kümesinin üreticisi (viz/arac/model-uret/uret.py; yalnız standart kitaplık)
+# depodaki manifest ve .glb dosyalarını (ve viz/test/varlik sınama kümelerini) bayt bayt aynı üretir.
+# assets/havuz kümesinin eşi sim.senaryo.havuz_kumesi_uretici'dir (aynı biçimde kayıtlı).
+find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+add_test(NAME host.viz.model_uret_denetle
+  COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${PROJECT_SOURCE_DIR}/viz/arac/model-uret/uret.py" --denetle)
+
 if(NOT IDA_VIZ)
   return()
 endif()

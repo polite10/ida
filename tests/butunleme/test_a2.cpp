@@ -689,6 +689,13 @@ int test_uctan_uca()
     dogrula(o.ortam_turu == static_cast<std::uint8_t>(OrtamTuru::havuz) && o.statik_varlik_indeksi == 3u && o.gunes_yonu_n[2] == -1.0 &&
                 o.gunes_isinimi_w_m2 == 1000.0 && c.ist.malzeme().girdiler.empty(),
             "ortam: havuz, statik varlık havuz_ornek (3), ışık senaryodan; malzeme optiği 0 girdi");
+    // W5-viz-gorsel: senaryonun su optiği ve ortam ışığı (gorev-havuz.toml) telden istemciye aynen ulaşır;
+    // verilmeseler sim 0 yazardı (A5-K101 "kalibre edilmedi") ve görüntü siyah, ışıksız olurdu.
+    dogrula(o.beta_d_m[0] == 0.30 && o.beta_d_m[1] == 0.055 && o.beta_d_m[2] == 0.04 && o.beta_b_m[0] == 0.11 &&
+                o.beta_b_m[1] == 0.065 && o.beta_b_m[2] == 0.055 && o.b_sonsuz_rgb_dogrusal[0] == 0.02 &&
+                o.b_sonsuz_rgb_dogrusal[1] == 0.20 && o.b_sonsuz_rgb_dogrusal[2] == 0.26 && o.ortam_isigi_rgb_dogrusal[0] == 0.30 &&
+                o.ortam_isigi_rgb_dogrusal[1] == 0.36 && o.ortam_isigi_rgb_dogrusal[2] == 0.42,
+            "ortam: senaryonun su optiği (β_d, β_b, B∞) ve ortam ışığı istemciye aynen ulaştı (sıfır değil)");
 
     // ---- durum akışı: aynı sınırın dünya durumu ve CSV satırıyla bit düzeyinde ----
     const std::vector<const Cerceve*> durumlar = turunden(c.k, IletiTuru::durum);

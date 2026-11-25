@@ -298,10 +298,53 @@ int test_a2_tanim()
         dogrula_a2(o.ortam_turu == static_cast<std::uint8_t>(ida::a2::OrtamTuru::havuz) && o.statik_p_n[0] == 0.0 &&
                        o.statik_p_n[1] == 0.0 && o.statik_p_n[2] == 0.0 && o.statik_q_nb[0] == 1.0 && o.statik_q_nb[1] == 0.0,
                    "ortam: havuz, statik varlık pozu birim (ortam.sahne_poz varsayılanı)");
+        // Güneş yönü ve ışınımı senaryoda verilmez: A5-K101 kalibre edilmedi (KE) varsayılanı. Su optiği
+        // sürümü ve bulanıklık ölçeği de varsayılandır.
         dogrula_a2(o.gunes_yonu_n[0] == 0.0 && o.gunes_yonu_n[1] == 0.0 && o.gunes_yonu_n[2] == -1.0 &&
                        o.gunes_isinimi_w_m2 == 1000.0 && o.su_optigi_surumu == 1u && o.bulaniklik_olcegi == 0.0,
-                   "ortam: ışık ve su optiği A5-K101 varsayılanları (güneş (0, 0, −1), 1000 W/m², sürüm 1)");
+                   "ortam: güneş yönü ve ışınımı KE varsayılanı (A5-K101: (0, 0, −1), 1000 W/m²), su optiği sürümü 1, bulanıklık ölçeği 0");
+        // W5-viz-gorsel: senaryonun `[ortam.su_optigi]` ve `[ortam.isik]` değerleri A2 `Ortam`'a aynen ulaşır
+        // (verilmeseler sim 0 yazardı: A5-K101 "kalibre edilmedi", berrak su ve ışıksız sahne).
+        dogrula_a2(o.beta_d_m[0] == 0.30 && o.beta_d_m[1] == 0.055 && o.beta_d_m[2] == 0.04 && o.beta_b_m[0] == 0.11 &&
+                       o.beta_b_m[1] == 0.065 && o.beta_b_m[2] == 0.055 && o.b_sonsuz_rgb_dogrusal[0] == 0.02 &&
+                       o.b_sonsuz_rgb_dogrusal[1] == 0.20 && o.b_sonsuz_rgb_dogrusal[2] == 0.26 &&
+                       o.ortam_isigi_rgb_dogrusal[0] == 0.30 && o.ortam_isigi_rgb_dogrusal[1] == 0.36 &&
+                       o.ortam_isigi_rgb_dogrusal[2] == 0.42,
+                   "ortam: senaryonun su optiği (β_d, β_b, B∞) ve ortam ışığı A2 Ortam'a aynen ulaştı (sıfır değil)");
         dogrula_a2(t.malzeme.empty(), "optik malzeme geçersiz kılması yok: 0 girdi");
+    }
+
+    // ---- Depodaki açık su görev senaryosu (W5-viz-gorsel): acik_su kümesi, tam kademe, eğik güneş, su optiği ----
+    {
+        const CozumSonucu cs = senaryo_coz(disk, "scenarios/gorev-acik-su-3b.toml");
+        dogrula_a2(cs.rapor.gecerli && cs.cozumlenmis.has_value(), "scenarios/gorev-acik-su-3b.toml çözüldü");
+        if (cs.cozumlenmis) {
+            a2b::Tanim t;
+            std::string hata;
+            const a2b::TanimSonucu r = a2b::tanim_kur(*cs.cozumlenmis, cs.rapor, disk, kok, t, hata);
+            dogrula_a2(r == a2b::TanimSonucu::tamam, "açık su: tanım kuruldu" + (hata.empty() ? std::string() : ": " + hata));
+            dogrula_a2(t.kademe == ida::a2::Kademe::tam, "açık su: kalite.gorunum = tam → kademe tam");
+            const std::filesystem::path beklenen =
+                (std::filesystem::absolute(std::filesystem::path(kok)) / "assets" / "acik_su" / "manifest.json").lexically_normal();
+            const std::u8string u = beklenen.u8string();
+            dogrula_a2(t.manifest_yolu == std::string(u.begin(), u.end()), "açık su: manifest yolu assets/acik_su: " + t.manifest_yolu);
+            std::string tanim_hex;
+            for (std::uint8_t b : t.manifest_sha256) {
+                char c[3];
+                std::snprintf(c, sizeof c, "%02x", static_cast<unsigned>(b));
+                tanim_hex += c;
+            }
+            const std::string dosya_hex = sha256_hex(disk.oku("assets/acik_su/manifest.json").value_or(""));
+            dogrula_a2(!dosya_hex.empty() && tanim_hex == dosya_hex, "açık su: manifest özeti dosyanın SHA-256'sı: " + tanim_hex);
+            const ida::a2::Ortam& o = t.ortam;
+            dogrula_a2(o.ortam_turu == static_cast<std::uint8_t>(ida::a2::OrtamTuru::acik_su) && o.statik_varlik_indeksi == 2u &&
+                           t.arac_varlik == 0u,
+                       "açık su: ortam açık su, statik varlık deniz_tabani (2), araç ida0 (0)");
+            dogrula_a2(o.gunes_yonu_n[2] == -0.8137334712067349 && o.gunes_yonu_n[0] == 0.4649905549752772 &&
+                           o.beta_d_m[0] == 0.40 && o.beta_d_m[1] == 0.070 && o.beta_d_m[2] == 0.050 && o.beta_b_m[0] == 0.20 &&
+                           o.b_sonsuz_rgb_dogrusal[2] == 0.16 && o.ortam_isigi_rgb_dogrusal[2] == 0.55,
+                       "açık su: eğik güneş, su optiği ve ortam ışığı senaryodan A2 Ortam'a aynen ulaştı");
+        }
     }
 
     // ---- Bellekte türetilmiş senaryolar (araç dosyası ve manifest diskten) ----
