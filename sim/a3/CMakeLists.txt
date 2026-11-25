@@ -30,6 +30,15 @@ function(ida_a3_ayar hedef)
   endif()
 endfunction()
 
+# Üretilen yük yapıları, kodlayıcılar ve katalog tabloları ayrı hedeftir (W5-K36): kayıt kitaplığı
+# (`ida_kayit`, A6-K08) A3 ile ortak yükleri aynı kodlayıcıyla yazar ve sunucunun geri kalanına
+# (HTTP, soket) bağlanmaz. `ida_a3` bu hedefi genel bağlar; davranış değişmez.
+add_library(ida_a3_yukler STATIC "${_ida_a3_uretim}/yukler.cpp")
+target_include_directories(ida_a3_yukler
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${_ida_a3_uretim}/include"
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+ida_a3_ayar(ida_a3_yukler)
+
 add_library(ida_a3 STATIC
   src/cekirdek.cpp
   src/http.cpp
@@ -42,12 +51,11 @@ add_library(ida_a3 STATIC
   src/statik.cpp
   src/sunucu.cpp
   src/yayinci.cpp
-  src/zaman.cpp
-  "${_ida_a3_uretim}/yukler.cpp")
+  src/zaman.cpp)
 target_include_directories(ida_a3
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${_ida_a3_uretim}/include"
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(ida_a3 PUBLIC Threads::Threads)
+target_link_libraries(ida_a3 PUBLIC ida_a3_yukler Threads::Threads)
 if(WIN32)
   target_link_libraries(ida_a3 PUBLIC ws2_32 bcrypt)
 endif()
