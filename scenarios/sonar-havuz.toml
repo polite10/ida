@@ -32,7 +32,7 @@ etkin = false
 [varliklar]
 kume = "havuz"
 kume_surumu = 1
-manifest_ozeti = "a6295504703ce7fa01f7a612a92a54a660e3ff660e9758da972d9257ff11a641"
+manifest_ozeti = "39b94a462c88ff1ac2a940e12c443c93d48fbafc4148d2af7cfce7a222cdda18"
 
 [calistirma]
 kip = "sil"
