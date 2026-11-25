@@ -199,6 +199,26 @@ struct Ayar {
     // Yalnız sınama: A2 sunucusu başlatıldı (dinlenen port; A2'sizken 0 ve dinliyor = false).
     std::function<void(std::uint16_t port, bool dinliyor)> a2_hazir;
 
+    // ---- A6 kayıt (W5-bagla-kayit; docs/sozlesmeler/A6-kayit.md) ----
+    // W5-K40: yalnız `--kayit-dizini <dizin>` verildiğinde açılır; yokken dosya açılmaz, iş parçacığı
+    // başlamaz ve çıktılar bu iş öncesiyle bayt bayt aynıdır. Dosya `<dizin>/<run_id>.mcap`; kademe
+    // senaryonun `kalite.kayit` alanından. Yalnız senaryo dosyasıyla (çözümlenmiş senaryo, A7 manifesti
+    // ve doğrulama raporu A6 §3.6 ekleridir; yerleşik senaryoda yoktur ve uydurulmaz). Aynı adlı dosya
+    // varsa çalıştırma başlamaz (A6-K01).
+    bool kayit_acik = false;
+    std::string kayit_dizini;
+    // Yalnız sınama: dünya üreticisinin halka boyu (bayt; 0: 16 MiB, tahmin; ölçülmedi).
+    std::size_t kayit_halka_bayt = 0;
+    // Yalnız sınama: dosya adını (run_id; A3-K63 biçimi) sabitler (var olan dosyanın ezilmediği sınanabilsin).
+    std::string kayit_run_id;
+    // Yalnız sınama: kayıt dosyasındaki ilk `sequence` (A6-K12 sınırını enjekte eder; 1: olağan).
+    std::uint32_t kayit_ilk_sira = 1;
+    // Ön denetim `kayit_disk_alani` (A3 §3.8) alt sınırı, bayt: kayıt dizininde bundan az boş alan varsa
+    // madde `kaldi` olur ve çalıştırma başlamaz. Varsayılan 1 GiB (mimari seçimi, tahmin); yalnız sınamada değişir.
+    std::uint64_t kayit_disk_siniri_bayt = std::uint64_t{1} << 30;
+    // Yalnız sınama: kayıt açıldı (dosya yolu, run_id); dünya döngüsü başlamadan önce.
+    std::function<void(const std::string& yol, const std::string& run_id)> kayit_hazir;
+
     // SIL hız çarpanının başlangıç değeri (`--sil-hiz`; A3-K66 ile aynı düzenek: yalnız bekleme,
     // bayt akışı ve CSV değişmez). 0: olabildiğince hızlı (varsayılan). A3 açıkken panelin
     // `calistirma/hiz` komutu bu değerin yerine geçer. Yalnız SIL.
@@ -323,6 +343,30 @@ struct DogrulamaBulgusu {
     std::string ileti;
 };
 
+// A6 kayıt dosyasının koşu sonundaki durumu (W5-bagla-kayit; kapanış özet satırına girer).
+struct KayitOzeti {
+    bool istendi = false;            // --kayit-dizini verildi
+    bool acildi = false;             // dosya oluşturuldu
+    bool dosya_kapandi = false;      // Footer ve sondaki sihirli baytlar yazıldı
+    std::string yol;                 // <dizin>/<run_id>.mcap
+    std::string run_id;
+    std::string kademe;              // olaylar | telemetri | tam
+    std::string bitis_durumu;        // kapanış kaydındaki (A6-K45)
+    std::string guvence;             // kapanış kaydındaki tekrar_guvencesi (yok | izleme | fizik | girdi)
+    std::string guvence_nedenleri;
+    std::string hata;                // açılamadı / kapanamadı nedeni
+    std::vector<std::string> uretilen_kanallar;   // bu çalıştırmada üretici çağrısı alan kanallar
+    std::vector<std::string> eksik_kanallar;      // kademe ve kipin gerektirdiği ama üretilmeyen kanallar (W5-K41)
+    // Üretici ve yazıcı sayaçları (kitaplıktan).
+    std::uint64_t uretilen = 0, kuyruklanan = 0, dusen_halka = 0, dusen_gecersiz = 0, suzulen = 0, kapali_atilan = 0;
+    std::uint64_t yazilan_ileti = 0, eksik_kaydi = 0, bildirilen_dusen = 0, yazimda_kaybolan = 0, kapali_iken_atilan = 0;
+    std::uint64_t kapanan_parca = 0, dosya_bayt = 0;
+    // Dünya iş parçacığında üretici çağrılarının (kb_->yaz) süresi (duvar; ölçüm; zaman okuması dahil).
+    std::uint64_t cagri_adet = 0;
+    std::int64_t cagri_toplam_ns = 0, cagri_en_kotu_ns = 0;
+    std::int64_t taslak_en_kotu_ns = 0;    // `kapanis_taslagi` çağrısının en uzun süresi
+};
+
 struct Sonuc {
     bool tamam = false;
     std::string hata;
@@ -413,6 +457,8 @@ struct Sonuc {
     std::string sonar_csv;
     // ---- A2 (W5-bagla-a2) ----
     A2Ozeti a2;
+    // ---- A6 kayıt (W5-bagla-kayit) ----
+    KayitOzeti kayit;
 };
 
 Sonuc kos(const Ayar& ayar);

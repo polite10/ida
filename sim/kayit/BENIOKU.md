@@ -89,6 +89,10 @@ Dosyanın özetini (bütünlük, üst veri, ekler, kanallar, ileti sayıları, e
 
 ## Bağlama dilimi için kancalar
 
+(W5-bagla-kayit: kitaplık `ida_sim`'e bağlandı; ayrıntı, kanal tablosu ve seçilen okumalar `sim/sunucu/BENIOKU.md` "A6 kayıt". Bu bölüm kitaplığın bağlayana verdiği kancaları anlatır.)
+
+- **Güvence tavanı (W5-K41, `sim/kayit`'e dar ekleme).** Kaydı yazan taraf, düzeyin gerektirdiği kanalların hepsini üretemiyorsa `KapanisAlanlari::guvence_tavani` (genellikle `izleme`) ve `guvence_tavan_nedeni` verir; `guvence_belirle` düzeyi yalnız AŞAĞI çeker ve nedeni `guvence_nedenleri`ne yazar (erken kapanışta taslaktaki tavan kullanılır). `sim.kayit.guvence` sınar; okuyucu zaten kapanış kaydındakinin üstüne çıkmaz.
+
 Üreticiler (A6-K06; her biri ayrı `Uretici`, yalnız kendi iş parçacığından):
 
 | Üretici | Kanalları |

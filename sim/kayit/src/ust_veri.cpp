@@ -190,6 +190,13 @@ GuvenceSonucu guvence_belirle(const GuvenceGirdisi& g)
         }
         break;
     }
+    if (g.tavan.has_value() && duzey > *g.tavan) {
+        // W5-K41: kaydı yazan, düzeyin gerektirdiği kanalların hepsini üretemedi; tavan yalnız aşağı çeker.
+        duzey = *g.tavan;
+        if (!g.tavan_nedeni.empty()) {
+            neden_ekle(nedenler, g.tavan_nedeni);
+        }
+    }
     s.duzey = duzey;
     if (duzey == Guvence::izleme) {
         s.on_eki_son_adim.reset();
