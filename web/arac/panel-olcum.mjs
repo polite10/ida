@@ -4,6 +4,8 @@
 //
 //   npm run derle && node arac/panel-olcum.mjs --ekran <dizin> [--genislik 1280 --yukseklik 720]
 //                                              [--olc 30] [--atla 128] [--kip sil|hil_1x]
+//   --etkilesim: ekran görüntüsünden önce durum panelinde Duraklat'a, senaryo panelinde hatali.toml + Doğrula'ya basar
+//   --sim <açılış adresi>: sahte sunucu yerine çalışan gerçek ida_sim'e bağlanır (http://127.0.0.1:<port>/#erisim=<jeton>)
 //   node arac/panel-olcum.mjs --kopma <dizin> --paneller durum   (kopma ve toparlanma görüntüleri)
 //
 // Chrome yolu CHROME ortam değişkeninden ya da bilinen konumlardan bulunur.
@@ -30,8 +32,11 @@ const { values: a } = parseArgs({
     atla: { type: 'string', default: '0' },
     kip: { type: 'string', default: 'sil' },
     emniyet: { type: 'string', default: 'olagan' },
+    elle: { type: 'boolean', default: false },
+    etkilesim: { type: 'boolean', default: false },
+    sim: { type: 'string' },
     port: { type: 'string', default: '47181' },
-    paneller: { type: 'string', default: 'index,durum,grafik,harita,sonar,atis' },
+    paneller: { type: 'string' },
     onek: { type: 'string', default: '' },
   },
 });
@@ -46,12 +51,15 @@ const chrome = CHROME_ADAYLARI.find((p) => existsSync(p));
 if (!chrome) throw new Error('Chrome bulunamadı; CHROME ortam değişkenini verin');
 
 const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
-const jeton = randomBytes(32).toString('hex');
-const port = Number(a.port);
+const dis = a.sim === undefined ? null : /^http:\/\/127\.0\.0\.1:(\d+)\/#erisim=([0-9a-f]{64})$/.exec(a.sim);
+if (a.sim !== undefined && dis === null) throw new Error('--sim: açılış adresi http://127.0.0.1:<port>/#erisim=<jeton> biçiminde olmalı');
+const jeton = dis === null ? randomBytes(32).toString('hex') : dis[2];
+const port = dis === null ? Number(a.port) : Number(dis[1]);
 
 // ---- Sahte sunucu ----
 async function sunucuBaslat() {
-  const s = spawn(process.execPath, ['.derleme/sahte-a3.mjs', '--port', String(port), '--jeton', jeton, '--statik', 'dist', '--kip', a.kip, '--atla', a.atla, '--emniyet', a.emniyet], {
+  if (dis !== null) return null; // dış sim: süreci biz yönetmiyoruz
+  const s = spawn(process.execPath, ['.derleme/sahte-a3.mjs', '--port', String(port), '--jeton', jeton, '--statik', 'dist', '--kip', a.kip, '--atla', a.atla, '--emniyet', a.emniyet, ...(a.elle ? ['--elle'] : [])], {
     cwd: kok,
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -64,6 +72,7 @@ async function sunucuBaslat() {
   return s;
 }
 async function sunucuDurdur(s) {
+  if (s === null) return;
   const bitti = new Promise((r) => s.once('exit', r));
   s.kill('SIGTERM');
   await bitti;
@@ -73,7 +82,7 @@ let sunucu = await sunucuBaslat();
 
 // ---- Chrome ----
 const profil = mkdtempSync(join(tmpdir(), 'ida-chrome-'));
-const hataAyiklamaPort = port + 1000;
+const hataAyiklamaPort = (dis === null ? port : 47400) + 1000;
 const tarayici = spawn(
   chrome,
   [
@@ -168,7 +177,8 @@ async function metrikler(s) {
   return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
 
-const paneller = a.paneller.split(',');
+// Ölçümde (--olc) W3'ün beş paneli; ekran görüntüsünde senaryo paneli de.
+const paneller = (a.paneller ?? (a.olc ? 'index,durum,grafik,harita,sonar,atis' : 'index,durum,grafik,harita,sonar,atis,senaryo')).split(',');
 try {
   if (a.ekran) {
     const dizin = resolve(a.ekran);
@@ -180,6 +190,14 @@ try {
       }
       const s = await sekmeAc(p);
       await bekle(Number(a.bekle) * 1000);
+      if (a.etkilesim && (p === 'durum' || p === 'senaryo')) {
+        const ifade =
+          p === 'durum'
+            ? "(async () => { const d = (k) => document.querySelector(`[data-komut=${k}]`); if (d('baslat').getAttribute('aria-disabled') === 'false') { d('baslat').click(); await new Promise((r) => setTimeout(r, 2500)); } d('duraklat').click(); })()"
+            : "(async () => { document.querySelector('[data-ad=\"hatali.toml\"]').click(); await new Promise((r) => setTimeout(r, 600)); document.querySelector('#dogrula').click(); })()";
+        await cdp('Runtime.evaluate', { expression: ifade, awaitPromise: true }, s.sessionId);
+        await bekle(1500);
+      }
       await cdp('Page.bringToFront', {}, s.sessionId);
       await bekle(300);
       const { data } = await cdp('Page.captureScreenshot', { format: 'png' }, s.sessionId);
@@ -270,7 +288,7 @@ try {
     /* yok say */
   }
   tarayici.kill();
-  sunucu.kill('SIGTERM');
+  sunucu?.kill('SIGTERM');
   await bekle(300);
   rmSync(profil, { recursive: true, force: true });
 }

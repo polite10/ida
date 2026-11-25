@@ -3,10 +3,12 @@
 
 import { A3Baglanti, adrestenAyar, type BaglantiBilgisi } from '../a3/baglanti';
 import { GECERLILIK_NEDENLERI, YUKLER } from '../a3/katalog';
+import { KomutYoneticisi } from '../a3/komut';
+import { calismaDenetimi } from './denetim';
 import { buyuk, durumAdi, kipAdi, sayi, simZamani, sure_ns, tamsayi } from './bicim';
 import { el, sinifSec, yaz } from './dom';
 
-export type PanelAdi = 'durum' | 'grafik' | 'harita' | 'sonar' | 'atis';
+export type PanelAdi = 'durum' | 'grafik' | 'harita' | 'sonar' | 'atis' | 'senaryo';
 
 export const PANELLER: readonly { ad: PanelAdi; baslik: string; kisa: string; aciklama: string }[] = [
   { ad: 'durum', baslik: 'Araç ve sistem', kisa: 'Durum', aciklama: 'Araç durumu, güç ve iticiler, kart sağlığı, gerçek zaman sayaçları, olay günlüğü' },
@@ -14,6 +16,7 @@ export const PANELLER: readonly { ad: PanelAdi; baslik: string; kisa: string; ac
   { ad: 'harita', baslik: 'Harita', kisa: 'Harita', aciklama: 'NED yerel düzlem: gerçek iz, kestirim izi, yol noktaları, hedef' },
   { ad: 'sonar', baslik: 'Sonar', kisa: 'Sonar', aciklama: 'Ping360 kutupsal tarama ve Ping1D zaman–menzil şeridi' },
   { ad: 'atis', baslik: 'Atış kontrol ve emniyet', kisa: 'Emniyet', aciklama: 'Emniyet zinciri durumu, sanal girdiler ve kart geri okuması (yalnız gösterim)' },
+  { ad: 'senaryo', baslik: 'Senaryo', kisa: 'Senaryo', aciklama: 'Senaryo dosyaları: listele, doğrula, yükle; yüklü senaryo ve ön denetim raporu' },
 ];
 
 export const MARKA_SVG = `<svg class="marka-simge" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -26,6 +29,8 @@ export const MARKA_SVG = `<svg class="marka-simge" viewBox="0 0 24 24" fill="non
 
 export interface Panel {
   baglanti: A3Baglanti;
+  /** Durum değiştiren komutların tek yolu (çalıştırma denetimi ve senaryo yükleme). */
+  komutlar: KomutYoneticisi;
   icerik: HTMLElement;
   /** Bağlantı koptuysa ya da hiç kurulmadıysa true (veri bayat). */
   bayat(): boolean;
@@ -264,8 +269,10 @@ export function panelBaslat(ad: PanelAdi, kur: (p: Panel) => void, secenek: Pane
   }
   const b = new A3Baglanti({ ...ayar, gecmisOlay: secenek.gecmisOlay ?? 0 });
   const serit = durumSeridi(b, ust.sahte);
+  const komutlar = new KomutYoneticisi(b);
+  const denetim = calismaDenetimi(b, komutlar);
   const icerik = el('main', { class: `icerik ${secenek.icerikSinifi ?? ''}` });
-  kok.append(ust.kok, serit.kok, icerik, kopukPerdesi(b));
+  kok.append(ust.kok, el('div', { class: 'ust-blok' }, serit.kok, denetim.kok), icerik, kopukPerdesi(b));
 
   let ekran: HTMLElement | null = null;
   b.durumDinle((bi) => {
@@ -279,6 +286,6 @@ export function panelBaslat(ad: PanelAdi, kur: (p: Panel) => void, secenek: Pane
     }
   });
 
-  kur({ baglanti: b, icerik, bayat: () => b.bilgi.durum !== 'bagli' });
+  kur({ baglanti: b, komutlar, icerik, bayat: () => b.bilgi.durum !== 'bagli' });
   b.baslat();
 }
