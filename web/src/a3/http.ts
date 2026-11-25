@@ -2,15 +2,21 @@
 //
 // Her `/api/` isteği `Authorization: Bearer <jeton>` taşır (A3-K06). Durum
 // değiştiren istekler ayrıca `Ida-Istemci` başlığı ve gövdede `istek_kimligi`
-// taşır (A3-K50). Bu dilimdeki paneller durum değiştiren istek göndermez;
-// emniyet girdisini gevşeten ya da atışa giden bir sarmalayıcı bu kitaplıkta yoktur.
+// taşır (A3-K50). Çalıştırma kontrolü ve senaryo yükleme dışında durum değiştiren
+// sarmalayıcı yoktur: emniyet girdisini değiştiren, yer istasyonu komutu gönderen ya da
+// atışa giden bir yöntem bu kitaplıkta bulunmaz (W5-K46, A3-K99).
 
 import { HTTP_TABAN_YOLU } from './katalog';
 import type {
   OnDenetimRaporu,
   YanitDurum,
   YanitIstemci,
+  YanitKomut,
   YanitKuyrukta,
+  YanitSenaryoDogrula,
+  YanitSenaryoDosyasi,
+  YanitSenaryoListesi,
+  YanitSenaryoYukle,
   YanitOlaylar,
   YanitRet,
   YanitSurum,
@@ -34,7 +40,7 @@ export class A3Hatasi extends Error {
 type FetchIslevi = typeof fetch;
 
 /** Çalıştırma kontrolü komutları (A3-K123). */
-export type CalistirmaKomutu = 'duraklat' | 'surdur' | 'adimla' | 'hiz' | 'durdur' | 'sifirla';
+export type CalistirmaKomutu = 'baslat' | 'duraklat' | 'surdur' | 'adimla' | 'hiz' | 'durdur' | 'sifirla';
 
 function istekKimligi(): string {
   const b = new Uint8Array(12);
@@ -129,6 +135,64 @@ export class A3Http {
   async cozumlenmisSenaryo(): Promise<Record<string, unknown>> {
     return JSON.parse(await this.metinAl('/senaryo/cozumlenmis')) as Record<string, unknown>;
   }
+  /** Çözümlenmiş senaryo ve `Ida-Davranis-Ozeti` başlığı (A3-K80). */
+  async cozumlenmisSenaryoOzetli(): Promise<{ senaryo: Record<string, unknown>; ozet: string | null }> {
+    let yanit: Response;
+    try {
+      yanit = await this.fetchIslevi(this.url('/senaryo/cozumlenmis'), { headers: { Authorization: `Bearer ${this.jeton}` }, cache: 'no-store' });
+    } catch (h) {
+      throw new A3Hatasi('ag_hatasi', h instanceof Error ? h.message : String(h), null);
+    }
+    const metin = await yanit.text();
+    if (!yanit.ok) {
+      try {
+        const r = JSON.parse(metin) as YanitRet;
+        throw new A3Hatasi(r.hata.kod, r.hata.ileti, yanit.status, r.hata.ayrinti ?? null);
+      } catch (h) {
+        if (h instanceof A3Hatasi) throw h;
+        throw new A3Hatasi('yanit_cozulemedi', `HTTP ${yanit.status}`, yanit.status);
+      }
+    }
+    try {
+      return { senaryo: JSON.parse(metin) as Record<string, unknown>, ozet: yanit.headers.get('Ida-Davranis-Ozeti') };
+    } catch {
+      throw new A3Hatasi('yanit_cozulemedi', 'çözümlenmiş senaryo JSON değil', yanit.status);
+    }
+  }
+
+  /** `GET /komutlar/{komut_no}` (A3-K60). */
+  komutDurumu(komutNo: number): Promise<YanitKomut> {
+    return this.istek('GET', `/komutlar/${komutNo}`);
+  }
+  /** `GET /on_denetim/{rapor_kimligi}` (A3-K62). */
+  onDenetimRaporu(kimlik: string): Promise<OnDenetimRaporu> {
+    return this.istek('GET', `/on_denetim/${encodeURIComponent(kimlik)}`);
+  }
+
+  senaryolar(): Promise<YanitSenaryoListesi> {
+    return this.istek('GET', '/senaryolar');
+  }
+  senaryoDosyasi(ad: string): Promise<YanitSenaryoDosyasi> {
+    return this.istek('GET', `/senaryolar/${encodeURIComponent(ad)}`);
+  }
+  /** Doğrulama dosyayı ve durumu değiştirmez, komut numarası almaz (A3-K76). */
+  senaryoDogrula(girdi: { ad: string } | { icerik: string }): Promise<YanitSenaryoDogrula> {
+    return this.istek('POST', '/senaryo/dogrula', girdi);
+  }
+  /**
+   * Senaryo yükleme (A3-K77): senkron uç, 200 ile sonuçlanır; çalıştırma kontrolü
+   * revizyonlarını taşır (A3-K123, K124).
+   */
+  senaryoYukle(
+    girdi: { ad: string } | { icerik: string },
+    beklenen: { run_id: string | null; durum_rev: number },
+  ): Promise<YanitSenaryoYukle> {
+    return this.komut<YanitSenaryoYukle>('/senaryo/yukle', {
+      beklenen_run_id: beklenen.run_id,
+      beklenen_durum_rev: beklenen.durum_rev,
+      ...girdi,
+    });
+  }
 
   /** `POST /istemciler` (A3 §2): durum değiştiren isteklerin kimliği. */
   async istemciKaydet(ad = 'panel'): Promise<number> {
@@ -154,7 +218,7 @@ export class A3Http {
 
   /**
    * Çalıştırma kontrolü (A3-K123): `beklenen_run_id` ve `beklenen_durum_rev` zorunludur.
-   * Bu dilimde hiçbir panel çağırmaz.
+   * Panellerde tek yol `KomutYoneticisi`'dir (komut.ts); bu yöntem onun taşımasıdır.
    */
   calistirma(
     komut: CalistirmaKomutu,

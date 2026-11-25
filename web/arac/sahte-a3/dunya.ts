@@ -239,12 +239,24 @@ export interface DunyaAyari {
   kip?: Kip;
   /** Yalnız gösterim sınaması: kart geri okuması bilinmiyor ya da değer listesi dışı değerler. */
   emniyetKipi?: EmniyetKipi;
+  /**
+   * Elle yönetim: dünya kendiliğinden başlamaz ve bitince yeniden başlamaz; çalıştırma
+   * yalnız A3 komutlarıyla (başlat, duraklat, …) ilerler (panelden çalıştırma denetimi).
+   */
+  elle?: boolean;
 }
 
 /** Senaryonun bir çalıştırmasını ve aralarındaki sıfırlamaları yürüten sahte dünya. */
 export class SahteDunya {
   readonly kip: Kip;
   readonly emniyetKipi: EmniyetKipi;
+  readonly elle: boolean;
+  /** İstenen hız çarpanı (A3-K66); 0 = olabildiğince hızlı (sahtede 8×). */
+  carpan = 1;
+  /** Yüklü senaryonun dosya adı. */
+  senaryoAdi = 'z1.toml';
+  /** `adimla` ile istenen, henüz yürütülmemiş kontrol periyodu sayısı. */
+  private adimBekleyen = 0;
   private readonly rnd: Rastgele;
   /** Çalıştırma içindeki sim zamanı (ns). */
   t_ns = 0;
@@ -280,6 +292,7 @@ export class SahteDunya {
   constructor(ayar: DunyaAyari = {}) {
     this.kip = ayar.kip ?? 'sil';
     this.emniyetKipi = ayar.emniyetKipi ?? 'olagan';
+    this.elle = ayar.elle ?? false;
     this.rnd = new Rastgele(ayar.tohum ?? 20261121);
     this.durum = 'yuklendi';
     this.bekleme_ms = 600;
@@ -332,13 +345,39 @@ export class SahteDunya {
    * Üretilen yükleri döndürür.
    */
   ilerle(ms: number): Uretim[] {
+    this.ilerleIc(ms);
+    // Komut uygulamasının (uygula) ürettikleri de bu çağrının çıktısındadır.
+    const u = this.uretim;
     this.uretim = [];
+    return u;
+  }
+  /** Durağan durumlarda (yüklendi, duraklatıldı, …) durum kanalını 10 Hz tazeler. */
+  private bosta_ms = 0;
+
+  private ilerleIc(ms: number): Uretim[] {
+    if (this.durum !== 'kosuyor' && this.adimBekleyen === 0) {
+      this.bosta_ms += ms;
+      if (this.bosta_ms >= 100) {
+        this.bosta_ms = 0;
+        this.calistirmaDurumuUret();
+      }
+    }
+    if (this.adimBekleyen > 0) {
+      // `adimla`: n kontrol periyodu = n · 5 ms; sahte dünya 10 ms'lik adımlarla ilerler (yukarı yuvarlanır).
+      const adimlar = Math.ceil(this.adimBekleyen / 2);
+      this.adimBekleyen = 0;
+      for (let i = 0; i < adimlar && this.durum === 'kosuyor'; i++) this.adim();
+      if (this.durum === 'kosuyor') this.gecis('duraklatildi', 'adimla_tamamlandi');
+      return this.uretim;
+    }
     if (this.durum !== 'kosuyor') {
+      if (this.durum === 'duraklatildi' || this.durum === 'durduruldu') return this.uretim;
+      if (this.elle && (this.durum === 'yuklendi' || this.durum === 'bitti')) return this.uretim;
       this.bekleme_ms -= ms;
       if (this.bekleme_ms <= 0) this.durumIlerlet();
       return this.uretim;
     }
-    this.birikim += ms * 1e6;
+    this.birikim += ms * 1e6 * (this.carpan === 0 ? 8 : this.carpan);
     while (this.birikim >= DUNYA_ADIMI_NS && this.durum === 'kosuyor') {
       this.birikim -= DUNYA_ADIMI_NS;
       this.adim();
@@ -399,24 +438,82 @@ export class SahteDunya {
     this.calistirmaDurumuUret();
   }
 
+  /** `baslat`: yeni çalıştırma kimliği, sıfırlanmış sahte araç; durum `hazirlaniyor` (A3-K62, K63). */
+  private calistirmaBaslat(neden: string): void {
+    this.calistirmaNo++;
+    this.run_id = runIdUret(this.rnd);
+    this.t_ns = 0;
+    this.adim_no = 0;
+    this.a = yeniArac();
+    this.onceki = yeniArac();
+    this.arizalar = [];
+    this.zamanCizelgesi.clear();
+    this.kestirimSapmasi = { n: 0, e: 0, yon: 0.01 };
+    this.sayac = { adim_son_tarih_ihlali: 0, azami_adim_gecikmesi_ns: 0, parti_gonderilen: 0 };
+    this.yetkili = { acil: 0, fis: [0, 0], pim: [1, 1], sonAdim: null, sonKaynak: 0 };
+    this.kartGoru = { acil: 0, fis: [0, 0], pim: [1, 1] };
+    this.kartGoruGecmisi = [];
+    this.birikim = 0;
+    this.gecis('hazirlaniyor', neden);
+  }
+
+  /**
+   * Bir çalıştırma kontrolü komutunu uygular (dünya adım sınırı; A3-K57). Durum ve revizyon
+   * denetimleri sunucudadır; burada yalnız geçiş yapılır. Kontrol komutu durum geçişi
+   * yapmıyorsa `durum_rev` yine bir artar (A3-K122).
+   */
+  uygula(komut: string, ek: { carpan?: number; periyot_sayisi?: number }): void {
+    switch (komut) {
+      case 'baslat':
+        this.calistirmaBaslat('baslat');
+        this.bekleme_ms = 800;
+        return;
+      case 'duraklat':
+        this.gecis('duraklatildi', 'duraklat');
+        return;
+      case 'surdur':
+        this.birikim = 0;
+        this.gecis('kosuyor', 'surdur');
+        return;
+      case 'adimla':
+        this.adimBekleyen = ek.periyot_sayisi ?? 1;
+        this.gecis('kosuyor', 'adimla');
+        return;
+      case 'hiz':
+        this.carpan = ek.carpan ?? 1;
+        this.durum_rev++;
+        this.calistirmaDurumuUret();
+        return;
+      case 'durdur':
+        if (this.durum === 'hazirlaniyor') {
+          this.run_id = '';
+          this.gecis('yuklendi', 'durdur');
+        } else this.gecis('durduruldu', 'durdur');
+        return;
+      case 'sifirla':
+        this.run_id = '';
+        this.t_ns = 0;
+        this.adim_no = 0;
+        this.adimBekleyen = 0;
+        this.gecis('yuklendi', 'sifirla');
+        return;
+    }
+  }
+
+  /** `senaryo/yukle` (A3-K77): senaryo değişir, durum `yuklendi` olur. */
+  senaryoYukle(ad: string): void {
+    this.senaryoAdi = ad;
+    this.run_id = '';
+    this.t_ns = 0;
+    this.adim_no = 0;
+    this.gecis('yuklendi', 'senaryo_yukle');
+  }
+
   private durumIlerlet(): void {
     switch (this.durum) {
       case 'yuklendi': {
         // sahte sunucu kendiliğinden baslat verir
-        this.calistirmaNo++;
-        this.run_id = runIdUret(this.rnd);
-        this.t_ns = 0;
-        this.adim_no = 0;
-        this.a = yeniArac();
-        this.onceki = yeniArac();
-        this.arizalar = [];
-        this.zamanCizelgesi.clear();
-        this.kestirimSapmasi = { n: 0, e: 0, yon: 0.01 };
-        this.sayac = { adim_son_tarih_ihlali: 0, azami_adim_gecikmesi_ns: 0, parti_gonderilen: 0 };
-        this.yetkili = { acil: 0, fis: [0, 0], pim: [1, 1], sonAdim: null, sonKaynak: 0 };
-        this.kartGoru = { acil: 0, fis: [0, 0], pim: [1, 1] };
-        this.kartGoruGecmisi = [];
-        this.gecis('hazirlaniyor', 'baslat (sahte sunucu)');
+        this.calistirmaBaslat('baslat (sahte sunucu)');
         this.bekleme_ms = 1500;
         return;
       }
@@ -499,7 +596,7 @@ export class SahteDunya {
       }
       if (t - this.yuzeydeBitis > 4) {
         this.gecis('bitti', 'senaryo süresi doldu');
-        this.bekleme_ms = 6000;
+        this.bekleme_ms = this.elle ? 0 : 6000;
         if (this.kip === 'hil_1x') this.emniyet_rev++; // oturum sonu (A3-K117 md.4)
         return;
       }
@@ -714,8 +811,8 @@ export class SahteDunya {
       kip: this.kip === 'sil' ? 1 : 2,
       run_id: this.run_id,
       adim_no: this.adim_no,
-      hedef_carpan: 1,
-      gerceklesen_carpan: this.durum === 'kosuyor' ? 1 + 0.004 * this.rnd.normal() : null,
+      hedef_carpan: this.carpan,
+      gerceklesen_carpan: this.durum === 'kosuyor' ? (this.carpan === 0 ? 8 : this.carpan) * (1 + 0.004 * this.rnd.normal()) : null,
       gecerli: 1,
       gercek_zamani_kacirdi: 0,
       gecerlilik_nedenleri: 0,

@@ -817,3 +817,143 @@
   color: var(--metin-3);
   font-size: 12px;
 }
+
+/* ---------------- 6. Senaryo ---------------- */
+
+.senaryo-izgara {
+  display: grid;
+  gap: var(--bosluk);
+  grid-template-columns: minmax(200px, 0.7fr) minmax(0, 1.3fr) minmax(0, 1.3fr);
+  grid-template-rows: minmax(260px, 1.2fr) minmax(220px, 1fr);
+  grid-template-areas:
+    'liste metin rapor'
+    'yuklu yuklu od';
+}
+.senaryo-izgara .a-liste { grid-area: liste; }
+.senaryo-izgara .a-metin { grid-area: metin; }
+.senaryo-izgara .a-rapor { grid-area: rapor; }
+.senaryo-izgara .a-yuklu { grid-area: yuklu; }
+.senaryo-izgara .a-od { grid-area: od; }
+.senaryo-izgara .kart,
+.senaryo-izgara .kart-govde {
+  min-height: 0;
+  min-width: 0;
+}
+.senaryo-izgara .kart-govde {
+  overflow: auto;
+}
+
+.senaryo-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.senaryo-oge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font: 500 12px/1.2 var(--yazi-sabit);
+  color: var(--metin-2);
+}
+.senaryo-oge:hover {
+  background: var(--yuzey-2);
+}
+.senaryo-oge[aria-selected='true'] {
+  color: var(--vurgu);
+  border-color: rgba(103, 232, 249, 0.4);
+  background: var(--vurgu-zayif);
+}
+.senaryo-oge small {
+  color: var(--metin-3);
+}
+.senaryo-eylem {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.senaryo-ileti {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--metin-2);
+  line-height: 1.35;
+}
+.senaryo-ileti.iyi { color: var(--iyi); }
+.senaryo-ileti.uyari { color: var(--uyari); }
+.senaryo-ileti.kotu { color: var(--kotu); }
+
+.senaryo-metin,
+.senaryo-json {
+  margin: 0;
+  font: 500 12px/1.5 var(--yazi-sabit);
+  color: var(--metin);
+  white-space: pre;
+  tab-size: 2;
+}
+.senaryo-metin .satir {
+  display: block;
+  padding-left: 4px;
+  border-left: 2px solid transparent;
+}
+.senaryo-metin .satir.hata {
+  background: var(--kotu-zemin);
+  border-left-color: var(--kotu);
+}
+.senaryo-metin .satir.uyari {
+  background: var(--uyari-zemin);
+  border-left-color: var(--uyari);
+}
+.senaryo-metin .no {
+  display: inline-block;
+  width: 3ch;
+  margin-right: 1.5ch;
+  text-align: right;
+  color: var(--metin-4);
+  user-select: none;
+}
+.senaryo-rapor-ozet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--metin-2);
+}
+.senaryo-rapor-ozet small {
+  color: var(--metin-3);
+}
+.senaryo-yuklu .tablo th {
+  width: 12em;
+}
+.senaryo-ozet-kod {
+  word-break: break-all;
+}
+.senaryo-ayrinti {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--metin-2);
+}
+.senaryo-ayrinti summary {
+  cursor: pointer;
+}
+.senaryo-ayrinti .senaryo-json {
+  margin-top: 6px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+  .senaryo-izgara {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: 'liste' 'metin' 'rapor' 'yuklu' 'od';
+  }
+}

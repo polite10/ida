@@ -157,3 +157,64 @@ export interface YanitRet {
   komut_no?: number | null;
   hata: { kod: HataKodu | string; ileti: string; ayrinti?: Record<string, unknown> };
 }
+
+/** `GET /komutlar/{komut_no}` (A3-K60). */
+export interface YanitKomut {
+  sonuc: 'kabul';
+  komut_no: number;
+  durum: 'kuyrukta' | 'uygulandi' | 'reddedildi';
+  uygulama_adimi?: number;
+  hata?: { kod?: string; ileti?: string; ayrinti?: Record<string, unknown> } & Record<string, unknown>;
+  sonuc_ayrinti?: Record<string, unknown>;
+}
+
+export interface SenaryoListeOgesi {
+  ad: string;
+  boyut_bayt?: number;
+  degisim_utc?: string;
+}
+
+export interface YanitSenaryoListesi {
+  sonuc: 'kabul';
+  senaryolar: SenaryoListeOgesi[];
+}
+
+export interface YanitSenaryoDosyasi {
+  sonuc: 'kabul';
+  ad: string;
+  icerik: string;
+}
+
+/** A5 doğrulama raporu (A5 §3.14). */
+export interface A5Bulgusu {
+  kural: string;
+  onem: 'hata' | 'uyari';
+  asama?: number;
+  dosya?: string;
+  yol?: string;
+  satir?: number | null;
+  ileti: string;
+}
+
+export interface A5Raporu {
+  gecerli: boolean;
+  davranis_ozeti?: string | null;
+  kaynak_ozetleri?: Record<string, string>;
+  bulgular: A5Bulgusu[];
+}
+
+export interface YanitSenaryoDogrula {
+  sonuc: 'kabul';
+  yineleme?: boolean;
+  gecerli: boolean;
+  senaryo_ozeti?: string | null;
+  rapor: A5Raporu;
+}
+
+export interface YanitSenaryoYukle {
+  sonuc: 'kabul';
+  komut_no: number;
+  senaryo_ozeti: string;
+  rapor: A5Raporu;
+  yineleme?: boolean;
+}

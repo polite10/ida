@@ -4,6 +4,9 @@
 // (fizik/durum derinliği sim'in CSV'siyle aynı adımlarda) → duraklat → adımla (2 s'ye) → duraklatılmışken
 // ARM (onay jetonu, emniyet revizyonu; A3-K58: beklemeden uygulanır, tele sürdürmede çıkar) → adımla →
 // ARM'ın kart yanıtı ve kart/durum → sürdür → bitti (W4-duraklat kapsam 6: hızdan bağımsız kurulum).
+// W5-web-komut kabul 2: ikinci bir `ida_sim` ile panelin komut katmanı (KomutYoneticisi; düğmelerin
+// kullandığı tek yol) başlat → duraklat → adımla → sürdür → hız → durdur zincirini koşar; her adımda
+// komutun sonucu (komut_sonucu / GET /komutlar) ve sunucunun bildirdiği durum (kanal ve GET /durum) doğrulanır.
 // Kullanım: node a3_uctan_uca.mjs <ida_sim> <depo kökü> <web dizini> <çıktı dizini>
 // Çıkış: 0 geçti, 1 kaldı, 77 atlandı (web/node_modules yok ya da Node'da WebSocket yok).
 
@@ -29,6 +32,124 @@ const dogrula = (kosul, ne) => {
   if (!kosul) hatalar.push(ne);
   else console.log(`  GEÇTİ ${ne}`);
 };
+
+// ---- W5-web-komut: panelin komut katmanıyla çalıştırma zinciri (gerçek sim) ----
+async function panelKomutZinciri() {
+  console.log('panel komut katmanı (W5-web-komut):');
+  const sur2 = spawn(idaSim, ['--kip', 'sil', '--senaryo', 'scenarios/z1.toml', '--kok', kok, '--a3-port', '0', '--a3-bekle', '--gunluk', '1'],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  let err2 = '';
+  sur2.stderr.on('data', (d) => { err2 += d.toString(); });
+  const satirlar2 = createInterface({ input: sur2.stdout });
+  let b2 = null;
+  let yon = null;
+  const olay2 = [];
+  try {
+    const adres2 = await new Promise((coz, red) => {
+      const t = setTimeout(() => red(new Error('ikinci sim: açılış adresi gelmedi')), 20000);
+      satirlar2.once('line', (x) => { clearTimeout(t); coz(x.trim()); });
+    });
+    const mm = /^http:\/\/127\.0\.0\.1:(\d+)\/#erisim=([0-9a-f]{64})$/.exec(adres2);
+    dogrula(mm !== null, 'ikinci sim açılış adresi');
+    b2 = new a3.A3Baglanti({ taban: `http://127.0.0.1:${mm[1]}`, jeton: mm[2], gecmisOlay: 100 });
+    b2.olaylar((o) => olay2.push(o));
+    b2.baslat();
+    await bekle(() => b2.bilgi.durum === 'bagli' && b2.son('calistirma/durum') !== undefined, 5000, 'ikinci bağlantı ve ilk durum çerçevesi');
+    yon = new a3.KomutYoneticisi(b2, { sureMs: 20000, baslatSureMs: 30000 });
+    const kanalDurum = () => {
+      const c = b2.son('calistirma/durum');
+      return c === undefined ? null : ['bos', 'yuklendi', 'hazirlaniyor', 'kosuyor', 'duraklatildi', 'bitti', 'durduruldu', 'hata', 'izleme'][c.yuk.durum];
+    };
+    // Ekranın (kanalın) durum_rev'i sunucunun yetkili değerine yetişmeden komut gönderilmez: komut
+    // ekranın gösterdiği revizyonla gider (A3-K123); eski revizyon sunucuda reddedilir.
+    const senkron = async () => {
+      const hedef = (await b2.http.durum()).durum_rev;
+      await bekle(() => Number(b2.son('calistirma/durum')?.yuk.durum_rev) === hedef, 5000, `kanal durum_rev ${hedef}`);
+    };
+    // Bir adım: komutu gönder, katmanın sonucunu, GET /komutlar kaydını ve sunucunun durumunu doğrula.
+    const adim = async (ad, ek, beklenenDurum) => {
+      await senkron();
+      const r = await yon.gonder(ad, ek);
+      dogrula(r.asama === 'uygulandi', `${ad}: komut katmanı sonucu uygulandı (${r.asama}${r.hata_kodu ? ' ' + r.hata_kodu : ''}; ${r.ileti})`);
+      const kayit = await b2.http.komutDurumu(r.komut_no);
+      dogrula(kayit.durum === 'uygulandi', `${ad}: GET /komutlar/${r.komut_no} uygulandi`);
+      if (beklenenDurum !== null) {
+        await bekle(() => kanalDurum() === beklenenDurum, 20000, `${ad}: kanal durumu ${beklenenDurum} (şimdi ${kanalDurum()})`);
+        const d = await b2.http.durum();
+        dogrula(d.durum === beklenenDurum, `${ad}: sunucunun bildirdiği durum ${beklenenDurum} (${d.durum})`);
+        return d;
+      }
+      return b2.http.durum();
+    };
+
+    const d0 = await b2.http.durum();
+    dogrula(d0.durum === 'yuklendi' && d0.run_id === null, 'ikinci sim: yuklendi, run_id null');
+    // Düğme etkinliği sunucunun bildirdiği duruma uyar (Tablo 4.7a): yüklendide yalnız başlat/sıfırla/yükle
+    const g0 = a3.dugmeler('yuklendi', 'sil');
+    dogrula(g0.baslat.etkin && !g0.duraklat.etkin && !g0.surdur.etkin && !g0.adimla.etkin, 'yüklendi: başlat etkin, duraklat/sürdür/adımla etkin değil');
+    // W5-K44: ekran durumu komuttan önce değişmedi
+    dogrula(kanalDurum() === 'yuklendi', 'başlat öncesi ekran durumu yuklendi');
+
+    // sıfırla yüklendi durumunda geçerlidir (A3-K67): yalnız durum_rev artar, run_id null kalır
+    await adim('sifirla', {}, 'yuklendi');
+    dogrula((await b2.http.durum()).run_id === null, 'sıfırla (yuklendi): run_id null');
+    await adim('baslat', {}, 'kosuyor');
+    dogrula(a3.dugmeler('kosuyor', 'sil').duraklat.etkin, 'koşuyor: duraklat etkin');
+    const dKos = await b2.http.durum();
+    dogrula(/^\d{8}-\d{6}-[0-9a-f]{6}$/.test(dKos.run_id ?? ''), `başlat: run_id atandı (${dKos.run_id})`);
+    await adim('duraklat', {}, 'duraklatildi');
+    const dDur = await b2.http.durum();
+    dogrula(dDur.run_id === dKos.run_id, 'duraklat: aynı çalıştırma');
+    await new Promise((coz) => setTimeout(coz, 250));
+    const dDur2 = await b2.http.durum();
+    dogrula(Number(dDur2.sim_t_ns) === Number(dDur.sim_t_ns), 'duraklatılmışken sim zamanı ilerlemedi');
+    const gDur = a3.dugmeler('duraklatildi', 'sil');
+    dogrula(gDur.surdur.etkin && gDur.adimla.etkin && !gDur.duraklat.etkin, 'duraklatıldı: sürdür ve adımla etkin, duraklat etkin değil');
+
+    const t0 = Number(dDur2.sim_t_ns);
+    const dAd = await adim('adimla', { periyot_sayisi: 40 }, null);
+    await bekle(() => olay2.filter((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.neden === 'adimla_tamamlandi').length >= 1, 20000, 'adımlama bitti');
+    await senkron();
+    const dAd2 = await b2.http.durum();
+    dogrula(dAd2.durum === 'duraklatildi' && Number(dAd2.sim_t_ns) === t0 + 40 * 5e6, `adımla 40 periyot: sim zamanı tam 200 ms ilerledi, duraklatıldı (${dAd2.sim_t_ns})`);
+    void dAd;
+
+    await adim('surdur', {}, 'kosuyor');
+    await adim('hiz', { carpan: 2 }, 'kosuyor');
+    await bekle(() => b2.son('calistirma/durum')?.yuk.hedef_carpan === 2, 5000, 'hedef çarpan 2 (sunucudan)');
+    // Sunucunun reddi görünür (Tablo 4.7a): duraklatilmis durumda `duraklat` "—" (geçersiz) → reddedildi gecersiz_durum.
+    // Sunucunun kesin açık olduğu bu noktada denetlenir; durdur'dan sonra sunucuya istek atılmaz (aşağıya bak).
+    const dRet0 = await b2.http.durum();
+    await adim('duraklat', {}, 'duraklatildi');
+    await senkron();
+    const ret = await yon.gonder('duraklat');
+    dogrula(ret.asama === 'reddedildi' && ret.hata_kodu === 'gecersiz_durum', `duraklatılmışken duraklat: reddedildi gecersiz_durum (${ret.asama} ${ret.hata_kodu})`);
+    dogrula((await b2.http.durum()).durum === 'duraklatildi', 'reddedilen komut durumu değiştirmedi (duraklatildi)');
+    void dRet0;
+    await adim('surdur', {}, 'kosuyor');
+
+    // durdur: ida_sim tek çalıştırma koşar ve çalıştırma durduruldu olunca düzgün kapanır (sim/sunucu/src/sunucu.cpp,
+    // calistirma_durdur → a3_durdur_). Bu yüzden durdur'dan sonra sunucuya HTTP isteği (GET /durum, GET /komutlar)
+    // atılmaz; sunucunun kapanma anına göre yarışır (W5-K43: hıza bağlı bekleme yok). Sonuç yalnız komut katmanının
+    // komut_sonucu olayından ve kanalın son durumundan doğrulanır; kanal kapanmışsa bu kapanış olarak kabul edilir.
+    await senkron();
+    const rd = await yon.gonder('durdur');
+    dogrula(rd.asama === 'uygulandi', `durdur: komut katmanı sonucu uygulandı (${rd.asama}${rd.hata_kodu ? ' ' + rd.hata_kodu : ''}; ${rd.ileti})`);
+    dogrula(olay2.some((o) => o.tur === 'komut_sonucu' && o.ayrinti?.komut_no === rd.komut_no && o.ayrinti?.sonuc === 'uygulandi'),
+      'durdur: komut_sonucu olayı uygulandi');
+    await bekle(() => kanalDurum() === 'durduruldu' || b2.bilgi.durum !== 'bagli', 20000, `durdur: kanal durumu durduruldu ya da sunucu kapandı (şimdi ${kanalDurum()})`);
+    dogrula(kanalDurum() === 'durduruldu' || b2.bilgi.durum !== 'bagli',
+      `durdur: kanal son durumu durduruldu ya da bağlantı sunucu kapanışıyla düştü (${kanalDurum()}; ${b2.bilgi.durum})`);
+    const gSon = a3.dugmeler('durduruldu', 'sil');
+    dogrula(gSon.sifirla.etkin && !gSon.baslat.etkin && !gSon.duraklat.etkin, 'durduruldu: sıfırla etkin, başlat/duraklat etkin değil');
+  } finally {
+    yon?.kapat();
+    b2?.kapat();
+    sur2.kill('SIGTERM');
+    await new Promise((coz) => { sur2.once('exit', coz); setTimeout(coz, 5000); });
+    if (hatalar.length > 0) console.log(err2.split('\n').slice(-8).join('\n'));
+  }
+}
 
 mkdirSync(cikti, { recursive: true });
 const csvYolu = join(cikti, 'a3_uctan_uca.csv');
@@ -188,6 +309,7 @@ try {
   dogrula(eksik.length === 0, `beş panelin kanalları geldi (eksik: ${eksik.join(', ') || 'yok'})`);
   dogrula(b.bilgi.olayBosluklari.length === 0, 'olay boşluğu yok');
   console.log(`uçtan uca: ${[...say.entries()].map(([k, n]) => `${k} ${n}`).join(', ')}`);
+  await panelKomutZinciri();
   cikisKodu = hatalar.length === 0 ? 0 : 1;
 } catch (h) {
   hatalar.push(String(h?.stack ?? h));

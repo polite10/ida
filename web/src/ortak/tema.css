@@ -807,3 +807,92 @@ button {
     padding: 8px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Çalıştırma denetimi (durum şeridinin altında)                       */
+/* ------------------------------------------------------------------ */
+
+.ust-blok {
+  min-width: 0;
+}
+
+.denetim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 14px;
+  background: var(--yuzey-2);
+  border-bottom: 1px solid var(--cizgi);
+  min-width: 0;
+}
+
+.denetim .etiket {
+  margin-right: 4px;
+}
+
+.denetim-grup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.denetim-girdi {
+  height: 26px;
+  width: 56px;
+  padding: 0 6px;
+  border: 1px solid var(--cizgi-guclu);
+  border-radius: 3px;
+  background: var(--zemin);
+  color: var(--metin);
+  font: 500 12px/1 var(--yazi-sabit);
+  font-variant-numeric: tabular-nums;
+}
+
+.denetim-birim {
+  color: var(--metin-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dugme.kapali,
+.dugme[aria-disabled='true'] {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.dugme.kapali:hover {
+  color: var(--metin-2);
+  border-color: var(--cizgi-guclu);
+}
+
+.denetim-ileti {
+  flex: 1 1 260px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+  font: 500 12px/1.3 var(--yazi);
+  color: var(--metin-2);
+}
+
+.denetim-son.iyi {
+  color: var(--iyi);
+}
+.denetim-son.uyari,
+.denetim-yerel.uyari {
+  color: var(--uyari);
+}
+.denetim-son.kotu {
+  color: var(--kotu);
+}
+.denetim-son.vurgu {
+  color: var(--vurgu);
+}
+.denetim-gecmis {
+  color: var(--metin-3);
+}
+
+.veri-bayat .denetim .denetim-dugme {
+  opacity: 0.42;
+}

@@ -27,6 +27,7 @@ import {
   type YukBaglantiDurum as YukBaglantiDurumCozulmus,
 } from '../../src/a3/katalog';
 import { ONDENETIM_MADDELERI, SahteDunya, type EmniyetKipi, type Kip, type Uretim } from './dunya';
+import { semaDogrula, semaOku } from './sema';
 
 type YukBaglantiDurum = KodlamaGirdisi<YukBaglantiDurumCozulmus>;
 
@@ -50,6 +51,8 @@ export interface SahteSunucuAyari {
   dunyaDurdur?: boolean;
   /** Emniyet gösterimini sınamak için: kart geri okuması bilinmiyor ya da geçersiz değerler. */
   emniyetKipi?: EmniyetKipi;
+  /** Elle yönetim: çalıştırma yalnız A3 komutlarıyla başlar ve ilerler (panelden denetim). */
+  elle?: boolean;
 }
 
 export interface SahteSunucu {
@@ -67,6 +70,10 @@ export interface SahteSunucu {
   readonly test: {
     ping360Ekle(sensorId: number, seq: number): void;
     olayEkle(): void;
+    /** Kuyruktaki komutları uygulamaz (sonuç gecikmesi benzetimi); false verilince boşaltır. */
+    komutlariTut(tut: boolean): void;
+    /** Alınan durum değiştiren isteklerin kaydı (yöntem, yol, başlıklar, gövde, yanıt). */
+    readonly istekKaydi: { yontem: string; yol: string; istemci: string | null; govde: unknown; http: number; yanit: unknown }[];
   };
 }
 
@@ -130,8 +137,112 @@ interface OlayKaydi {
   json: Record<string, unknown>;
 }
 
-function ret(res: ServerResponse, http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>): void {
-  const govde = JSON.stringify({ sonuc: 'ret', komut_no: null, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
+// ---- Sahte senaryo dosyaları ve A5 benzeri doğrulama (yalnız geliştirme) ----
+
+const SENARYO_DOSYALARI: Record<string, string> = {
+  'z1.toml': `# Z1: yüzeyde silahlanma, 3 m dalış, dört yol noktası, yüzeye çıkış (SAHTE içerik)
+[meta]
+ad = "z1"
+aciklama = "Sahte sunucunun kinematik senaryosu"
+
+[arac]
+kutle = 18.5
+
+[ortam]
+derinlik = 7.0
+
+[[gorev]]
+tur = "DIVE_TO"
+derinlik = 3.0
+`,
+  'dalis-yuzey.toml': `# Dalış ve yüzeye çıkış (SAHTE içerik)
+[meta]
+ad = "dalis-yuzey"
+
+[arac]
+kutle = 18.5
+
+[emniyet_girdileri.pim]
+f1 = "cikarilmis"
+
+[ortam]
+derinlik = 7.0
+`,
+  'hatali.toml': `# Bilerek hatalı: A5 doğrulama raporu örneği (SAHTE içerik)
+[meta]
+ad = "hatali"
+
+[arac]
+kutle = -3.0
+
+[ortam]
+derinlik = 7.0
+`,
+};
+
+function sha256Hex(m: string | Buffer): string {
+  return createHash('sha256').update(m).digest('hex');
+}
+
+function senaryoBaytlariUret(ad: string): Buffer {
+  const s = SahteDunya.senaryo();
+  (s.meta as Record<string, unknown>).ad = ad.replace(/\.toml$/, '');
+  return Buffer.from(JSON.stringify(s));
+}
+
+interface A5Bulgu {
+  kural: string;
+  onem: 'hata' | 'uyari';
+  asama: number;
+  dosya: string;
+  yol: string;
+  satir: number | null;
+  ileti: string;
+}
+
+function a5Raporu(ad: string, icerik: string): { gecerli: boolean; davranis_ozeti: string | null; kaynak_ozetleri: Record<string, string>; bulgular: A5Bulgu[] } {
+  const bulgular: A5Bulgu[] = [];
+  icerik.split('\n').forEach((satir, i) => {
+    if (/^\s*kutle\s*=\s*-/.test(satir)) {
+      bulgular.push({ kural: 'A5-K10', onem: 'hata', asama: 2, dosya: ad, yol: 'arac.kutle', satir: i + 1, ileti: 'kütle pozitif olmalı (sahte doğrulayıcı)' });
+    }
+    if (/^\s*f1\s*=\s*"cikarilmis"/.test(satir)) {
+      bulgular.push({ kural: 'A5-K71', onem: 'uyari', asama: 3, dosya: ad, yol: 'emniyet_girdileri.pim.f1', satir: i + 1, ileti: 'emniyeti azaltan başlangıç durumu (pim çıkarılmış)' });
+    }
+  });
+  const gecerli = !bulgular.some((b) => b.onem === 'hata');
+  return {
+    gecerli,
+    davranis_ozeti: gecerli ? sha256Hex(senaryoBaytlariUret(ad)) : null,
+    kaynak_ozetleri: { [ad]: sha256Hex(icerik) },
+    bulgular,
+  };
+}
+
+/** Tablo 4.7a: komut → komutun geçerli olduğu durumlar (sözleşmeden bağımsız yazıldı; testler bunu da sınar). */
+const KOMUT_DURUMLARI: Record<string, readonly string[]> = {
+  baslat: ['yuklendi'],
+  duraklat: ['kosuyor'],
+  surdur: ['duraklatildi'],
+  adimla: ['duraklatildi'],
+  hiz: ['kosuyor', 'duraklatildi'],
+  durdur: ['hazirlaniyor', 'kosuyor', 'duraklatildi'],
+  sifirla: ['yuklendi', 'hazirlaniyor', 'kosuyor', 'duraklatildi', 'bitti', 'durduruldu', 'hata'],
+  yukle: ['bos', 'yuklendi', 'bitti', 'durduruldu', 'hata'],
+};
+const KOMUT_SEMASI: Record<string, string> = {
+  baslat: 'istek_baslat',
+  duraklat: 'istek_duraklat',
+  surdur: 'istek_calistirma',
+  adimla: 'istek_adimla',
+  hiz: 'istek_hiz',
+  durdur: 'istek_calistirma',
+  sifirla: 'istek_sifirla',
+  yukle: 'istek_senaryo_yukle',
+};
+
+function ret(res: ServerResponse, http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>, komutNo: number | null = null): void {
+  const govde = JSON.stringify({ sonuc: 'ret', komut_no: komutNo, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
   res.writeHead(http, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(govde);
 }
@@ -165,11 +276,13 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
   const dunya = new SahteDunya({
     kip: ayar.kip ?? 'sil',
     emniyetKipi: ayar.emniyetKipi ?? 'olagan',
+    elle: ayar.elle ?? false,
     ...(ayar.tohum !== undefined ? { tohum: ayar.tohum } : {}),
   });
   if (ayar.atla !== undefined && ayar.atla > 0) dunya.atla(ayar.atla);
-  const senaryoBaytlari = Buffer.from(JSON.stringify(SahteDunya.senaryo()));
-  const senaryoOzeti = 'sha256:' + createHash('sha256').update(senaryoBaytlari).digest('hex');
+  const sema = semaOku(katalogBaytlari.toString('utf8'));
+  let senaryoBaytlari = senaryoBaytlariUret(dunya.senaryoAdi);
+  let senaryoOzeti = 'sha256:' + createHash('sha256').update(senaryoBaytlari).digest('hex');
 
   let port = 0;
   const izinliHost = (): Set<string> => new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
@@ -186,6 +299,19 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
   let istemciNo = 0;
   const istemciler = new Set<number>();
   let tik = 0;
+  const istekKaydi: SahteSunucu['test']['istekKaydi'] = [];
+  let komutNo = 0;
+  let komutTutuldu = false;
+  const komutSonuclari = new Map<number, { durum: 'kuyrukta' | 'uygulandi' | 'reddedildi'; uygulama_adimi?: number; hata?: Record<string, unknown> }>();
+  interface BekleyenKomut {
+    no: number;
+    istemci: number;
+    komut: string;
+    govde: Record<string, unknown>;
+  }
+  const komutKuyrugu: BekleyenKomut[] = [];
+  /** Yineleme anahtarı (A3-K53): istemci|yöntem|yol|istek_kimligi -> gövde + yanıt. */
+  const yinelemeler = new Map<string, { govde: string; http: number; yanit: unknown }>();
 
   function anahtarOf(u: Uretim): string {
     return `${u.kanal}|${u.anahtar}`;
@@ -220,7 +346,7 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     }
   }
 
-  function olayiIsle(o: { tur: number; onem: number; kaynak: number; adim_no: number | null; ayrinti: Record<string, unknown> }): void {
+  function olayiIsle(o: { tur: number; onem: number; kaynak: number; adim_no: number | null; ayrinti: Record<string, unknown>; komut_no?: number; istemci_id?: number }): void {
     const kanal = kanalBul('olay')!;
     const sira = ++olaySira;
     const t_ns = dunya.t_ns;
@@ -229,8 +355,8 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
       onem: o.onem,
       kaynak: o.kaynak,
       adim_no: o.adim_no,
-      komut_no: 0,
-      istemci_id: 0,
+      komut_no: o.komut_no ?? 0,
+      istemci_id: o.istemci_id ?? 0,
       ayrinti: JSON.stringify(o.ayrinti),
     });
     const cerceve = cerceveKodla(kanal, { t_ns, sira }, yuk);
@@ -246,8 +372,8 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
         onem: degerAdi('yuk_olay', 'onem', o.onem),
         kaynak: degerAdi('yuk_olay', 'kaynak', o.kaynak),
         adim_no: o.adim_no,
-        komut_no: 0,
-        istemci_id: 0,
+        komut_no: o.komut_no ?? 0,
+        istemci_id: o.istemci_id ?? 0,
         ayrinti: o.ayrinti,
       },
     });
@@ -369,6 +495,7 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     const gecen = Math.min(250, simdi - sonDuvar);
     sonDuvar = simdi;
     if (ayar.dunyaDurdur !== true) {
+      if (!komutTutuldu) komutlariUygula();
       for (const u of dunya.ilerle(gecen)) {
         if (u.kanal === 'baglanti/durum') dunyaSonBaglantiDurumu = u.yuk as YukBaglantiDurum;
         uretimiIsle(u);
@@ -635,7 +762,7 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
         emniyet_rev: oz.emniyet_rev,
         a1_run_id: null,
         durum_rev: oz.durum_rev,
-        son_komut_no: 0,
+        son_komut_no: komutNo,
       });
     }
     if (y === 'GET' && yol === '/olaylar') {
@@ -703,7 +830,166 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
         })),
       });
     }
-    return ret(res, 404, 'bulunamadi', 'uç yok ya da sahte sunucu bu ucu uygulamıyor (W3-web dilim 1)');
+
+    // ---- Senaryo uçları (A3 §4.9) ----
+    if (y === 'GET' && yol === '/senaryolar') {
+      return json(res, 200, {
+        sonuc: 'kabul',
+        senaryolar: Object.entries(SENARYO_DOSYALARI).map(([ad, icerik]) => ({ ad, boyut_bayt: Buffer.byteLength(icerik), degisim_utc: '2026-11-25T09:00:00Z' })),
+      });
+    }
+    const dosyaEs = /^\/senaryolar\/([^/]+)$/.exec(yol);
+    if (y === 'GET' && dosyaEs !== null) {
+      const ad = decodeURIComponent(dosyaEs[1]!);
+      if (!/^[a-z0-9_-]{1,64}\.toml$/.test(ad)) return ret(res, 400, 'gecersiz_istek', 'senaryo adı kalıba uymuyor (A3-K78)');
+      const icerik = SENARYO_DOSYALARI[ad];
+      if (icerik === undefined) return ret(res, 404, 'bulunamadi', 'senaryo dosyası yok');
+      return json(res, 200, { sonuc: 'kabul', ad, icerik });
+    }
+    if (y === 'POST' && yol === '/senaryo/dogrula') {
+      const g = await jsonGovde(req, res, 4 << 20);
+      if (g === null) return;
+      const hata = semaDogrula(sema, sema.$defs.istek_senaryo_dogrula!, g);
+      if (hata.length > 0) return ret(res, 400, 'gecersiz_istek', hata.join('; '));
+      const b = g as { ad?: string; icerik?: string };
+      const icerik = b.icerik ?? SENARYO_DOSYALARI[b.ad ?? ''];
+      if (icerik === undefined) return ret(res, 404, 'bulunamadi', 'senaryo dosyası yok');
+      const rapor = a5Raporu(b.ad ?? 'icerik', icerik);
+      return json(res, 200, { sonuc: 'kabul', gecerli: rapor.gecerli, senaryo_ozeti: rapor.davranis_ozeti === null ? null : `sha256:${rapor.davranis_ozeti}`, rapor });
+    }
+    if (y === 'POST' && yol === '/senaryo/yukle') return komutIsle(req, res, 'yukle', yol);
+    const calEs = /^\/calistirma\/([a-z_]+)$/.exec(yol);
+    if (y === 'POST' && calEs !== null && ['baslat', 'duraklat', 'surdur', 'adimla', 'hiz', 'durdur', 'sifirla'].includes(calEs[1]!)) {
+      return komutIsle(req, res, calEs[1]!, yol);
+    }
+    const komutEs = /^\/komutlar\/(\d+)$/.exec(yol);
+    if (y === 'GET' && komutEs !== null) {
+      const k = komutSonuclari.get(Number(komutEs[1]));
+      if (k === undefined) return ret(res, 404, 'bulunamadi', 'komut yok');
+      return json(res, 200, { sonuc: 'kabul', komut_no: Number(komutEs[1]), durum: k.durum, ...(k.uygulama_adimi !== undefined ? { uygulama_adimi: k.uygulama_adimi } : {}), ...(k.hata !== undefined ? { hata: k.hata } : {}) });
+    }
+    return ret(res, 404, 'bulunamadi', 'uç yok ya da sahte sunucu bu ucu uygulamıyor');
+  }
+
+  /** JSON gövde: içerik türü, boyut ve çözümleme denetimleri (A3-K51). Hata varsa yanıtı yazar, null döner. */
+  async function jsonGovde(req: IncomingMessage, res: ServerResponse, sinir: number): Promise<unknown> {
+    if ((req.headers['content-type'] ?? '').split(';')[0]!.trim() !== 'application/json') {
+      ret(res, 415, 'icerik_turu', 'Content-Type application/json değil');
+      return null;
+    }
+    const g = await govdeOku(req, sinir);
+    if (g === null) {
+      ret(res, 413, 'govde_cok_buyuk', 'gövde sınırdan büyük');
+      return null;
+    }
+    try {
+      return JSON.parse(g.toString('utf8')) as unknown;
+    } catch {
+      ret(res, 400, 'gecersiz_istek', 'JSON çözülemedi');
+      return null;
+    }
+  }
+
+  /**
+   * Durum değiştiren uç (A3-K50…K57): kimlik, şema, yineleme, revizyon ve durum denetimleri eşzamanlı;
+   * çalıştırma kontrolü komutları 202 ile kuyruğa girer ve sonuç `komut_sonucu` olayıyla gelir;
+   * `yukle` senkron 200'dür.
+   */
+  async function komutIsle(req: IncomingMessage, res: ServerResponse, komut: string, yol: string): Promise<void> {
+    const kayit = { yontem: 'POST', yol: '/api/v1' + yol, istemci: (req.headers['ida-istemci'] as string | undefined) ?? null, govde: null as unknown, http: 0, yanit: null as unknown };
+    const yanitla = (http: number, nesne: unknown): void => {
+      kayit.http = http;
+      kayit.yanit = nesne;
+      istekKaydi.push(kayit);
+      json(res, http, nesne);
+    };
+    const reddet = (http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>, no: number | null = null): void =>
+      yanitla(http, { sonuc: 'ret', komut_no: no, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
+
+    const istemciId = Number(kayit.istemci);
+    if (kayit.istemci === null || !istemciler.has(istemciId)) {
+      await govdeOku(req, 1 << 20);
+      return reddet(400, 'gecersiz_istek', 'Ida-Istemci başlığı yok ya da istemci kayıtlı değil (A3-K50)');
+    }
+    const g = await jsonGovde(req, res, komut === 'yukle' ? 4 << 20 : 1 << 20);
+    if (g === null) return;
+    kayit.govde = g;
+    const hata = semaDogrula(sema, sema.$defs[KOMUT_SEMASI[komut]!]!, g);
+    if (hata.length > 0) return reddet(400, 'gecersiz_istek', hata.join('; '));
+    const b = g as Record<string, unknown>;
+
+    // Yineleme (A3-K53)
+    const anahtar = `${istemciId}|POST|${yol}|${String(b.istek_kimligi)}`;
+    const ham = JSON.stringify(g);
+    const eski = yinelemeler.get(anahtar);
+    if (eski !== undefined) {
+      if (eski.govde !== ham) return reddet(409, 'kimlik_cakismasi', 'aynı istek kimliği farklı gövdeyle');
+      return yanitla(eski.http, { ...(eski.yanit as Record<string, unknown>), yineleme: true });
+    }
+    const no = ++komutNo;
+    const sonuc = (http: number, nesne: unknown): void => {
+      yinelemeler.set(anahtar, { govde: ham, http, yanit: nesne });
+      yanitla(http, nesne);
+    };
+    const red = (http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>): void =>
+      sonuc(http, { sonuc: 'ret', komut_no: no, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
+
+    const oz = dunya.ozet();
+    if (b.beklenen_run_id !== oz.run_id) {
+      // Tablo 4.7a′: çalıştırma yokken null, varken güncel kimlik
+      return red(409, 'beklenen_durum_uyusmuyor', 'beklenen_run_id güncel değil', { guncel_run_id: oz.run_id, guncel_durum: oz.durum, guncel_durum_rev: oz.durum_rev });
+    }
+    if (b.beklenen_durum_rev !== oz.durum_rev) {
+      return red(409, 'durum_rev_uyusmuyor', 'beklenen_durum_rev güncel değil', { guncel_durum_rev: oz.durum_rev });
+    }
+    if (!KOMUT_DURUMLARI[komut]!.includes(oz.durum)) return red(409, 'gecersiz_durum', `komut ${oz.durum} durumunda geçerli değil`);
+    const hil = dunya.kip === 'hil_1x';
+    if (hil && (komut === 'adimla' || komut === 'hiz')) return red(409, 'kipte_gecersiz', 'HIL kipinde geçersiz komut');
+    if (hil && komut === 'duraklat' && b.gecersizligi_onayla !== true) return red(409, 'onay_gerekli', 'HIL duraklatma gecersizligi_onayla ister');
+    if (komut === 'hiz') {
+      const c = b.carpan as number;
+      if (c !== 0 && c < 0.01) return red(422, 'gecersiz_deger', 'carpan 0 ya da [0,01; 100] olmalı');
+    }
+
+    if (komut === 'yukle') {
+      const ad = b.ad as string | undefined;
+      const icerik = (b.icerik as string | undefined) ?? SENARYO_DOSYALARI[ad ?? ''];
+      if (icerik === undefined) return red(404, 'bulunamadi', 'senaryo dosyası yok');
+      const rapor = a5Raporu(ad ?? 'icerik', icerik);
+      if (!rapor.gecerli) return red(422, 'senaryo_gecersiz', 'senaryo A5 doğrulamasından geçmedi', { rapor });
+      const dosyaAdi = ad ?? 'icerik.toml';
+      dunya.senaryoYukle(dosyaAdi);
+      senaryoBaytlari = senaryoBaytlariUret(dosyaAdi);
+      senaryoOzeti = 'sha256:' + sha256Hex(senaryoBaytlari);
+      komutSonuclari.set(no, { durum: 'uygulandi', uygulama_adimi: dunya.adim_no });
+      olayiIsle({ tur: 13, onem: 0, kaynak: 1, adim_no: null, komut_no: no, istemci_id: istemciId, ayrinti: { ad: dosyaAdi.replace(/\.toml$/, ''), senaryo_ozeti: senaryoOzeti } });
+      return sonuc(200, { sonuc: 'kabul', komut_no: no, senaryo_ozeti: senaryoOzeti, rapor });
+    }
+
+    komutSonuclari.set(no, { durum: 'kuyrukta' });
+    komutKuyrugu.push({ no, istemci: istemciId, komut, govde: b });
+    return sonuc(202, { sonuc: 'kuyrukta', komut_no: no });
+  }
+
+  /** Dünyanın adım sınırı: kuyruktaki komutlar `komut_no` sırasıyla uygulanır (A3-K57). */
+  function komutlariUygula(): void {
+    for (const k of komutKuyrugu.splice(0)) {
+      const oz = dunya.ozet();
+      let kod: string | null = null;
+      if (k.govde.beklenen_run_id !== oz.run_id) kod = 'beklenen_durum_uyusmuyor';
+      else if (k.govde.beklenen_durum_rev !== oz.durum_rev) kod = 'durum_rev_uyusmuyor';
+      else if (!KOMUT_DURUMLARI[k.komut]!.includes(oz.durum)) kod = 'gecersiz_durum';
+      let ayrinti: Record<string, unknown>;
+      if (kod !== null) {
+        komutSonuclari.set(k.no, { durum: 'reddedildi', hata: { kod, ileti: kod } });
+        ayrinti = { komut_no: k.no, sonuc: 'reddedildi', hata_kodu: kod };
+      } else {
+        dunya.uygula(k.komut, k.govde as { carpan?: number; periyot_sayisi?: number });
+        komutSonuclari.set(k.no, { durum: 'uygulandi', uygulama_adimi: dunya.adim_no });
+        ayrinti = { komut_no: k.no, sonuc: 'uygulandi', uygulama_adimi: dunya.adim_no };
+      }
+      olayiIsle({ tur: 5, onem: 0, kaynak: 1, adim_no: dunya.adim_no, komut_no: k.no, istemci_id: k.istemci, ayrinti });
+    }
   }
 
   const sunucu = createServer((req, res) => {
@@ -787,6 +1073,10 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
           },
         });
       },
+      komutlariTut: (tut: boolean) => {
+        komutTutuldu = tut;
+      },
+      istekKaydi,
       olayEkle: () => olayiIsle({ tur: 22, onem: 1, kaynak: 0, adim_no: null, ayrinti: { kod: 'test', ileti: 'sınama olayı' } }),
     },
     baglantilariKopar: () => {

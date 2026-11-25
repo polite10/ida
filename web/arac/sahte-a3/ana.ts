@@ -2,7 +2,10 @@
 //
 //   node .derleme/sahte-a3.mjs [--port 47100] [--statik dist] [--kip sil|hil_1x]
 //                              [--atla <s>] [--tohum <n>] [--jeton <64 hex>]
-//                              [--emniyet olagan|bilinmiyor|gecersiz]
+//                              [--emniyet olagan|bilinmiyor|gecersiz] [--elle]
+//
+// `--elle`: dünya kendiliğinden başlamaz ve bitince yeniden başlamaz; çalıştırma yalnız panelden
+// (A3 komutlarıyla: başlat, duraklat, adımla, …) ilerler.
 //
 // `--emniyet bilinmiyor`: kart geri okuması ve emniyet zinciri durumu bilinmiyor (255).
 // `--emniyet gecersiz`: emniyet kanallarında değer listesi dışı değerler (gösterim sınaması).
@@ -26,6 +29,7 @@ const { values } = parseArgs({
     tohum: { type: 'string' },
     jeton: { type: 'string' },
     emniyet: { type: 'string', default: 'olagan' },
+    elle: { type: 'boolean', default: false },
   },
 });
 
@@ -40,13 +44,14 @@ const sunucu = await sahteSunucuBaslat({
   katalogYolu,
   kip,
   emniyetKipi,
+  elle: values.elle === true,
   ...(values.atla !== undefined ? { atla: Number(values.atla) } : {}),
   ...(values.tohum !== undefined ? { tohum: Number(values.tohum) } : {}),
   ...(values.jeton !== undefined ? { jeton: values.jeton } : {}),
 });
 
 process.stdout.write(
-  `İDA sahte A3 sunucusu — SAHTE VERİ (kinematik senaryo, fizik değil); kip ${kip}${emniyetKipi === 'olagan' ? '' : `; emniyet ${emniyetKipi}`}\n` +
+  `İDA sahte A3 sunucusu — SAHTE VERİ (kinematik senaryo, fizik değil); kip ${kip}${values.elle === true ? '; elle yönetim' : ''}${emniyetKipi === 'olagan' ? '' : `; emniyet ${emniyetKipi}`}\n` +
     `Açılış adresi: ${sunucu.acilisAdresi}\n`,
 );
 
