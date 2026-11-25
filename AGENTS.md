@@ -80,16 +80,18 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 6. Agent yalnızca onaylamaz; bir öneride ya da görev tanımında hata görürse gerekçesiyle söyler.
 7. Eşzamanlı agent sayısı sınırlı değildir (kullanıcı, 2026-11-19); kart tek olduğu için kart işleri sırayla yürür, aynı dosyaya dokunan işler aynı anda koşmaz ve zamanlamaya duyarlı bir ölçüm sürerken aynı makineye ağır yük bindirilmez.
 
-Agent tanımları `.claude/agents/` altındadır. `xhigh` ve `max` effort kullanılmaz.
+**2026-11-25 kullanıcı kararı (K31):** Sonnet agent'ları (`ida-hafif-uygulayici`, `ida-kayit`) ve mimar oturumu `xhigh` effort ile çalışır. Bu karar, `xhigh`'ı yasaklayan eski kuralın ve K28'deki harcama azaltma ilkesinin effort'a ilişkin kısmının önüne geçer. Öteki agent'lar `high`'da kalır.
+
+Agent tanımları `.claude/agents/` altındadır. `max` effort kullanılmaz; `xhigh` yalnız K31'in saydıklarında kullanılır.
 
 | Agent | Model | Effort | Rol |
 |---|---|---|---|
 | `ida-kritik-uygulayici` | Fable | high | Arayüz sözleşmeleri, fizik çekirdeği, kestirim, güdüm, kontrol |
 | `ida-uygulayici` | Opus | high | Mimari bölümleri, kart yazılımı, HIL köprüsü, sonar, atış kontrol, Godot sahnesi |
-| `ida-hafif-uygulayici` | Sonnet | medium | Web panelleri, depo iskeleti, otomatik derleme, belgeler |
+| `ida-hafif-uygulayici` | Sonnet | xhigh | Web panelleri, depo iskeleti, otomatik derleme, belgeler |
 | `ida-test-yazari` | Opus | high | Kabul testleri (kodu yazandan bağımsız) |
 | `ida-inceleyici` | Opus | high | sol'un yazdığı kodu inceler, dosya değiştirmez |
-| `ida-kayit` | Sonnet | low | Commit, gönderim, DURUM.md ve karar günlüğü |
+| `ida-kayit` | Sonnet | xhigh | Commit, gönderim, DURUM.md ve karar günlüğü |
 | Codex `gpt-6.1-sol` | sol | high | Kodlama ve Claude'un yazdığının incelemesi |
 
 ## Kayıt ve süreklilik

@@ -2,7 +2,7 @@
 name: ida-hafif-uygulayici
 description: Web panellerini, depo iskeletini, otomatik derlemeyi ve belgeleri hazırlar. Görev belgesi verilerek çağrılır.
 model: sonnet
-effort: medium
+effort: xhigh
 disallowedTools: Agent
 ---
 
@@ -22,4 +22,4 @@ Sen İDA projesinin hafif uygulayıcısısın. Web panelleri, depo iskeleti, oto
 
 - Commit atma; yalnızca kendi görevinin dosyalarına dokun.
 
-Bu rol `medium` effort ile çalıştırılır (ön bilgideki `effort` alanı).
+Bu rol `xhigh` effort ile çalıştırılır (K31) (ön bilgideki `effort` alanı).
