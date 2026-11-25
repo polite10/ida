@@ -46,6 +46,9 @@ struct AnlikDurum {
     std::optional<std::string> senaryo_ozeti;   // "sha256:<64 hex>"
     std::uint32_t a1_run_id = 0;                // 0: null
     std::uint64_t durum_rev = 1;
+    // W5-K58: dünya yeniden kuruluyor (`sifirla`/`senaryo/yukle` kabul edildi, yeni dünya henüz `yuklendi`
+    // olmadı). Yalnız alıcının giriş denetimi kullanır (`baslat` reddedilir); HTTP yanıtlarına girmez.
+    bool kuruluyor = false;
     // Sanal emniyet girdileri (A3-K89; yetkili durum yalnız sim'dedir: A3-K90)
     std::uint32_t emniyet_rev = 1;
     bool emniyet_rev_doydu = false;
@@ -134,6 +137,15 @@ public:
     virtual ~KomutAlicisi() = default;
     virtual AnlikDurum anlik() = 0;
     virtual AlimSonucu al(const Komut& k) = 0;
+    // W5-K57: ağır bir hazırlıktan (senaryo ayrıştırma) ÖNCE sorulan ön denetim. Çalıştırma denetimi
+    // türündeki komutun `al`'da reddedileceği şimdiden belliyse (durum revizyonu, run_id, Tablo 4.7a/b) o
+    // ret döner; nullopt: engel görülmedi. Kuyruğa bir şey koymaz, durumu değiştirmez. Yetkili denetim yine
+    // `al`'dadır (arada durum değişebilir); bu çağrı yalnız reddedilecek isteğin hazırlığını önler.
+    virtual std::optional<AlimSonucu> on_denetim(const Komut& k)
+    {
+        (void)k;
+        return std::nullopt;
+    }
 };
 
 }  // namespace ida::a3

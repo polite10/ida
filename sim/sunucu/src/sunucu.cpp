@@ -108,6 +108,12 @@ struct A3Kalici {
     std::unique_ptr<a3::Sunucu> sunucu;
     std::unique_ptr<A2Baglanti> a2;           // süreç başına bir A2 sunucusu (kilit, dinleyici); tanım dünya başına
     std::uint64_t durum_rev = 1;              // A3-K122: `durum_rev` süreç boyunca artar (istemci bayat revizyonu yakalar)
+    // W5-K55 (EMNİYET; A3-K117, A3-K67): emniyet revizyonu ve doyma bayrağı süreç boyunca yaşar; yeniden
+    // kurulumda geri dönmez. Her dünya biterken köprüsünün son değeri (oturum sonu artışından sonra) buraya
+    // yazılır (kosu_bitir); sıradaki dünyanın köprüsü bu değerle kurulur ve `yuklendi` durumunda (köprü yokken)
+    // yayınlanan revizyon da budur. Süreç başında 1 (yalnız sınama: Ayar::sinama_ilk_emniyet_rev).
+    std::uint32_t emniyet_rev = 1;
+    bool emniyet_rev_doydu = false;
     bool surekli = false;                     // Ayar::a3_surekli
     std::uint64_t dunya_no = 0;               // kurulan dünya sayısı
     // Yeni dünya isteği. `yukle`: senaryo/yukle (sonucu yeni dünya `yuklendi` olunca verilir); `sifirla`
@@ -340,13 +346,22 @@ private:
     // tamamlanır; sonra taşıma düzgün kapanır.
     // Sol 4. denetim #3: SESSION_CLOSE'dan sonra yerel daraltma gerçekten uygulanır (izinler
     // kapanır, fizik girdisi nötr; kapanis_daraltmasi).
+    // W5-K59 (A1-K128): dünya `sifirla`/`senaryo/yukle` ile sonlanıyorsa (süreç sürer, çalıştırma nesli
+    // değişir) oturum RUN_END ile kapanır; öteki her kapanış bugünkü gibi SHUTDOWN'dur.
+    std::uint8_t a1_kapanis_nedeni() const { return a3_yeniden_ ? kCloseRunEnd : kCloseShutdown; }
+    // W5-K55: bu dünyanın başlangıç emniyet revizyonu ve doyma bayrağı (süreç boyunca yaşayan değer).
+    std::uint32_t ilk_emniyet_rev() const { return kalici_ != nullptr ? kalici_->emniyet_rev : a_.sinama_ilk_emniyet_rev; }
+    bool ilk_emniyet_rev_doydu() const
+    {
+        return kalici_ != nullptr ? kalici_->emniyet_rev_doydu : a_.sinama_ilk_emniyet_rev == 0xFFFFFFFFu;
+    }
     void erken_kapanis()
     {
         if (!k_) {
             return;
         }
         if (k_->durum() == kopru::OturumDurumu::kosuyor || k_->durum() == kopru::OturumDurumu::hazir) {
-            k_->oturum_kapat(kCloseShutdown, duvar());
+            k_->oturum_kapat(a1_kapanis_nedeni(), duvar());
         }
         kapanis_daraltmasi();
         (void)cikisi_bitir(gercek() + kKapanisYazimNs);
@@ -591,6 +606,9 @@ private:
     // beklemesi (çalıştırma bitti; sunucu ayakta, yeni komut beklenir), yeni dünyanın ön denetim kaydı ve
     // `senaryo/yukle` sonucunun verilmesi.
     void a3_yeniden_kabul(const A3Giris& g, std::uint64_t b);
+    bool a3_onde_kisit_var(std::uint32_t komut_no) const;
+    bool a3_ertelenen_yeniden_bitir(std::uint64_t b);
+    void a3_emniyet_baslangic_yayinla();
     bool a3_bosta_bekle();
     void a3_kalanlari_reddet();
     void a3_sunucuyu_durdur();
@@ -601,7 +619,7 @@ private:
     void a3_cek(std::uint16_t atla);
     bool a3_run_uyar(const a3::Komut& k) const;
     bool a3_gevsetme_onu_acik(const A3Giris& g);
-    void a3_calistirma_isle(std::uint64_t b);
+    void a3_calistirma_isle(std::uint64_t b, bool ertele = false);
     bool a3_sinir_basi(std::uint64_t b, bool duran);
     bool a3_hazirlik_durdu(bool kanca = true);
     void a3_emniyet_ver(std::uint64_t b);
@@ -824,6 +842,10 @@ private:
     a3::Yayinci* yay_ = nullptr;                 // null: A3 kapalı (bugünkü davranış)
     // W5-a3-senaryo: bu dünya `sifirla` ya da `senaryo/yukle` ile sonlandırıldı; sıradaki dünya istendi.
     std::optional<A3Kalici::Istek> a3_yeniden_;
+    // W5-K56 (EMNİYET): kabul edilmiş ama etkisi bu sınırın emniyet adımının sonuna ertelenmiş `sifirla` /
+    // `senaryo/yukle` (aynı sınırda çekilmiş, komut numarası daha küçük kısıtlayan istek var). Yalnız
+    // a3_sinir_basi'nde dolar; aynı turda sinir_on'da (a3_ertelenen_yeniden_bitir) sonuçlanır.
+    std::optional<A3Giris> a3_yeniden_ertelenen_;
     bool a3_kuruldu_ = false;                    // `a3_baslat` tamam (`yuklendi` yayınlandı)
     // `sifirla`/`senaryo/yukle` kabul edildi: bu dünya artık A3'e veri yayınlamaz (kayıt dosyasına son
     // sayaçlar yine yazılır); eski dünyanın bayat kareleri yeni dünyanın `yuklendi` durumunun üstüne binmez.
@@ -1741,6 +1763,12 @@ bool Calistirici::sinir_on(std::uint64_t b, bool duran)
     }
     if (yay_ != nullptr) {
         a3_sinir_sonrasi(b, ss, duran);
+        if (a3_ertelenen_yeniden_bitir(b)) {
+            // W5-K56: ertelenmiş `sifirla`/`senaryo/yukle`. Sınamadan küçük numaralı kısıtlayanlar bu sınırda
+            // uygulandı ve sonuçlandı; dünya, `sifirla`nın sınır başında kabul edildiği yolla aynı biçimde
+            // (a3_durdur_ kurulu, hata yok) sonlanır: A1 oturumu kapanır, kapanış daraltması uygulanır.
+            return false;
+        }
     }
     evre_[kEvreKopru] += e1 - e0;
     if (!duran) {
@@ -2597,9 +2625,14 @@ void Calistirici::a3_anlik_guncelle()
     // W5-bagla-a2: yalnız A2 gerçekten dinliyorken senaryonun kademesi; nesne var ama dinlemiyorsa
     // (kilit başkasında, port dolu, tanım yok) görünüm kapalıdır: 0.
     p.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
+    // W5-K58: geçiş penceresinde (yeni dünya `yuklendi` olana dek) yüklü senaryo yoktur: özet null yayınlanır
+    // ve giriş denetimi `baslat`'ı reddeder (A3Alici::calistirma_denetle_). Yeni dünya kendi özetiyle ve
+    // `kuruluyor = false` ile yazar (a3_baslat).
+    p.kuruluyor = temiz;
     if (temiz) {
         p.a1_run_id = 0;
         p.sayac = {};
+        p.ozet_var = false;
     }
     if (k_ && !temiz) {
         const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
@@ -2614,7 +2647,10 @@ void Calistirici::a3_anlik_guncelle()
                    static_cast<std::int64_t>(c.oturum_kopma), static_cast<std::int64_t>(s_.zaman.sim_gecikmesi),
                    static_cast<std::int64_t>(yay_ != nullptr ? yay_->halka_tasma() : 0u)};
     } else {
-        p.emniyet_rev = 1;
+        // W5-K55 (A3-K117): revizyon geri dönmez. Köprü varsa (geçiş penceresi: eski dünyanın köprüsü, oturum
+        // sonu artışı uygulandıkça) onun değeri; köprü yokken (`yuklendi`) süreç boyunca yaşayan değer.
+        p.emniyet_rev = k_ ? k_->emniyet_revizyonu() : ilk_emniyet_rev();
+        p.emniyet_rev_doydu = k_ ? k_->emniyet_rev_doydu() : ilk_emniyet_rev_doydu();
         p.acil = plan_.acil_durdurma ? 1u : 0u;
         p.fis = {static_cast<std::uint8_t>(plan_.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.fis[1] ? 1u : 0u)};
         p.pim = {static_cast<std::uint8_t>(plan_.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.pim[1] ? 1u : 0u)};
@@ -2766,6 +2802,7 @@ bool Calistirici::a3_baslat()
     }
     a3_anlik_guncelle();
     a3_durum_yayinla(0);
+    a3_emniyet_baslangic_yayinla();   // W5-K58
     if (ilk_dunya) {
         gunluk(1, "A3 127.0.0.1:" + std::to_string(a3sv_->port()));
         if (a_.a3_acilis) {
@@ -2778,6 +2815,24 @@ bool Calistirici::a3_baslat()
     a3_kuruldu_ = true;
     a3_yukleme_sonucu();
     return true;
+}
+
+// W5-K58: dünya `yuklendi` olduğunda (köprü henüz yok) senaryonun başlangıç emniyet değerleriyle bir
+// `emniyet/girdiler` karesi yayınlanır. Çekirdek `yuklendi`'ye dönüşte son-değer önbelleğini boşalttığı için
+// bu kare olmadan yeni abone hiç kare alamaz, eski abone önceki dünyanın son karesini (ör. basılı acil
+// durdurma) göstermeyi sürdürürdü. Değerler `GET /emniyet` ile aynıdır (aynı kaynak: plan ve süreç boyunca
+// yaşayan revizyon). Yalnız A3'e gider; kayıt dosyası bu anda açık değildir (çalıştırma başlamadı).
+void Calistirici::a3_emniyet_baslangic_yayinla()
+{
+    a3::yuk_emniyet_girdiler eg;
+    eg.acil_durdurma = plan_.acil_durdurma ? 1u : 0u;
+    eg.silahlandirma_fisi = {static_cast<std::uint8_t>(plan_.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.fis[1] ? 1u : 0u)};
+    eg.emniyet_pimi = {static_cast<std::uint8_t>(plan_.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.pim[1] ? 1u : 0u)};
+    eg.son_degisim_adimi = a3_son_degisim_adimi_;
+    eg.son_degisim_kaynagi = a3_son_degisim_kaynagi_;
+    eg.emniyet_rev = ilk_emniyet_rev();
+    eg.emniyet_rev_doydu = ilk_emniyet_rev_doydu() ? 1u : 0u;
+    a3_olc([&] { (void)yay_->yayinla<a3::Kanal::emniyet_girdiler>(0, eg); });
 }
 
 // Önceki dünyanın bıraktığı `senaryo/yukle` isteği bu dünya `yuklendi` olunca sonuçlanır (A3-K77): yeni
@@ -2912,7 +2967,8 @@ Calistirici::BaslatBekleme Calistirici::a3_baslat_bekle()
 // `sifirla` (canlı ya da bitmiş çalıştırma) ve `senaryo/yukle` kabulü (W5-a3-senaryo; A3-K67, K77). Durum
 // `yuklendi` olur ve `run_id` null olur (A3-K124); dünya döngüsü `durdur` ile aynı yoldan sonlanır (A1 oturumu
 // kapanır, kayıt dosyası `durduruldu` ile kapanır) ve sürücü yeni dünyayı kurar. `durum_rev` çağıranda
-// artmıştır. Sıfırlamanın kendisi `emniyet_rev`'i artırmaz (iskelet §3.2): yeni dünya revizyon 1'den başlar.
+// artmıştır. Sıfırlamanın kendisi `emniyet_rev`'i artırmaz (iskelet §3.2); revizyon geri de dönmez: eski
+// dünyanın oturum sonu artışından sonraki değer yeni dünyaya geçer (W5-K55; A3-K67, K117).
 void Calistirici::a3_yeniden_kabul(const A3Giris& g, std::uint64_t b)
 {
     (void)b;
@@ -2927,9 +2983,38 @@ void Calistirici::a3_yeniden_kabul(const A3Giris& g, std::uint64_t b)
     a3_gecis(a3::CalistirmaDurumu::yuklendi, g.k.tur == a3::KomutTuru::senaryo_yukle ? "senaryo_yukle" : "sifirla", false);
 }
 
+// W5-K56: çekilmiş ve henüz köprüye verilmemiş kısıtlayanlar arasında komut numarası `komut_no`'dan küçük olan.
+bool Calistirici::a3_onde_kisit_var(std::uint32_t komut_no) const
+{
+    for (const A3Giris& g : a3_kisit_) {
+        if (g.k.komut_no < komut_no) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// W5-K56 (EMNİYET): ertelenmiş `sifirla`/`senaryo/yukle` yürürlüğe girer. Bu sınırın emniyet adımı (kısıtlayan
+// isteklerin köprüde uygulanması ve sonuçları) tamamlandıktan sonra çağrılır. true: dünya döngüsü biter.
+bool Calistirici::a3_ertelenen_yeniden_bitir(std::uint64_t b)
+{
+    if (!a3_yeniden_ertelenen_) {
+        return false;
+    }
+    const A3Giris g = std::move(*a3_yeniden_ertelenen_);
+    a3_yeniden_ertelenen_.reset();
+    a3_yeniden_kabul(g, b);
+    if (g.k.tur != a3::KomutTuru::senaryo_yukle) {
+        a3_sonuc(g, true, b, nullptr);   // `senaryo/yukle`nin sonucunu yeni dünya `yuklendi` olunca verir
+    }
+    return true;
+}
+
 // Çalıştırma kontrolü komutları (A3-K61…K66, K122, K123): durumla aynı atomik adımda yeniden
 // denetlenir. Öteki istekler sırasıyla yerinde kalır (yerinde sıkıştırma; bellek ayırmaz).
-void Calistirici::a3_calistirma_isle(std::uint64_t b)
+// `ertele` (yalnız a3_sinir_basi; W5-K56): kabul edilen `sifirla`/`senaryo/yukle`, aynı sınırda çekilmiş ve
+// komut numarası daha küçük bir kısıtlayan varsa hemen yürürlüğe girmez; bkz. aşağıdaki dal.
+void Calistirici::a3_calistirma_isle(std::uint64_t b, bool ertele)
 {
     std::size_t yaz = 0;
     for (std::size_t i = 0; i < a3_genel_.size(); ++i) {
@@ -3017,6 +3102,17 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
         case a3::KomutTuru::senaryo_yukle:
             // W5-a3-senaryo (A3-K67, K77): canlı çalıştırma varsa durdurulur (aşağıda, `durdur` ile aynı kapanış
             // yolu), durum `yuklendi` olur ve dünya baştan kurulur.
+            if (ertele && (a3d_.durum == a3::CalistirmaDurumu::kosuyor || a3d_.durum == a3::CalistirmaDurumu::duraklatildi) &&
+                a3_onde_kisit_var(k.komut_no)) {
+                // W5-K56 (EMNİYET; A3-K57, K95): aynı sınırda çekilmiş, komut numarası bu istekten küçük bir
+                // kısıtlayan var. O istek eski dünyada uygulanmalıdır: istek kabul edilmiştir (durum_rev arttı;
+                // bu turun sonraki denetim komutları bayatlar) ama dünya bu sınırın emniyet adımını olağan yoldan
+                // (a3_emniyet_ver → köprü sinir_isle → a3_sinir_sonrasi) tamamladıktan sonra sonlanır
+                // (sinir_on → a3_ertelenen_yeniden_bitir). Sonuç ve `yuklendi` geçişi orada.
+                a3_yeniden_ertelenen_ = std::move(g);
+                a3_anlik_guncelle();   // giriş denetimi yeni durum_rev'i görsün (A3-K122, K123)
+                continue;
+            }
             a3_yeniden_kabul(g, b);
             break;
         default:
@@ -3051,13 +3147,13 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b, bool duran)
             std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
             adimla_hedef_.reset();
             a3_cek(0);
-            a3_calistirma_isle(b);
-            if (a3d_.durum == a3::CalistirmaDurumu::kosuyor && !a3_durdur_) {
+            a3_calistirma_isle(b, true);
+            if (a3d_.durum == a3::CalistirmaDurumu::kosuyor && !a3_durdur_ && !a3_yeniden_ertelenen_) {
                 a3_gecis(a3::CalistirmaDurumu::duraklatildi, "adimla_tamamlandi", true);
             }
         } else {
             a3_cek(0);
-            a3_calistirma_isle(b);
+            a3_calistirma_isle(b, true);
         }
     }
     if (a3_durdur_) {
@@ -3129,6 +3225,29 @@ void Calistirici::a3_emniyet_ver(std::uint64_t b)
     a3_emn_once_ = k_->dis_durum().emniyet;
     a3_emniyet_bekleyen_.clear();
     const bool canli = a3b::canli(a3d_.durum);
+    if (a3_yeniden_ertelenen_) {
+        // W5-K56 (EMNİYET): bu sınır eski dünyanın son sınırıdır (`sifirla`/`senaryo/yukle` kabul edildi,
+        // etkisi bu adımın sonuna ertelendi). Komut numarası sıfırlamadan küçük kısıtlayanlar aşağıdaki olağan
+        // yoldan uygulanır; çekilmiş geri kalan her istek (sonradan gelen kısıtlayan, gevşeten emniyet isteği,
+        // yer istasyonu komutu) `canli_calistirma_yok` ile reddedilir. Hiçbiri sonuçsuz kalmaz (A3-K57).
+        const std::uint32_t sinir_no = a3_yeniden_ertelenen_->k.komut_no;
+        std::size_t kalan = 0;
+        for (std::size_t i = 0; i < a3_kisit_.size(); ++i) {
+            if (a3_kisit_[i].k.komut_no < sinir_no) {
+                if (kalan != i) {
+                    a3_kisit_[kalan] = std::move(a3_kisit_[i]);
+                }
+                ++kalan;
+            } else {
+                a3_sonuc(a3_kisit_[i], false, b, "canli_calistirma_yok");
+            }
+        }
+        a3_kisit_.resize(kalan);   // küçültme: bellek ayırmaz
+        for (const A3Giris& g : a3_genel_) {
+            a3_sonuc(g, false, b, "canli_calistirma_yok");
+        }
+        a3_genel_.clear();
+    }
     for (A3Giris& g : a3_kisit_) {
         if (!canli) {
             a3_sonuc(g, false, b, "canli_calistirma_yok");
@@ -3514,7 +3633,8 @@ void Calistirici::a3_oturum_izle()
     const std::uint8_t once = a1_oturum_kodu(a3_a1_onceki_, a3_a1_kopuk_);
     const kopru::KartBilgisi& kb = k_->kart();
     if (simdi != once) {
-        const char* neden = a3_kapaniyor_                                    ? "sim_kapanisi"
+        // W5-K59: `sifirla`/`senaryo/yukle` ile sonlanan dünyada süreç kapanmıyor; neden planlı sıfırlamadır.
+        const char* neden = a3_kapaniyor_                                    ? (a3_yeniden_ ? "planli_sifirlama" : "sim_kapanisi")
                             : simdi == 3u                                     ? "el_sikisma_tamam"
                             : k_->durum() == kopru::OturumDurumu::reddedildi ? "uyumsuzluk"
                             : kopuk                                           ? "aygit_kalkti"
@@ -4095,12 +4215,15 @@ void Calistirici::a3_kayitlari_aktar()
 // kapanmaz: A3 hizmeti süreç boyunca yaşar ve kapanışı sürücüye (ya da süreklilik beklemesinin sonuna) kalır.
 void Calistirici::a3_kalanlari_reddet()
 {
-    if (a3_devam_edecek()) {
-        // Sıradaki dünya istendi ya da süreklilik beklemesi gelecek: bekleyen istekleri o işler (sıfırlamadan
-        // hemen sonraki `baslat` ya da kapanış sırasında gelen `sifirla` reddedilip kaybolmaz).
-        return;
+    // Sıradaki dünya istendi ya da süreklilik beklemesi gelecekse alıcıda BEKLEYEN istekler çekilmez: onları
+    // o işler (sıfırlamadan hemen sonraki `baslat` ya da kapanış sırasında gelen `sifirla` reddedilip kaybolmaz).
+    // W5-K56 (EMNİYET; A3-K57): bu dünyanın alıcıdan ÇEKTİĞİ istekler ise her durumda burada sonuçlanır.
+    // `sifirla`/`senaryo/yukle` ile aynı sınırda çekilip uygulanmamış kısıtlayanlar, hazırlıkta ya da son turda
+    // birikmiş emniyet ve yer istasyonu istekleri dünya nesnesiyle birlikte sessizce yok olmaz: nihai sonuçlarını
+    // (`canli_calistirma_yok`) alır ve bu dünyanın kaydına geçer (`main`'deki davranış).
+    if (!a3_devam_edecek()) {
+        a3_cek(0);
     }
-    a3_cek(0);
     for (const A3Giris& g : a3_kisit_) {
         a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
     }
@@ -4245,6 +4368,13 @@ void Calistirici::a3_on_denetim_kaydet()
 // kipinde çalıştırma bitmişse sunucu ayakta `sifirla`/`senaryo/yukle` bekler.
 void Calistirici::kosu_bitir(Sonuc& r) noexcept
 {
+    if (kalici_ != nullptr && k_) {
+        // W5-K55 (EMNİYET; A3-K117, A3-K67): dünyanın köprüsü yıkılmadan önce son revizyon ve doyma bayrağı
+        // süreç boyunca yaşayan duruma alınır. Oturum sonu artışı bu noktada uygulanmıştır (oturum_kapat +
+        // kapanis_daraltmasi; her çıkış yolunda). Değer yalnız artar; doyma bir kez kurulunca kalkmaz.
+        kalici_->emniyet_rev = std::max(kalici_->emniyet_rev, k_->emniyet_revizyonu());
+        kalici_->emniyet_rev_doydu = kalici_->emniyet_rev_doydu || k_->emniyet_rev_doydu();
+    }
     if (!a3_yeniden_ && yay_ != nullptr && a3d_.durum == a3::CalistirmaDurumu::yuklendi && a3_devam_edecek()) {
         // Çalıştırma başlamadan bitti (hazırlıkta durdurma, ön denetimde kalma): `yuklendi`'de kal; yeni dünya
         // `baslat` bekler. Başka bir hata (kurulum) sürekli yeniden denemeye dönmez: süreç bugünkü gibi biter.
@@ -4889,6 +5019,9 @@ Sonuc Calistirici::kos_ic()
     ka.esc_notr_us = static_cast<std::uint16_t>(arac_.esc.pwm_notr_us);
     ka.esc_ust_us = static_cast<std::uint16_t>(arac_.esc.pwm_max_us);
     ka.beklenen_blok_crc = pb_.crc;
+    // W5-K55 (A3-K117): köprü, süreç boyunca yaşayan revizyon ve doyma bayrağıyla kurulur (süreç başında 1).
+    ka.ilk_emniyet_rev = ilk_emniyet_rev();
+    ka.ilk_emniyet_rev_doydu = ilk_emniyet_rev_doydu();
     if (a_.kip == Kip::hil) {
         // A1-K126: kartlı kiplerde run_id metin kimliğinden; metin kimliği (A3/A6) bu dilimde
         // yok: başlangıç duvar saatinden türetilmiş sıfırdan farklı değer.
@@ -5136,6 +5269,9 @@ Sonuc Calistirici::kos_ic()
         // EMNİYET (W4-K28 sol-3 #1): koşunun son sınırından sonra kabul edilmiş bir `durdur`,
         // `bitti` iç geçişiyle bayatlamaz: üretici kilidi altında son çekiş (kısıtlayan yuvalar
         // a3_bitir'de), durdurma kazanır; kilit bırakılmadan son görüntü yazılır.
+        // W5-K56: ertelenmiş sıfırlama aynı turda sinir_on'da sonuçlanır; tur oraya varmadan kesildiyse
+        // (olmamalı) kabul edilmiş istek burada yürürlüğe girer, sonuçsuz kalmaz.
+        (void)a3_ertelenen_yeniden_bitir(a3_b_);
         std::unique_lock<std::mutex> kilit = a3al_->gecis_kilidi();
         if (!a3_durdur_ && s_.hata.empty()) {
             a3_cek(A3Alici::kButunYuvalar);
@@ -5170,7 +5306,7 @@ Sonuc Calistirici::kos_ic()
     // Oturum içi çerçeve sayaçları SESSION_CLOSE gönderiminden önce dondurulur (kart oturum
     // sonunda yazımı başlamamış çerçeveleri siler; A1-K22 (1)).
     const kopru::Sayaclar rx_son = k_->sayaclar();
-    k_->oturum_kapat(kCloseShutdown, duvar());
+    k_->oturum_kapat(a1_kapanis_nedeni(), duvar());   // W5-K59: sıfırlama/yüklemede RUN_END (A1-K128)
     kapanis_daraltmasi();   // sol 4. denetim #3: izinler kapalı, fizik girdisi nötr (son satır değişmez)
     (void)cikisi_bitir(gercek() + kKapanisYazimNs);   // W4-K28 (3): SESSION_CLOSE tamamen yazılır
     pompa(0);
@@ -5325,6 +5461,8 @@ Sonuc kos_a3(const Ayar& ayar)
 {
     A3Kalici kalici;
     kalici.surekli = ayar.a3_surekli;
+    kalici.emniyet_rev = ayar.sinama_ilk_emniyet_rev;   // üretimde 1 (A3-K117); yalnız sınama yükseltir
+    kalici.emniyet_rev_doydu = ayar.sinama_ilk_emniyet_rev == 0xFFFFFFFFu;
     SenaryoHizmeti::Ayar ha;
     ha.depo_koku = ayar.depo_koku;
     ha.dizin = ayar.senaryo_dizini;

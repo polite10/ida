@@ -385,8 +385,11 @@ ida_ayar_uygula(ida_butunleme_senaryo_test)
 if(NOT MSVC)
   target_compile_options(ida_butunleme_senaryo_test PRIVATE -Wshadow)
 endif()
+# PR #57 düzeltme turu (W5-K55…K59; EMNİYET): senaryo_emniyet_rev, senaryo_emniyet_rev_doyma, senaryo_sinir_yarisi,
+# senaryo_canli_ayristirma, senaryo_emniyet_karesi.
 foreach(_ad senaryo_uclar senaryo_ad_denetimi senaryo_yukle_belirlenim senaryo_sifirla senaryo_geri_kurma senaryo_kayit
-            senaryo_a2 senaryo_surekli_kapanis)
+            senaryo_a2 senaryo_surekli_kapanis senaryo_emniyet_rev senaryo_emniyet_rev_doyma senaryo_sinir_yarisi
+            senaryo_canli_ayristirma senaryo_emniyet_karesi)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_senaryo_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()

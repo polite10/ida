@@ -20,15 +20,27 @@
 //   senaryo_a2             A2 sunucusu süreç boyunca bir kez başlar; her yeni dünya A2 nesli artırır (W5-K49)
 //   senaryo_sifirla_hil        POSIX: kartsız HIL (sözde uçbirim) dünyası sıfırlanır ve yeniden başlar
 //   senaryo_surekli_kapanis  `--a3-surekli` olmadan çalıştırma bitince süreç biter (W5-K48); sinyal ile kapanış
+// PR #57 düzeltme turu (docs/gorevler/inceleme/W5-a3-senaryo-inceleme.md; W5-K55…K59; EMNİYET):
+//   senaryo_emniyet_rev    W5-K55: `emniyet_rev` sıfırlamada geri dönmez, oturum sonu artışından sonraki değerle
+//                          sürer; eski koşunun onay jetonu ve eski run_id'li gevşetme reddedilir (A3-K57, K94)
+//   senaryo_emniyet_rev_doyma  W5-K55: doyma (0xFFFFFFFF) sıfırlamayla temizlenmez; gevşetme reddedilmeyi sürdürür
+//   senaryo_sinir_yarisi   W5-K56: `sifirla` ile aynı sınırda çekilen emniyet istekleri sonuçsuz kalmaz
+//   senaryo_canli_ayristirma  W5-K57: yükleme durum/revizyon denetimini ayrıştırmadan önce yapar; canlı
+//                          çalıştırmada doğrula ve yükle ayrıştırma yapmadan 409 gecersiz_durum
+//   senaryo_emniyet_karesi W5-K58, K59: yeni dünya `yuklendi`'de emniyet karesini yayınlar; geçiş penceresinde
+//                          özet null ve `baslat` reddedilir; sıfırlamada A1 oturumu RUN_END ile kapanır
 #include "a3_istemci.hpp"
+#include "ida/a3/komut.hpp"
 #include "ida/a3/senaryo.hpp"
 #include "ida/kayit/okuyucu.hpp"
 #include "ida/senaryo/senaryo.hpp"
 #include "ida/sunucu/sunucu.hpp"
+#include "ida_link/tel.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -139,6 +151,10 @@ struct Cikti {
     std::uint64_t dunya_sayisi = 0;
     std::size_t satir_sayisi = 0;
     std::string senaryo_yolu, davranis_ozeti;
+    std::vector<sunucu::OlaySonucu> olaylar;              // A3 komutlarının nihai sonuçları dahil (kaynak "a3")
+    std::vector<sunucu::EmniyetDegisimi> emniyet;         // yetkili emniyet durumunun değişimleri
+    std::uint64_t son_emniyet_rev = 0;                    // dünyanın köprüsünün son revizyonu (oturum sonu dahil)
+    std::vector<std::uint8_t> kapanis;                    // sim'in bu dünyada gönderdiği IDA_SESSION_CLOSE nedenleri
 };
 
 // `ida::sunucu::kos`u ayrı iş parçacığında koşturur; HTTP istemcisi ve dünya çıktıları.
@@ -148,7 +164,7 @@ public:
     {
         a_.a3_acik = true;
         a_.a3_port = 0;
-        a_.gunluk = std::getenv("IDA_TEST_GUNLUK") != nullptr ? 1 : 0;   // hata ayıklama
+        a_.gunluk = 0;
         a_.csv_uret = true;
         a_.a3_kapanis_bekleme_s = 0.0;
         a_.a3_hazir = [this](std::uint16_t p, const std::string& j) {
@@ -157,8 +173,12 @@ public:
             jeton_ = j;
             cv_.notify_all();
         };
+        (void)ida_link_alici_kur(&a1_cozucu_, IDA_LINK_ROL_KART);
         a_.a1_bayt_kancasi = [this](bool sim_giden, const std::uint8_t* p, std::size_t n) {
             (sim_giden ? a1_sim_ : a1_karsi_).ekle(p, n);
+            if (sim_giden) {
+                kapanis_ayikla(p, n);
+            }
         };
         a_.kosu_sonu_kancasi = [this](const sunucu::Sonuc& s) {
             Cikti c;
@@ -178,6 +198,12 @@ public:
             c.satir_sayisi = s.satirlar.size();
             c.senaryo_yolu = s.senaryo_yolu;
             c.davranis_ozeti = s.davranis_ozeti;
+            c.olaylar = s.olay_sonuclari;
+            c.emniyet = s.emniyet_degisimleri;
+            c.son_emniyet_rev = s.sayac.emniyet_revizyonu;
+            c.kapanis = std::move(kapanis_);
+            kapanis_.clear();
+            (void)ida_link_alici_kur(&a1_cozucu_, IDA_LINK_ROL_KART);   // sıradaki dünyanın akışı baştan
             std::lock_guard<std::mutex> kl(m_);
             dunyalar_.push_back(std::move(c));
             cv_.notify_all();
@@ -265,9 +291,14 @@ public:
         }
         return false;
     }
+    // `yuklendi`, yeni dünyanın kuruluşu bitince sayılır: geçiş penceresinde durum `yuklendi` ama senaryo özeti
+    // null'dır ve `baslat` reddedilir (W5-K58).
     bool durum_bekle(const std::string& ad, int bekle_ms = 120000)
     {
-        return durum_bekle([&](const json& d) { return d.value("durum", std::string()) == ad; }, bekle_ms);
+        return durum_bekle([&](const json& d) {
+            return d.value("durum", std::string()) == ad &&
+                   (ad != "yuklendi" || (d.contains("senaryo_ozeti") && d["senaryo_ozeti"].is_string()));
+        }, bekle_ms);
     }
 
     // Çalıştırma denetimi (güncel run_id ve durum_rev ile).
@@ -308,16 +339,36 @@ public:
     const std::string& jeton() const { return jeton_; }
 
 private:
+    // Sim → karşı taraf baytlarındaki IDA_SESSION_CLOSE (46004) çerçevelerinin nedeni (yük: sess u16, reason u8).
+    void kapanis_ayikla(const std::uint8_t* p, std::size_t n)
+    {
+        std::size_t k = 0;
+        while (k < n) {
+            std::size_t tuk = 0;
+            ida_link_cerceve_t f{};
+            const ida_link_rc_t rc = ida_link_al(&a1_cozucu_, p + k, n - k, &tuk, &f);
+            k += tuk;
+            if (rc == IDA_LINK_CERCEVE && f.msgid == 46004u) {
+                kapanis_.push_back(f.yuk[2]);
+            }
+            if (tuk == 0u) {
+                break;
+            }
+        }
+    }
+
     sunucu::Ayar a_;
     std::thread is_;
     std::mutex m_;
     std::condition_variable cv_;
     std::uint16_t port_ = 0;
     std::string jeton_, istemci_;
-    int istek_ = 0;
+    std::atomic<int> istek_{0};   // dünya kancasından da istek gönderilir (geçiş penceresi sınaması)
     std::atomic<bool> bitti_{false};
     sunucu::Sonuc sonuc_;
     Fnv a1_sim_, a1_karsi_;
+    ida_link_alici_t a1_cozucu_{};
+    std::vector<std::uint8_t> kapanis_;
     std::vector<Cikti> dunyalar_;
 };
 
@@ -331,13 +382,15 @@ sunucu::Ayar dosya_ayari(const GeciciKok& k, const std::string& senaryo)
     return a;
 }
 
-// Referans: aynı senaryo komut satırından (A3 yok), süreç içi taze koşu.
-Cikti referans_kosu(const GeciciKok& k, const std::string& senaryo)
+// Referans: aynı senaryo komut satırından (A3 yok), süreç içi taze koşu. `ilk_emniyet_rev` (yalnız sınama; W5-K55):
+// sürecin başlangıç emniyet revizyonu; varsayılan 1 (üretim).
+Cikti referans_kosu(const GeciciKok& k, const std::string& senaryo, std::uint32_t ilk_emniyet_rev = 1u)
 {
     Cikti c;
     sunucu::Ayar a;
     a.senaryo_dosyasi = "scenarios/" + senaryo;
     a.depo_koku = k.dizge();
+    a.sinama_ilk_emniyet_rev = ilk_emniyet_rev;
     a.gunluk = 0;
     a.csv_uret = true;
     a.a1_bayt_kancasi = [&c](bool sim_giden, const std::uint8_t* p, std::size_t n) { (sim_giden ? c.a1_sim : c.a1_karsi).ekle(p, n); };
@@ -362,6 +415,12 @@ std::string cikti_ozeti(const Cikti& c)
 // ------------------------------------------------------------------------------------------------ yardımcılar
 
 std::string sha_govde(const std::string& s) { return ida::senaryo::sha256_hex(s); }
+
+// `GET /durum` yanıtındaki senaryo özeti; null ise (W5-K58: geçiş penceresi) boş.
+std::string ozet_al(const json& d)
+{
+    return d.contains("senaryo_ozeti") && d["senaryo_ozeti"].is_string() ? d["senaryo_ozeti"].get<std::string>() : std::string();
+}
 
 // Bir sonraki tamamlanan koşunun (boş olmayan CSV) çıktısını bekler; `gorulen` ilerler.
 bool kosu_bekle(Oturum& o, std::size_t& gorulen, Cikti& c, int ms = 180000)
@@ -450,7 +509,7 @@ int test_uclar()
     dogrula(o.post_ham("/senaryo/dogrula", json{{"ad", "yok.toml"}}.dump()).durum == 404, "doğrula: olmayan dosya 404");
     const json sonra = o.durum();
     dogrula(sonra.value("durum_rev", 0) == once.value("durum_rev", -1) && sonra.value("son_komut_no", 0) == once.value("son_komut_no", -1) &&
-                sonra.value("durum", "") == "yuklendi" && sonra.value("senaryo_ozeti", "") == ozet0 && o.dunya_sayisi() == 0u,
+                sonra.value("durum", "") == "yuklendi" && ozet_al(sonra) == ozet0 && o.dunya_sayisi() == 0u,
             "doğrulamalar durum, durum_rev ve komut numarasını değiştirmedi");
 
     // ---- GET /senaryo/cozumlenmis (A3-K80) ----
@@ -469,7 +528,7 @@ int test_uclar()
             "yükle: geçersiz senaryo 422 senaryo_gecersiz, ayrıntıda A5 raporu");
     const json s2 = o.durum();
     dogrula(s2.value("durum", "") == "yuklendi" && s2.value("durum_rev", 0) == once.value("durum_rev", -1) &&
-                s2.value("senaryo_ozeti", "") == ozet0 && o.dunya_sayisi() == 0u,
+                ozet_al(s2) == ozet0 && o.dunya_sayisi() == 0u,
             "geçersiz yükleme: durum, durum_rev ve yüklü senaryo değişmedi, yeni dünya kurulmadı");
     json yanlis_rev = {{"ad", "ornek-havuz.toml"}, {"beklenen_run_id", nullptr}, {"beklenen_durum_rev", once.value("durum_rev", 0) + 7}};
     const auto yr = o.post("/senaryo/yukle", yanlis_rev.dump());
@@ -488,7 +547,7 @@ int test_uclar()
                 yj.value("komut_no", 0) >= 1,
             "yükle: 200, komut_no, senaryo_ozeti doğrulamadakiyle aynı, A5 raporu");
     const json s3 = o.durum();
-    dogrula(s3.value("durum", "") == "yuklendi" && s3.value("senaryo_ozeti", "") == ozet1 && s3.value("durum_rev", 0u) == rev0 + 1u && s3["run_id"].is_null(),
+    dogrula(s3.value("durum", "") == "yuklendi" && ozet_al(s3) == ozet1 && s3.value("durum_rev", 0u) == rev0 + 1u && s3["run_id"].is_null(),
             "yükle yanıtı geldiğinde durum yuklendi ve yeni senaryo, durum_rev tam bir arttı (A3-K122)");
     dogrula(o.dunya_sayisi() == 1u, "eski dünya sonlandı, yenisi kuruldu");
     const auto cz2 = o.get("/senaryo/cozumlenmis");
@@ -609,23 +668,46 @@ int test_yukle_belirlenim()
     }
     std::size_t gorulen = 0;
     Cikti c;
+    // W5-K55 (A3-K117): `emniyet_rev` süreç boyunca yaşar ve A1'de `IDA_SAFETY.safety_rev` olarak tele çıkar (aynı
+    // sayaç). Bu yüzden bir oturum kapatmış süreçteki sonraki dünyaların A1 akışı, revizyonu 1'den başlayan taze
+    // sürecinkiyle aynı OLAMAZ. Belirlenim iki katı karşılaştırmayla sınanır (eşik yok, ikisi de bayt bayt):
+    //   CSV       taze komut satırı koşusunun (revizyon 1) CSV'siyle aynı;
+    //   A1 akışı  aynı senaryonun, dünyanın başlangıç revizyonuyla başlayan taze A3'süz koşusununkiyle aynı
+    //             (yalnız sınama: Ayar::sinama_ilk_emniyet_rev). Revizyon 1 ise bu, eski karşılaştırmanın kendisidir.
+    std::uint32_t ilk_rev = 0;   // sıradaki koşunun başlangıç revizyonu (`yuklendi`'de okunur)
+    auto rev_oku = [&] { ilk_rev = o.durum().value("emniyet_rev", 0u); };
+    auto ayni_kosu = [&](const std::string& senaryo, const Cikti& taze, const Cikti& kosu) {
+        if (ilk_rev == 1u) {
+            return ayni_cikti(taze, kosu);
+        }
+        const Cikti r = referans_kosu(k, senaryo, ilk_rev);
+        return ilk_rev != 0u && r.tamam && r.csv == taze.csv && kosu.csv == taze.csv && ayni_cikti(r, kosu);
+    };
     // (1) A3 açık, komut satırı senaryosu, ilk koşu: A3'süz taze koşuyla aynı.
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c), "ilk koşu (A3 açık) = taze A3'süz koşu: " + cikti_ozeti(c));
-    // (2) Aynı süreçte sıfırla → başlat: taze süreçteki ilk koşuyla aynı.
+    rev_oku();
+    dogrula(ilk_rev == 1u && o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c),
+            "ilk koşu (A3 açık) = taze A3'süz koşu: " + cikti_ozeti(c));
+    // (2) Aynı süreçte sıfırla → başlat: taze süreçteki koşuyla aynı (revizyon devralınır: yukarıdaki açıklama).
     dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "sıfırla: bitti → yuklendi");
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c),
-            "sıfırla → başlat: aynı süreçteki ikinci koşu = taze süreçteki ilk koşu (CSV ve A1 akışı bayt bayt): " + cikti_ozeti(c));
+    rev_oku();
+    dogrula(ilk_rev > 1u, "ikinci dünya ilk koşunun oturum sonu artışından sonraki revizyonla başlıyor (" + std::to_string(ilk_rev) + ")");
+    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_kosu("z1.toml", ref, c),
+            "sıfırla → başlat: aynı süreçteki ikinci koşu = taze süreçteki koşu (CSV taze koşuyla, A1 akışı aynı başlangıç revizyonlu taze koşuyla bayt bayt): " +
+                cikti_ozeti(c));
     // (3) Başka bir senaryo yükle (bitti durumundan), koş: o senaryonun komut satırı koşusuyla aynı.
     dogrula(o.yukle(json{{"ad", "ornek-havuz.toml"}}).durum == 200, "yükle (bitti durumundan): ornek-havuz.toml");
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref2, c),
+    rev_oku();
+    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_kosu("ornek-havuz.toml", ref2, c),
             "yüklenen ornek-havuz.toml koşusu = komut satırından verilenin koşusu: " + cikti_ozeti(c));
     // (4) Yüklenen senaryo ad ile, sonra metin ile (yuklendi durumundan): ilk senaryonun koşusu.
     dogrula(o.yukle(json{{"ad", "z1.toml"}}).durum == 200, "yükle (bitti durumundan): z1.toml (ad)");
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c),
+    rev_oku();
+    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_kosu("z1.toml", ref, c),
             "yüklenen z1.toml (ad) koşusu = komut satırından verilen: " + cikti_ozeti(c));
     dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "sıfırla");
     dogrula(o.yukle(json{{"icerik", z1}}).durum == 200, "yükle (yuklendi durumundan): z1.toml (metin)");
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c),
+    rev_oku();
+    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_kosu("z1.toml", ref, c),
             "yüklenen z1.toml (metin) koşusu = komut satırından verilen: " + cikti_ozeti(c));
     // (5) Koşuyu yarıda sıfırlamak sonraki koşuyu bozmaz.
     dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "sıfırla (bitti → yuklendi)");
@@ -637,7 +719,8 @@ int test_yukle_belirlenim()
     const std::size_t onek = kismi.csv.size() / 10u * 9u;   // son satırlar kart yanıtını beklerken kesilir: ilk %90 karşılaştırılır
     dogrula(kismi_var && kismi.csv.size() < ref.csv.size() && kismi.calistirma_sonu == "yuklendi" && kismi.csv.compare(0, onek, ref.csv, 0, onek) == 0,
             "yarıda sıfırlanan koşunun çıktısı tam koşunun öneki (" + std::to_string(kismi.csv.size()) + " / " + std::to_string(ref.csv.size()) + " B)");
-    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_cikti(ref, c),
+    rev_oku();
+    dogrula(o.kontrol("baslat").durum == 202 && kosu_bekle(o, gorulen, c) && ayni_kosu("z1.toml", ref, c),
             "yarıda sıfırlanan koşudan sonraki tam koşu = taze koşu: " + cikti_ozeti(c));
     // Ölçüm (bu makine; eşik yok): isteğin dünya tarafından kabulünden yeni dünyanın `yuklendi` yayınına süre
     // (eski dünya durmuş, yenisi başlamamıştır) ve `senaryo/yukle` HTTP gidiş-dönüşü (A5 doğrulaması dahil).
@@ -714,9 +797,12 @@ int test_sifirla()
             "koşarken sıfırla: yuklendi, run_id null (A3-K124), durum_rev arttı");
     {
         const json em = json::parse(o.get("/emniyet").govde, nullptr, false);
-        dogrula(em.contains("yetkili") && em["yetkili"] == emn0["yetkili"] && em.value("emniyet_rev", 0u) == 1u,
-                "yeni dünyanın emniyet girdileri senaryonun başlangıç değerinde, emniyet_rev 1 (acil durdurma önceki dünyadan devralınmadı): " + em.dump() +
-                    " / başlangıç " + emn0.dump());
+        // W5-K55: girdiler başlangıç değerine döner, `emniyet_rev` dönmez (A3-K117: süreç boyunca yalnız artar);
+        // kısıtlayan (+1) ve oturum sonu (+1) artışlarından sonraki değerle sürer. Ayrıntılı sınama: senaryo_emniyet_rev.
+        dogrula(em.contains("yetkili") && em["yetkili"] == emn0["yetkili"] && em.value("emniyet_rev", 0u) >= emn0.value("emniyet_rev", 0u) + 2u &&
+                    !em.value("emniyet_rev_doydu", true),
+                "yeni dünyanın emniyet girdileri senaryonun başlangıç değerinde (acil durdurma önceki dünyadan devralınmadı); emniyet_rev geri dönmedi: " +
+                    em.dump() + " / başlangıç " + emn0.dump());
     }
     // (c) duraklatılmış.
     dogrula(yeni_kosu_baslat() && o.kontrol("hiz", "\"carpan\":1").durum == 202 && o.kontrol("duraklat").durum == 202 && o.durum_bekle("duraklatildi"),
@@ -770,7 +856,7 @@ int test_geri_kurma()
     dogrula(y.durum == 422 && y.kod() == "gecersiz_deger" && y.govde.find("hil") != std::string::npos,
             "kurulamayan yeni dünya: yükle 422 gecersiz_deger, neden bildirildi (" + y.govde.substr(0, 160) + ")");
     dogrula(o.durum_bekle([&](const json& d) {
-        return d.value("durum", "") == "yuklendi" && d.value("senaryo_ozeti", "") == once.value("senaryo_ozeti", "?");
+        return d.value("durum", "") == "yuklendi" && !ozet_al(d).empty() && ozet_al(d) == ozet_al(once);
     }), "önceki senaryo geri kuruldu: durum yuklendi, özet eskisi");
     const json sonra = o.durum();
     dogrula(sonra.value("durum_rev", 0u) > once.value("durum_rev", 0u), "durum_rev yalnız arttı (" + std::to_string(sonra.value("durum_rev", 0u)) + ")");
@@ -985,6 +1071,637 @@ int test_surekli_kapanis()
     return g_hata;
 }
 
+// ------------------------------------------------------------------------------------------------ PR #57 düzeltme turu
+//
+// Emniyet yardımcıları (gerçek HTTP yolu). Kısıtlayan yön: acil durdurma basılı, fiş çıkık, pim takılı.
+
+json emniyet_al(Oturum& o)
+{
+    const json e = json::parse(o.get("/emniyet").govde, nullptr, false);
+    return e.is_object() ? e : json::object();
+}
+
+std::uint32_t emniyet_rev_al(Oturum& o) { return emniyet_al(o).value("emniyet_rev", 0u); }
+
+std::string acil_al(const json& e)
+{
+    return e.contains("yetkili") && e["yetkili"].is_object() ? e["yetkili"].value("acil_durdurma", std::string()) : std::string();
+}
+
+bool acil_bekle(Oturum& o, const std::string& deger, int ms = 30000)
+{
+    return o.durum_bekle([&](const json&) { return acil_al(emniyet_al(o)) == deger; }, ms);
+}
+
+std::string run_id_al(const json& d) { return d.contains("run_id") && d["run_id"].is_string() ? d["run_id"].get<std::string>() : std::string(); }
+
+ida::test::a3::HttpSonuc acil_bas(Oturum& o, const std::string& run)
+{
+    return o.post("/emniyet/degistir", json{{"beklenen_run_id", run}, {"girdi", "acil_durdurma"}, {"hedef_durum", "basili"}}.dump());
+}
+
+// Gevşetme (acil durdurma → serbest) için onay jetonu (A3-K93).
+struct JetonYaniti {
+    int http = 0;
+    std::string kod, jeton;
+    std::uint32_t rev = 0;
+};
+
+JetonYaniti jeton_al(Oturum& o, const std::string& run)
+{
+    const auto y = o.post_ham("/emniyet/onay_jetonu", json{{"beklenen_run_id", run}, {"girdi", "acil_durdurma"}, {"hedef_durum", "serbest"}}.dump());
+    JetonYaniti j;
+    j.http = y.durum;
+    j.kod = y.kod();
+    const json g = json::parse(y.govde, nullptr, false);
+    if (g.is_object() && g.contains("onay_jetonu") && g["onay_jetonu"].is_string()) {
+        j.jeton = g["onay_jetonu"].get<std::string>();
+        j.rev = g.value("emniyet_rev", 0u);
+    }
+    return j;
+}
+
+ida::test::a3::HttpSonuc acil_birak(Oturum& o, const std::string& run, const std::string& jeton, std::uint32_t rev)
+{
+    return o.post("/emniyet/degistir", json{{"beklenen_run_id", run}, {"girdi", "acil_durdurma"}, {"hedef_durum", "serbest"}, {"onay", true},
+                                            {"onay_jetonu", jeton}, {"beklenen_emniyet_rev", rev}}.dump());
+}
+
+// Revizyon, sınamanın isteklerinden bağımsız olarak da artabilir: acil durdurma basılınca kart SAFETY_CLOSE olayı
+// gönderir ve uygulanması revizyonu bir artırır (A3-K117 (3)); bu, gerçek zamanlı koşuda jetonun alınması ile
+// isteğin işlenmesi arasına düşebilir. O durumda gevşetme reddedilir ve sim yeniden denemez (A3-K95 (4)); istemci
+// yeni jetonla yeniden dener. Aşağıdaki iki yardımcı bunu yapar (en çok 10 deneme; bekleyiş olaya göre).
+
+// Güncel jeton ve run_id ile gevşetme (acil durdurma → serbest). true: yetkili durum serbest oldu.
+bool acil_serbest_birak(Oturum& o, const std::string& run, std::string& iz)
+{
+    for (int i = 0; i < 10; ++i) {
+        const JetonYaniti j = jeton_al(o, run);
+        if (j.http != 200) {
+            iz += " jeton " + std::to_string(j.http) + " " + j.kod;
+            return false;
+        }
+        const auto e = acil_birak(o, run, j.jeton, j.rev);
+        iz += " [rev " + std::to_string(j.rev) + ": " + std::to_string(e.durum) + " " + e.kod() + "]";
+        if (e.durum == 202) {
+            // Nihai sonuç: ya serbest oldu ya da revizyon araya giren bir artışla değişti (istek reddedildi).
+            bool serbest = false;
+            const bool sonuclandi = o.durum_bekle([&](const json&) {
+                const json em = emniyet_al(o);
+                serbest = acil_al(em) == "serbest";
+                return serbest || em.value("emniyet_rev", 0u) != j.rev;
+            }, 30000);
+            if (serbest || !sonuclandi) {
+                return serbest;
+            }
+        } else if (e.kod() != "onay_jetonu_gecersiz" && e.kod() != "emniyet_rev_uyusmuyor") {
+            return false;
+        }
+    }
+    return false;
+}
+
+// Güncel (geçerli) jetonla ama `istek_run` run_id'siyle gevşetme isteğinin ret kodu. Jeton, araya giren bir
+// revizyon artışıyla geçersizleştiyse yeni jetonla yeniden denenir.
+std::string yanlis_run_gevsetme(Oturum& o, const std::string& guncel_run, const std::string& istek_run)
+{
+    std::string kod;
+    for (int i = 0; i < 10; ++i) {
+        const JetonYaniti j = jeton_al(o, guncel_run);
+        if (j.http != 200) {
+            return "jeton " + std::to_string(j.http) + " " + j.kod;
+        }
+        const auto e = acil_birak(o, istek_run, j.jeton, j.rev);
+        kod = std::to_string(e.durum) + " " + e.kod();
+        if (e.kod() != "onay_jetonu_gecersiz" && e.kod() != "emniyet_rev_uyusmuyor") {
+            break;
+        }
+    }
+    return kod;
+}
+
+// Yeni koşu: `baslat` → `kosuyor` → gerçek zaman (koşu sınama boyunca canlı kalsın). Dönüş: run_id (boş: başlamadı).
+std::string kosu_baslat(Oturum& o)
+{
+    if (o.kontrol("baslat").durum != 202 || !o.durum_bekle("kosuyor", 60000) || o.kontrol("hiz", "\"carpan\":1").durum != 202) {
+        return {};
+    }
+    return run_id_al(o.durum());
+}
+
+const sunucu::OlaySonucu* a3_sonucu(const Cikti& c, std::uint32_t no)
+{
+    const std::string on = "a3/" + std::to_string(no) + "/";
+    for (const sunucu::OlaySonucu& x : c.olaylar) {
+        if (x.kimlik.compare(0, on.size(), on) == 0) {
+            return &x;
+        }
+    }
+    return nullptr;
+}
+
+std::string sonuc_metni(const sunucu::OlaySonucu* x) { return x == nullptr ? std::string("sonuç yok") : x->sonuc + (x->neden.empty() ? "" : " " + x->neden); }
+
+// ---- W5-K55: emniyet_rev süreç boyunca yaşar ----
+
+int test_emniyet_rev()
+{
+    GeciciKok k("emnrev");
+    Oturum o(dosya_ayari(k, "z1.toml"));
+    if (!o.baslat()) {
+        dogrula(false, "sim başladı ve A3 dinliyor");
+        return g_hata;
+    }
+    const json emn0 = emniyet_al(o);
+    const std::uint32_t rev0 = emn0.value("emniyet_rev", 0u);
+    dogrula(rev0 == 1u && !emn0.value("emniyet_rev_doydu", true), "süreç başında emniyet_rev 1, doymamış (A3-K117; üretim varsayılanı)");
+    // 1. koşu: acil durdurma basılır; gevşetme jetonu alınır (kullanılmaz).
+    const std::string run1 = kosu_baslat(o);
+    dogrula(!run1.empty(), "1. koşu başladı");
+    dogrula(acil_bas(o, run1).durum == 202 && acil_bekle(o, "basili"), "1. koşuda acil durdurma basıldı");
+    const JetonYaniti j1 = jeton_al(o, run1);
+    dogrula(j1.http == 200 && j1.jeton.size() == 32u && j1.rev > rev0, "1. koşuda gevşetme jetonu alındı; kısıtlayan revizyonu artırmış (" + std::to_string(j1.rev) + ")");
+    // Sıfırla: revizyon geri dönmez; eski dünyanın oturum sonu artışından sonraki değerle sürer.
+    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "koşarken sıfırla: yuklendi");
+    const Cikti d1 = o.dunya(0);
+    const json emn1 = emniyet_al(o);
+    const std::uint32_t rev1 = emn1.value("emniyet_rev", 0u);
+    dogrula(rev1 > j1.rev, "sıfırlamadan sonra emniyet_rev geri dönmedi, oturum sonu artışıyla büyüdü (A3-K67, K117): " + std::to_string(j1.rev) + " → " +
+                               std::to_string(rev1));
+    dogrula(d1.son_emniyet_rev != 0u && rev1 == d1.son_emniyet_rev,
+            "yuklendi'de yayınlanan revizyon eski dünyanın köprüsünün son değeri (" + std::to_string(d1.son_emniyet_rev) + ")");
+    dogrula(o.durum().value("emniyet_rev", 0u) == rev1, "GET /durum aynı revizyonu veriyor");
+    dogrula(emn1.contains("yetkili") && emn1["yetkili"] == emn0["yetkili"], "yeni dünyanın emniyet girdileri senaryonun başlangıç değerinde (A3-K91)");
+    // 2. koşu: köprü devralınan revizyonla kurulur.
+    const std::string run2 = kosu_baslat(o);
+    dogrula(!run2.empty() && run2 != run1, "2. koşu yeni run_id ile başladı");
+    const std::uint32_t rev2 = emniyet_rev_al(o);
+    dogrula(rev2 >= rev1, "2. koşunun revizyonu devralınan değerden başladı (" + std::to_string(rev2) + ")");
+    dogrula(acil_bas(o, run2).durum == 202 && acil_bekle(o, "basili"), "2. koşuda acil durdurma basıldı");
+    const std::uint32_t rev3 = emniyet_rev_al(o);
+    dogrula(rev3 > rev2, "kısıtlayan revizyonu artırdı (" + std::to_string(rev3) + ")");
+    // Eski koşunun jetonu (A3-K94: sifirla ve yeni çalıştırma jetonu geçersizleştirir).
+    const auto e1 = acil_birak(o, run2, j1.jeton, emniyet_rev_al(o));
+    dogrula(e1.durum == 409 && e1.kod() == "onay_jetonu_gecersiz", "eski koşunun onay jetonu yeni koşuda 409 onay_jetonu_gecersiz (" + e1.kod() + ")");
+    // Eski koşunun run_id'siyle gevşetme: jeton güncel ve geçerli olsa da reddedilir (A3-K54, K57).
+    const std::string e2 = yanlis_run_gevsetme(o, run2, run1);
+    dogrula(e2 == "409 beklenen_durum_uyusmuyor", "eski run_id'li gevşetme (güncel jetonla) 409 beklenen_durum_uyusmuyor (" + e2 + ")");
+    const JetonYaniti j3 = jeton_al(o, run1);
+    dogrula(j3.http == 409 && j3.kod == "beklenen_durum_uyusmuyor", "eski run_id ile onay jetonu verilmez (" + j3.kod + ")");
+    dogrula(acil_al(emniyet_al(o)) == "basili", "reddedilen gevşetmelerden sonra acil durdurma basılı");
+    // Güncel jeton ve run_id ile gevşetme uygulanır (denetimler geçerli isteği engellemiyor).
+    std::string iz;
+    const bool serbest = acil_serbest_birak(o, run2, iz);
+    dogrula(serbest, "güncel jeton ve run_id ile gevşetme uygulandı (denemeler:" + iz + "; " + emniyet_al(o).dump() + ")");
+    // İkinci sıfırlama: yine yalnız artar.
+    const std::uint32_t rev4 = emniyet_rev_al(o);
+    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "2. koşu sıfırlandı");
+    const std::uint32_t rev5 = emniyet_rev_al(o);
+    dogrula(rev5 > rev4 && rev5 == o.dunya(1).son_emniyet_rev, "ikinci sıfırlamada da revizyon yalnız arttı: " + std::to_string(rev4) + " → " + std::to_string(rev5));
+    return g_hata;
+}
+
+int test_emniyet_rev_doyma()
+{
+    GeciciKok k("doyma");
+    sunucu::Ayar a = dosya_ayari(k, "z1.toml");
+    a.sinama_ilk_emniyet_rev = 0xFFFFFFFDu;   // yalnız sınama: doymaya iki artış kala
+    Oturum o(a);
+    if (!o.baslat()) {
+        dogrula(false, "sim başladı ve A3 dinliyor");
+        return g_hata;
+    }
+    const json emn0 = emniyet_al(o);
+    dogrula(emn0.value("emniyet_rev", 0u) == 0xFFFFFFFDu && !emn0.value("emniyet_rev_doydu", true), "sınama başlangıç revizyonu 0xFFFFFFFD, doymamış");
+    const std::string run1 = kosu_baslat(o);
+    dogrula(!run1.empty() && acil_bas(o, run1).durum == 202 && acil_bekle(o, "basili"), "1. koşuda acil durdurma basıldı (revizyon +1)");
+    // Sıfırla: oturum sonu artışı revizyonu 0xFFFFFFFF'e taşır; doyma yeni dünyaya geçer.
+    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "koşarken sıfırla: yuklendi");
+    const json emn1 = emniyet_al(o);
+    dogrula(emn1.value("emniyet_rev", 0u) == 0xFFFFFFFFu && emn1.value("emniyet_rev_doydu", false),
+            "sıfırlamadan sonra revizyon 0xFFFFFFFF ve doymuş (geri dönmedi): " + emn1.dump());
+    dogrula(emn1.contains("yetkili") && emn1["yetkili"] == emn0["yetkili"], "girdiler başlangıç değerinde");
+    // 2. koşu: köprü doymuş kurulur; gevşetme reddedilir, kısıtlayan uygulanır.
+    const std::string run2 = kosu_baslat(o);
+    dogrula(!run2.empty(), "2. koşu başladı");
+    const json emn2 = emniyet_al(o);
+    dogrula(emn2.value("emniyet_rev", 0u) == 0xFFFFFFFFu && emn2.value("emniyet_rev_doydu", false), "2. koşuda köprü doymuş: " + emn2.dump());
+    dogrula(acil_bas(o, run2).durum == 202 && acil_bekle(o, "basili"), "doymuşken kısıtlayan uygulanır (A3-K92)");
+    const JetonYaniti j = jeton_al(o, run2);
+    dogrula(j.http == 409 && j.kod == "emniyet_rev_doydu", "doymuşken gevşetme jetonu verilmez: 409 emniyet_rev_doydu (" + j.kod + ")");
+    dogrula(acil_al(emniyet_al(o)) == "basili", "acil durdurma basılı kaldı");
+    // İkinci sıfırlama doymayı temizlemez (süreç yeniden başlayana kadar; A3-K117).
+    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi"), "2. koşu sıfırlandı");
+    const json emn3 = emniyet_al(o);
+    dogrula(emn3.value("emniyet_rev", 0u) == 0xFFFFFFFFu && emn3.value("emniyet_rev_doydu", false), "ikinci sıfırlamadan sonra da doymuş: " + emn3.dump());
+    const std::string run3 = kosu_baslat(o);
+    const JetonYaniti j3 = jeton_al(o, run3);
+    dogrula(!run3.empty() && j3.http == 409 && j3.kod == "emniyet_rev_doydu", "3. koşuda da gevşetme reddediliyor (" + j3.kod + ")");
+    return g_hata;
+}
+
+// ---- W5-K56: sifirla ile aynı sınırda çekilen istekler ----
+
+ida::a3::Komut k_emniyet(const ida::a3::AnlikDurum& a, std::uint32_t no, ida::a3::EmniyetGirdisi g, int tup, ida::a3::GirdiDurumu hedef, bool kisitlayan)
+{
+    ida::a3::Komut c;
+    c.komut_no = no;
+    c.istemci_id = 7;
+    c.tur = ida::a3::KomutTuru::emniyet_degistir;
+    c.beklenen_run_id = a.run_id;
+    c.girdi = g;
+    c.tup = static_cast<std::int8_t>(tup);
+    c.hedef_durum = hedef;
+    c.kisitlayan = kisitlayan;
+    if (!kisitlayan) {
+        c.beklenen_emniyet_rev = a.emniyet_rev;
+    }
+    return c;
+}
+
+ida::a3::Komut k_sifirla(const ida::a3::AnlikDurum& a, std::uint32_t no)
+{
+    ida::a3::Komut c;
+    c.komut_no = no;
+    c.istemci_id = 7;
+    c.tur = ida::a3::KomutTuru::calistirma_sifirla;
+    c.beklenen_run_id = a.run_id;
+    c.beklenen_durum_rev = a.durum_rev;
+    return c;
+}
+
+int test_sinir_yarisi()
+{
+    using ida::a3::AlimSonucu;
+    using ida::a3::EmniyetGirdisi;
+    using ida::a3::GirdiDurumu;
+    GeciciKok k("yaris");
+    sunucu::Ayar a = dosya_ayari(k, "z1.toml");
+    // Enjeksiyon dünya iş parçacığında, sınır başında, istekler çekilmeden hemen önce yapılır: hepsi aynı
+    // çekişe (aynı sınıra) düşer. Sonuçlar sınama iş parçacığınca dünya bittikten sonra okunur.
+    std::atomic<int> evre{0};
+    std::atomic<int> yapilan{0};
+    std::array<bool, 4> kuyrukta{};
+    std::uint32_t rev_enj = 0;
+    std::uint64_t sinir_enj = 0;
+    a.a3_sinir_kancasi = [&](std::uint64_t b, ida::a3::KomutAlicisi& al) {
+        const int e = evre.load();
+        if (e == 0) {
+            return;
+        }
+        const ida::a3::AnlikDurum d = al.anlik();
+        auto ver = [&](std::size_t i, const ida::a3::Komut& c) { kuyrukta[i] = al.al(c).tur == AlimSonucu::Tur::kuyrukta; };
+        if (e == 1 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && b >= 400u) {
+            // (A) kısıtlayan (9001) < gevşeten (9002) < sifirla (9003) < kısıtlayan (9004)
+            kuyrukta = {};
+            rev_enj = d.emniyet_rev;
+            sinir_enj = b;
+            ver(0, k_emniyet(d, 9001, EmniyetGirdisi::acil_durdurma, -1, GirdiDurumu::basili, true));
+            ver(1, k_emniyet(d, 9002, EmniyetGirdisi::emniyet_pimi, 0, GirdiDurumu::cikarilmis, false));
+            ver(2, k_sifirla(d, 9003));
+            ver(3, k_emniyet(d, 9004, EmniyetGirdisi::emniyet_pimi, 1, GirdiDurumu::takili, true));
+        } else if (e == 2 && d.durum == ida::a3::CalistirmaDurumu::kosuyor && b >= 400u) {
+            // (B) sifirla (9011) < kısıtlayan (9012)
+            kuyrukta = {};
+            ver(0, k_sifirla(d, 9011));
+            ver(1, k_emniyet(d, 9012, EmniyetGirdisi::acil_durdurma, -1, GirdiDurumu::basili, true));
+        } else if (e == 3 && d.durum == ida::a3::CalistirmaDurumu::hazirlaniyor) {
+            // (C) hazırlıkta: kısıtlayan (9020) < gevşeten (9021) < sifirla (9022)
+            kuyrukta = {};
+            ver(0, k_emniyet(d, 9020, EmniyetGirdisi::acil_durdurma, -1, GirdiDurumu::basili, true));
+            ver(1, k_emniyet(d, 9021, EmniyetGirdisi::emniyet_pimi, 0, GirdiDurumu::cikarilmis, false));
+            ver(2, k_sifirla(d, 9022));
+        } else {
+            return;
+        }
+        yapilan.store(e);
+        evre.store(0);
+    };
+    Oturum o(a);
+    if (!o.baslat()) {
+        dogrula(false, "sim başladı ve A3 dinliyor");
+        return g_hata;
+    }
+    const json emn0 = emniyet_al(o);
+    auto ret_mi = [](const sunucu::OlaySonucu* x) { return x != nullptr && x->sonuc == "reddedildi" && x->neden == "canli_calistirma_yok"; };
+    auto uygulandi_mi = [](const sunucu::OlaySonucu* x) { return x != nullptr && x->sonuc == "uygulandi"; };
+
+    // ---- (A) koşarken: sıfırlamadan küçük numaralı kısıtlayan eski dünyada uygulanır; ötekiler reddedilir ----
+    evre.store(1);
+    dogrula(o.kontrol("baslat").durum == 202 && o.dunya_bekle(1, 120000), "(A) koşu başladı ve enjekte edilen sıfırlamayla bitti");
+    {
+        const Cikti d = o.dunya(0);
+        dogrula(yapilan.load() == 1 && kuyrukta[0] && kuyrukta[1] && kuyrukta[2] && kuyrukta[3],
+                "(A) dört istek aynı sınırda (sınır " + std::to_string(sinir_enj) + ") kuyruğa alındı");
+        dogrula(uygulandi_mi(a3_sonucu(d, 9003)) && d.calistirma_sonu == "yuklendi", "(A) sifirla uygulandı (" + sonuc_metni(a3_sonucu(d, 9003)) + ")");
+        dogrula(uygulandi_mi(a3_sonucu(d, 9001)),
+                "(A) sıfırlamadan küçük numaralı kısıtlayan (acil durdurma) eski dünyada uygulandı (" + sonuc_metni(a3_sonucu(d, 9001)) + ")");
+        bool degisim = false;
+        for (const sunucu::EmniyetDegisimi& x : d.emniyet) {
+            degisim = degisim || (x.alan == "acil_durdurma" && !x.onceki && x.sonraki && x.kaynak == "operator" && x.komut_no == 9001u &&
+                                  x.emniyet_rev == rev_enj + 1u && x.t_ns == static_cast<std::int64_t>(sinir_enj) * 1'250'000);
+        }
+        dogrula(degisim, "(A) acil durdurma değişimi kayıtta: operatör, komut 9001, aynı sınırda, revizyon +1");
+        dogrula(ret_mi(a3_sonucu(d, 9002)), "(A) gevşeten istek canli_calistirma_yok ile reddedildi (" + sonuc_metni(a3_sonucu(d, 9002)) + ")");
+        dogrula(ret_mi(a3_sonucu(d, 9004)),
+                "(A) sıfırlamadan büyük numaralı kısıtlayan canli_calistirma_yok ile reddedildi (" + sonuc_metni(a3_sonucu(d, 9004)) + ")");
+        dogrula(d.son_emniyet_rev >= static_cast<std::uint64_t>(rev_enj) + 2u,
+                "(A) revizyon: kısıtlayan + oturum sonu (" + std::to_string(rev_enj) + " → " + std::to_string(d.son_emniyet_rev) + ")");
+        dogrula(o.durum_bekle("yuklendi"), "(A) yeni dünya yuklendi");
+        const json e = emniyet_al(o);
+        dogrula(e.contains("yetkili") && e["yetkili"] == emn0["yetkili"] && e.value("emniyet_rev", 0u) == d.son_emniyet_rev,
+                "(A) yeni dünya başlangıç girdileriyle ve devralınan revizyonla: " + e.dump());
+    }
+    // ---- (B) koşarken: sıfırlamadan büyük numaralı kısıtlayan uygulanmaz, reddedilir ----
+    yapilan.store(0);
+    evre.store(2);
+    dogrula(o.kontrol("baslat").durum == 202 && o.dunya_bekle(2, 120000), "(B) koşu başladı ve enjekte edilen sıfırlamayla bitti");
+    {
+        const Cikti d = o.dunya(1);
+        dogrula(yapilan.load() == 2 && kuyrukta[0] && kuyrukta[1], "(B) iki istek aynı sınırda kuyruğa alındı");
+        dogrula(uygulandi_mi(a3_sonucu(d, 9011)) && d.calistirma_sonu == "yuklendi", "(B) sifirla uygulandı (" + sonuc_metni(a3_sonucu(d, 9011)) + ")");
+        dogrula(ret_mi(a3_sonucu(d, 9012)), "(B) sonradan gelen kısıtlayan canli_calistirma_yok ile reddedildi (" + sonuc_metni(a3_sonucu(d, 9012)) + ")");
+        bool acil = false;
+        for (const sunucu::EmniyetDegisimi& x : d.emniyet) {
+            acil = acil || x.komut_no == 9012u;
+        }
+        dogrula(!acil, "(B) reddedilen kısıtlayan yetkili durumu değiştirmedi");
+        dogrula(o.durum_bekle("yuklendi"), "(B) yeni dünya yuklendi");
+    }
+    // ---- (C) hazırlanırken: biriken gevşeten istek reddedilir; kısıtlayan yuvasında kalır, yeni dünya reddeder ----
+    yapilan.store(0);
+    evre.store(3);
+    dogrula(o.kontrol("baslat").durum == 202 && o.dunya_bekle(3, 120000), "(C) koşu istendi ve dünya bitti");
+    {
+        const Cikti d = o.dunya(2);
+        dogrula(yapilan.load() == 3 && kuyrukta[0] && kuyrukta[1] && kuyrukta[2], "(C) üç istek hazırlık sırasında kuyruğa alındı");
+        dogrula(uygulandi_mi(a3_sonucu(d, 9022)) && d.calistirma_sonu == "yuklendi" && d.csv.empty(),
+                "(C) hazırlıkta sifirla uygulandı, koşu başlamadı (" + sonuc_metni(a3_sonucu(d, 9022)) + ", " + d.calistirma_sonu + ")");
+        dogrula(ret_mi(a3_sonucu(d, 9021)), "(C) hazırlıkta biriken gevşeten istek canli_calistirma_yok ile reddedildi (" + sonuc_metni(a3_sonucu(d, 9021)) + ")");
+        dogrula(o.durum_bekle("yuklendi"), "(C) yeni dünya yuklendi");
+        const json e = emniyet_al(o);
+        dogrula(e.contains("yetkili") && e["yetkili"] == emn0["yetkili"], "(C) yeni dünya başlangıç girdileriyle");
+    }
+    // Hazırlıkta yuvasında kalan kısıtlayanı (9020) yeni dünya `yuklendi`'de reddeder; sonucu o dünyanın kaydındadır
+    // (seçilen okuma: hiç başlamamış koşuda uygulanacak sınır yoktur).
+    o.kapat();
+    {
+        const Cikti d = o.dunya(3);
+        dogrula(ret_mi(a3_sonucu(d, 9020)), "(C) hazırlıkta bekleyen kısıtlayan yeni dünyada canli_calistirma_yok aldı (" + sonuc_metni(a3_sonucu(d, 9020)) + ")");
+    }
+    return g_hata;
+}
+
+// ---- W5-K57: canlı çalıştırmada senaryo ayrıştırılmaz ----
+
+int test_canli_ayristirma()
+{
+    GeciciKok k("canli");
+    Oturum o(dosya_ayari(k, "z1.toml"));
+    if (!o.baslat()) {
+        dogrula(false, "sim başladı ve A3 dinliyor");
+        return g_hata;
+    }
+    auto yukle_ham = [&](const json& girdi, const json& run, std::uint64_t rev) {
+        json g = girdi;
+        g["beklenen_run_id"] = run;
+        g["beklenen_durum_rev"] = rev;
+        return o.post("/senaryo/yukle", g.dump());
+    };
+    const std::string bozuk = "bozuk = [";
+    // yuklendi: bayat revizyon ve yanlış run_id, dosyaya ve ayrıştırmaya bakılmadan reddedilir (denetim sırası:
+    // olmayan dosya 404 ya da bozuk içerik 422 değil, 409).
+    const std::uint64_t rev0 = o.durum().value("durum_rev", 0u);
+    auto y = yukle_ham(json{{"ad", "yok.toml"}}, nullptr, rev0 + 7u);
+    dogrula(y.durum == 409 && y.kod() == "durum_rev_uyusmuyor", "yuklendi: bayat durum_rev, olmayan dosya → 409 durum_rev_uyusmuyor (" +
+                                                                    std::to_string(y.durum) + " " + y.kod() + ")");
+    y = yukle_ham(json{{"icerik", bozuk}}, nullptr, rev0 + 7u);
+    dogrula(y.durum == 409 && y.kod() == "durum_rev_uyusmuyor", "yuklendi: bayat durum_rev, bozuk içerik → 409 durum_rev_uyusmuyor (" +
+                                                                    std::to_string(y.durum) + " " + y.kod() + ")");
+    y = yukle_ham(json{{"ad", "yok.toml"}}, "20260101-000000-abcdef", rev0);
+    dogrula(y.durum == 409 && y.kod() == "beklenen_durum_uyusmuyor", "yuklendi: yanlış run_id, olmayan dosya → 409 beklenen_durum_uyusmuyor (" +
+                                                                         std::to_string(y.durum) + " " + y.kod() + ")");
+    // Denetimden geçen istek olağan sonucu alır (ayrıştırma yapılır).
+    y = yukle_ham(json{{"ad", "yok.toml"}}, nullptr, rev0);
+    dogrula(y.durum == 404, "yuklendi: geçerli revizyon, olmayan dosya → 404 (" + std::to_string(y.durum) + ")");
+    y = yukle_ham(json{{"icerik", bozuk}}, nullptr, rev0);
+    dogrula(y.durum == 422 && y.kod() == "senaryo_gecersiz", "yuklendi: geçerli revizyon, bozuk içerik → 422 senaryo_gecersiz");
+    dogrula(o.post_ham("/senaryo/dogrula", json{{"ad", "z1.toml"}}.dump()).durum == 200, "yuklendi: doğrula 200");
+
+    // Canlı çalıştırma: kosuyor.
+    const std::string run = kosu_baslat(o);
+    dogrula(!run.empty(), "koşu başladı (gerçek zaman)");
+    auto canli_denetle = [&](const std::string& durum) {
+        const json d = o.durum();
+        const std::uint64_t rev = d.value("durum_rev", 0u);
+        auto g = o.post_ham("/senaryo/dogrula", json{{"ad", "z1.toml"}}.dump());
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": doğrula {ad} → 409 gecersiz_durum (" + std::to_string(g.durum) + " " + g.kod() + ")");
+        g = o.post_ham("/senaryo/dogrula", json{{"icerik", bozuk}}.dump());
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": doğrula {icerik} → 409 gecersiz_durum (" + std::to_string(g.durum) + " " + g.kod() + ")");
+        g = o.post_ham("/senaryo/dogrula", json{{"ad", "yok.toml"}}.dump());
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": doğrula, olmayan dosya → 409 (dosyaya bakılmadı; " + std::to_string(g.durum) + ")");
+        g = yukle_ham(json{{"icerik", bozuk}}, run, rev);
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": yükle, bozuk içerik → 409 gecersiz_durum (" + std::to_string(g.durum) + " " + g.kod() + ")");
+        g = yukle_ham(json{{"ad", "yok.toml"}}, run, rev);
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": yükle, olmayan dosya → 409 gecersiz_durum (" + std::to_string(g.durum) + " " + g.kod() + ")");
+        g = yukle_ham(json{{"ad", "ornek-havuz.toml"}}, run, rev);
+        dogrula(g.durum == 409 && g.kod() == "gecersiz_durum", durum + ": yükle, geçerli senaryo → 409 gecersiz_durum (Tablo 4.7a)");
+        const json s = o.durum();
+        dogrula(s.value("durum", "") == durum && s.value("durum_rev", 0u) == rev && run_id_al(s) == run, durum + ": reddedilen istekler durumu değiştirmedi");
+    };
+    canli_denetle("kosuyor");
+    dogrula(o.kontrol("duraklat").durum == 202 && o.durum_bekle("duraklatildi"), "koşu duraklatıldı");
+    canli_denetle("duraklatildi");
+    // Çalıştırma bitince uçlar yeniden kullanılır.
+    dogrula(o.kontrol("durdur").durum == 202 && o.durum_bekle("durduruldu"), "koşu durduruldu");
+    const auto dg = o.post_ham("/senaryo/dogrula", json{{"ad", "z1.toml"}}.dump());
+    dogrula(dg.durum == 200 && json::parse(dg.govde, nullptr, false).value("gecerli", false), "durduruldu: doğrula 200, geçerli");
+    const auto yk = o.yukle(json{{"ad", "ornek-havuz.toml"}});
+    dogrula(yk.durum == 200 && o.durum_bekle("yuklendi"), "durduruldu: yükle 200, yuklendi (" + std::to_string(yk.durum) + " " + yk.kod() + ")");
+    return g_hata;
+}
+
+// ---- W5-K58, K59: yeni dünyanın emniyet karesi, geçiş penceresi, A1 kapanış nedeni ----
+
+bool ws_bekle(ida::test::a3::Istemci& ws, const std::function<bool()>& kosul, int ms = 15000)
+{
+    const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (std::chrono::steady_clock::now() < son) {
+        if (kosul()) {
+            return true;
+        }
+        if (!ws.oku(50)) {
+            return kosul();
+        }
+    }
+    return kosul();
+}
+
+std::string kare_metni(const std::vector<ida::test::a3::EmniyetKaresi>& v)
+{
+    if (v.empty()) {
+        return "kare yok";
+    }
+    const ida::test::a3::EmniyetKaresi& e = v.back();
+    return "son kare: acil " + std::to_string(e.acil) + ", rev " + std::to_string(e.emniyet_rev) + ", " + std::to_string(v.size()) + " kare";
+}
+
+int test_emniyet_karesi()
+{
+    GeciciKok k("kare");
+    sunucu::Ayar a = dosya_ayari(k, "z1.toml");
+    // Geçiş penceresi: sürücü yeni dünyayı kurmadan hemen önce (eski dünya yıkıldı) dünya kancasını çağırır;
+    // pencere o anda belirlenimli gözlenir. Komut alıcısı süreç boyunca yaşar (sınır kancasından alınır):
+    // görüntüsü ve giriş denetimi doğrudan sorulur. Sıfırlama penceresinde (dünya 1) ayrıca gerçek HTTP ile
+    // durum okunur ve `baslat` denenir; yükleme penceresinde HTTP kullanılmaz (G/Ç iş parçacığı o sırada
+    // `senaryo/yukle` yanıtını bekler: inceleme bulgusu 5, bu turun dışında).
+    struct Pencere {
+        // Alıcıdan:
+        bool alici_var = false, yuklendi = false, ozet_yok = false, run_yok = false;
+        std::string baslat_ret;   // alıcının `baslat`'a verdiği ret kodu; boş: reddedilmedi
+        // HTTP'den (yalnız sıfırlama penceresi):
+        std::string durum;
+        bool ozet_null = false, run_null = false;
+        std::uint32_t emniyet_rev = 0;
+        int baslat_http = 0;
+        std::string baslat_kod;
+    };
+    std::vector<Pencere> pencereler;
+    std::mutex pm;
+    std::atomic<Oturum*> po{nullptr};
+    std::atomic<ida::a3::KomutAlicisi*> alici{nullptr};
+    a.a3_sinir_kancasi = [&](std::uint64_t, ida::a3::KomutAlicisi& al) { alici.store(&al); };
+    a.dunya_kancasi = [&](std::uint64_t n) {
+        Oturum* o = po.load();
+        if (n == 0u || o == nullptr) {
+            return;
+        }
+        Pencere p;
+        if (ida::a3::KomutAlicisi* al = alici.load()) {
+            const ida::a3::AnlikDurum d = al->anlik();
+            p.alici_var = true;
+            p.yuklendi = d.durum == ida::a3::CalistirmaDurumu::yuklendi;
+            p.ozet_yok = !d.senaryo_ozeti.has_value();
+            p.run_yok = !d.run_id.has_value();
+            ida::a3::Komut c;
+            c.komut_no = 9100u + static_cast<std::uint32_t>(n);
+            c.istemci_id = 7;
+            c.tur = ida::a3::KomutTuru::calistirma_baslat;
+            c.beklenen_durum_rev = d.durum_rev;
+            const ida::a3::AlimSonucu r = al->al(c);
+            p.baslat_ret = r.tur == ida::a3::AlimSonucu::Tur::ret ? r.hata_kodu : std::string();
+        }
+        if (n == 1u) {
+            const json d = o->durum();
+            p.durum = d.value("durum", std::string());
+            p.ozet_null = d.contains("senaryo_ozeti") && d["senaryo_ozeti"].is_null();
+            p.run_null = d.contains("run_id") && d["run_id"].is_null();
+            p.emniyet_rev = emniyet_al(*o).value("emniyet_rev", 0u);
+            const auto y = o->post("/calistirma/baslat", json{{"beklenen_run_id", nullptr}, {"beklenen_durum_rev", d.value("durum_rev", 0u)}}.dump());
+            p.baslat_http = y.durum;
+            p.baslat_kod = y.kod();
+        }
+        std::lock_guard<std::mutex> kl(pm);
+        pencereler.push_back(std::move(p));
+    };
+    Oturum o(a);
+    po.store(&o);
+    if (!o.baslat()) {
+        dogrula(false, "sim başladı ve A3 dinliyor");
+        return g_hata;
+    }
+    auto pencere = [&](std::size_t i) {
+        std::lock_guard<std::mutex> kl(pm);
+        return i < pencereler.size() ? pencereler[i] : Pencere{};
+    };
+    const json emn0 = emniyet_al(o);
+    const std::uint8_t acil0 = acil_al(emn0) == "basili" ? std::uint8_t{1} : std::uint8_t{0};
+    ida::test::a3::Istemci ws;
+    dogrula(ws.baglan(o.port(), o.jeton()) && ws.abone({{"emniyet/girdiler", 10}}), "WebSocket abonesi: emniyet/girdiler");
+    // (0) İlk dünya `yuklendi`: abone senaryonun başlangıç değerlerini görür.
+    dogrula(ws_bekle(ws, [&] { return !ws.emniyet.empty(); }) && !ws.emniyet.empty() && ws.emniyet.back().acil == acil0 &&
+                ws.emniyet.back().emniyet_rev == emn0.value("emniyet_rev", 0u),
+            "yuklendi'de emniyet karesi: başlangıç değerleri, revizyon " + std::to_string(emn0.value("emniyet_rev", 0u)) + " (" + kare_metni(ws.emniyet) + ")");
+    // (1) Koşu: acil durdurma basılır; abone basılı kareyi görür.
+    const std::string run1 = kosu_baslat(o);
+    dogrula(!run1.empty() && acil_bas(o, run1).durum == 202 && acil_bekle(o, "basili"), "koşuda acil durdurma basıldı");
+    dogrula(ws_bekle(ws, [&] { return !ws.emniyet.empty() && ws.emniyet.back().acil == 1u; }), "abone basılı kareyi gördü (" + kare_metni(ws.emniyet) + ")");
+    // (2) Sıfırla: yeni dünya `yuklendi`'de başlangıç değerleriyle kare yayınlar; eski abone bayat kareyle kalmaz.
+    dogrula(o.kontrol("sifirla").durum == 202 && o.durum_bekle("yuklendi", 30000), "koşarken sıfırla: yuklendi");
+    const json emn1 = emniyet_al(o);
+    const std::uint32_t rev1 = emn1.value("emniyet_rev", 0u);
+    dogrula(ws_bekle(ws, [&] { return !ws.emniyet.empty() && ws.emniyet.back().acil == acil0 && ws.emniyet.back().emniyet_rev == rev1; }),
+            "eski abone sıfırlamadan sonra başlangıç değerli kareyi gördü (GET /emniyet ile aynı: rev " + std::to_string(rev1) + "; " +
+                kare_metni(ws.emniyet) + ")");
+    // (3) Yeni abone tam durumda aynı kareyi alır.
+    {
+        ida::test::a3::Istemci ws2;
+        dogrula(ws2.baglan(o.port(), o.jeton()) && ws2.abone({{"emniyet/girdiler", 10}}), "ikinci abone bağlandı (sıfırlamadan sonra)");
+        dogrula(ws_bekle(ws2, [&] { return !ws2.emniyet.empty(); }, 5000) && !ws2.emniyet.empty() && ws2.emniyet.back().acil == acil0 &&
+                    ws2.emniyet.back().emniyet_rev == rev1,
+                "yeni abone yuklendi'de başlangıç değerli kareyi aldı (" + kare_metni(ws2.emniyet) + ")");
+        ws2.kapat();
+    }
+    // (4) Geçiş penceresi (sıfırlama): durum yuklendi, özet null, `baslat` reddedilir.
+    {
+        const Pencere p = pencere(0);
+        dogrula(p.durum == "yuklendi" && p.run_null && p.ozet_null, "geçiş penceresi: durum yuklendi, run_id null, senaryo özeti null (" + p.durum + ")");
+        dogrula(p.baslat_http == 409 && p.baslat_kod == "gecersiz_durum",
+                "geçiş penceresinde baslat 409 gecersiz_durum (" + std::to_string(p.baslat_http) + " " + p.baslat_kod + ")");
+        dogrula(p.alici_var && p.yuklendi && p.ozet_yok && p.run_yok && p.baslat_ret == "gecersiz_durum",
+                "geçiş penceresi (alıcı görüntüsü): yuklendi, özet yok; giriş denetimi baslat'ı gecersiz_durum ile reddetti (" + p.baslat_ret + ")");
+        dogrula(p.emniyet_rev == rev1, "geçiş penceresinde yayınlanan emniyet_rev yeni dünyanınkiyle aynı (" + std::to_string(p.emniyet_rev) + ")");
+        const json d = o.durum();
+        dogrula(d.value("durum", "") == "yuklendi" && d["run_id"].is_null() && o.dunya_sayisi() == 1u, "pencerede reddedilen baslat koşu başlatmadı");
+    }
+    // (5) Sıfırlamada A1 oturumu RUN_END (5) ile kapanır; olay nedeni planli_sifirlama (W5-K59; A1-K128).
+    {
+        const Cikti d1 = o.dunya(0);
+        std::string nedenler;
+        for (const std::uint8_t r : d1.kapanis) {
+            nedenler += (nedenler.empty() ? "" : ",") + std::to_string(r);
+        }
+        dogrula(!d1.kapanis.empty() && d1.kapanis.back() == 5u && std::find(d1.kapanis.begin(), d1.kapanis.end(), std::uint8_t{1}) == d1.kapanis.end(),
+                "sıfırlanan koşunun A1 oturumu IDA_SESSION_CLOSE(RUN_END) ile kapandı (nedenler: " + nedenler + ")");
+        auto olay_var = [&](const char* neden) {
+            const std::string ara = std::string("\"neden\":\"") + neden + "\"";
+            for (std::size_t i = 0; i < ws.olaylar.size(); ++i) {
+                if (ws.olay_turleri[i] == 9u && ws.olaylar[i].find(ara) != std::string::npos) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        dogrula(ws_bekle(ws, [&] { return olay_var("planli_sifirlama"); }, 5000), "a1_oturum_degisti olayı: neden planli_sifirlama");
+        dogrula(!olay_var("sim_kapanisi"), "süreç kapanmadı: sim_kapanisi nedeni yayınlanmadı");
+    }
+    // (6) Yükleme: geçiş penceresi aynı; yeni senaryonun karesi yayınlanır.
+    {
+        const std::size_t once = ws.emniyet.size();
+        const auto y = o.yukle(json{{"ad", "ornek-havuz.toml"}});
+        dogrula(y.durum == 200 && o.durum_bekle("yuklendi", 30000), "yuklendi'de yeni senaryo yüklendi (" + std::to_string(y.durum) + " " + y.kod() + ")");
+        const Pencere p = pencere(1);
+        dogrula(p.alici_var && p.yuklendi && p.ozet_yok && p.run_yok && p.baslat_ret == "gecersiz_durum",
+                "yükleme penceresi (alıcı görüntüsü): yuklendi, özet yok; baslat gecersiz_durum ile reddedildi (" + p.baslat_ret + ")");
+        const json d = o.durum();
+        dogrula(d.value("durum", "") == "yuklendi" && d["run_id"].is_null() && !ozet_al(d).empty(), "yüklemeden sonra durum yuklendi, özet dolu, koşu yok");
+        dogrula(ws_bekle(ws, [&] { return ws.emniyet.size() > once; }), "yüklenen dünya emniyet karesini yayınladı (" + kare_metni(ws.emniyet) + ")");
+    }
+    // (7) Süreç kapanışı (sinyal) canlı koşuda: IDA_SESSION_CLOSE(SHUTDOWN = 1).
+    const std::string run2 = kosu_baslat(o);
+    dogrula(!run2.empty(), "kapanış öncesi koşu başladı");
+    const std::size_t n = o.dunya_sayisi();
+    ws.kapat();
+    o.kapat();
+    {
+        const Cikti son = o.dunya(n);
+        dogrula(o.dunya_sayisi() == n + 1u && !son.kapanis.empty() && son.kapanis.back() == 1u,
+                "süreç kapanışında A1 oturumu IDA_SESSION_CLOSE(SHUTDOWN) ile kapandı (son neden " +
+                    std::to_string(son.kapanis.empty() ? 0u : son.kapanis.back()) + ")");
+    }
+    return g_hata;
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -1010,6 +1727,16 @@ int main(int argc, char** argv)
         h = test_hil_pty();
     } else if (ad == "senaryo_surekli_kapanis") {
         h = test_surekli_kapanis();
+    } else if (ad == "senaryo_emniyet_rev") {
+        h = test_emniyet_rev();
+    } else if (ad == "senaryo_emniyet_rev_doyma") {
+        h = test_emniyet_rev_doyma();
+    } else if (ad == "senaryo_sinir_yarisi") {
+        h = test_sinir_yarisi();
+    } else if (ad == "senaryo_canli_ayristirma") {
+        h = test_canli_ayristirma();
+    } else if (ad == "senaryo_emniyet_karesi") {
+        h = test_emniyet_karesi();
     } else {
         std::printf("bilinmeyen test: %s\n", ad.c_str());
         return 2;

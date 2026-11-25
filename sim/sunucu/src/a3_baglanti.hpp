@@ -136,6 +136,7 @@ struct AnlikPod {
     std::array<std::uint8_t, 2> pim{1, 1};
     bool son_degisim_var = false;
     std::uint64_t son_degisim_adimi = 0;
+    bool kuruluyor = false;          // W5-K58: dünya yeniden kuruluyor (yeni dünya `yuklendi` olana dek)
     // parti_gonderilen, parti_kacirildi, oturum_kopma, sim_gecikmesi, a3_halka_tasma
     std::array<std::int64_t, 5> sayac{};
     std::uint8_t kademe_sonar = 0;   // W4-bagla-sonar: 0 kapali, 1 sade
@@ -169,6 +170,7 @@ public:
     // ---- A3 G/Ç iş parçacığı ----
     a3::AnlikDurum anlik() override;
     a3::AlimSonucu al(const a3::Komut& k) override;
+    std::optional<a3::AlimSonucu> on_denetim(const a3::Komut& k) override;   // W5-K57
 
     // ---- Dünya iş parçacığı (kilitsiz, bellek ayırmaz; vektörler çağıranın ayırdığı kapasitede) ----
     void anlik_yaz(const AnlikPod& p);
@@ -194,6 +196,8 @@ public:
 private:
     static int etki_yuvasi(const a3::Komut& k);
     a3::AlimSonucu kuyruga(const a3::Komut& k, const a3b::YiKarsilik& yi);   // uretici_m_ tutulurken
+    // Çalıştırma denetimi komutunun giriş denetimi (`al` ve `on_denetim` ortak; uretici_m_ tutulurken).
+    std::optional<a3::AlimSonucu> calistirma_denetle_(const a3::Komut& k, const a3::AnlikDurum& a) const;
 
     bool hil_ = false;
     // Üçlü tampon: dünya `arka_`'ya yazar ve `orta_` ile değiştirir; okuyucu `on_`'u okur.

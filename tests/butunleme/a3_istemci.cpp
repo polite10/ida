@@ -301,6 +301,17 @@ void Istemci::a3_ayir(const std::string& ileti)
         if (kanal == 10u && yuk.size() >= 38u) {
             // yuk_fizik_durum: adim_no u64; govdeler sayacı u16; govde_id u16, tur u8, kutle u8, p_n f64[3]
             fizik.push_back({oku_le<std::uint64_t>(yuk, 0), t_ns, oku_le<double>(yuk, 30)});
+        } else if (kanal == 14u && yuk.size() == 25u) {
+            // yuk_emniyet_girdiler: acil u8; fis u8[2]; pim u8[2]; son_degisim_adimi u64; son_degisim_kaynagi u8;
+            // kart_acil u8; kart_fis u8[2]; kart_pim u8[2]; geri_okuma_farki u8; emniyet_rev u32; doydu u8
+            EmniyetKaresi e;
+            e.t_ns = t_ns;
+            e.acil = oku_le<std::uint8_t>(yuk, 0);
+            e.fis = {oku_le<std::uint8_t>(yuk, 1), oku_le<std::uint8_t>(yuk, 2)};
+            e.pim = {oku_le<std::uint8_t>(yuk, 3), oku_le<std::uint8_t>(yuk, 4)};
+            e.emniyet_rev = oku_le<std::uint32_t>(yuk, 20);
+            e.doydu = oku_le<std::uint8_t>(yuk, 24);
+            emniyet.push_back(e);
         } else if (kanal == 3u && yuk.size() >= 22u) {
             // yuk_olay: tur u16, onem u8, kaynak u8, adim_no u64, komut_no u32, istemci u32, ayrinti metin(u16)
             const auto n = oku_le<std::uint16_t>(yuk, 20);

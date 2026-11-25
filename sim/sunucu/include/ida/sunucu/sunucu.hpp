@@ -158,6 +158,9 @@ struct Ayar {
     // Yalnız sınama: her fizik sınırının başında (dünya iş parçacığı), A3 komutları çekilmeden
     // önce; hazırlık yoklamalarında ve `a3_bekle`'de `yuklendi` beklemesinde (b = 0) de çağrılır. Sınama komut alıcısına doğrudan istek verebilir.
     std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
+    // Yalnız sınama (W5-K55): sürecin başlangıç emniyet revizyonu. Üretimde 1'dir (A3-K117: süreç başında 1)
+    // ve komut satırı seçeneği yoktur; doyma (0xFFFFFFFF) davranışını sınamak için yükseltilir. 0 geçersizdir.
+    std::uint32_t sinama_ilk_emniyet_rev = 1;
     // Yalnız sınama: A1 bayt akışı (sim → karşı taraf: true; karşı taraf → sim: false).
     std::function<void(bool sim_giden, const std::uint8_t* p, std::size_t n)> a1_bayt_kancasi;
     // Yalnız sınama (W4-K28 (3)): sim tarafının A1 taşımasını sarmalar (ör. kısmi yazım veren sahte

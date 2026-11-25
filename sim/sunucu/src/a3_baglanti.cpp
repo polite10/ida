@@ -146,6 +146,7 @@ AnlikDurum A3Alici::anlik()
     }
     a.a1_run_id = p.a1_run_id;
     a.durum_rev = p.durum_rev;
+    a.kuruluyor = p.kuruluyor;
     a.emniyet_rev = p.emniyet_rev;
     a.emniyet_rev_doydu = p.emniyet_rev_doydu;
     a.acil_durdurma = p.acil;
@@ -319,6 +320,54 @@ std::size_t A3Alici::genel_dolu() const
     return (s + halka_.size() - b) % halka_.size();
 }
 
+// Çalıştırma denetimi komutunun giriş denetimi (A3-K54, K123, K124; Tablo 4.7a/b). `al` (yetkili; kuyruğa
+// koymadan hemen önce, aynı kilit altında) ve `on_denetim` (W5-K57) aynı işlevi kullanır.
+std::optional<AlimSonucu> A3Alici::calistirma_denetle_(const Komut& k, const AnlikDurum& a) const
+{
+    // A3-K123: eşzamanlı denetim; dünya uygulamada aynı atomik adımda yeniden denetler.
+    if (k.beklenen_durum_rev != a.durum_rev) {
+        return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil (A3-K123)",
+                   "{\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}");
+    }
+    const bool run_uyar = a.run_id.has_value() == k.beklenen_run_id.has_value() &&
+                          (!a.run_id || *a.run_id == *k.beklenen_run_id);
+    if (!run_uyar) {
+        std::string ay = "{\"guncel_run_id\":" + (a.run_id ? json_metin(*a.run_id) : std::string("null")) +
+                         ",\"guncel_durum\":" + json_metin(durum_adi(a.durum)) +
+                         ",\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}";
+        return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil (A3-K54, K124)", ay);
+    }
+    if (!gecis_gecerli(a.durum, k.tur)) {
+        return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
+    }
+    if (k.tur == KomutTuru::calistirma_baslat && a.kuruluyor) {
+        // W5-K58: `sifirla`/`senaryo/yukle` kabul edildi, yeni dünya henüz kurulmadı. Durum `yuklendi` görünür
+        // ama yüklü senaryo yoktur (özet null); eski özeti görmüş bir istemci, görmediği senaryoyu başlatamaz.
+        return ret("gecersiz_durum", "dünya yeniden kuruluyor; baslat kuruluş bitince kabul edilir (W5-K58)");
+    }
+    if (hil_ && (k.tur == KomutTuru::calistirma_hiz || k.tur == KomutTuru::calistirma_adimla)) {
+        return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
+    }
+    if (hil_ && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
+        // Tablo 4.7b: HIL'de duraklatma çalıştırmayı geçersiz kılar (A1-K41, K79); onay ister.
+        return ret("onay_gerekli", "HIL'de duraklatma çalıştırmayı geçersiz kılar: gecersizligi_onayla gerekli (Tablo 4.7b)");
+    }
+    if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
+        return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
+    }
+    return std::nullopt;
+}
+
+// W5-K57: çalıştırma denetimi türündeki komutun (`senaryo/yukle` dahil) ön denetimi; kuyruğa koymaz.
+std::optional<AlimSonucu> A3Alici::on_denetim(const Komut& k)
+{
+    if (!calistirma_mi(k.tur)) {
+        return std::nullopt;
+    }
+    std::lock_guard<std::mutex> kl(uretici_m_);
+    return calistirma_denetle_(k, anlik());
+}
+
 AlimSonucu A3Alici::al(const Komut& k)
 {
     // EMNİYET (W4-K28 (3)): görüntünün okunması, denetim ve kuyruğa koyma tek kilit altında
@@ -334,26 +383,8 @@ AlimSonucu A3Alici::al(const Komut& k)
         return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil (A3-K54, K124)", ay);
     };
     if (calistirma_mi(k.tur)) {
-        // A3-K123: eşzamanlı denetim; dünya uygulamada aynı atomik adımda yeniden denetler.
-        if (k.beklenen_durum_rev != a.durum_rev) {
-            return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil (A3-K123)",
-                       "{\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}");
-        }
-        if (!run_uyar) {
-            return run_ret();
-        }
-        if (!gecis_gecerli(a.durum, k.tur)) {
-            return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
-        }
-        if (hil_ && (k.tur == KomutTuru::calistirma_hiz || k.tur == KomutTuru::calistirma_adimla)) {
-            return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
-        }
-        if (hil_ && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
-            // Tablo 4.7b: HIL'de duraklatma çalıştırmayı geçersiz kılar (A1-K41, K79); onay ister.
-            return ret("onay_gerekli", "HIL'de duraklatma çalıştırmayı geçersiz kılar: gecersizligi_onayla gerekli (Tablo 4.7b)");
-        }
-        if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
-            return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
+        if (const std::optional<AlimSonucu> r = calistirma_denetle_(k, a)) {
+            return *r;
         }
         return kuyruga(k, a3b::YiKarsilik{});
     }

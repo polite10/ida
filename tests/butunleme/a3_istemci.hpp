@@ -6,6 +6,7 @@
 
 #include "ida/kopru/tasima.hpp"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -19,6 +20,16 @@ struct FizikOrnegi {
     std::uint64_t adim_no = 0;
     std::int64_t t_ns = 0;
     double derinlik = 0.0;   // govdeler[0].p_n[2]
+};
+
+// emniyet/girdiler (kanal 14) karesi: yetkili sanal girdiler ve revizyon (W5-K58 sınaması).
+struct EmniyetKaresi {
+    std::int64_t t_ns = 0;
+    std::uint8_t acil = 0;                    // 0 serbest, 1 basili
+    std::array<std::uint8_t, 2> fis{0, 0};    // 0 cikarilmis, 1 takili
+    std::array<std::uint8_t, 2> pim{0, 0};
+    std::uint32_t emniyet_rev = 0;
+    std::uint8_t doydu = 0;
 };
 
 // Tek bir HTTP/1.1 isteği (yeni bağlantı, `Connection: close`; W4-K28 E: gerçek kitaplık yolu).
@@ -46,6 +57,7 @@ public:
 
     std::map<std::uint16_t, std::uint64_t> cerceve_sayisi;   // kanal_id → çerçeve
     std::vector<FizikOrnegi> fizik;                          // fizik/durum (kanal 10)
+    std::vector<EmniyetKaresi> emniyet;                      // emniyet/girdiler (kanal 14), geliş sırasıyla
     std::vector<std::string> metinler;                       // metin iletileri (merhaba, abonelik_yaniti, …)
     std::vector<std::string> olaylar;                        // olay kanalının ayrıntıları
     std::vector<std::uint16_t> olay_turleri;

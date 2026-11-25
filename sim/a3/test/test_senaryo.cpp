@@ -4,6 +4,8 @@
 // dokunulmadığı) hizmetin çağrı sayaçlarıyla gösterilir.
 #include "test_destek.hpp"
 
+#include <functional>
+
 namespace ida::a3::test {
 
 namespace {
@@ -32,6 +34,7 @@ struct SahteHizmet final : SenaryoHizmeti {
     bool cozumlenmis_var = true;
     YuklemeSonucu bekle_sonucu{YuklemeSonucu::Tur::uygulandi, {}, {}};
     std::map<std::string, std::string> raporlar;
+    std::function<void()> hazirla_kancasi;   // hazirla'nın başında (ön denetimle `al` arasında durum değiştirmek için)
 
     std::vector<SenaryoDosyasi> listele() override
     {
@@ -83,6 +86,9 @@ struct SahteHizmet final : SenaryoHizmeti {
     SenaryoAdayi hazirla(const SenaryoGirdisi& g) override
     {
         ++hazirla_n;
+        if (hazirla_kancasi) {
+            hazirla_kancasi();
+        }
         SenaryoAdayi a;
         std::string icerik = g.icerik;
         if (g.adli) {
@@ -293,9 +299,32 @@ int test_senaryo_uclari()
         DOGRULA(d, yukle("\"ad\":\"../x.toml\"", 0).durum == 400, "yükle: kalıp dışı ad 400 (şema)");
         const int once_bekle = h.bekle_n;
         const int once_birak = h.birak_n;
+        // W5-K57: durum ve revizyon denetimi ayrıştırmadan ÖNCE: bayat revizyonlu istek hizmete (ayrıştırmaya) hiç
+        // ulaşmaz; aday hazırlanmadığı için bırakılacak aday da yoktur.
+        const int once_hazirla = h.hazirla_n;
         y = yukle("\"ad\":\"z1.toml\"", 99);
-        DOGRULA(d, y.durum == 409 && y.kod() == "durum_rev_uyusmuyor" && h.bekle_n == once_bekle && h.birak_n == once_birak + 1 && h.son_birakilan == "7",
-                "yükle: bayat durum_rev 409; aday hizmete bırakıldı (atıldı), dünya beklenmedi");
+        DOGRULA(d, y.durum == 409 && y.kod() == "durum_rev_uyusmuyor" && h.bekle_n == once_bekle && h.hazirla_n == once_hazirla && h.birak_n == once_birak,
+                "yükle: bayat durum_rev 409; senaryo hazırlanmadı (ayrıştırma yok), dünya beklenmedi (hazirla +" +
+                    std::to_string(h.hazirla_n - once_hazirla) + ")");
+        y = yukle("\"icerik\":\"BOZUK\"", 99);
+        DOGRULA(d, y.durum == 409 && y.kod() == "durum_rev_uyusmuyor" && h.hazirla_n == once_hazirla,
+                "yükle: bayat durum_rev ve bozuk içerik: 409 (422 değil); içerik ayrıştırılmadı");
+        // Ön denetimden geçen ama `al`'da reddedilen istek (hazırlık sürerken durum değişti): aday hazırlanmıştır
+        // ve hizmete bırakılır (atılır); dünya beklenmez. Yetkili denetim `al`'dadır.
+        h.hazirla_kancasi = [&] {
+            Komut c;
+            c.komut_no = 9999;
+            c.tur = KomutTuru::calistirma_sifirla;
+            c.beklenen_durum_rev = o.dunya.anlik().durum_rev;
+            (void)o.dunya.al(c);
+            o.dunya.adim();   // sifirla uygulanır: durum_rev artar
+        };
+        y = yukle("\"ad\":\"z1.toml\"", 0);
+        h.hazirla_kancasi = nullptr;
+        DOGRULA(d, y.durum == 409 && y.kod() == "durum_rev_uyusmuyor" && h.hazirla_n == once_hazirla + 1 && h.bekle_n == once_bekle &&
+                       h.birak_n == once_birak + 1 && h.son_birakilan == "7",
+                "yükle: hazırlık sırasında bayatlayan istek 409; aday hizmete bırakıldı (atıldı), dünya beklenmedi (" + std::to_string(y.durum) + " " +
+                    y.kod() + ")");
         // Başarı.
         y = yukle("\"ad\":\"z1.toml\"", 0);
         const json::Deger j = y.json_();
@@ -309,6 +338,38 @@ int test_senaryo_uclari()
         h.bekle_sonucu = YuklemeSonucu{YuklemeSonucu::Tur::zaman_asimi, {}, {}};
         y = yukle("\"ad\":\"z1.toml\"", 0);
         DOGRULA(d, y.durum == 503 && y.kod() == "mesgul", "yükle: süre doldu 503 mesgul (nihai sonuç olayla)");
+    }
+    // ---- W5-K57: canlı çalıştırmada doğrula ve yükle ayrıştırma yapmadan 409 gecersiz_durum ----
+    {
+        h.bekle_sonucu = YuklemeSonucu{YuklemeSonucu::Tur::uygulandi, {}, {}};
+        o.dunya.adim();   // önceki bloğun kuyrukta kalan yüklemeleri uygulanır (durum_rev güncellenir)
+        o.dongu();
+        const json::Deger g0 = o.http(istek("GET", "/api/v1/durum")).json_();
+        (void)k.post("/api/v1/calistirma/baslat", "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"beklenen_run_id\":null,\"beklenen_durum_rev\":" +
+                                                     std::to_string(static_cast<std::uint64_t>(g0.bul("durum_rev")->sayi)) + "}");
+        o.dunya.adim();
+        o.dunya.adim();
+        o.dongu();
+        const json::Deger g = o.http(istek("GET", "/api/v1/durum")).json_();
+        const std::string durum = g.bul("durum")->metin;
+        const bool canli = (durum == "hazirlaniyor" || durum == "kosuyor") && g.bul("run_id")->tur == json::Tur::metin;
+        DOGRULA(d, canli, "çalıştırma canlı (" + durum + ")");
+        if (canli) {
+            const int dn = h.dogrula_n;
+            const int hn = h.hazirla_n;
+            const int on = h.oku_n;
+            HttpYanit y = k.post_ham("/api/v1/senaryo/dogrula", yaz_ham_json("ad", "z1.toml"));
+            DOGRULA(d, y.durum == 409 && y.kod() == "gecersiz_durum", "canlı: doğrula {ad} 409 gecersiz_durum (" + std::to_string(y.durum) + ")");
+            y = k.post_ham("/api/v1/senaryo/dogrula", yaz_ham_json("icerik", "BOZUK"));
+            DOGRULA(d, y.durum == 409 && y.kod() == "gecersiz_durum", "canlı: doğrula {icerik} 409 gecersiz_durum (" + std::to_string(y.durum) + ")");
+            const std::string bas = "{\"istek_kimligi\":\"" + k.kimlik() + "\",\"beklenen_run_id\":\"" + g.bul("run_id")->metin +
+                                    "\",\"beklenen_durum_rev\":" + std::to_string(static_cast<std::uint64_t>(g.bul("durum_rev")->sayi)) + ",";
+            y = k.post("/api/v1/senaryo/yukle", bas + "\"icerik\":\"BOZUK\"}");
+            DOGRULA(d, y.durum == 409 && y.kod() == "gecersiz_durum", "canlı: yükle (bozuk içerik) 409 gecersiz_durum (" + std::to_string(y.durum) + " " + y.kod() + ")");
+            DOGRULA(d, h.dogrula_n == dn && h.hazirla_n == hn && h.oku_n == on,
+                    "canlı çalıştırmada hizmete (dosya okuma, ayrıştırma) hiçbir istek ulaşmadı (doğrula +" + std::to_string(h.dogrula_n - dn) +
+                        ", hazırla +" + std::to_string(h.hazirla_n - hn) + ")");
+        }
     }
     return d.hata;
 }

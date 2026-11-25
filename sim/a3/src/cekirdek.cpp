@@ -1577,6 +1577,13 @@ struct Cekirdek::Ic {
         if (!senaryo_hizmeti_var(b)) {
             return;
         }
+        // W5-K57 (EMNİYET; A3-K76'dan bilinçli sapma, mimar kararı): canlı çalıştırmada senaryo ayrıştırılmaz.
+        // Tek G/Ç iş parçacığında uzun bir gövde çözümü ve A5 ayrıştırması, o sırada gelen acil durdurma
+        // isteğinin okunmasını geciktirir; istek gövdesi çözülmeden reddedilir.
+        if (canli(alici.anlik().durum)) {
+            yaz(b, ret("gecersiz_durum", "canlı çalıştırmada senaryo doğrulanmaz (W5-K57); çalıştırma bitince yeniden deneyin"));
+            return;
+        }
         json::Deger g;
         if (auto hata = govde_coz(b, "istek_senaryo_dogrula", g, 0)) {
             yaz(b, *hata);
@@ -1642,10 +1649,22 @@ struct Cekirdek::Ic {
 
     // A3-K77: senkron yükleme. Doğrulama burada (G/Ç iş parçacığı), uygulama dünyada; yanıt dünya
     // yeni senaryoyu kurup durum `yuklendi` olduktan sonra gelir. Dünya bu sırada G/Ç'yi beklemez.
+    // W5-K57 (EMNİYET): durum, run_id ve durum revizyonu denetimi ayrıştırmadan ÖNCE yapılır (alıcının ön
+    // denetimi; `al` ile aynı kurallar). Reddedilecek istek (canlı çalıştırma, bayat revizyon) dosyayı
+    // okutmaz ve A5 ayrıştırmasını çalıştırmaz: G/Ç iş parçacığı acil durdurma isteğini okumaktan alıkonmaz.
     Yanit senaryo_yukle(const json::Deger& g, std::uint32_t istemci, std::uint32_t no)
     {
         if (ayar.senaryo == nullptr) {
             return ret("bulunamadi", "bu uç bu sürümde uygulanmadı (senaryo hizmeti yok)", {}, no);
+        }
+        Komut k;
+        k.tur = KomutTuru::senaryo_yukle;
+        k.komut_no = no;
+        k.istemci_id = istemci;
+        k.beklenen_run_id = run_id_al(g);
+        k.beklenen_durum_rev = static_cast<std::uint64_t>(g.bul("beklenen_durum_rev")->sayi);
+        if (const std::optional<AlimSonucu> on = alici.on_denetim(k); on && on->tur == AlimSonucu::Tur::ret) {
+            return alim_yaniti(*on, k, no);
         }
         const SenaryoAdayi a = ayar.senaryo->hazirla(senaryo_girdisi(g));
         switch (a.sonuc) {
@@ -1660,12 +1679,7 @@ struct Cekirdek::Ic {
         case SenaryoAdayi::Sonuc::yurutulemez: return ret("gecersiz_deger", a.ileti, {}, no);
         case SenaryoAdayi::Sonuc::hazir: break;
         }
-        Komut k;
-        k.tur = KomutTuru::senaryo_yukle;
-        k.istemci_id = istemci;
-        k.beklenen_run_id = run_id_al(g);
-        k.beklenen_durum_rev = static_cast<std::uint64_t>(g.bul("beklenen_durum_rev")->sayi);
-        k.senaryo_aday = a.aday_id;
+        k.senaryo_aday = a.aday_id;   // yetkili denetim `al`'da yinelenir (hazırlık sırasında durum değişmiş olabilir)
         Yanit y = alici_gonder(k, no);
         if (y.http != 202) {
             ayar.senaryo->aday_birak(a.aday_id);   // reddedildi (revizyon, durum, kuyruk): aday atılır
@@ -3113,8 +3127,14 @@ struct Cekirdek::Ic {
                 // W5-a3-senaryo: dünya sıfırlandı ya da yeni senaryo yüklendi (`yuklendi`ye dönüş). Önceki
                 // çalıştırmanın son değerleri, yeni dünyanın üstüne tam durum olarak (abonelik, yeniden bağlanma)
                 // gönderilmez: yalnız `calistirma/durum` kalır; öteki kanallar yeni dünya yayınlayınca dolar.
-                for (auto it = son.begin(); it != son.end();) {
-                    it = it->first.kanal == idx_calistirma ? std::next(it) : son.erase(it);
+                // W5-K58: yalnız kare bırakılır, üretim sayacı korunur. Sayaç da silinirse yeni dünyanın ilk
+                // kareleri (üretim 1, 2, …) zaten abone olan bağlantının `gonderilen` değerinden küçük kalır ve
+                // sayaç eski değeri aşana dek o bağlantıya hiç gönderilmez: panel önceki dünyanın son karesini
+                // (ör. basılı acil durdurma) göstermeyi sürdürürdü. Kare sırası (A3-K27) da geri dönmez.
+                for (auto& [anahtar, deger] : son) {
+                    if (anahtar.kanal != idx_calistirma) {
+                        deger.kare.reset();
+                    }
                 }
             }
             return;

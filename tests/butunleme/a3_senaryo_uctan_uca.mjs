@@ -75,10 +75,13 @@ try {
   const http = b.http;
   await http.istemciKaydet('a3_senaryo_uctan_uca');
   const durum = () => http.durum();
+  // `yuklendi`, yeni dünyanın kuruluşu bitince sayılır: geçiş penceresinde durum `yuklendi` ama senaryo özeti
+  // null'dır ve `baslat` reddedilir (W5-K58).
   const durumBekle = (ad) => bekle(async () => false, 1, 'x').catch(() => {}).then(async () => {
     const son = Date.now() + 120000;
     while (Date.now() < son) {
-      if ((await durum()).durum === ad) return true;
+      const d = await durum();
+      if (d.durum === ad && (ad !== 'yuklendi' || typeof d.senaryo_ozeti === 'string')) return true;
       await new Promise((c) => setTimeout(c, 5));
     }
     return false;
@@ -137,9 +140,10 @@ try {
   await kontrol('hiz', { carpan: 1 });
   await kontrol('durdur');
   dogrula(await durumBekle('durduruldu'), 'durdur → durduruldu');
-  await new Promise((c) => setTimeout(c, 300));
-  dogrula((await durum()).durum === 'durduruldu', 'durduruldu sonrası süreç açık, GET /durum yanıt veriyor');
+  // Olayla beklenir (W5-K43): dünya durdu, kapanışını bitirdi ve süreklilik beklemesine girdi (stderr satırı).
+  // Süreç bu noktadan sonra da açıktır ve yanıt verir.
   await bostaBekle(3);
+  dogrula((await durum()).durum === 'durduruldu', 'durduruldu sonrası süreç açık (süreklilik beklemesinde), GET /durum yanıt veriyor');
   await kontrol('sifirla');
   dogrula(await durumBekle('yuklendi'), 'durduruldu → sıfırla → yuklendi');
   await kontrol('baslat');
