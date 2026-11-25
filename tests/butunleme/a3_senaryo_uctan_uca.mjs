@@ -137,7 +137,16 @@ try {
   await durumBekle('yuklendi');
   await kontrol('baslat');
   await durumBekle('kosuyor');
-  await kontrol('hiz', { carpan: 1 });
+  // W5-K66: `hiz` kuyruğa girer ve dünya onu uygularken `durum_rev` artar (A3-K122). Uygulanmadan alınan bir
+  // görüntüyle gönderilen `durdur` durum_rev_uyusmuyor ile reddedilirdi (yavaş koşuda, ASan'da görünür):
+  // `hiz`ın gönderildiği görüntüden sonra revizyonun arttığı görülene dek beklenir.
+  const dHiz = await durum();
+  await http.calistirma('hiz', { run_id: dHiz.run_id, durum_rev: dHiz.durum_rev }, { carpan: 1 });
+  const hizSon = Date.now() + 60000;
+  while ((await durum()).durum_rev <= dHiz.durum_rev) {
+    if (Date.now() > hizSon) throw new Error('zaman aşımı: hiz uygulandı (durum_rev artmadı)');
+    await new Promise((c) => setTimeout(c, 5));
+  }
   await kontrol('durdur');
   dogrula(await durumBekle('durduruldu'), 'durdur → durduruldu');
   // Olayla beklenir (W5-K43): dünya durdu, kapanışını bitirdi ve süreklilik beklemesine girdi (stderr satırı).
