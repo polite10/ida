@@ -95,5 +95,47 @@ func _init() -> void:
 	for yy in [y, y2, y3, y4]:
 		yy.temizle()
 
+	# W5-viz-gorsel: karo kaplaması yalnız havuz kabuğuna (havuz_ornek) giyer. `acik_su_sonar/deniz_ornek`
+	# aynı havuz_beton malzemesini kullanır ama 100 m × 100 m açık deniz tabanıdır: düz kalır. Karo dokusu
+	# bir kez üretilir; ikinci yükleyici aynı doku nesnesini kullanır.
+	var kume := sema.get_base_dir()
+	var yh1 = Yukleyici.new()
+	var rh1: Array = yh1.yukle(kume.path_join("havuz/manifest.json"), "", sema)
+	denetle(rh1[0] == 0, "havuz kümesi yüklenir (durum %d, %s)" % [rh1[0], yh1.son_neden])
+	var karolu_h1 := _karolu_malzemeler(yh1)
+	denetle(karolu_h1.size() >= 1, "havuz kümesinde karo kaplı malzeme var (%d)" % karolu_h1.size())
+	var ys = Yukleyici.new()
+	var rs: Array = ys.yukle(kume.path_join("acik_su_sonar/manifest.json"), "", sema)
+	denetle(rs[0] == 0, "acik_su_sonar kümesi yüklenir (durum %d, %s)" % [rs[0], ys.son_neden])
+	denetle(_karolu_malzemeler(ys).is_empty(), "acik_su_sonar deniz tabanına havuz karosu giydirilmez")
+	var yh2 = Yukleyici.new()
+	var rh2: Array = yh2.yukle(kume.path_join("havuz/manifest.json"), "", sema)
+	var karolu_h2 := _karolu_malzemeler(yh2)
+	denetle(rh2[0] == 0 and karolu_h1.size() >= 1 and karolu_h2.size() >= 1
+		and karolu_h1[0].albedo_texture == karolu_h2[0].albedo_texture,
+		"karo dokusu önbellekte: ikinci yükleyici aynı doku nesnesini kullanır")
+	for yy in [yh1, yh2, ys]:
+		yy.temizle()
+	Yukleyici.karo_onbellegini_birak()
+
 	print("varlik_testi: %d denetim, %d başarısız" % [_denetim, _hata])
 	quit(0 if _hata == 0 else 1)
+
+
+## Yükleyicinin şablonlarındaki karo kaplı (dünya uzayında üç düzlemli dokulu) malzemeler.
+func _karolu_malzemeler(y) -> Array:
+	var sonuc := []
+	for v in y.varliklar:
+		_karolu_topla(v["sablon"], sonuc)
+	return sonuc
+
+
+func _karolu_topla(n: Node, sonuc: Array) -> void:
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh:
+		var ag: Mesh = (n as MeshInstance3D).mesh
+		for i in ag.get_surface_count():
+			var m := ag.surface_get_material(i) as StandardMaterial3D
+			if m != null and m.uv1_triplanar and m.albedo_texture != null:
+				sonuc.append(m)
+	for c in n.get_children():
+		_karolu_topla(c, sonuc)

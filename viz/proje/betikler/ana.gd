@@ -12,7 +12,8 @@ extends Node
 ##   --sahte                     pencerede "SAHTE VERİ" etiketi (sahte A2 kaynağıyla çalışırken)
 ##   --ekran-goruntusu=<dizin>   senaryonun belirli anlarında ekran görüntüsü kaydet
 ##   --ekran-plani=<t:ad:sapma:egim:uzak;...>  ekran görüntüsü anları (sim zamanı s, ad, yörünge sapma°,
-##                               eğim°, uzaklık m); verilmezse sahte senaryonun çizelgesi. Son andan 1 s sonra çıkılır.
+##                               eğim°, uzaklık m); verilmezse sahte senaryonun çizelgesi. t'ye göre sıralanır, bozuk öğe
+##                               atlanır ve uyarı yazılır; en büyük t'den 1 s sonra çıkılır (--ekran-goruntusu yoksa görüntü alınmaz).
 ##   --olcum=<dosya.json>        kare süresi ölçümünü yaz ve senaryo bitince çık
 ##   --max-fps=<n>               kare sınırı (0 = sınırsız; ölçümde 120 fps sınırı kare süresini maskeler)
 
@@ -92,7 +93,7 @@ func _ready() -> void:
 	a2.baglanti_degisti.connect(func(d, ayr): print("ida-viz: bağlantı: ", d, " ", ayr))
 	su.kur(a2, kademe)
 	_kademe_uygula()
-	if _goruntu_dizini != "" or _olcum_dosyasi != "":
+	if _goruntu_dizini != "" or _olcum_dosyasi != "" or _plan_arg != "":
 		_plan_hazirla()
 	RenderingServer.viewport_set_measure_render_time(gorus.get_viewport_rid(), true)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
@@ -102,6 +103,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	# Ağaç dışında tutulan varlık şablonları (sızıntı uyarısı olmasın).
 	yukleyici.temizle()
+	Yukleyici.karo_onbellegini_birak()   # statik karo dokusu (yükleyici örnekleri arasında paylaşılır)
 
 
 func _notification(what: int) -> void:
@@ -204,8 +206,10 @@ func _sifir_mu(a) -> bool:
 
 ## A5-K101: senaryo su optiğini ve ortam ışığını vermezse sim 0 yazar ("kalibre edilmedi", berrak su);
 ## A2 bunu aynen taşır. 0 katsayılı su görüntüde siyah arka plan ve ışıksız sahne demektir; senaryo
-## yazarı değer vermelidir (A5-K101). Vermediyse görselleştirici KENDİ görsel varsayılanını kullanır
-## (yalnız çizim; fiziğe ve sensörlere dokunmaz) ve bunu günlüğe yazar. W5-K60: sözleşme değişmez.
+## yazarı değer vermelidir (A5-K101). A2 `Ortam` "senaryo bilerek 0 verdi" ile "kalibre edilmedi"
+## durumlarını ayırmaz; görselleştirici sıfır gelen değeri "verilmedi" sayar ve KENDİ görsel
+## varsayılanını kullanır (yalnız çizim; fiziğe ve sensörlere dokunmaz), bunu günlüğe yazar.
+## Açıkça verilmiş 0 (berrak su, karanlık sahne) bu yüzden çizilemez. W5-K60: sözleşme değişmez.
 func _etkin_ortam(o: Dictionary) -> Dictionary:
 	var e := o.duplicate()
 	var notlar := []
@@ -213,10 +217,10 @@ func _etkin_ortam(o: Dictionary) -> Dictionary:
 		e["beta_d"] = GORSEL_BETA_D
 		e["beta_b"] = GORSEL_BETA_B
 		e["b_sonsuz"] = GORSEL_B_SONSUZ
-		notlar.append("su optiği (senaryo vermedi: A5-K101)")
+		notlar.append("su optiği (sıfır geldi; verilmemiş sayıldı, görsel varsayılan kullanılıyor)")
 	if _sifir_mu(o.get("ortam_isigi")):
 		e["ortam_isigi"] = GORSEL_ORTAM_ISIGI
-		notlar.append("ortam ışığı (senaryo vermedi: A5-K101)")
+		notlar.append("ortam ışığı (sıfır geldi; verilmemiş sayıldı, görsel varsayılan kullanılıyor)")
 	if not o.is_empty() and not notlar.is_empty() and _varsayilan_notu != str(notlar):
 		_varsayilan_notu = str(notlar)
 		print("ida-viz: görsel varsayılan kullanıldı: ", ", ".join(notlar))
@@ -421,11 +425,20 @@ func _unhandled_input(olay: InputEvent) -> void:
 func _plan_hazirla() -> void:
 	# [sim zamanı (s), ad, yörünge sapma°, eğim°, uzaklık m]; zamanlar sahte senaryonun çizelgesi.
 	if _plan_arg != "":
+		# Biçim t:ad:sapma:egim:uzak (sayılar ondalık nokta ile). Bozuk öğe atlanır ve günlüğe yazılır;
+		# öğeler t'ye göre sıralanır (_otomasyon yalnız baştaki öğeye bakar), çıkış en geç t + 1 s'de.
 		for oge in _plan_arg.split(";", false):
 			var a := oge.split(":")
-			if a.size() == 5:
-				_plan.append([float(a[0]), a[1], float(a[2]), float(a[3]), float(a[4])])
-				_bitis_t = float(a[0]) + 1.0
+			if a.size() != 5 or a[1] == "" or not (a[0].is_valid_float() and a[2].is_valid_float()
+					and a[3].is_valid_float() and a[4].is_valid_float()):
+				push_warning("ida-viz: --ekran-plani öğesi atlandı (beklenen t:ad:sapma:egim:uzak): '%s'" % oge)
+				continue
+			_plan.append([float(a[0]), a[1], float(a[2]), float(a[3]), float(a[4])])
+		_plan.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+		if _plan.is_empty():
+			push_warning("ida-viz: --ekran-plani'ndan geçerli öğe çıkmadı; ekran görüntüsü alınmayacak")
+		else:
+			_bitis_t = float(_plan[_plan.size() - 1][0]) + 1.0
 		return
 	_plan = [
 		[6.0, "yuzey", -38.0, 13.0, 1.55],
