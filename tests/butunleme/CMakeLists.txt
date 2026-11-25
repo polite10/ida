@@ -255,3 +255,59 @@ if(NOT WIN32)
     set_tests_properties(butunleme.sinyal_surec_${_sinyal} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
   endforeach()
 endif()
+
+# W5-bagla-a2 (docs/gorevler/W5-bagla-a2.md kabul 1–5; sim/sunucu/BENIOKU.md "A2"): A2 sunucusunun ida_sim'e
+# bağlanması. Karşı uç gerçek istemcidir (`ida_viz_a2`: viz/a2'nin oturumu ve kodeği); sahte istemci düzeneği
+# (gerçek soket, "damla okuma") sim/a2/test/test_destek.*'ten derlenir (kopyalanmaz). Testler sabit 47210
+# portunu ve gerçek ida/a2.kilit dosyasını kullanmaz (işletim sisteminin verdiği port; kilit geçici dizinde).
+find_package(Threads REQUIRED)
+add_executable(ida_butunleme_a2_test test_a2.cpp "${PROJECT_SOURCE_DIR}/sim/a2/test/test_destek.cpp")
+target_include_directories(ida_butunleme_a2_test PRIVATE
+  "${PROJECT_SOURCE_DIR}/sim/a2/test" "${PROJECT_SOURCE_DIR}/sim/a2/src")
+target_compile_definitions(ida_butunleme_a2_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
+target_link_libraries(ida_butunleme_a2_test PRIVATE ida_sunucu ida_a2_sahte_dunya ida_viz_a2 Threads::Threads)
+ida_ayar_uygula(ida_butunleme_a2_test)
+if(NOT MSVC)
+  target_compile_options(ida_butunleme_a2_test PRIVATE -Wshadow)
+endif()
+foreach(_ad a2_varsayilan a2_belirlenim a2_uctan_uca a2_duraklat a2_kapanis sil_hiz)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_a2_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+if(NOT WIN32)
+  # Kabul 2 (ölçüm): kartsız HIL 1x (sözde uçbirim, POSIX), iki kez 12 s; zamanlamaya duyarlı.
+  add_test(NAME butunleme.a2_hil_donuk COMMAND ida_butunleme_a2_test a2_hil_donuk)
+  set_tests_properties(butunleme.a2_hil_donuk PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+endif()
+# ida_sim süreç olarak: seçenekler ve kapanış özet satırı (kapsam 6).
+add_test(NAME butunleme.ida_sim_a2_port_gecersiz
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port 1024–65535"
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-port;80;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_a2_yerlesik_senaryo
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--a2-port senaryo dosyası ister"
+          "-DARGUMANLAR=--a2-port;47999;--sure;1" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_sil_hiz_hil
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--sil-hiz yalnız SIL"
+          "-DARGUMANLAR=--senaryo;scenarios/z1-hil.toml;--karsi;pty;--sil-hiz;1;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# A2 açık (boş port, geçici kilit), istemci yok: koşu düzgün; özet satırında A2 durumu ve sayaçları `oturum`
+# alanından önce; var olan alanlar yerinde.
+add_test(NAME butunleme.ida_sim_a2_ozet
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-sinama-bos-port;--a2-sinama-kilit;${CMAKE_CURRENT_BINARY_DIR}/a2_ozet/a2.kilit;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETILER=ida_sim: kapanış: düzgün|sonar taşma (kuyruk 0, teslim 0, tampon 0), A2 dinliyor (port |bağlantı 0, biten oturum 0, son kopma yok|yayın: sınır 72000, düşen durum 0, kayıp 0, olay taşması 0, geçersiz çağrı 0), oturum 2, kapanış yazımı eksik 0, son hata: yok|ida_sim: A2 127.0.0.1:|ida_sim: A2: çalıştırma tanımı verildi"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# A2'siz (kilit dosyası açılamıyor: üst dizin yerine bir dosya): koşu düzgün sürer, özet satırında neden.
+add_test(NAME butunleme.ida_sim_a2siz_ozet
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--a2-sinama-bos-port;--a2-sinama-kilit;${CMAKE_CURRENT_LIST_FILE}/a2.kilit;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETILER=ida_sim: kapanış: düzgün|A2 yok: kilit_acilamadi (|), oturum 2, kapanış yazımı eksik 0, son hata: yok"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# W5-K31: `--a2-port` yokken çıktıda A2 izi yok (özet satırı bu iş öncesiyle aynı biçimde).
+add_test(NAME butunleme.ida_sim_a2_yok_cikti
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0 -DYOK=A2
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETI=sonar taşma (kuyruk 0, teslim 0, tampon 0), oturum 2, kapanış yazımı eksik 0, son hata: yok"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_a2_ozet butunleme.ida_sim_a2siz_ozet butunleme.ida_sim_a2_yok_cikti PROPERTIES TIMEOUT 600)
