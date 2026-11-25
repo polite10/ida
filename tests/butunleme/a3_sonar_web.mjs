@@ -72,7 +72,8 @@ try {
   b.olaylar((o) => olaylar.push(o));
   b.baslat();
   await bekle(() => b.bilgi.durum === 'bagli', 5000, 'bağlantı');
-  await bekle(() => b.abonelikSonuclari.size >= 3, 3000, 'abonelik yanıtları');
+  // calistirma/durum zorunlu aboneliktir: istemci onu abone_ol'a koymaz; yanıtlanan kanallar ping360 ve ping1d (2).
+  await bekle(() => b.abonelikSonuclari.size >= 2, 3000, 'abonelik yanıtları');
   for (const [k, y] of b.abonelikSonuclari) dogrula(y.sonuc === 'kabul', `abonelik kabul: ${k}`);
   const http = b.http;
   const sonuc = (no) => olaylar.find((o) => o.tur === 'komut_sonucu' && o.ayrinti?.komut_no === no);
