@@ -1,6 +1,6 @@
 # sim/a2 — A2 sunucusu, sim tarafı (`ida_a2`)
 
-Sim ile görselleştirici (`viz/`) arasındaki A2 bağlantısının sim tarafı (`docs/sozlesmeler/A2-gorsellestirici.md`): yalnız `127.0.0.1`'de tek TCP dinleyicisi, sahiplik kilidi, el sıkışma, durum akışı ve sahne olayları, nabız, kopma ve yeniden bağlanma, çalıştırma nesli. C++20 kitaplığıdır; veri kaynağı soyuttur. Bu dilimde (`docs/gorevler/W5-a2-sunucu.md`) sunucu sahte bir kaynakla sınanır; `ida_sim`'e bağlanması (`--a2-port`, dünya döngüsünden yayın) sonraki dilimdir (W5-bagla-a2).
+Sim ile görselleştirici (`viz/`) arasındaki A2 bağlantısının sim tarafı (`docs/sozlesmeler/A2-gorsellestirici.md`): yalnız `127.0.0.1`'de tek TCP dinleyicisi, sahiplik kilidi, el sıkışma, durum akışı ve sahne olayları, nabız, kopma ve yeniden bağlanma, çalıştırma nesli. C++20 kitaplığıdır; veri kaynağı soyuttur. Bu dilimde (`docs/gorevler/W5-a2-sunucu.md`) sunucu sahte bir kaynakla sınanır; `ida_sim`'e bağlanması (`--a2-port`, dünya döngüsünden yayın) W5-bagla-a2'de yapıldı: bağlama `sim/sunucu/src/a2_baglanti.*`'dedir (`sim/sunucu/BENIOKU.md` "A2 sunucusu").
 
 Bu dilimde **yok**: kamera hattı (kare isteği, kare halkası, paylaşımlı bellek, halka kayıt dosyası), atlama ve gövde tablosu (tekrar izleme), A3'e bildirim. Her oturumda `kamera_sayisi = 0` bildirilir; `kamera_istegi`, `kamera_iptal`, `halka_yenile`, `govde_tablosu` ve `atlama` üretilmez; görselleştiriciden gelen `kare_hazir`, `kare_dustu`, `halka_eslendi` protokol hatasıdır (W5-K30).
 

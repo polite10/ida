@@ -4,6 +4,7 @@
 #include "ida/port.h"
 #include "ida/senaryo/sensor_yukleyici.hpp"
 
+#include <cstdio>
 #include <algorithm>
 #include <cmath>
 
@@ -291,7 +292,7 @@ std::string emniyet_alani(const PlanOlayi& o)
 }
 
 bool plan_kur(const senaryo::DogrulanmisSenaryo& dz, const senaryo::DogrulamaRaporu& rapor, Plan& p,
-              std::string& hata)
+              std::string& hata, double komut_sil_hizi)
 {
     const Deger& k = dz.agac();
     p = Plan{};
@@ -304,8 +305,16 @@ bool plan_kur(const senaryo::DogrulanmisSenaryo& dz, const senaryo::DogrulamaRap
     if (kip == "sil") {
         p.kip = Kip::sil;
         if (!mantik(k.yol_bul("calistirma.sil_azami_hiz")) || sayi(k.yol_bul("calistirma.sil_hiz_carpani"), 1.0) != 1.0) {
-            p.uyarilar.push_back("calistirma.sil_hiz_carpani/sil_azami_hiz uygulanmaz: SIL olabildiğince hızlı koşar "
-                                 "(sonuçları değiştirmez)");
+            if (komut_sil_hizi > 0.0) {
+                // W5-K38: --sil-hiz komut satırı geçersiz kılmasıdır; senaryo alanları yine de uygulanmaz.
+                char hiz[32];
+                std::snprintf(hiz, sizeof hiz, "%g", komut_sil_hizi);
+                p.uyarilar.push_back("calistirma.sil_hiz_carpani/sil_azami_hiz uygulanmaz: hız komut satırındaki "
+                                     "--sil-hiz ile belirlenir (" + std::string(hiz) + "x; sonuçları değiştirmez)");
+            } else {
+                p.uyarilar.push_back("calistirma.sil_hiz_carpani/sil_azami_hiz uygulanmaz: SIL olabildiğince hızlı koşar "
+                                     "(sonuçları değiştirmez)");
+            }
         }
     } else if (kip == "hil_1x") {
         p.kip = Kip::hil;

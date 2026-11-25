@@ -1,6 +1,7 @@
 // Başsız sim sunucusu: fizik + sensör kümesi + A1 köprüsü + zaman yöneticisi (sunucu.hpp).
 #include "ida/sunucu/sunucu.hpp"
 
+#include "a2_baglanti.hpp"
 #include "a3_baglanti.hpp"
 #include "ida/a3/kaynak.hpp"
 #include "ida/a3/sunucu.hpp"
@@ -108,14 +109,21 @@ public:
 
     // Sol 4. denetim #1: dış sınırda istisna yakalanır ve Sonuc::hata'ya çevrilir (süreç
     // std::terminate ile düşmez); oturum açıksa kapanışı kos_ic'teki koruyucu yapmıştır.
+    // W5-bagla-a2: A2 sunucusu her çıkışta (olağan, hata, sinyal, istisna) burada, tek yerde
+    // kapanır: kos_ic döndükten, yani dünya döngüsü bittikten ve A1 kapanışı (olağan bitiş, erken
+    // kapanış ya da kapanış koruyucusu) tamamlandıktan sonra. İkinci bir kapanış yolu değildir;
+    // A1 kapanışını geciktirmez.
     Sonuc kos() noexcept
     {
         try {
-            return kos_ic();
+            Sonuc r = kos_ic();
+            a2_kapat(r);
+            return r;
         } catch (const std::exception& e) {
             try {
                 s_.hata = std::string("istisna: ") + e.what();
                 s_.tamam = false;
+                a2_kapat(s_);
                 return s_;
             } catch (...) {
                 return Sonuc{};
@@ -124,6 +132,7 @@ public:
             try {
                 s_.hata = "istisna (bilinmeyen tür)";
                 s_.tamam = false;
+                a2_kapat(s_);
                 return s_;
             } catch (...) {
                 return Sonuc{};
@@ -571,6 +580,11 @@ private:
     template <typename F>
     void a3_olc(F&& f);
 
+    // ---- A2 (W5-bagla-a2) ----
+    bool a2_baslat();
+    void a2_kapat(Sonuc& r) noexcept;
+    void sil_hiz_bekle(std::uint64_t b);
+
     Ayar a_;
     Sonuc s_;
     Plan plan_;
@@ -688,6 +702,14 @@ private:
     // Bir duraklatmada köprüye verilen (tele kip kalkınca çıkacak) emniyet dışı yer istasyonu komutu.
     std::size_t duran_yi_verilen_ = 0;
     static constexpr std::size_t kDuranYiAzami = 256;   // A3-K59'un kuyruk boyu (mimari seçimi)
+
+    // ---- A2 (W5-bagla-a2) ----
+    // null: A2 kapalı (W5-K31: `--a2-port` yok, görünüm kapalı ya da tanım kurulamadı) → bugünkü
+    // davranış. Dolu ama A2'siz (kilit/port alınamadı) olabilir: yayın çağrıları hemen döner.
+    std::unique_ptr<A2Baglanti> a2_;
+    a2b::Tanim a2_tanim_;                         // senaryodan (dosya_plani)
+    a2b::TanimSonucu a2_tanim_sonucu_ = a2b::TanimSonucu::hata;
+    std::string a2_tanim_hatasi_;
 
     // ---- A3 (W4-bagla-a3) ----
     // W4-K27 (5): dünya tarafındaki A3 depoları A3 başlarken ayrılır; hizmet sırasında bellek
@@ -1242,7 +1264,7 @@ bool Calistirici::dosya_plani()
         return false;
     }
     std::string hata;
-    if (!plan_kur(*cs.cozumlenmis, cs.rapor, plan_, hata)) {
+    if (!plan_kur(*cs.cozumlenmis, cs.rapor, plan_, hata, a_.sil_hiz)) {
         s_.hata = "senaryo bu dilimde yürütülemez: " + hata;
         s_.hata_turu = HataTuru::senaryo_yurutulemez;
         return false;
@@ -1278,6 +1300,12 @@ bool Calistirici::dosya_plani()
             s_.hata_turu = HataTuru::senaryo_yurutulemez;
             return false;
         }
+    }
+    if (a_.a2_acik) {
+        // W5-bagla-a2: çalıştırma tanımının senaryodan gelen kısmı (kademe, A7 manifest yolu ve
+        // özeti, ortam, malzeme optiği); yalnız doğrulanmış senaryodan, çözümleyiciyle aynı kaynaktan.
+        // Kurulamazsa koşu A2'siz sürer (a2_baslat).
+        a2_tanim_sonucu_ = a2b::tanim_kur(*cs.cozumlenmis, cs.rapor, *kaynak, a_.depo_koku, a2_tanim_, a2_tanim_hatasi_);
     }
     auto kullanim = [&](const std::string& m) {
         s_.hata = m;
@@ -2402,6 +2430,9 @@ void Calistirici::a3_anlik_guncelle()
     p.gecerlilik_nedenleri = a3_gecerlilik_;
     p.durum_rev = a3d_.durum_rev;
     p.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar: 0 kapali, 1 sade
+    // W5-bagla-a2: yalnız A2 gerçekten dinliyorken senaryonun kademesi; nesne var ama dinlemiyorsa
+    // (kilit başkasında, port dolu, tanım yok) görünüm kapalıdır: 0.
+    p.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
     if (k_) {
         const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
         p.emniyet_rev = e.emniyet_revizyonu;
@@ -2424,6 +2455,64 @@ void Calistirici::a3_anlik_guncelle()
     p.son_degisim_adimi = a3_son_degisim_adimi_;
     a3al_->anlik_yaz(p);
     a3_anlik_kirli_ = false;
+}
+
+// W5-bagla-a2 (W5-K31): A2 sunucusunun başlatılması. false: koşu başlamaz (A2-K93: geçersiz port).
+// Görünüm kademesi kapalıysa (A2-K02) ya da çalıştırma tanımı kurulamadıysa dinleyici açılmaz, kilit
+// alınmaz ve neden tek satır yazılır; kilit ya da port alınamazsa koşu A2'siz sürer (A2-K05, K79).
+bool Calistirici::a2_baslat()
+{
+    if (a2_tanim_sonucu_ == a2b::TanimSonucu::gorunum_kapali) {
+        s_.a2.durum = "gorunum_kapali";
+        s_.a2.aciklama = "kalite.gorunum = kapali";
+        gunluk(1, "A2: kalite.gorunum = \"kapali\"; dinleyici açılmadı (A2-K02)");
+        return true;
+    }
+    if (a2_tanim_sonucu_ != a2b::TanimSonucu::tamam) {
+        s_.a2.durum = "tanim_yok";
+        s_.a2.aciklama = a2_tanim_hatasi_;
+        gunluk(1, "A2: çalıştırma tanımı kurulamadı (" + a2_tanim_hatasi_ + "); A2'siz çalışılıyor");
+        return true;
+    }
+    A2BaglantiAyari ba;
+    ba.port = a_.a2_port;
+    ba.sinama_bos_port = a_.a2_sinama_bos_port;
+    ba.kilit_dosyasi = a_.a2_kilit_dosyasi;
+    ba.gonderme_kuyrugu_bayt = a_.a2_gonderme_kuyrugu_bayt;
+    const int gunluk_duzeyi = a_.gunluk;
+    // Sunucunun günlüğü (G/Ç iş parçacığından da çağrılır; dünya iş parçacığından çağrılmaz).
+    ba.gunluk = [gunluk_duzeyi](std::string_view m) {
+        if (gunluk_duzeyi >= 1) {
+            std::fprintf(stderr, "ida_sim: %.*s\n", static_cast<int>(m.size()), m.data());
+        }
+    };
+    s_.a2.kademe = static_cast<std::uint8_t>(a2_tanim_.kademe);
+    std::string hata;
+    a2_ = A2Baglanti::baslat(ba, a2_tanim_, hata);
+    if (!a2_) {
+        s_.hata = hata;
+        s_.hata_turu = HataTuru::kullanim;
+        return false;
+    }
+    s_.a2.durum = a2_->durum_adi();
+    s_.a2.aciklama = a2_->aciklama();
+    s_.a2.port = a2_->port();
+    if (a2_->dinliyor()) {
+        gunluk(1, a2_->aciklama());   // A2'sizken nedeni sunucu kendi günlüğüne yazdı (tek satır)
+    }
+    if (a_.a2_hazir) {
+        a_.a2_hazir(a2_->port(), a2_->dinliyor());
+    }
+    return true;
+}
+
+// Koşunun her çıkışında (kos): çalıştırma bitti → `calistirma_durdu()`; süreç kapanıyor →
+// `kapaniyor()` + `durdur()`. Durum ve sayaçlar döndürülen sonuca yazılır.
+void Calistirici::a2_kapat(Sonuc& r) noexcept
+{
+    if (a2_) {
+        a2_->kapat(r.a2);
+    }
 }
 
 bool Calistirici::a3_baslat()
@@ -2706,12 +2795,21 @@ bool Calistirici::a3_sinir_basi(std::uint64_t b, bool duran)
     if (a3_durdur_) {
         return false;
     }
-    if (!duran && a_.kip == Kip::sil && hiz_ > 0.0 && b % kopru::kPeriyotAdim == 0) {
-        // A3-K66: SIL hız çarpanı (yalnız bekleme; bayt akışı ve CSV değişmez).
+    if (!duran) {
+        sil_hiz_bekle(b);
+    }
+    return true;
+}
+
+// A3-K66: SIL hız çarpanı (yalnız bekleme; bayt akışı ve CSV değişmez). Yalnız ilerleyen turda, kontrol
+// sınırlarında; çarpan 0 iken (varsayılan) hiçbir şey yapmaz. Çarpanın kaynağı panelin
+// `calistirma/hiz` komutu ya da `--sil-hiz`'dir (W5-bagla-a2).
+void Calistirici::sil_hiz_bekle(std::uint64_t b)
+{
+    if (a_.kip == Kip::sil && hiz_ > 0.0 && b % kopru::kPeriyotAdim == 0) {
         const double ns = static_cast<double>(static_cast<std::int64_t>(b) * kH - hiz_t0_sim_) / hiz_;
         a3::hassas_bekle(hiz_t0_duvar_ + std::chrono::nanoseconds(static_cast<std::int64_t>(ns)));
     }
-    return true;
 }
 
 // Operatör emniyet isteklerinin sonuçları ve emniyet olayları (sınırda).
@@ -3285,7 +3383,9 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.gercek_zamani_kacirdi = a3_rt_kacirdi_ ? 1u : 0u;
     c.gecerlilik_nedenleri = a3_gecerlilik_;
     c.tekrar_guvencesi = 0;   // kayıt (A6) yok: güvence yok
-    c.kademe_gorunum = 0;
+    // W5-bagla-a2: A2 gerçekten dinliyorsa senaryonun görünüm kademesi (A3 §3.4: 0 kapali, 1 sade,
+    // 2 tam); bayrak yoksa ya da A2 açılamadıysa (kilit başkasında, port dolu, tanım yok) 0.
+    c.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
     c.kademe_kamera = 0;
     c.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar (A3 §3.4: 0 kapali, 1 sade)
     c.kademe_kayit = 0;
@@ -3734,6 +3834,9 @@ bool Calistirici::sinir_turu(std::uint64_t b, bool duran)
     if (yay_ != nullptr && !a3_sinir_basi(b, duran)) {
         return false;
     }
+    if (yay_ == nullptr && !duran) {
+        sil_hiz_bekle(b);   // --sil-hiz, A3 kapalıyken (A3 açıkken a3_sinir_basi'nde; aynı işlev)
+    }
     if (a_.kip == Kip::sil) {
         if (duran) {
             // SIL duran kip: sim zamanı ve kilitli adım donuk; alım kuyruğu köprüye yalnız sim'in
@@ -3844,6 +3947,16 @@ bool Calistirici::sinir_turu(std::uint64_t b, bool duran)
         a3_yayinla(b, duran);
         s_.a3_sinir_en_kotu_ns = std::max(s_.a3_sinir_en_kotu_ns, a3_sinir_ns_);
     }
+    if (a2_ && !duran) {
+        // W5-bagla-a2: A2 yayın noktası (A2-K20–K23). Turun SON işidir: A3 emniyet istekleri ve
+        // köprünün emniyet işlemleri (sinir_on → A1-K85), acil durdurma engeli, itici komutu, sensör
+        // ve sonar adımı, parti kapanışı ve yazımı, yuva beklemesi, SIL'in kısıtlayan erken uygulaması
+        // ve A3 yayını bu satırdan ÖNCE tamamlanmıştır; hiçbiri bu çağrıya bağlı değildir. Yalnız
+        // ilerleyen turda ve sınır başına bir kez (duran turlarda durum gitmez: A2-K24). Durum sınır
+        // b'nindir (dn_.durum().adim_no = b; CSV satırı ve A3 fizik/durum ile aynı an), fizik adımı
+        // b'den önce. Çağrı engellemez, kilit almaz, bellek ayırmaz, G/Ç yapmaz (A2-K47).
+        a2_->adim_siniri(dn_.durum());
+    }
     return true;
 }
 
@@ -3863,12 +3976,18 @@ bool Calistirici::duraklatma_gecisi(std::uint64_t b, bool duran)
             duraklama_duvar_ = gercek();
             duran_yayin_duvar_ = duraklama_duvar_;
             duran_yi_verilen_ = 0;
+            if (a2_) {
+                a2_->duraklat();   // A2-K24: bu turda verilen sınır b'nin durumu, sonra `duraklat` olayı
+            }
             gunluk(2, "duraklatıldı (sınır " + std::to_string(b) + ")");
         }
         return true;
     }
     if (duran) {
         k_->duraklatma_ayarla(false);
+        if (a2_) {
+            a2_->surdur();   // `devam` olayı; akış sınır b + 1'den sürer (adımlamada da)
+        }
         if (a_.kip == Kip::hil) {
             w0_ += gercek() - duraklama_duvar_;
         } else if (hiz_ > 0.0) {
@@ -3905,6 +4024,19 @@ Sonuc Calistirici::kos_ic()
         s_.hata_turu = HataTuru::kullanim;
         return s_;
     }
+    s_.a2.istendi = a_.a2_acik;
+    if (a_.a2_acik && a_.senaryo_dosyasi.empty()) {
+        // W5-bagla-a2: A2 çalıştırma tanımı (A7 varlık kümesi, ortam, görünüm kademesi) senaryodandır;
+        // yerleşik senaryoda tanım yok (uydurulmaz; `--sonar` ile aynı kural).
+        s_.hata = "--a2-port yalnız senaryo dosyasıyla kullanılabilir (varlık kümesi ve ortam senaryonun tanımından)";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
+    if (!(std::isfinite(a_.sil_hiz) && a_.sil_hiz >= 0.0)) {
+        s_.hata = "--sil-hiz sonlu ve ≥ 0 olmalı";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
     if (!a_.senaryo_dosyasi.empty()) {
         if (!dosya_plani()) {
             return s_;
@@ -3932,6 +4064,12 @@ Sonuc Calistirici::kos_ic()
         }
         plan_ = yerlesik_plan(a_);
     }
+    if (a_.sil_hiz > 0.0 && a_.kip != Kip::sil) {
+        s_.hata = "--sil-hiz yalnız SIL kipinde kullanılabilir (HIL duvar saatine kilitlidir)";
+        s_.hata_turu = HataTuru::kullanim;
+        return s_;
+    }
+    hiz_ = a_.sil_hiz;   // SIL hız çarpanının başlangıcı (0: olabildiğince hızlı; A3-K66 ile aynı düzenek)
 
     // ---- Fizik: dosyadan (fizik_kur) ya da yerleşik İDA-0, örnek havuz, düz suda yüzer denge ----
     fizik::OrtamParametreleri ortam;
@@ -3986,6 +4124,11 @@ Sonuc Calistirici::kos_ic()
                          : kopru::parametre_blogu({{"YER_G", ortam.yercekimi}, {"BARO_KAL_D", s_.denge_derinligi_m}});
     if (!pb_.hata.empty()) {
         s_.hata = pb_.hata;
+        return s_;
+    }
+
+    // ---- A2 sunucusu (W5-bagla-a2; W5-K31): yalnız --a2-port verildiyse; süreç ömrünce tutulur ----
+    if (a_.a2_acik && !a2_baslat()) {
         return s_;
     }
 
@@ -4202,6 +4345,15 @@ Sonuc Calistirici::kos_ic()
         tf_gec_.reserve(static_cast<std::size_t>(n_sinir / 4U + 1U));
     }
 
+    if (hiz_ > 0.0) {
+        hiz_t0_duvar_ = Saat::now();   // --sil-hiz: başvuru anı (A3 kapalıyken de)
+    }
+    if (a2_) {
+        // W5-bagla-a2 (A2-K80 (1), K96): yeni çalıştırma; dünya kuruldu, A1 oturumu hazır, ilk fizik
+        // adımından önce. Tanım sınır 0'ın durumunu taşır; ilk `adim_siniri` sınır 1'dedir. Dünya
+        // A2 bağlantısını beklemez (A2-K47): çağrı engellemez.
+        (void)a2_->calistirma_basladi(a_.kip, ortam, dn_.durum(), plan_.dolu);
+    }
     // W4-bagla-sonar: sınır 0'ın sonar adımı (sonrakiler bir önceki fizik adımından hemen sonra).
     const bool sonar_bas = !sonar_ || sonar_onceden(0);
     for (std::uint64_t b = 0; sonar_bas && b <= n_sinir; ++b) {

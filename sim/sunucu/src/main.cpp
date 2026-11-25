@@ -35,6 +35,9 @@ void kullanim()
         "                           adresi standart çıktıya bir kez yazılır (A3-K05)\n"
         "  --a3-kok <dizin>         A3: panellerin derleme çıktısı (web/dist)\n"
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
+        "  --a2-port <port>         A2 sunucusu (görselleştirici; yalnız 127.0.0.1; 1024–65535, A2-K93); yalnız\n"
+        "                           senaryo dosyasıyla; bayrak yoksa A2 açılmaz (kilit alınmaz, port açılmaz)\n"
+        "  --sil-hiz <çarpan>       SIL hız çarpanının başlangıcı (1: gerçek zaman; 0: olabildiğince hızlı, varsayılan)\n"
         "  --sonar[=acik|kapali]    senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
         "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla); değersiz = acik;\n"
         "                           bayrak yoksa kapalı\n"
@@ -64,6 +67,37 @@ bool sayi_ayristir(const std::string& v, double en_az, double en_cok, double& x)
 bool tam_ayristir(const std::string& v, double en_az, double en_cok, double& x)
 {
     return sayi_ayristir(v, en_az, en_cok, x) && x == std::floor(x);
+}
+
+// Kapanış özet satırının A2 parçası (W5-bagla-a2 kapsam 6). `--a2-port` verilmediyse boş (satır
+// değişmez). Sonu ", " ile biter (satırda `oturum` alanından önce yer alır).
+//   A2 dinliyor (port P; …sayaçlar…)      sunucu açıldı
+//   A2 yok: <neden> (<açıklama>)          A2'siz: kilit_baskasinda | kilit_acilamadi | port_acilamadi |
+//                                         ic_hata | gorunum_kapali | tanim_yok
+std::string a2_ozet_metni(const ida::sunucu::A2Ozeti& a)
+{
+    if (!a.istendi) {
+        return {};
+    }
+    if (a.durum != "dinliyor") {
+        return "A2 yok: " + a.durum + " (" + a.aciklama + "), ";
+    }
+    const ida::a2::SunucuSayaclari& c = a.sayac;
+    char t[1024];
+    std::snprintf(t, sizeof t,
+                  "A2 dinliyor (port %u; bağlantı %llu, biten oturum %llu, son kopma %s, meşgul reddi %llu, protokol hatası %llu, "
+                  "gönderilen durum %llu, olay %llu, seyreltilen %llu, kuyrukta atılan %llu, kuyruk taşması %llu, "
+                  "yayın: sınır %llu, düşen durum %llu, kayıp %llu, olay taşması %llu, geçersiz çağrı %llu), ",
+                  static_cast<unsigned>(a.port), static_cast<unsigned long long>(c.baglanti_sayisi),
+                  static_cast<unsigned long long>(c.biten_oturum), ida::a2::kopma_nedeni_adi(c.son_kopma_nedeni),
+                  static_cast<unsigned long long>(c.mesgul_reddi), static_cast<unsigned long long>(c.protokol_hatasi),
+                  static_cast<unsigned long long>(c.gonderilen_durum), static_cast<unsigned long long>(c.gonderilen_olay),
+                  static_cast<unsigned long long>(c.seyreltilen_durum), static_cast<unsigned long long>(c.kuyrukta_atilan_durum),
+                  static_cast<unsigned long long>(c.kuyruk_tasmasi + c.yayin_tasmasi_kapanis),
+                  static_cast<unsigned long long>(a.adim_siniri), static_cast<unsigned long long>(c.yayin.dusen_durum),
+                  static_cast<unsigned long long>(c.yayin.kayip_korunan), static_cast<unsigned long long>(c.yayin.olay_tasmasi),
+                  static_cast<unsigned long long>(c.yayin.gecersiz_cagri + a.reddedilen_cagri));
+    return t;
 }
 
 }  // namespace
@@ -206,6 +240,32 @@ int main(int argc, char** argv)
             }
             a.a3_acik = true;
             a.a3_port = static_cast<std::uint16_t>(x);
+        } else if (s == "--a2-port") {
+            // A2-K93: 1024 … 65 535; aralık dışı değerle süreç başlamaz.
+            const std::string v = deger();
+            double x = 0.0;
+            if (!tam_ayristir(v, 1024.0, 65535.0, x)) {
+                std::fprintf(stderr, "ida_sim: --a2-port 1024–65535 bir tamsayı ister (A2-K93): %s\n", v.c_str());
+                return 1;
+            }
+            a.a2_acik = true;
+            a.a2_port_verildi = true;
+            a.a2_port = static_cast<std::uint16_t>(x);
+        } else if (s == "--a2-sinama-bos-port") {
+            // Yalnız sınama: sabit port yerine işletim sisteminin verdiği boş port (port günlüğe yazılır).
+            a.a2_acik = true;
+            a.a2_sinama_bos_port = true;
+        } else if (s == "--a2-sinama-kilit") {
+            // Yalnız sınama: sahiplik kilidinin yolu (A2-K77'deki sabit yer yerine).
+            a.a2_kilit_dosyasi = deger();
+        } else if (s == "--sil-hiz") {
+            const std::string v = deger();
+            double x = 0.0;
+            if (!sayi_ayristir(v, 0.0, 1000.0, x)) {
+                std::fprintf(stderr, "ida_sim: --sil-hiz 0–1000 bir çarpan ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.sil_hiz = x;
         } else if (s == "--a3-kok") {
             a.a3_kok = deger();
         } else if (s == "--a3-bekle") {
@@ -272,6 +332,19 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_sim: --a3-kok ve --a3-bekle --a3-port ister\n");
         return 1;
     }
+    if (a.a2_port_verildi && a.a2_sinama_bos_port) {
+        std::fprintf(stderr, "ida_sim: --a2-port ile --a2-sinama-bos-port birlikte verilemez\n");
+        return 1;
+    }
+    if (!a.a2_acik && !a.a2_kilit_dosyasi.empty()) {
+        std::fprintf(stderr, "ida_sim: --a2-sinama-kilit --a2-port ister\n");
+        return 1;
+    }
+    if (a.a2_acik && a.senaryo_dosyasi.empty()) {
+        // W5-bagla-a2: varlık kümesi, ortam ve görünüm kademesi senaryo dosyasındandır.
+        std::fprintf(stderr, "ida_sim: --a2-port senaryo dosyası ister (--senaryo <dosya.toml>)\n");
+        return 1;
+    }
     a.csv_uret = !a.csv_yolu.empty();
     // A3-K04, K05: açılış adresi (erişim jetonuyla) standart çıktıya bir kez; günlüğe yazılmaz.
     a.a3_acilis = [](const std::string& adres) {
@@ -301,16 +374,20 @@ int main(int argc, char** argv)
     // kaydı; köprüde "yeniden gönderim" sayacı yoktur, alanlar gerçekte saydıklarıyla adlandırılır: yinelenen
     // yanıt reddi (A1 yinelenen çerçeve) ve yeniden bağlanma (port yeniden açılması);
     // `sonar taşma`: kuyruk, teslim deposu ve tampon yetersizliği.
+    // W5-bagla-a2 (kapsam 6): `--a2-port` verildiyse A2 durumu ve sayaçları aynı satıra, `oturum`
+    // alanından önce eklenir; verilmediyse satır bu iş öncesiyle bayt bayt aynıdır (W5-K31).
+    const std::string a2_ozeti = a2_ozet_metni(s.a2);
     std::fprintf(stderr,
                  "ida_sim: kapanış: %s; kaçırılan parti %llu, düşen kayıt (A3 halka %llu, SIL tampon %llu, Ping360 oturum %llu), "
                  "yinelenen yanıt reddi %llu, yeniden bağlanma %llu, sonar taşma (kuyruk %llu, teslim %llu, tampon %llu), "
-                 "oturum %llu, kapanış yazımı eksik %llu, son hata: %s\n",
+                 "%soturum %llu, kapanış yazımı eksik %llu, son hata: %s\n",
                  s.sinyal_kesti ? "sinyal" : (s.tamam ? "düzgün" : "hata"),
                  static_cast<unsigned long long>(c.parti_kacirildi), static_cast<unsigned long long>(s.a3_halka_tasma),
                  static_cast<unsigned long long>(c.sil_tampon_atilan), static_cast<unsigned long long>(c.ping360_oturum_atilan),
                  static_cast<unsigned long long>(c.yanit_ret_yinelenen), static_cast<unsigned long long>(s.yeniden_baglanti),
                  static_cast<unsigned long long>(s.sonar_kuyruk_tasma), static_cast<unsigned long long>(s.sonar_teslim_tasma),
-                 static_cast<unsigned long long>(s.sonar_tampon_yetersiz), static_cast<unsigned long long>(c.oturum_kurulan),
+                 static_cast<unsigned long long>(s.sonar_tampon_yetersiz), a2_ozeti.c_str(),
+                 static_cast<unsigned long long>(c.oturum_kurulan),
                  static_cast<unsigned long long>(s.kapanis_yazim_eksik), s.hata.empty() ? "yok" : s.hata.c_str());
     if (a.gunluk >= 2) {
         std::fprintf(stderr, "ida_sim: başlangıç O_b derinliği %.17g m\n", s.denge_derinligi_m);
@@ -375,6 +452,21 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(s.a3_komut), static_cast<unsigned long long>(s.a3_yayin_cagrisi),
                          1e-3 * static_cast<double>(s.a3_cagri_en_kotu_ns), 1e-3 * static_cast<double>(s.a3_sinir_en_kotu_ns),
                          static_cast<unsigned long long>(s.a3_halka_tasma));
+        }
+        if (s.a2.istendi && s.a2.durum == "dinliyor") {
+            std::fprintf(stderr,
+                         "ida_sim: A2: çalıştırma tanımı %s (kademe %u, araç gövde kimliği %u); adım sınırı çağrısı %llu, ortalama "
+                         "%.3f µs, en çok %.1f µs (dünya iş parçacığı, duvar; ölçüm); gönderilen ileti %llu, nabız %llu, en büyük "
+                         "kuyruk %llu B\n",
+                         s.a2.calistirma_tanimlandi ? "verildi" : "VERİLEMEDİ", static_cast<unsigned>(s.a2.kademe),
+                         static_cast<unsigned>(s.a2.arac_kimligi), static_cast<unsigned long long>(s.a2.adim_siniri),
+                         s.a2.adim_siniri != 0u
+                             ? 1e-3 * static_cast<double>(s.a2.cagri_toplam_ns) / static_cast<double>(s.a2.adim_siniri)
+                             : 0.0,
+                         1e-3 * static_cast<double>(s.a2.cagri_en_kotu_ns),
+                         static_cast<unsigned long long>(s.a2.sayac.gonderilen_ileti),
+                         static_cast<unsigned long long>(s.a2.sayac.gonderilen_nabiz),
+                         static_cast<unsigned long long>(s.a2.sayac.azami_kuyruk_bayt));
         }
         if (s.sonar_acik) {
             std::vector<std::int64_t> p = s.sonar_adim_ping_ns;

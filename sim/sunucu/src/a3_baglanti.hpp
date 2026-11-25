@@ -139,6 +139,7 @@ struct AnlikPod {
     // parti_gonderilen, parti_kacirildi, oturum_kopma, sim_gecikmesi, a3_halka_tasma
     std::array<std::int64_t, 5> sayac{};
     std::uint8_t kademe_sonar = 0;   // W4-bagla-sonar: 0 kapali, 1 sade
+    std::uint8_t kademe_gorunum = 0; // W5-bagla-a2: 0 kapali (A2 açılmadı), 1 sade, 2 tam
 };
 
 class A3Alici final : public a3::KomutAlicisi {

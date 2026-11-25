@@ -8,6 +8,7 @@
 //   kapanis_bayragi W4-sunucu-kucuk kapsam 1 (her platform): kapanış isteği bayrağı (kurma, yoklama,
 //                   sıfırlama); ilk istek süreci sonlandırmaz
 //   sinyal_ilk      (POSIX) sinyal_kur() ile SIGINT ve SIGTERM yalnız bayrağı kurar: süreç yaşar
+//   a2_*            W5-bagla-a2: A2 bağlama katmanı (test_a2_baglanti.cpp)
 //   sinyal_ikinci   (POSIX) ikinci sinyal süreci hemen kCikisIkinciSinyal koduyla sonlandırır
 //                   (Windows'ta konsol olayı CI'da üretilemez: yalnız bayrak işlevi `kapanis_bayragi`
 //                   ile sınanır; konsol işleyicisi derlenir)
@@ -278,6 +279,10 @@ int test_sinyal_ikinci()
 
 int test_a3_kesim();   // test_a3_alici.cpp (W4-K27 (2))
 int test_a3_duraklatma_tablo();   // test_a3_alici.cpp (W4-duraklat)
+int test_a2_hiz_donusumu();      // test_a2_baglanti.cpp (W5-bagla-a2)
+int test_a2_fizik_tutarlilik();
+int test_a2_tanim();
+int test_a2_kimlik();
 
 int main(int argc, char** argv)
 {
@@ -305,6 +310,14 @@ int main(int argc, char** argv)
         g_hata += test_a3_kesim();
     } else if (ad == "a3_duraklatma_tablo") {
         g_hata += test_a3_duraklatma_tablo();
+    } else if (ad == "a2_hiz_donusumu") {
+        g_hata += test_a2_hiz_donusumu();
+    } else if (ad == "a2_fizik_tutarlilik") {
+        g_hata += test_a2_fizik_tutarlilik();
+    } else if (ad == "a2_tanim") {
+        g_hata += test_a2_tanim();
+    } else if (ad == "a2_kimlik") {
+        g_hata += test_a2_kimlik();
     } else {
         std::printf("bilinmeyen test: %s\n", ad.c_str());
         return 2;
