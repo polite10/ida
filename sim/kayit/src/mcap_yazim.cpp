@@ -25,14 +25,29 @@ public:
     void flush() override { c_->bosalt(); }
     uint64_t size() const override { return c_->boyut(); }
 
+    // Kuyruk yazımı: CRC verilen ara durumdan sürdürülür. Kitaplığın kendi CRC alanı (`crc_`)
+    // dışarıdan kurulamadığı için bu yolda hesap burada yapılır (kitaplığın `crc32Update` işleviyle;
+    // `crc32.hpp` `writer.inl` üzerinden içerilir).
+    void crc_surdur(std::uint32_t ara) noexcept
+    {
+        ara_ = ara;
+        kendi_crc_ = true;
+    }
+    std::uint32_t crc_sonucu() const noexcept { return mcap::internal::crc32Final(ara_); }
+
 protected:
     void handleWrite(const std::byte* data, uint64_t size) override
     {
+        if (kendi_crc_) {
+            ara_ = mcap::internal::crc32Update(ara_, data, static_cast<std::size_t>(size));
+        }
         c_->yaz(reinterpret_cast<const std::uint8_t*>(data), size);
     }
 
 private:
     McapCikti* c_;
+    std::uint32_t ara_ = mcap::internal::CRC32_INIT;
+    bool kendi_crc_ = false;
 };
 
 mcap::KeyValueMap esle(const AnahtarDeger& a)
@@ -73,6 +88,9 @@ void McapYazim::ac(McapCikti& cikti, std::string_view profil, std::uint64_t parc
     // varsayılanıdır (A6-K03): ileti indeksleri, özet, `forceCompression = false`.
     secenek.noChunkCRC = false;
     secenek.noAttachmentCRC = false;
+    // W5-K39: veri bölümü CRC'si her zaman yazılır. Kitaplık CRC'yi `open` içinde, baştaki sihirli
+    // baytlardan başlatır ve `close` içinde Data End'e yazar (`writer.inl`).
+    secenek.enableDataCRC = true;
     ic_->yazici.open(*ic_->kopru, secenek);
     ic_->acik = true;
 }
@@ -127,6 +145,13 @@ bool McapYazim::ek_yaz(std::string_view ad, std::string_view ortam_turu, std::ui
     return ic_->yazici.write(a).ok();
 }
 
+std::uint32_t McapYazim::veri_crc_ara() const
+{
+    // `IWritable::crc()` bitirilmiş değeri (ara durum XOR 0xFFFFFFFF) verir; `crc32Final` kendi
+    // tersidir, ara durum onunla geri alınır.
+    return mcap::internal::crc32Final(ic_->kopru->crc());
+}
+
 void McapYazim::parca_kapat()
 {
     ic_->yazici.closeLastChunk();
@@ -144,10 +169,12 @@ void McapYazim::birak()
     ic_->acik = false;
 }
 
-void McapYazim::kuyruk_yaz(McapCikti& cikti, const KuyrukKanali& kanal, std::span<const KuyrukIletisi> iletiler,
-                           std::string_view ust_veri_adi, const AnahtarDeger& ust_veri)
+void McapYazim::kuyruk_yaz(McapCikti& cikti, std::uint32_t veri_crc_ara, const KuyrukKanali& kanal,
+                           std::span<const KuyrukIletisi> iletiler, std::string_view ust_veri_adi,
+                           const AnahtarDeger& ust_veri)
 {
     Kopru k(cikti);
+    k.crc_surdur(veri_crc_ara);
     if (!iletiler.empty()) {
         mcap::BufferWriter tampon;
         tampon.crcEnabled = true;
@@ -185,7 +212,8 @@ void McapYazim::kuyruk_yaz(McapCikti& cikti, const KuyrukKanali& kanal, std::spa
     m.name = std::string(ust_veri_adi);
     m.metadata = esle(ust_veri);
     mcap::McapWriter::write(k, m);
-    mcap::McapWriter::write(k, mcap::DataEnd{0});
+    // Data End: buraya kadarki bütün baytların CRC'si (kayıt kendisi kapsam dışıdır).
+    mcap::McapWriter::write(k, mcap::DataEnd{k.crc_sonucu()});
     mcap::McapWriter::write(k, mcap::Footer{0, 0}, false);
     mcap::McapWriter::writeMagic(k);
     cikti.bosalt();

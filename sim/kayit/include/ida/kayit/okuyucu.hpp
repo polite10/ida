@@ -7,8 +7,9 @@
 // Açılışta dosyanın tamamı bir kez taranır (her parça açılır ve doğrulanır); sonuç `DosyaOzeti`'dir:
 //   - `kapanmis`: Data End, Footer ve sondaki sihirli baytlar yerinde.
 //   - `bozuk`: CRC'si tutmayan, açılamayan ya da çözülemeyen bir parça ya da ek var; A6-K46'yı
-//     çiğneyen üst veri var. Bozuk dosyada yalnız ilk bozuk parçadan öncesi okunur ve tekrar
-//     güvencesi verilmez.
+//     çiğneyen üst veri var; veri bölümü CRC'si (Data End) tutmuyor; ya da dosyanın sonu kapalı
+//     olduğu halde tarama Footer'a ulaşamıyor (bozuk kayıt uzunluğu). Bozuk dosyada yalnız ilk
+//     bozuk parçadan öncesi okunur ve tekrar güvencesi verilmez.
 //   - kapanmamış dosyada yalnız son tam ve CRC'si tutan parçaya kadarki veri okunur; güvence `izleme`.
 // Sessiz "sağlam" yoktur: `saglam()` yalnız dosya kapanmış VE bozuk değilse doğrudur.
 //
@@ -100,10 +101,23 @@ struct DosyaOzeti {
     std::optional<std::uint64_t> ilk_eksik_fizik;
     std::optional<std::uint64_t> ilk_eksik_girdi;
 
-    // Dosyanın verdiği tekrar güvencesi (A6 §4.6, §5): bozuk, kapanmamış ya da üst verisi eksik
-    // dosyada en çok `izleme`; yoksa kapanış kaydındaki `tekrar_guvencesi`.
+    // Dosyada yazılmış son fizik adımı: `fizik/durum` ve `fizik/adim_sonucu` iletilerindeki en büyük
+    // `adim_no` (dosyada bu kanallardan ileti yoksa boş). Önek bu adımı aşamaz.
+    std::optional<std::uint64_t> son_fizik_adimi;
+
+    // Dosyanın verdiği tekrar güvencesi (A6 §4.6, §5; W5-K39). Kapanış kaydındaki `tekrar_guvencesi`
+    // ve önek, dosyanın kendi içeriğinden doğrulanabilenlerle KISITLANIR (hiçbir zaman genişletilmez):
+    //   - bozuk, kapanmamış ya da açılış üst verisi eksik/geçersiz dosya: en çok `izleme`;
+    //   - veri bölümü CRC'si yazılmamış (Data End `data_section_crc` = 0) dosya: en çok `izleme`;
+    //   - zorunlu bir eki (A6 §3.6) bulunmayan dosya: en çok `izleme`;
+    //   - `kayit/eksik` kanalı okunamayan dosya (A6-K49): en çok `izleme`;
+    //   - kademe ve kipin verebileceğinden (Tablo 4.6; `beklenen_duzey`) yüksek düzey verilmez;
+    //   - önek: düzeyin kanallarındaki ilk `kayit/eksik` adımını ve `son_fizik_adimi`'ni aşamaz;
+    //     erken kapanmış (`sinira_ulasti`, `yazma_hatasi`, `disk_dolu`) kayıt öneksiz güvence veremez.
     Guvence guvence = Guvence::izleme;
     std::optional<std::uint64_t> guvence_on_eki_son_adim;
+    // Okuyucunun güvenceyi `izleme`'ye indirdiği nedenler (yukarıdaki W5-K39 koşulları); yoksa boş.
+    std::vector<std::string> guvence_kisitlari;
 
     std::vector<std::string> uyarilar;
 

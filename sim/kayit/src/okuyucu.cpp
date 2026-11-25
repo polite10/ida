@@ -259,6 +259,8 @@ struct KanalDurumu {
     const KanalTanimi* tanim = nullptr;
     std::uint16_t kanal_surumu = 0;
     bool okunur = false;
+    // Yükün ilk alanı `adim_no` (u64) olan fizik kanalı: yazılmış son fizik adımı buradan okunur.
+    bool adim_basta = false;
     std::uint64_t ileti_sayisi = 0;
     std::string uyari;
 };
@@ -301,6 +303,8 @@ struct OkuyucuIc {
     std::vector<bool> yerel_kanal;  // parça içinde tanımlanan kanal kimlikleri (parca_coz'un çalışma alanı)
     bool dur = false;               // tarama ilk bozuk parçada durdu
     bool ust_veri_cozulemedi = false;
+    bool veri_crc_yok = false;     // kapanmış dosyada Data End `data_section_crc` = 0 (W5-K39)
+    bool eksik_okunamadi = false;  // dosyada okunamayan `kayit/eksik` iletisi var (A6-K49)
     bool kapanis_goruldu = false;
     UstVeri kapanis;
     std::vector<std::uint8_t> ham;  // parça gövdesi için yeniden kullanılan tampon
@@ -388,6 +392,12 @@ struct OkuyucuIc {
             }
         }
         d.okunur = true;
+        // Kanonik fizik izinin kanalları (A6-K39): yükün ilk alanı adım numarasıdır. Alan sırası elle
+        // varsayılmaz; kataloğun alan tablosundan denetlenir (yeni `kanal_surumu` yalnız sona alan ekler).
+        if ((d.tanim->ad == "fizik/durum" || d.tanim->ad == "fizik/adim_sonucu") && d.tanim->yuk->alan_sayisi > 0) {
+            const a3::AlanTanimi& ilk = d.tanim->yuk->alanlar[0];
+            d.adim_basta = ilk.ad == "adim_no" && ilk.tip == a3::Tip::u64 && ilk.adet == 0;
+        }
     }
 
     static std::span<const SemaTanimi> semalar_tablosu() noexcept { return ::ida::kayit::semalar(); }
@@ -749,7 +759,19 @@ struct OkuyucuIc {
             ++d.ileti_sayisi;
             ++ozet.ileti_sayisi;
             if (!d.okunur) {
+                if (d.kayit.konu == "kayit/eksik") {
+                    // Eksik kayıt bildirimi okunamıyor (şema farkı, A6-K49): hangi adımların eksik
+                    // olduğu bilinmez; dosya `izleme`'den yüksek güvence veremez.
+                    eksik_okunamadi = true;
+                }
                 continue;
+            }
+            if (d.adim_basta && h.boy >= 8) {
+                Alan a(p.veri.data() + h.konum, 8);
+                const std::uint64_t adim = a.u64();
+                if (!ozet.son_fizik_adimi.has_value() || adim > *ozet.son_fizik_adimi) {
+                    ozet.son_fizik_adimi = adim;
+                }
             }
             if (o.okunur_ileti == 0 || h.log_time < o.en_kucuk_t) {
                 o.en_kucuk_t = h.log_time;
@@ -1061,10 +1083,25 @@ struct OkuyucuIc {
                 sihir_tamam = kaynak->oku(konum, son.data(), son.size()) && son == kSihir;
             }
             ozet.kapanmis = veri_sonu && footer && sihir_tamam;
-            if (ozet.kapanmis) {
+            if (!ozet.kapanmis && kuyruk_kapali()) {
+                // Dosyanın sonu kapalı (Footer ve sihirli baytlar yerinde) ama tarama oraya varamadı:
+                // aradaki bir kayıt uzunluğu ya da kayıt sırası bozuk. Bu, kapanmamış dosya değildir
+                // (kurtarma okuması yanıltıcı olur: düzgün kapanmış bir kaydın sonu sessizce atılır);
+                // dosya bozuktur (A6-K59) ve yalnız bozulmadan öncesi kullanılır.
+                bozuk("kapanmış dosyada tarama Footer'a ulaşamadı (bozuk kayıt uzunluğu ya da kayıt sırası)", konum);
+                (void)bekleyenleri_kesinlestir();
+                ozet.kapanmis = true;
+                ozet.kullanilan_bayt = konum;
+            } else if (ozet.kapanmis) {
                 (void)bekleyenleri_kesinlestir();
                 ozet.kullanilan_bayt = boyut;
-                if (veri_crc != 0 && !veri_crc_dogrula(veri_sonu_konumu, veri_crc)) {
+                // W5-K39: veri bölümü CRC'si dosyanın başından Data End kaydına kadarki bütün baytları
+                // (üst veri ve ek kayıtları, parça ve indeks kayıtlarının başlıkları dahil) korur.
+                // 0 "yok" demektir (MCAP spec); o dosya `izleme`'den yüksek güvence veremez. (Gerçek
+                // CRC'si 0 çıkan dosya da böyle okunur: 2^32'de bir; güvenceyi yalnız kısıtlar.)
+                if (veri_crc == 0) {
+                    veri_crc_yok = true;
+                } else if (!veri_crc_dogrula(veri_sonu_konumu, veri_crc)) {
                     bozuk("veri bölümü CRC'si tutmuyor", veri_sonu_konumu);
                 }
             } else if (son_parca_sonu != 0) {
@@ -1094,6 +1131,119 @@ struct OkuyucuIc {
             k += n;
         }
         return crc32_bitir(crc) == beklenen;
+    }
+
+    // Okuyucunun güvenceyi `izleme`'ye indirdiği neden (W5-K39): uyarılara ve özete yazılır.
+    void kisitla(std::string neden)
+    {
+        uyar("tekrar güvencesi `izleme` ile sınırlandı: " + neden);
+        if (ozet.guvence_kisitlari.size() < kUyariSiniri) {
+            ozet.guvence_kisitlari.push_back(std::move(neden));
+        }
+    }
+
+    // Kapanmış, bozuk olmayan, açılış üst verisi geçerli dosyanın tekrar güvencesi (A6 §4.6, A6-K33;
+    // W5-K39). Dosya kendisi hakkında doğrulanamayan bir güvence veremez: kapanış kaydındaki düzey ve
+    // önek, dosyanın kendi içeriğinden çıkarılabilenlerle yalnız KISITLANIR, hiçbir zaman genişletilmez.
+    void guvence_hesapla()
+    {
+        const UstVeri& k = *ozet.kapanis;
+        std::string khata;
+        Guvence yazilan = Guvence::izleme;
+        const auto g = k.find("tekrar_guvencesi");
+        if (!ust_veri_denetle(kUstVeriKapanis, k, khata) || g == k.end() || !guvence_coz(g->second, yazilan)) {
+            uyar("kapanış üst verisi geçersiz: " + khata);
+            return;
+        }
+        // Kapanış kaydındaki güvence, dosyanın kendi içeriğinden (kademe, kip, eksik kayıtları)
+        // yeniden hesaplananla karşılaştırılır; ikisinden kısıtlayan olan geçerlidir.
+        GuvenceGirdisi gg;
+        gg.kademe = ozet.kademe;
+        const auto kip = ozet.ust_veri.find("kip");
+        gg.kip = kip != ozet.ust_veri.end() ? std::string_view(kip->second) : std::string_view();
+        const auto gn = ozet.ust_veri.find("guvencesiz_nedenler");
+        gg.guvencesiz_baslatma = gn != ozet.ust_veri.end() && !gn->second.empty();
+        gg.canli_mudahale = k.find("canli_mudahale_adimi") != k.end();
+        gg.ilk_eksik_fizik = ozet.ilk_eksik_fizik;
+        gg.ilk_eksik_girdi = ozet.ilk_eksik_girdi;
+        const GuvenceSonucu hesap = guvence_belirle(gg);
+        Guvence duzey = std::min(yazilan, hesap.duzey);
+        if (duzey != yazilan) {
+            uyar("kapanış kaydındaki tekrar güvencesi dosyanın içeriğiyle uyuşmuyor; kısıtlayan değer kullanıldı");
+        }
+        ozet.guvence = duzey;
+        if (duzey <= Guvence::izleme) {
+            return;
+        }
+
+        // ---- `izleme`'den yüksek düzeyin ön koşulları ----
+        bool kisitli = false;
+        if (veri_crc_yok) {
+            kisitla("veri bölümü CRC'si yok (Data End `data_section_crc` = 0): üst veri, ek ve kayıt "
+                    "sınırlarının değişmediği doğrulanamaz");
+            kisitli = true;
+        }
+        // A6 §3.6: zorunlu ekler (Tablo 4.6 (b): `cozumlenmis_senaryo.json` olmadan dünya yeniden kurulamaz).
+        for (const EkTanimi& t : ::ida::kayit::ekler()) {
+            if (t.zorunlu && ek_adlari.find(t.ad) == ek_adlari.end()) {
+                kisitla("zorunlu ek yok: " + std::string(t.ad));
+                kisitli = true;
+            }
+        }
+        if (eksik_okunamadi) {
+            kisitla("`kayit/eksik` kanalı okunamıyor (A6-K49): eksik kayıt bildirimleri bilinmiyor");
+            kisitli = true;
+        }
+        std::optional<std::uint64_t> on_ek;
+        if (const auto oe = k.find("guvence_on_eki_son_adim"); oe != k.end()) {
+            std::uint64_t v = 0;
+            if (onluk_coz(oe->second, v)) {
+                on_ek = v;
+            } else {
+                kisitla("kapanış kaydındaki `guvence_on_eki_son_adim` çözülemiyor");
+                kisitli = true;
+            }
+        }
+        if (kisitli) {
+            ozet.guvence = Guvence::izleme;
+            return;
+        }
+
+        // ---- önek: dosyanın kendi içeriğinden doğrulanabildiği ölçüde sınırlanır ----
+        // (1) Düzeyin gerektirdiği kanallarda dosyada görülen ilk `kayit/eksik` adımı (A6-K33). Düzey
+        // kapanış kaydındakinden düşükse sınır o düzeyin kendi kanallarından kurulur.
+        while (duzey > Guvence::izleme) {
+            const std::optional<std::uint64_t>& ilk = duzey == Guvence::girdi ? ozet.ilk_eksik_girdi : ozet.ilk_eksik_fizik;
+            if (ilk.has_value() && *ilk == 0) {
+                duzey = static_cast<Guvence>(static_cast<std::uint8_t>(duzey) - 1u);
+                continue;
+            }
+            if (ilk.has_value()) {
+                on_ek = on_ek.has_value() ? std::min(*on_ek, *ilk - 1u) : *ilk - 1u;
+            }
+            break;
+        }
+        // (2) Erken kapanmış kayıt (A6-K12, K31) öneksiz güvence veremez: kayıt çalıştırmadan önce bitti.
+        if (duzey > Guvence::izleme && !on_ek.has_value()) {
+            BitisDurumu bitis = BitisDurumu::hata;
+            const auto b = k.find("bitis_durumu");
+            if (b != k.end() && bitis_durumu_coz(b->second, bitis) &&
+                (bitis == BitisDurumu::sinira_ulasti || bitis == BitisDurumu::yazma_hatasi || bitis == BitisDurumu::disk_dolu)) {
+                kisitla("erken kapanmış kayıtta (`" + b->second + "`) önek yok");
+                duzey = Guvence::izleme;
+            }
+        }
+        // (3) Önek, dosyada yazılmış son fizik adımını aşamaz (`fizik/durum` ve `fizik/adim_sonucu`
+        // iletilerindeki en büyük `adim_no`). Dosyada hiç fizik kaydı yoksa bu sınır kurulamaz.
+        if (duzey > Guvence::izleme && on_ek.has_value() && ozet.son_fizik_adimi.has_value() &&
+            *on_ek > *ozet.son_fizik_adimi) {
+            uyar("kapanış kaydındaki önek dosyada yazılmış son fizik adımını aşıyor; önek o adıma indirildi");
+            on_ek = ozet.son_fizik_adimi;
+        }
+        ozet.guvence = duzey;
+        if (duzey > Guvence::izleme) {
+            ozet.guvence_on_eki_son_adim = on_ek;
+        }
     }
 
     AcmaHatasi ozeti_tamamla()
@@ -1158,43 +1308,7 @@ struct OkuyucuIc {
             }
         }
         if (ozet.saglam() && ozet.ust_veri_gecerli && ozet.kademe_var && ozet.kapanis.has_value()) {
-            std::string khata;
-            Guvence yazilan = Guvence::izleme;
-            const auto g = ozet.kapanis->find("tekrar_guvencesi");
-            if (!ust_veri_denetle(kUstVeriKapanis, *ozet.kapanis, khata) || g == ozet.kapanis->end() ||
-                !guvence_coz(g->second, yazilan)) {
-                uyar("kapanış üst verisi geçersiz: " + khata);
-            } else {
-                // Kapanış kaydındaki güvence, dosyanın kendi içeriğinden (kademe, kip, eksik kayıtları)
-                // yeniden hesaplananla karşılaştırılır; ikisinden kısıtlayan olan geçerlidir.
-                GuvenceGirdisi gg;
-                gg.kademe = ozet.kademe;
-                const auto kip = ozet.ust_veri.find("kip");
-                gg.kip = kip != ozet.ust_veri.end() ? std::string_view(kip->second) : std::string_view();
-                const auto gn = ozet.ust_veri.find("guvencesiz_nedenler");
-                gg.guvencesiz_baslatma = gn != ozet.ust_veri.end() && !gn->second.empty();
-                gg.canli_mudahale = ozet.kapanis->find("canli_mudahale_adimi") != ozet.kapanis->end();
-                gg.ilk_eksik_fizik = ozet.ilk_eksik_fizik;
-                gg.ilk_eksik_girdi = ozet.ilk_eksik_girdi;
-                const GuvenceSonucu hesap = guvence_belirle(gg);
-                ozet.guvence = std::min(yazilan, hesap.duzey);
-                if (ozet.guvence != yazilan) {
-                    uyar("kapanış kaydındaki tekrar güvencesi dosyanın içeriğiyle uyuşmuyor; "
-                                            "kısıtlayan değer kullanıldı");
-                }
-                std::optional<std::uint64_t> on_ek;
-                const auto oe = ozet.kapanis->find("guvence_on_eki_son_adim");
-                std::uint64_t v = 0;
-                if (oe != ozet.kapanis->end() && onluk_coz(oe->second, v)) {
-                    on_ek = v;
-                }
-                if (ozet.guvence == hesap.duzey && hesap.on_eki_son_adim.has_value()) {
-                    on_ek = on_ek.has_value() ? std::min(*on_ek, *hesap.on_eki_son_adim) : *hesap.on_eki_son_adim;
-                }
-                if (ozet.guvence > Guvence::izleme) {
-                    ozet.guvence_on_eki_son_adim = on_ek;
-                }
-            }
+            guvence_hesapla();
         }
         // Sıralı okuma düzeni.
         zaman_sirasi.clear();

@@ -213,6 +213,28 @@ std::vector<KayitKonumu> kayitlari_tara(const std::vector<std::uint8_t>& dosya)
     return v;
 }
 
+std::uint64_t veri_sonu_konumu(const std::vector<std::uint8_t>& dosya)
+{
+    std::uint64_t konum = 0;
+    for (const KayitKonumu& k : kayitlari_tara(dosya)) {
+        if (k.op == 0x0F && k.boy == 4) {
+            konum = k.konum;
+        }
+    }
+    return konum;
+}
+
+bool veri_crc_yenile(std::vector<std::uint8_t>& dosya)
+{
+    const std::uint64_t konum = veri_sonu_konumu(dosya);
+    if (konum == 0) {
+        return false;
+    }
+    const std::uint32_t crc = ic::crc32(dosya.data(), static_cast<std::size_t>(konum));
+    std::memcpy(dosya.data() + konum + 9, &crc, 4);  // testler küçük uçlu makinelerde koşar
+    return true;
+}
+
 // ---- elle MCAP kurucu ----
 void ElleMcap::u8(std::uint8_t v)
 {
@@ -357,6 +379,11 @@ ElleMcap& ElleMcap::veri_sonu(std::uint32_t crc)
     kayit_basi(0x0F, 4);
     u32(crc);
     return *this;
+}
+
+ElleMcap& ElleMcap::veri_sonu_crcli()
+{
+    return veri_sonu(ic::crc32(b_.data(), b_.size()));
 }
 
 ElleMcap& ElleMcap::footer()

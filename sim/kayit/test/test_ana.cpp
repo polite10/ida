@@ -37,6 +37,11 @@ int test_sira_siniri();
 int test_kademe_degismez();
 int test_kapanis();
 int test_hata_kapanisi();
+int test_erken_kapanis_cok_uretici();
+int test_kapat_sirasinda_hata();
+int test_guncelleme_teslim_hatasi();
+int test_sira_yedegi();
+int test_guvence_kisitlari();
 int test_guncelleme();
 int test_surum_kurallari();
 int test_parca_hedefi();
@@ -90,6 +95,11 @@ int main(int argc, char** argv)
         {"kademe_degismez", test_kademe_degismez},
         {"kapanis", test_kapanis},
         {"hata_kapanisi", test_hata_kapanisi},
+        {"erken_kapanis_cok_uretici", test_erken_kapanis_cok_uretici},
+        {"kapat_sirasinda_hata", test_kapat_sirasinda_hata},
+        {"guncelleme_teslim_hatasi", test_guncelleme_teslim_hatasi},
+        {"sira_yedegi", test_sira_yedegi},
+        {"guvence_kisitlari", test_guvence_kisitlari},
         {"guncelleme", test_guncelleme},
         {"surum_kurallari", test_surum_kurallari},
         {"parca_hedefi", test_parca_hedefi},

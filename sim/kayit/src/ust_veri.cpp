@@ -129,18 +129,30 @@ bool eksik_duzeyi_etkiler(const KanalTanimi& kanal, Guvence duzey) noexcept
     return false;
 }
 
+Guvence beklenen_duzey(Kademe kademe, std::string_view kip) noexcept
+{
+    // Tablo 4.6'nın kısıtlayan okuması (A6-K33 "kademe, kip ve kanal gereği"):
+    //   (b) `fizik`: en düşük kademe `telemetri`; gereken kanallar `fizik/durum`, `fizik/adim_sonucu`:
+    //       yalnız fiziğin koştuğu kiplerde üretilir (`sil`, `hil_1x`, `hil_bariyer`, `tekrar_fizik`).
+    //       `tekrar_girdi_sil` ve `tekrar_yeniden_kurma` koşularında fizik koşmaz (Tablo 4.6 (c), (d)):
+    //       o kayıtlar `fizik` güvencesi iddia edemez.
+    //   (c) `girdi`: `tam` kademesi ve yalnız `sil` kipindeki kayıt; HIL kaydı en çok `fizik` (A6-K34).
+    //   (d) `yeniden_kurma` bir güvence düzeyi değildir.
+    // Bilinmeyen kip (bu sürümün tanımadığı): en kısıtlayan düzey.
+    const bool fizik_kosar = kip == "sil" || kip == "hil_1x" || kip == "hil_bariyer" || kip == "tekrar_fizik";
+    if (kademe == Kademe::olaylar || !fizik_kosar) {
+        return Guvence::izleme;
+    }
+    if (kademe == Kademe::tam && kip == "sil") {
+        return Guvence::girdi;
+    }
+    return Guvence::fizik;
+}
+
 GuvenceSonucu guvence_belirle(const GuvenceGirdisi& g)
 {
     GuvenceSonucu s;
-    // Kademe, kip ve kanal gereği sağlanan en yüksek düzey: `fizik` için `telemetri`; `girdi` için
-    // `tam` ve `sil` kipi; HIL kaydı en çok `fizik`; `olaylar` kademesinde `izleme`.
-    if (g.kademe == Kademe::olaylar) {
-        s.beklenen = Guvence::izleme;
-    } else if (g.kademe == Kademe::tam && g.kip == "sil") {
-        s.beklenen = Guvence::girdi;
-    } else {
-        s.beklenen = Guvence::fizik;
-    }
+    s.beklenen = beklenen_duzey(g.kademe, g.kip);
     if (g.guvencesiz_baslatma || g.canli_mudahale) {
         s.duzey = Guvence::yok;
         if (g.guvencesiz_baslatma) {

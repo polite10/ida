@@ -69,6 +69,9 @@ set(_ida_kayit_testleri
   dosya_ezilmez negatif_zaman sira_siniri kademe_degismez
   # kapanış, hata kapanışı, sürüm
   kapanis hata_kapanisi guncelleme surum_kurallari parca_hedefi
+  # inceleme düzeltmeleri (W5-kayit-inceleme): erken kapanışta öteki üreticiler, `kapat` sırasında
+  # hata, teslim edilemeyen güncelleme, sıra yedeği, okuyucunun güvence kısıtları (W5-K39)
+  erken_kapanis_cok_uretici kapat_sirasinda_hata guncelleme_teslim_hatasi sira_yedegi guvence_kisitlari
   # ölçüm (eşik yok; rapora girer)
   olcum_telemetri)
 foreach(_ad IN LISTS _ida_kayit_testleri)

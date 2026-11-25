@@ -43,7 +43,8 @@ enum class YazmaSonucu : std::uint8_t {
     suzuldu,         // kanal bu kademede/kipte yazılmıyor (A6-K16, K17); ileti üretilmiş sayılmaz
     dustu_halka,     // halka dolu (ya da ileti halkaya sığmayacak kadar büyük): `kayit/eksik`, halka_tasmasi
     dustu_gecersiz,  // negatif `log_time` (A6-K10) ya da kodlanamayan yük: `kayit/eksik`, yazma_hatasi
-    kapali,          // dosya kapandı (kapanış, sınır, yazma hatası); çalıştırma kayıtsız sürer
+    kapali,          // dosya kapandı (kapanış, sınır, yazma hatası); çalıştırma kayıtsız sürer.
+                     // Kapanıştan önce `yazildi` almış ama dosyaya girememiş iletiler `kayit/eksik`'tedir.
 };
 
 struct UreticiSayaclari {
@@ -197,8 +198,16 @@ struct YaziciSayaclari {
     std::uint64_t yazilan_uretici_iletisi = 0;  // üreticilerden gelip dosyaya giren
     std::uint64_t eksik_kaydi = 0;            // yazılan `kayit/eksik` kaydı sayısı
     std::uint64_t bildirilen_dusen = 0;       // `kayit/eksik` kayıtlarındaki `kayip_sayisi` toplamı
-    std::uint64_t yazimda_kaybolan = 0;       // kuyruktan alınmış ama yazma hatasıyla dosyaya girememiş
-    std::uint64_t kapali_iken_atilan = 0;     // dosya kapandıktan sonra kuyruktan alınıp atılan
+    // Kuyruktan alınmış ama dosyaya girememiş: yazma hatasında açık parçada kaybolanlar ve erken
+    // kapanışta (sınır, yazma hatası, disk dolu) halkalarda kalıp yazılamayanlar. Hepsi kapanış
+    // kaydından önce `kayit/eksik`'e çevrilir ve öneki daraltır (A6-K12, K31, K33).
+    std::uint64_t yazimda_kaybolan = 0;
+    // Dosya kapandıktan SONRA halkaya girmiş ve atılmış ileti (kabul kesilirken yazmakta olan
+    // üretici). Dosyada bildirilemez; yalnız burada görünür. Üretici sonraki çağrılarda `kapali` alır.
+    std::uint64_t kapali_iken_atilan = 0;
+    // Hata kapanışında `kayit/eksik` kaydı yazılamadığı için dosyada bildirilemeyen kayıp ileti
+    // (sıra yedeği bunu karşılar: 0 olmalıdır; 0 değilse dosyanın eksik bildirimi tam değildir).
+    std::uint64_t bildirilemeyen_dusen = 0;
     std::uint64_t kapanan_parca = 0;
     std::uint64_t dosya_bayt = 0;
 };
@@ -240,6 +249,8 @@ public:
 
     // Dosya erken kapanırsa (A6-K12 sınırı, A6-K31 yazma hatası) kapanış kaydında kullanılacak
     // alanlar. Seyrek çağrılır (ör. 1 Hz, `sayac/gercek_zaman` ile birlikte); üretici yolu değildir.
+    // Güvenceyi değiştiren bir alan (`canli_mudahale_adimi`; A6-K53) öğrenildiği ANDA yeniden
+    // çağrılmalıdır: erken kapanış eski taslağı kullanırsa dosya gerçekte olmayan bir güvence yazar.
     void kapanis_taslagi(const KapanisAlanlari& taslak);
 
     // `is_parcacigi = false` iken bir yazım turu: halkaları boşaltır, düşmeleri `kayit/eksik`'e
@@ -249,7 +260,9 @@ public:
     // Olağan kapanış (A6-K44): bekleyen iletileri ve düşme bildirimlerini yazar, `ida_kayit_kapanis`
     // üst verisini yazar ve dosyayı kapatır. Çağrılmadan önce üreticiler durmuş olmalıdır (son
     // `sayac/gercek_zaman` iletisi dahil her şey üretilmiş). Dosya daha önce erken kapandıysa
-    // (sınır, yazma hatası) o kapanışın sonucunu döndürür.
+    // (sınır, yazma hatası) o kapanışın sonucunu döndürür. Bu çağrı SIRASINDA sınıra ya da yazma
+    // hatasına varılırsa kapanış kaydının çalıştırmaya ait alanları yine `alanlar`'dan alınır
+    // (`bitis_durumu` dışında: o, kapanışın nedenidir).
     KapanisSonucu kapat(const KapanisAlanlari& alanlar);
 
 private:

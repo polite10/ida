@@ -236,6 +236,41 @@ int test_guvence()
         DOGRULA(d, !s.on_eki_son_adim.has_value() && s.nedenler.empty(), "eksiksiz kayıtta önek ve neden yok");
     }
     {
+        // İnceleme bulgusu 7: kip × kademe için beklenen düzey Tablo 4.6'nın izin verdiğini aşamaz.
+        // Fiziğin koşmadığı kiplerin (`tekrar_girdi_sil`, `tekrar_yeniden_kurma`) kaydı `fizik` güvencesi
+        // iddia edemez; `girdi` yalnız `sil` kipinin `tam` kademesindeki kaydından.
+        struct Satir {
+            std::string_view kip;
+            Guvence olaylar;
+            Guvence telemetri;
+            Guvence tam;
+        };
+        const Satir tablo[] = {
+            {"sil", Guvence::izleme, Guvence::fizik, Guvence::girdi},
+            {"hil_1x", Guvence::izleme, Guvence::fizik, Guvence::fizik},
+            {"hil_bariyer", Guvence::izleme, Guvence::fizik, Guvence::fizik},
+            {"tekrar_fizik", Guvence::izleme, Guvence::fizik, Guvence::fizik},
+            {"tekrar_girdi_sil", Guvence::izleme, Guvence::izleme, Guvence::izleme},
+            {"tekrar_yeniden_kurma", Guvence::izleme, Guvence::izleme, Guvence::izleme},
+            {"bilinmeyen_kip", Guvence::izleme, Guvence::izleme, Guvence::izleme},
+            {"", Guvence::izleme, Guvence::izleme, Guvence::izleme},
+        };
+        for (const Satir& s : tablo) {
+            DOGRULA(d, kip_gecerli(s.kip) == (s.kip != "bilinmeyen_kip" && !s.kip.empty()), std::string(s.kip) + ": kip listesi");
+            DOGRULA(d, beklenen_duzey(Kademe::olaylar, s.kip) == s.olaylar && beklenen_duzey(Kademe::telemetri, s.kip) == s.telemetri &&
+                           beklenen_duzey(Kademe::tam, s.kip) == s.tam,
+                    std::string(s.kip) + ": beklenen düzey (Tablo 4.6)");
+            const GuvenceSonucu r = guvence_belirle(g(Kademe::tam, s.kip));
+            DOGRULA(d, r.duzey == s.tam && r.beklenen == s.tam && r.nedenler.empty(), std::string(s.kip) + ": guvence_belirle aynı düzeyi verir");
+        }
+        // Düzeyin verilmediği kipte o düzeyin kanallarındaki eksik öneki ya da nedeni etkilemez.
+        GuvenceGirdisi x = g(Kademe::tam, "tekrar_girdi_sil");
+        x.ilk_eksik_fizik = 10;
+        x.ilk_eksik_girdi = 20;
+        const GuvenceSonucu r = guvence_belirle(x);
+        DOGRULA(d, r.duzey == Guvence::izleme && !r.on_eki_son_adim.has_value() && r.nedenler.empty(), "fizik koşmayan kipte izleme koşulsuz");
+    }
+    {
         // A6-K38, K53.
         GuvenceGirdisi x = g(Kademe::tam, "tekrar_fizik");
         x.guvencesiz_baslatma = true;

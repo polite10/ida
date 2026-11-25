@@ -5,6 +5,17 @@
 // başlık-yalnız kitaplığın uygulaması bir programda yalnız bir kez bulunabilir. Ad alanı burada
 // makroyla yeniden adlandırılır; böylece testin kullandığı okuyucu, ürüne hiçbir şey eklemeden,
 // kitaplığın kendi kodudur.
+//
+// Makroyla ad alanı değiştirmek kırılgandır (W5-kayit incelemesi, bulgu 9) ama denenen öteki yollar
+// kapalıdır, bu yüzden bırakıldı:
+//   - Bu birimde yalnız okuyucu uygulamasını (`reader.inl`) derleyip tip uygulamasını (`types.inl`)
+//     ürünün biriminden almak: `reader.inl`, `types.inl`'de tanımlanan `constexpr OpCodeString`'i
+//     kullanır; `constexpr` işlev örtük `inline`'dır ve kullanıldığı her birimde tanımlı olmalıdır.
+//   - Kitaplığın tamamını tek bir test biriminde, ürünün birimi olmadan derlemek: test programı
+//     `ida_kayit`'e bağlanır ve o da `ida_kayit_mcap` nesnesini getirir (yinelenen simge); nesneyi
+//     dışarıda bırakmak testi ürünün derlenmiş sarmalayıcısından koparır.
+// Makronun etki alanı bu birimle sınırlıdır: başlık (`mcap_kitaplik_okuma.hpp`) mcap tiplerini
+// göstermez ve makrodan sonra içerilen tek İDA başlığı odur. Kitaplık sürümü `vcpkg.json`'da sabittir.
 #define mcap mcap_sinama_kopyasi
 #define MCAP_IMPLEMENTATION
 #include <mcap/mcap.hpp>

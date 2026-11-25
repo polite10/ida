@@ -130,6 +130,13 @@ int main(int argc, char** argv)
     if (o.ilk_eksik_girdi.has_value()) {
         std::printf("ilk_eksik_adim (girdi): %llu\n", static_cast<unsigned long long>(*o.ilk_eksik_girdi));
     }
+    if (o.son_fizik_adimi.has_value()) {
+        std::printf("son_fizik_adimi: %llu\n", static_cast<unsigned long long>(*o.son_fizik_adimi));
+    }
+    std::printf("guvence_kisitlari: %zu\n", o.guvence_kisitlari.size());
+    for (const std::string& k : o.guvence_kisitlari) {
+        std::printf("  %s\n", k.c_str());
+    }
     std::printf("uyarilar: %zu\n", o.uyarilar.size());
     for (const std::string& u : o.uyarilar) {
         std::printf("  %s\n", u.c_str());

@@ -74,6 +74,28 @@ struct ParcaliDosya {
 
 enum class Veri { sikistirilir, sikistirilmaz };
 
+void dosyadan_doldur(Denetci& d, ParcaliDosya& p, std::vector<std::uint8_t> bayt)
+{
+    p.bayt = std::move(bayt);
+    p.kayitlar = kayitlari_tara(p.bayt);
+    for (const KayitKonumu& k : p.kayitlar) {
+        if (k.op == 0x06) {
+            p.parcalar.push_back(k);
+        }
+    }
+    AcmaHatasi h = AcmaHatasi::yok;
+    const auto o = Okuyucu::ac_bellek(p.bayt, h);
+    DOGRULA(d, o != nullptr && o->ozet().saglam(), "özgün dosya sağlam");
+    if (o) {
+        p.iletiler = hepsini_oku(*o);
+        for (const OkunanIleti& i : p.iletiler) {
+            p.sira_ile[i.sequence] = i;
+        }
+        p.ust_veri = o->ozet().ust_veri;
+        p.toplam = o->ozet().ileti_sayisi;
+    }
+}
+
 ParcaliDosya parcali_dosya(Denetci& d, const std::string& ad, const std::vector<std::size_t>& parca_iletileri, Veri veri)
 {
     ParcaliDosya p;
@@ -109,42 +131,61 @@ ParcaliDosya parcali_dosya(Denetci& d, const std::string& ad, const std::vector<
     }
     const KapanisSonucu ks = dz.kapat();
     DOGRULA(d, ks.dosya_kapandi && ks.sayaclar.kapanan_parca == parca_iletileri.size(), "parçalar denetimli kapandı");
-    p.bayt = dosya_oku(dz.y->yol());
-    p.kayitlar = kayitlari_tara(p.bayt);
-    for (const KayitKonumu& k : p.kayitlar) {
-        if (k.op == 0x06) {
-            p.parcalar.push_back(k);
-        }
-    }
+    dosyadan_doldur(d, p, dosya_oku(dz.y->yol()));
     DOGRULA(d, p.parcalar.size() == parca_iletileri.size(), "dosyadaki parça sayısı");
-    AcmaHatasi h = AcmaHatasi::yok;
-    const auto o = Okuyucu::ac_bellek(p.bayt, h);
-    DOGRULA(d, o != nullptr && o->ozet().saglam(), "özgün dosya sağlam");
-    if (o) {
-        p.iletiler = hepsini_oku(*o);
-        for (const OkunanIleti& i : p.iletiler) {
-            p.sira_ile[i.sequence] = i;
-        }
-        p.ust_veri = o->ozet().ust_veri;
-        p.toplam = o->ozet().ileti_sayisi;
-    }
     return p;
 }
 
-// `a6_kanallar.json` eki (≈ 200 KiB) çıkarılmış kopya: rastgele bozulma sınamasında değişiklikler
-// ek yerine dosyanın yapısına düşsün. Özet bölümündeki konumlar bayatlar; A6 okuyucusu özete dayanmaz.
-std::vector<std::uint8_t> katalog_eksiz(const std::vector<std::uint8_t>& b)
+// Önek güvenceli kayıt: küçük halka taşar, `fizik/durum` iletileri düşer (`kayit/eksik`); dosya `fizik`
+// güvencesini yalnız ilk eksik adımdan önceki adımlar için verir.
+ParcaliDosya onekli_dosya(Denetci& d, const std::string& ad)
+{
+    ParcaliDosya p;
+    Duzenek dz(ad, Kademe::telemetri, "hil_bariyer", [](Ayar& a) { a.ureticiler[0].halka_bayt = 16384; });
+    DOGRULA(d, dz.y != nullptr, "yazıcı açıldı: " + dz.hata);
+    if (!dz.y) {
+        return p;
+    }
+    FizikDurumu fd;
+    for (std::uint64_t adim = 0; adim < 110; ++adim) {
+        fd.guncelle(adim);
+        fd.y.adim_no = adim;
+        (void)dz.u().yaz<Kanal::fizik_durum>(static_cast<std::int64_t>(adim) * 5'000'000, adim, fd.y);
+        if (adim == 59 || adim == 99) {
+            dz.y->isle();
+            dz.saat.ilerlet(1'000'000'000);
+            dz.y->isle();
+        }
+    }
+    const KapanisSonucu ks = dz.kapat();
+    DOGRULA(d, ks.dosya_kapandi && ks.kapanis_kaydi.count("guvence_on_eki_son_adim") == 1, "önekli dosya kapandı");
+    dosyadan_doldur(d, p, dosya_oku(dz.y->yol()));
+    return p;
+}
+
+// `a6_kanallar.json` eki (≈ 200 KiB) aynı adlı küçük bir ekle değiştirilmiş kopya: rastgele bozulma
+// sınamasında değişiklikler ek yerine dosyanın yapısına düşsün ve her vakada büyük ekin CRC'si yeniden
+// hesaplanmasın. Ek zorunludur (A6 §3.6): çıkarılırsa dosya güvence veremez; bu yüzden küçültülür ve
+// veri bölümü CRC'si yenilenir (kopya, sağlam ve güvenceli bir dosyadır). Özet bölümündeki konumlar
+// bayatlar; A6 okuyucusu özete dayanmaz.
+std::vector<std::uint8_t> katalog_kucuk(const std::vector<std::uint8_t>& b)
 {
     std::vector<std::uint8_t> c(b.begin(), b.begin() + 8);
     std::uint64_t son = 8;
     for (const KayitKonumu& k : kayitlari_tara(b)) {
         const bool katalog_eki = k.op == 0x09 && k.boy > 100000;
-        if (!katalog_eki) {
+        if (katalog_eki) {
+            const std::string metin = "{\"kucuk\":true}";
+            ElleMcap ek;
+            ek.ek(kKatalogEki, "application/json", std::vector<std::uint8_t>(metin.begin(), metin.end()));
+            c.insert(c.end(), ek.al().begin(), ek.al().end());
+        } else {
             c.insert(c.end(), b.begin() + static_cast<std::ptrdiff_t>(k.konum), b.begin() + static_cast<std::ptrdiff_t>(k.govde + k.boy));
         }
         son = k.govde + k.boy;
     }
     c.insert(c.end(), b.begin() + static_cast<std::ptrdiff_t>(son), b.end());
+    veri_crc_yenile(c);
     return c;
 }
 
@@ -273,7 +314,7 @@ int test_kurtarma_kesik()
     // Parça bölgesindeki her kesim noktası: bozuk sayılmaz, ileti sayısı tam parçalarla belirlenir.
     // (Büyük katalog eki çıkarılmış kopyada; her vakada ekin CRC'si yeniden hesaplanmasın.)
     {
-        const std::vector<std::uint8_t> kucuk = katalog_eksiz(p.bayt);
+        const std::vector<std::uint8_t> kucuk = katalog_kucuk(p.bayt);
         std::vector<KayitKonumu> parcalar;
         std::uint64_t son = 0;
         for (const KayitKonumu& k : kayitlari_tara(kucuk)) {
@@ -451,6 +492,29 @@ int test_bozulma_parca()
             yaz_u64(b, veri_basi - 8, oku_u64(p.bayt, veri_basi - 8) - 1);
             bozuk_denetle(b, 2, ad + ": parçanın kayıt uzunluğu");
         }
+        // (g) İnceleme bulgusu 6: parça kaydının DIŞ uzunluğu dosya sonunu aşar. Tarama Footer'a
+        // ulaşamaz ama dosyanın sonu kapalıdır (Footer ve sihirli baytlar yerinde): dosya "kapanmamış"
+        // değil bozuktur (kurtarma okuması düzgün kapanmış kaydın sonunu sessizce atardı).
+        for (const std::uint64_t boy : {UINT64_MAX, UINT64_MAX - 9u, std::uint64_t{p.bayt.size()}}) {
+            std::vector<std::uint8_t> b = p.bayt;
+            yaz_u64(b, p.parcalar[2].konum + 1, boy);
+            bozuk_denetle(b, 2, ad + ": kaydın dış uzunluğu " + std::to_string(boy));
+        }
+        {
+            // Aynısı bir ek kaydında (parçalardan önce): hiç ileti okunmaz, dosya yine bozuktur.
+            std::uint64_t ek = 0;
+            for (const KayitKonumu& k : p.kayitlar) {
+                if (k.op == 0x09 && ek == 0) {
+                    ek = k.konum;
+                }
+            }
+            std::vector<std::uint8_t> b = p.bayt;
+            yaz_u64(b, ek + 1, std::uint64_t{1} << 50);
+            const Okuma s = oku(b);
+            DOGRULA(d, ek != 0 && s.acildi && s.ozet.bozuk && s.ozet.kapanmis && s.ozet.bozulma_konumu == ek && s.iletiler.empty() &&
+                           s.ozet.guvence == Guvence::izleme,
+                    ad + ": ek kaydının dış uzunluğu: kapanmış ama bozuk: " + s.ozet.bozulma);
+        }
     }
     // Sınırın üstünde sıkıştırmasız boy: okuyucunun ayarındaki üst sınır uygulanır.
     {
@@ -519,11 +583,25 @@ int test_bozulma_ek_ust_veri()
     const KayitKonumu acilis = ust_veri_kaydi("ida_kayit");
     const KayitKonumu kapanis = ust_veri_kaydi("ida_kayit_kapanis");
     DOGRULA(d, acilis.boy > 0 && kapanis.boy > 0, "üst veri kayıtları bulundu");
+    // Veri bölümü CRC'si (W5-K39) her zaman yazılır: aşağıdaki her değişikliği önce o yakalar (dosya
+    // bozuk). Öteki denetimler ondan BAĞIMSIZ da sınanır: değişiklikten sonra CRC yenilenir
+    // (`veri_crc_yenile`) ve ilgili denetimin tek başına yakaladığı gösterilir.
+    const std::uint64_t de = veri_sonu_konumu(p.bayt);
+    DOGRULA(d, de != 0 && oku_u32(p.bayt, de + 9) != 0 && oku_u32(p.bayt, de + 9) == ic::crc32(p.bayt.data(), static_cast<std::size_t>(de)),
+            "yazıcı veri bölümü CRC'sini yazar: ilk bayttan Data End kaydına kadar");
+    const auto crc_yakalar = [&](const std::vector<std::uint8_t>& b, const std::string& ne) {
+        const Okuma s = oku(b);
+        DOGRULA(d, s.acildi && s.ozet.bozuk && !s.ozet.saglam() && s.ozet.guvence == Guvence::izleme &&
+                       s.ozet.bozulma.find("veri bölümü CRC") != std::string::npos,
+                ne + ": veri bölümü CRC'si yakalar: " + (s.acildi ? s.ozet.bozulma : std::string("açılmadı")));
+    };
     {
         // Zorunlu anahtarın adı bozulur: gerekli anahtar eksik (ve bilinmeyen anahtar var) → yalnız izleme.
         std::vector<std::uint8_t> b = p.bayt;
         const std::int64_t k = bul(b, "senaryo_ozeti", acilis.govde);
         b[static_cast<std::size_t>(k)] = 'z';
+        crc_yakalar(b, "zorunlu anahtarın adı");
+        veri_crc_yenile(b);
         const Okuma s = oku(b);
         DOGRULA(d, s.acildi && !s.ozet.bozuk && s.ozet.ust_veri_var && !s.ozet.ust_veri_gecerli && s.ozet.guvence == Guvence::izleme &&
                        !s.ozet.uyarilar.empty(),
@@ -534,6 +612,8 @@ int test_bozulma_ek_ust_veri()
         // Kayıt yapısal olarak çözülemez (bir dize uzunluğu taşar): açılış kaydı yok sayılır → yalnız izleme.
         std::vector<std::uint8_t> b = p.bayt;
         yaz_u32(b, acilis.govde + 4 + 9 + 4, 0x7FFFFFFFu);  // ilk anahtarın uzunluğu
+        crc_yakalar(b, "çözülemeyen açılış kaydı");
+        veri_crc_yenile(b);
         const Okuma s = oku(b);
         DOGRULA(d, s.acildi && !s.ozet.ust_veri_var && !s.ozet.ust_veri_gecerli && s.ozet.guvence == Guvence::izleme,
                 "çözülemeyen açılış kaydı: yalnız izleme");
@@ -545,14 +625,53 @@ int test_bozulma_ek_ust_veri()
         b[static_cast<std::size_t>(k) + 9 + 4] = '2';  // "1.0" → "2.0"
         AcmaHatasi h = AcmaHatasi::yok;
         DOGRULA(d, Okuyucu::ac_bellek(b, h) == nullptr && h == AcmaHatasi::buyuk_surum_farkli, "farklı büyük a6_surumu okunmaz");
+        // İnceleme bulgusu 3: üst veri değerindeki tek baytlık değişiklik artık sessizce "sağlam"
+        // okunmaz ("1.0" → "1.7").
         b = p.bayt;
-        b[static_cast<std::size_t>(k) + 9 + 4 + 2] = '7';  // "1.0" → "1.7"
+        b[static_cast<std::size_t>(k) + 9 + 4 + 2] = '7';
+        crc_yakalar(b, "a6_surumu değeri");
+        // Yazan sürüm gerçekten 1.7 ise (CRC o içerikle hesaplanmış): aynı büyük sürüm okunur.
+        veri_crc_yenile(b);
         const Okuma s = oku(b);
         DOGRULA(d, s.acildi && s.ozet.saglam() && s.ozet.ust_veri_gecerli && s.ozet.guvence == Guvence::fizik, "aynı büyük sürüm okunur");
         b = p.bayt;
         b[static_cast<std::size_t>(k) + 9 + 4 + 1] = 'x';  // "1x0": sürüm çözülemez
+        veri_crc_yenile(b);
         const Okuma s2 = oku(b);
         DOGRULA(d, s2.acildi && !s2.ozet.ust_veri_gecerli && s2.ozet.guvence == Guvence::izleme, "çözülemeyen sürüm: yalnız izleme");
+    }
+    {
+        // İnceleme bulgusu 3: `tohum` ve `senaryo_ozeti` değerindeki bayt değişimi görünür.
+        for (const char* anahtar : {"tohum", "senaryo_ozeti"}) {
+            const std::int64_t k = bul(p.bayt, anahtar, acilis.govde);
+            std::vector<std::uint8_t> b = p.bayt;
+            b[static_cast<std::size_t>(k) + std::strlen(anahtar) + 4] ^= 0x01u;  // değerin ilk baytı
+            crc_yakalar(b, std::string(anahtar) + " değeri");
+        }
+    }
+    {
+        // İnceleme bulgusu 3 (inceleyicinin örneği): zorunlu `cozumlenmis_senaryo.json` ekinin kayıt türü
+        // baytı 0x09 → 0x0A: ek dosyadan kaybolur.
+        std::uint64_t ek = 0;
+        for (const KayitKonumu& k : p.kayitlar) {
+            if (k.op == 0x09 && bul(p.bayt, "cozumlenmis_senaryo.json", k.govde) == static_cast<std::int64_t>(k.govde + 16 + 4)) {
+                ek = k.konum;
+            }
+        }
+        DOGRULA(d, ek != 0, "cozumlenmis_senaryo.json eki bulundu");
+        std::vector<std::uint8_t> b = p.bayt;
+        b[static_cast<std::size_t>(ek)] = 0x0A;
+        crc_yakalar(b, "zorunlu ekin kayıt türü");
+        // CRC'den bağımsız: zorunlu eki olmayan dosya `izleme`'den yüksek güvence veremez (Tablo 4.6).
+        veri_crc_yenile(b);
+        const Okuma s = oku(b);
+        const bool listede = s.acildi && std::any_of(s.ozet.ekler.begin(), s.ozet.ekler.end(),
+                                                     [](const EkOzeti& e) { return e.ad == "cozumlenmis_senaryo.json"; });
+        DOGRULA(d, s.acildi && !s.ozet.bozuk && !listede && s.ozet.guvence == Guvence::izleme && !s.ozet.guvence_on_eki_son_adim.has_value() &&
+                       s.ozet.guvence_kisitlari.size() == 1 &&
+                       s.ozet.guvence_kisitlari[0].find("cozumlenmis_senaryo.json") != std::string::npos,
+                "zorunlu eki olmayan dosya: güvence izleme, neden bildirilir");
+        DOGRULA(d, s.iletiler.size() == p.toplam, "zorunlu eki olmayan dosyada iletiler okunur");
     }
     {
         // Kapanış kaydındaki ileti sayısı dosyadakiyle uyuşmazsa dosya bozuktur (bir parçanın bütünüyle
@@ -560,8 +679,11 @@ int test_bozulma_ek_ust_veri()
         const std::int64_t k = bul(p.bayt, "ileti_sayisi", kapanis.govde);
         std::vector<std::uint8_t> b = p.bayt;
         b[static_cast<std::size_t>(k) + 12 + 4] = '9';  // "10" → "90"
+        crc_yakalar(b, "ileti_sayisi değeri");
+        veri_crc_yenile(b);
         const Okuma s = oku(b);
-        DOGRULA(d, s.acildi && s.ozet.bozuk && s.ozet.guvence == Guvence::izleme, "ileti_sayisi uyuşmazlığı: " + s.ozet.bozulma);
+        DOGRULA(d, s.acildi && s.ozet.bozuk && s.ozet.guvence == Guvence::izleme && s.ozet.bozulma.find("ileti_sayisi") != std::string::npos,
+                "ileti_sayisi uyuşmazlığı: " + s.ozet.bozulma);
         // Bir parça kaydı (ve ileti indeksleri) dosyadan temizce çıkarılırsa da aynı denetim yakalar.
         const std::vector<KayitKonumu> parcalar = p.parcalar;
         std::vector<std::uint8_t> eksik(p.bayt.begin(), p.bayt.begin() + static_cast<std::ptrdiff_t>(parcalar[1].konum));
@@ -573,8 +695,11 @@ int test_bozulma_ek_ust_veri()
             }
         }
         eksik.insert(eksik.end(), p.bayt.begin() + static_cast<std::ptrdiff_t>(sonraki), p.bayt.end());
+        crc_yakalar(eksik, "bütünüyle kaybolan parça");
+        veri_crc_yenile(eksik);
         const Okuma s2 = oku(eksik);
-        DOGRULA(d, s2.acildi && s2.ozet.kapanmis && s2.ozet.bozuk && s2.ozet.guvence == Guvence::izleme && s2.iletiler.size() == 5,
+        DOGRULA(d, s2.acildi && s2.ozet.kapanmis && s2.ozet.bozuk && s2.ozet.guvence == Guvence::izleme && s2.iletiler.size() == 5 &&
+                       s2.ozet.bozulma.find("ileti_sayisi") != std::string::npos,
                 "bütünüyle kaybolan parça sessizce geçmez: " + s2.ozet.bozulma);
     }
     {
@@ -582,32 +707,29 @@ int test_bozulma_ek_ust_veri()
         const std::int64_t k = bul(p.bayt, "tekrar_guvencesi", kapanis.govde);
         std::vector<std::uint8_t> b = p.bayt;
         std::memcpy(b.data() + k + 16 + 4, "girdi", 5);  // "fizik" → "girdi" (telemetri kademesi girdi veremez)
+        crc_yakalar(b, "tekrar_guvencesi değeri");
+        veri_crc_yenile(b);
         const Okuma s = oku(b);
         DOGRULA(d, s.acildi && s.ozet.guvence == Guvence::fizik && !s.ozet.uyarilar.empty(), "kapanış kaydı güvenceyi yükseltemez");
     }
     {
-        // Data End'deki veri bölümü CRC'si (kitaplık varsayılanında 0 = yok): yazılmışsa doğrulanır.
-        std::uint64_t de = 0;
-        for (const KayitKonumu& k : p.kayitlar) {
-            if (k.op == 0x0F) {
-                de = k.konum;
-            }
-        }
-        DOGRULA(d, de != 0 && oku_u32(p.bayt, de + 9) == 0, "kitaplık varsayılanı: veri bölümü CRC'si yazılmaz");
+        // Veri bölümü CRC'si yazılmamış dosya (Data End `data_section_crc` = 0; W5-K39 öncesi yazıcı ya
+        // da başka bir araç): bozuk sayılmaz ama `izleme`'den yüksek güvence veremez; neden bildirilir.
         std::vector<std::uint8_t> b = p.bayt;
-        yaz_u32(b, de + 9, ic::crc32(p.bayt.data(), static_cast<std::size_t>(de)));
+        yaz_u32(b, de + 9, 0);
         Okuma s = oku(b);
-        DOGRULA(d, s.acildi && s.ozet.saglam(), "doğru veri bölümü CRC'si kabul edilir");
-        // Açılış kaydının son baytı: son anahtarın (`tohum`) değerinin son karakteri ("42" → "43").
+        DOGRULA(d, s.acildi && s.ozet.saglam() && s.ozet.guvence == Guvence::izleme && !s.ozet.guvence_on_eki_son_adim.has_value() &&
+                       s.ozet.guvence_kisitlari.size() == 1 && s.ozet.guvence_kisitlari[0].find("CRC") != std::string::npos,
+                "veri bölümü CRC'siz dosya: güvence izleme, neden bildirilir");
+        // O dosyada üst veri değeri CRC ile korunmaz ("42" → "43" görünmez): güvence verilmemesinin nedeni.
         b[static_cast<std::size_t>(acilis.govde + acilis.boy - 1)] ^= 0x01u;
         s = oku(b);
-        DOGRULA(d, s.acildi && s.ozet.bozuk, "veri bölümü CRC'si varsa üst verideki değişiklik yakalanır");
-        // CRC'siz (varsayılan) dosyada aynı değişiklik yapısal olarak görünmez: sınır olarak belgelidir.
+        DOGRULA(d, s.acildi && !s.ozet.bozuk && s.ozet.ust_veri.at("tohum") == "43" && s.ozet.guvence == Guvence::izleme,
+                "veri bölümü CRC'siz dosyada değişen üst veri görünmez; dosya güvence vermez");
+        // CRC alanının kendisi bozulursa dosya bozuktur.
         b = p.bayt;
-        b[static_cast<std::size_t>(acilis.govde + acilis.boy - 1)] ^= 0x01u;
-        s = oku(b);
-        DOGRULA(d, s.acildi && !s.ozet.bozuk && s.ozet.ust_veri.at("tohum") == "43",
-                "veri bölümü CRC'siz dosyada üst veri değeri CRC ile korunmaz (bilinen sınır)");
+        b[static_cast<std::size_t>(de + 9)] ^= 0x40u;
+        crc_yakalar(b, "CRC alanı");
     }
     return d.hata;
 }
@@ -828,12 +950,24 @@ int test_rastgele_bozulma()
     if (d.hata != 0) {
         return d.hata;
     }
-    const ParcaliDosya* kaynaklar[] = {&zs, &ham};
-    std::vector<std::uint8_t> tabanlar[2] = {katalog_eksiz(zs.bayt), katalog_eksiz(ham.bayt)};
-    for (int k = 0; k < 2; ++k) {
+    const ParcaliDosya onekli = onekli_dosya(d, "rastgele_onekli");
+    if (d.hata != 0) {
+        return d.hata;
+    }
+    constexpr int kTaban = 3;
+    const ParcaliDosya* kaynaklar[kTaban] = {&zs, &ham, &onekli};
+    std::vector<std::uint8_t> tabanlar[kTaban] = {katalog_kucuk(zs.bayt), katalog_kucuk(ham.bayt), katalog_kucuk(onekli.bayt)};
+    // Özgün dosyaların güvencesi: ikisi tam `fizik`, biri önekli `fizik` (W5-K39 değişmezinin ölçütü).
+    DosyaOzeti taban_ozeti[kTaban];
+    for (int k = 0; k < kTaban; ++k) {
         const Okuma s = oku(tabanlar[k]);
-        DOGRULA(d, s.acildi && s.ozet.kapanmis && s.iletiler.size() == kaynaklar[k]->toplam,
-                "küçültülmüş taban dosya okunur (" + std::to_string(tabanlar[k].size()) + " bayt)");
+        DOGRULA(d, s.acildi && s.ozet.saglam() && s.iletiler.size() == kaynaklar[k]->toplam && s.ozet.guvence == Guvence::fizik &&
+                       s.ozet.guvence_kisitlari.empty() && s.ozet.guvence_on_eki_son_adim.has_value() == (k == 2),
+                "küçültülmüş taban dosya sağlam ve güvenceli (" + std::to_string(tabanlar[k].size()) + " bayt)");
+        taban_ozeti[k] = s.ozet;
+    }
+    if (d.hata != 0) {
+        return d.hata;
     }
     constexpr int kVaka = 12000;
     Rastgele r(0x1DA6);
@@ -842,8 +976,9 @@ int test_rastgele_bozulma()
     ayar.azami_acik_bayt = std::uint64_t{16} << 20;
     std::map<std::string, int> sonuclar;
     std::uint64_t toplam_ileti = 0;
+    int guvenceli = 0;
     for (int vaka = 0; vaka < kVaka; ++vaka) {
-        const int k = static_cast<int>(r.alt(2));
+        const int k = static_cast<int>(r.alt(kTaban));
         const ParcaliDosya& kaynak = *kaynaklar[k];
         std::vector<std::uint8_t> b = tabanlar[k];
         const std::vector<KayitKonumu> kayitlar = kayitlari_tara(b);
@@ -851,7 +986,7 @@ int test_rastgele_bozulma()
         const int degisiklik = 1 + static_cast<int>(r.alt(3));
         for (int i = 0; i < degisiklik && !b.empty(); ++i) {
             const std::uint64_t konum = r.alt(b.size());
-            switch (r.alt(9)) {
+            switch (r.alt(11)) {
             case 0:  // kes
                 b.resize(static_cast<std::size_t>(konum));
                 yerinde = false;
@@ -901,6 +1036,35 @@ int test_rastgele_bozulma()
                 const std::uint64_t hedef = r.alt(b.size());
                 b.insert(b.begin() + static_cast<std::ptrdiff_t>(hedef), dilim.begin(), dilim.end());
                 yerinde = false;
+                break;
+            }
+            case 9: {  // Data End'deki veri bölümü CRC'sini sıfırla ("CRC yok"): öteki değişiklikler CRC'siz kalır
+                for (const KayitKonumu& kk : kayitlar) {
+                    if (kk.op == 0x0F && kk.boy == 4 && kk.govde + 4 <= b.size()) {
+                        yaz_u32(b, kk.govde, 0);
+                    }
+                }
+                break;
+            }
+            case 10: {  // kapanış kaydında (veri bölümünün son üst veri kaydı) bir rakamı başka bir rakamla değiştir
+                KayitKonumu kapanis;
+                for (const KayitKonumu& kk : kayitlar) {
+                    if (kk.op == 0x0F) {
+                        break;
+                    }
+                    if (kk.op == 0x0C) {
+                        kapanis = kk;
+                    }
+                }
+                std::vector<std::uint64_t> rakamlar;
+                for (std::uint64_t j = kapanis.govde; j < kapanis.govde + kapanis.boy && j < b.size(); ++j) {
+                    if (b[static_cast<std::size_t>(j)] >= '0' && b[static_cast<std::size_t>(j)] <= '9') {
+                        rakamlar.push_back(j);
+                    }
+                }
+                if (!rakamlar.empty()) {
+                    b[static_cast<std::size_t>(rakamlar[r.alt(rakamlar.size())])] = static_cast<std::uint8_t>('0' + r.alt(10));
+                }
                 break;
             }
             case 7: {  // bir dilimi sil
@@ -964,10 +1128,32 @@ int test_rastgele_bozulma()
             // Tekrar güvencesi yalnız kapanmış, bozuk olmayan, üst verisi geçerli dosyadan çıkar ve
             // o zaman dosyadaki iletiler kapanış kaydındaki sayıyla aynıdır.
             DOGRULA(d, oz.saglam() && oz.ust_veri_gecerli && oz.kapanis.has_value(), "vaka " + std::to_string(vaka) + ": güvence koşulu");
-            DOGRULA(d, oz.guvence == Guvence::fizik || oz.guvence == Guvence::yok, "vaka " + std::to_string(vaka) + ": güvence yükselemez");
             if (yerinde) {
                 DOGRULA(d, n == kaynak.toplam && siralar.size() == kaynak.sira_ile.size(),
                         "vaka " + std::to_string(vaka) + ": güvenceli dosyada eksik ileti (" + std::to_string(n) + ")");
+            }
+        }
+        // W5-K39 değişmezi: bozulmuş bir dosya hiçbir zaman özgün dosyadan YÜKSEK güvence ya da daha
+        // GENİŞ önek vermez (öneksiz güvence en geniş olandır).
+        {
+            const DosyaOzeti& ozgun = taban_ozeti[k];
+            bool genis = oz.guvence > ozgun.guvence;
+            if (oz.guvence == ozgun.guvence && oz.guvence > Guvence::izleme && ozgun.guvence_on_eki_son_adim.has_value()) {
+                genis = !oz.guvence_on_eki_son_adim.has_value() || *oz.guvence_on_eki_son_adim > *ozgun.guvence_on_eki_son_adim;
+            }
+            DOGRULA(d, !genis, "vaka " + std::to_string(vaka) + ": bozulmuş dosya özgünden yüksek güvence ya da geniş önek verdi (" +
+                                   std::string(guvence_adi(oz.guvence)) + ", önek " +
+                                   (oz.guvence_on_eki_son_adim.has_value() ? std::to_string(*oz.guvence_on_eki_son_adim) : std::string("yok")) + ")");
+            guvenceli += oz.guvence > Guvence::izleme ? 1 : 0;
+            // İnceleme bulgusu 3: `izleme`'den yüksek güvence veren dosyanın üst verisi, kapanış kaydı ve
+            // ekleri özgünüyle aynıdır (sessizce değişmiş bir üst veri ya da kaybolmuş bir ekle güvence verilmez).
+            if (oz.guvence > Guvence::izleme) {
+                bool ekler_ayni = oz.ekler.size() == ozgun.ekler.size();
+                for (std::size_t e = 0; ekler_ayni && e < oz.ekler.size(); ++e) {
+                    ekler_ayni = oz.ekler[e].ad == ozgun.ekler[e].ad && oz.ekler[e].boyut == ozgun.ekler[e].boyut;
+                }
+                DOGRULA(d, oz.ust_veri == ozgun.ust_veri && oz.kapanis == ozgun.kapanis && ekler_ayni,
+                        "vaka " + std::to_string(vaka) + ": güvenceli okunan dosyanın üst verisi ya da ekleri değişmiş");
             }
         }
         if (oz.saglam() && oz.kapanis.has_value() && yerinde) {
@@ -979,7 +1165,235 @@ int test_rastgele_bozulma()
     for (const auto& [ad, sayi] : sonuclar) {
         std::printf("    %-40s %d\n", ad.c_str(), sayi);
     }
+    std::printf("    güvencesi izlemeden yüksek kalan vaka: %d\n", guvenceli);
     DOGRULA(d, sonuclar["bozuk"] > 1000 && sonuclar["kapanmamis"] > 500, "vakalar bozuk ve kapanmamış sonuçları kapsıyor");
+    return d.hata;
+}
+
+// W5-K39 ve inceleme bulguları 3 (c, d), 7, 8: okuyucunun güvence kısıtları ve önek sınırları; elle
+// kurulmuş dosyalarla (yazıcıdan ve kitaplıktan bağımsız). Dosya kendisi hakkında doğrulanamayan bir
+// güvence veremez.
+int test_guvence_kisitlari()
+{
+    Denetci d;
+    const ElleTaban t;
+    const KanalTanimi* fizik = kanal_bul("fizik/durum");
+    const KanalTanimi* eksik = kanal_bul("kayit/eksik");
+    const KanalTanimi* olay = kanal_bul("olay");
+    DOGRULA(d, fizik != nullptr && eksik != nullptr && olay != nullptr, "kanallar katalogda");
+    if (d.hata != 0) {
+        return d.hata;
+    }
+    const Ornek fizik_ornek = ornek_uret(Kanal::fizik_durum, 3);
+    struct Eksik {
+        std::string kanal;
+        std::uint64_t ilk_adim = 0;
+        std::uint64_t son_adim = 0;
+    };
+    struct Kurulum {
+        std::string kademe = "telemetri";
+        std::string kip = "hil_bariyer";
+        std::uint64_t son_fizik_adimi = 500;  // `fizik/durum` iletileri: adım 0, 100, …, son
+        std::vector<Eksik> eksikler;
+        ElleMcap::Eslem kapanis;       // taban kapanış kaydının üstüne yazılan anahtarlar
+        bool veri_crc = true;
+        std::string atlanan_ek;        // bu ek dosyaya yazılmaz
+        bool eksik_semasi_farkli = false;
+        bool eksik_yuku_kesik = false;
+    };
+    const auto kanal_ustverisi = [](const KanalTanimi& k) {
+        return ElleMcap::Eslem{{"kanal_surumu", std::to_string(k.kanal_surumu)},
+                               {"zaman_anlami", std::string(k.zaman_anlami)},
+                               {"kademe", std::string(k.kademe_adi)}};
+    };
+    const auto kur = [&](const Kurulum& k) {
+        ElleMcap::Eslem acilis = t.acilis;
+        acilis["kayit_kademesi"] = k.kademe;
+        acilis["kip"] = k.kip;
+        if (k.kip == "sil") {
+            acilis["sil_n_bg"] = "2";
+        }
+        ElleMcap f;
+        f.sihir().baslik("ida", "elle").ust_veri("ida_kayit", acilis);
+        for (const EkTanimi& e : ekler()) {
+            if (e.ad != k.atlanan_ek) {
+                f.ek(e.ad, e.ortam_turu, {'{', '}'});
+            }
+        }
+        ElleMcap p;
+        std::uint32_t sira = 1;
+        const SemaTanimi& fs = semalar()[fizik->sema];
+        p.sema(1, fs.ad, kSemaKodlamasi, fs.veri).kanal(1, 1, fizik->ad, kIletiKodlamasi, kanal_ustverisi(*fizik));
+        for (std::uint64_t adim = 0; adim <= k.son_fizik_adimi; adim += 100) {
+            std::vector<std::uint8_t> yuk = fizik_ornek.bayt;
+            std::memcpy(yuk.data(), &adim, 8);  // yükün ilk alanı `adim_no` (u64, küçük uçlu)
+            p.ileti(1, sira++, adim * 1000, adim, yuk);
+        }
+        if (!k.eksikler.empty()) {
+            const SemaTanimi& es = semalar()[eksik->sema];
+            std::string sema_verisi(es.veri);
+            if (k.eksik_semasi_farkli) {
+                sema_verisi[sema_verisi.size() / 2] = sema_verisi[sema_verisi.size() / 2] == 'a' ? 'b' : 'a';
+            }
+            p.sema(2, es.ad, kSemaKodlamasi, sema_verisi).kanal(2, 2, eksik->ad, kIletiKodlamasi, kanal_ustverisi(*eksik));
+            for (const Eksik& e : k.eksikler) {
+                yuk_kayit_eksik y;
+                y.kanal = e.kanal;
+                y.ilk_sim_t_ns = static_cast<std::int64_t>(e.ilk_adim) * 1000;
+                y.son_sim_t_ns = static_cast<std::int64_t>(e.son_adim) * 1000;
+                y.ilk_adim = e.ilk_adim;
+                y.son_adim = e.son_adim;
+                y.kayip_sayisi = e.son_adim - e.ilk_adim + 1;
+                std::vector<std::uint8_t> yuk(boyut(y));
+                std::size_t yazilan = 0;
+                DOGRULA(d, kodla(y, yuk.data(), yuk.size(), yazilan) && yazilan == yuk.size(), "kayit/eksik yükü kodlandı");
+                if (k.eksik_yuku_kesik) {
+                    yuk.resize(yuk.size() - 3);
+                }
+                p.ileti(2, sira++, static_cast<std::uint64_t>(e.son_adim) * 1000, 0, yuk);
+            }
+        }
+        ElleMcap::Eslem kapanis = {{"bitis_durumu", "bitti"},
+                                   {"son_adim_no", std::to_string(k.son_fizik_adimi)},
+                                   {"son_sim_t_ns", std::to_string(k.son_fizik_adimi * 1000)},
+                                   {"gecerli", "true"},
+                                   {"gercek_zamani_kacirdi", "false"},
+                                   {"gecerlilik_nedenleri", ""},
+                                   {"sayaclar", ""},
+                                   {"kayit_eksik", k.eksikler.empty() ? "false" : "true"},
+                                   {"tekrar_guvencesi", "fizik"},
+                                   {"ileti_sayisi", std::to_string(sira - 1u)}};
+        for (const auto& [a, v] : k.kapanis) {
+            kapanis[a] = v;
+        }
+        f.parca(p.al()).ust_veri("ida_kayit_kapanis", kapanis);
+        if (k.veri_crc) {
+            f.veri_sonu_crcli();
+        } else {
+            f.veri_sonu(0);
+        }
+        f.footer();
+        return f.al();
+    };
+    using Onek = std::optional<std::uint64_t>;
+    const auto bekle = [&](const std::string& ne, const Kurulum& k, Guvence guvence, Onek onek, const std::string& kisit) {
+        const Okuma s = oku(kur(k));
+        DOGRULA(d, s.acildi && s.ozet.saglam() && s.ozet.ust_veri_gecerli, ne + ": dosya sağlam" +
+                                                                               (s.acildi && s.ozet.bozuk ? ": " + s.ozet.bozulma : std::string()) +
+                                                                               (s.acildi && !s.ozet.uyarilar.empty() ? " / " + s.ozet.uyarilar[0] : std::string()));
+        if (!s.acildi) {
+            return;
+        }
+        DOGRULA(d, s.ozet.guvence == guvence && s.ozet.guvence_on_eki_son_adim == onek,
+                ne + ": güvence " + std::string(guvence_adi(s.ozet.guvence)) + ", önek " +
+                    (s.ozet.guvence_on_eki_son_adim.has_value() ? std::to_string(*s.ozet.guvence_on_eki_son_adim) : std::string("yok")));
+        if (kisit.empty()) {
+            DOGRULA(d, s.ozet.guvence_kisitlari.empty(), ne + ": kısıt bildirilmez" +
+                                                             (s.ozet.guvence_kisitlari.empty() ? std::string() : ": " + s.ozet.guvence_kisitlari[0]));
+        } else {
+            const bool var = std::any_of(s.ozet.guvence_kisitlari.begin(), s.ozet.guvence_kisitlari.end(),
+                                         [&](const std::string& x) { return x.find(kisit) != std::string::npos; });
+            DOGRULA(d, var, ne + ": kısıtın nedeni bildirilir (" + kisit + ")");
+        }
+    };
+    const Onek yok;
+    {
+        // Taban: eksiksiz, veri bölümü CRC'li, bütün ekleriyle: tam `fizik`.
+        Kurulum k;
+        bekle("taban", k, Guvence::fizik, yok, "");
+        const Okuma s = oku(kur(k));
+        DOGRULA(d, s.acildi && s.ozet.son_fizik_adimi == Onek(500), "yazılmış son fizik adımı dosyadan okunur");
+    }
+    {
+        // (b) Veri bölümü CRC'si yok: `izleme`.
+        Kurulum k;
+        k.veri_crc = false;
+        bekle("veri bölümü CRC'si yok", k, Guvence::izleme, yok, "CRC");
+    }
+    // (c) Zorunlu eklerden biri yok: `izleme`.
+    for (const EkTanimi& e : ekler()) {
+        Kurulum k;
+        k.atlanan_ek = std::string(e.ad);
+        bekle("eksik ek " + k.atlanan_ek, k, e.zorunlu ? Guvence::izleme : Guvence::fizik, yok, e.zorunlu ? k.atlanan_ek : std::string());
+    }
+    {
+        // (d) Önek, düzeyin kanallarında dosyada görülen ilk `kayit/eksik` adımını aşamaz.
+        Kurulum k;
+        k.eksikler = {{"fizik/durum", 300, 340}};
+        k.kapanis = {{"guvence_on_eki_son_adim", "400"}, {"ilk_eksik_adim", "300"}};
+        bekle("önek ilk eksik adımı aşıyor", k, Guvence::fizik, Onek(299), "");
+        k.kapanis["guvence_on_eki_son_adim"] = "100";
+        bekle("kapanış kaydındaki önek daha dar", k, Guvence::fizik, Onek(100), "");
+        k.kapanis.erase("guvence_on_eki_son_adim");
+        bekle("kapanış kaydında önek yok, dosyada eksik var", k, Guvence::fizik, Onek(299), "");
+        // Düzeyin kanalı olmayan (`olay`: yalnız izleme) eksik öneki daraltmaz.
+        k.eksikler = {{"olay", 10, 20}};
+        k.kapanis = {{"guvence_on_eki_son_adim", "400"}};
+        bekle("düzeyin kanalı olmayan eksik", k, Guvence::fizik, Onek(400), "");
+        // İlk eksik adım 0: düzey verilmez.
+        k.eksikler = {{"fizik/durum", 0, 5}};
+        bekle("ilk eksik adım 0", k, Guvence::izleme, yok, "");
+        // Okuyucunun bilmediği kanaldaki eksik her düzey için sayılır.
+        k.eksikler = {{"gelecek/kanal", 50, 60}};
+        k.kapanis.clear();
+        bekle("bilinmeyen kanalda eksik", k, Guvence::fizik, Onek(49), "");
+    }
+    {
+        // (d) Önek, dosyada yazılmış son fizik adımını aşamaz.
+        Kurulum k;
+        k.kapanis = {{"bitis_durumu", "sinira_ulasti"}, {"guvence_on_eki_son_adim", "900"}};
+        bekle("önek yazılmış son adımı aşıyor", k, Guvence::fizik, Onek(500), "");
+        k.kapanis["guvence_on_eki_son_adim"] = "450";
+        bekle("önek yazılmış son adımın altında", k, Guvence::fizik, Onek(450), "");
+        // Erken kapanmış kayıt öneksiz güvence veremez.
+        for (const char* bitis : {"sinira_ulasti", "yazma_hatasi", "disk_dolu"}) {
+            k.kapanis = {{"bitis_durumu", bitis}};
+            bekle(std::string("erken kapanış (") + bitis + ") öneksiz", k, Guvence::izleme, yok, "önek yok");
+        }
+        k.kapanis = {{"guvence_on_eki_son_adim", "12x"}};
+        bekle("çözülemeyen önek", k, Guvence::izleme, yok, "guvence_on_eki_son_adim");
+    }
+    {
+        // Bulgu 7: kip × kademe (Tablo 4.6). Fiziğin koşmadığı kiplerin kaydı `fizik` iddia edemez.
+        struct Vaka {
+            const char* kip;
+            const char* kademe;
+            const char* yazilan;
+            Guvence beklenen;
+        };
+        const Vaka vakalar[] = {
+            {"sil", "tam", "girdi", Guvence::girdi},
+            {"sil", "telemetri", "girdi", Guvence::fizik},
+            {"hil_bariyer", "tam", "girdi", Guvence::fizik},
+            {"hil_1x", "tam", "fizik", Guvence::fizik},
+            {"tekrar_fizik", "tam", "girdi", Guvence::fizik},
+            {"tekrar_girdi_sil", "tam", "fizik", Guvence::izleme},
+            {"tekrar_girdi_sil", "tam", "girdi", Guvence::izleme},
+            {"tekrar_yeniden_kurma", "tam", "fizik", Guvence::izleme},
+            {"tekrar_yeniden_kurma", "telemetri", "fizik", Guvence::izleme},
+            {"hil_bariyer", "olaylar", "fizik", Guvence::izleme},
+        };
+        for (const Vaka& v : vakalar) {
+            Kurulum k;
+            k.kip = v.kip;
+            k.kademe = v.kademe;
+            k.kapanis = {{"tekrar_guvencesi", v.yazilan}};
+            bekle(std::string("kip ") + v.kip + ", kademe " + v.kademe + ", kapanışta " + v.yazilan, k, v.beklenen, yok, "");
+        }
+    }
+    {
+        // Bulgu 8: `kayit/eksik` kanalı okunamıyorsa (şema farkı, A6-K49) eksik adımlar bilinmez: `izleme`.
+        Kurulum k;
+        k.eksikler = {{"fizik/durum", 300, 340}};
+        k.kapanis = {{"guvence_on_eki_son_adim", "299"}};
+        bekle("kayit/eksik okunur", k, Guvence::fizik, Onek(299), "");
+        k.eksik_semasi_farkli = true;
+        bekle("kayit/eksik kanalı okunamıyor", k, Guvence::izleme, yok, "kayit/eksik");
+        // Yükü çözülemeyen eksik kaydı: hangi kanalın eksik olduğu bilinmez; düzey verilmez.
+        k.eksik_semasi_farkli = false;
+        k.eksik_yuku_kesik = true;
+        bekle("kayit/eksik yükü çözülemiyor", k, Guvence::izleme, yok, "");
+    }
     return d.hata;
 }
 

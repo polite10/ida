@@ -91,6 +91,17 @@ struct GuvenceSonucu {
     std::string nedenler;                           // virgülle ayrılmış; düzey beklenenden düşükse ya da önekse
 };
 
+// Kademe ve kipin verebileceği en yüksek düzey (Tablo 4.6'nın kısıtlayan okuması):
+//
+//   kip \ kademe             olaylar   telemetri   tam
+//   sil                      izleme    fizik       girdi
+//   hil_1x, hil_bariyer      izleme    fizik       fizik
+//   tekrar_fizik             izleme    fizik       fizik
+//   tekrar_girdi_sil         izleme    izleme      izleme   (fizik koşmaz; `girdi` yalnız `sil` kaydından)
+//   tekrar_yeniden_kurma     izleme    izleme      izleme   (fizik koşmaz; güvence düzeyi değil)
+//   bilinmeyen kip           izleme    izleme      izleme
+Guvence beklenen_duzey(Kademe kademe, std::string_view kip) noexcept;
+
 // A6-K33: kademe ve kipin verdiği en yüksek düzey; `guvencesiz`/`canli_mudahale` → `yok`; düzeyin
 // gerektirdiği kanalda eksik varsa önek; ilk eksik adım 0 ise bir alt düzeye inilir. `izleme`
 // koşulsuzdur (Tablo 4.6): eksik kayıt onu daraltmaz.

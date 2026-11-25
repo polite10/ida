@@ -141,14 +141,49 @@ private:
     Dosya::Sonuc hata_ = Dosya::Sonuc::tamam;
 };
 
-// Henüz dosyaya girmemiş (açık parçadaki) iletilerin kanal başına dökümü; yazma hatasında
-// `kayit/eksik`'e çevrilir.
-struct AcikKanal {
+// Dosyaya girmemiş iletilerin kanal başına dökümü: açık parçadakiler (yazma hatasında kaybolur) ve
+// erken kapanışta halkalardan alınıp yazılamayanlar. `kayit/eksik`'e çevrilir.
+//
+// Aralık en küçük ve en büyük değerdir (ilk ve son görülen değil): döküm birden çok üreticinin
+// iletilerini karıştırır ve okuyucu önek sınırını `ilk_adim`'den kurar (A6-K33); `ilk_adim` dökümdeki
+// EN KÜÇÜK adım olmazsa önek eksik bir adımı kapsar.
+struct KanalDokumu {
     std::uint64_t sayi = 0;
-    std::int64_t ilk_t = 0;
-    std::int64_t son_t = 0;
-    std::uint64_t ilk_adim = 0;
-    std::uint64_t son_adim = 0;
+    std::int64_t en_kucuk_t = 0;
+    std::int64_t en_buyuk_t = 0;
+    std::uint64_t en_kucuk_adim = 0;
+    std::uint64_t en_buyuk_adim = 0;
+
+    void ekle(std::int64_t t, std::uint64_t adim) noexcept
+    {
+        if (sayi == 0) {
+            en_kucuk_t = t;
+            en_buyuk_t = t;
+            en_kucuk_adim = adim;
+            en_buyuk_adim = adim;
+        } else {
+            en_kucuk_t = std::min(en_kucuk_t, t);
+            en_buyuk_t = std::max(en_buyuk_t, t);
+            en_kucuk_adim = std::min(en_kucuk_adim, adim);
+            en_buyuk_adim = std::max(en_buyuk_adim, adim);
+        }
+        ++sayi;
+    }
+    void birlestir(const KanalDokumu& o) noexcept
+    {
+        if (o.sayi == 0) {
+            return;
+        }
+        if (sayi == 0) {
+            *this = o;
+            return;
+        }
+        en_kucuk_t = std::min(en_kucuk_t, o.en_kucuk_t);
+        en_buyuk_t = std::max(en_buyuk_t, o.en_buyuk_t);
+        en_kucuk_adim = std::min(en_kucuk_adim, o.en_kucuk_adim);
+        en_buyuk_adim = std::max(en_buyuk_adim, o.en_buyuk_adim);
+        sayi += o.sayi;
+    }
 };
 
 AnahtarDeger ciftler(const UstVeri& u)
@@ -184,6 +219,7 @@ struct YaziciIc {
     std::uint64_t sonraki_sira = 1;      // sıradaki `sequence` (kSiraSonu + 1: tükendi)
     std::uint64_t saglam_sira = 1;       // dosyaya girmiş son parçadan sonraki `sequence`
     std::uint64_t saglam_boyut = 0;      // dosyanın son tutarlı boyu (son parçanın sonu)
+    std::uint32_t saglam_crc = 0;        // veri bölümü CRC'sinin `saglam_boyut`'taki ara durumu (W5-K39)
     std::uint64_t acik_bayt = 0;         // açık parçanın sıkıştırmasız boyu (ileti, şema ve kanal kayıtları)
     std::array<std::uint32_t, kKanalSayisi> kanal_kayit_bayt{};  // kanal kaydının boyu
     std::array<std::uint32_t, kKanalSayisi> sema_kayit_bayt{};   // kanalın şema kaydının boyu
@@ -195,7 +231,14 @@ struct YaziciIc {
     std::uint64_t acik_uretici_iletisi = 0;
     std::uint64_t acik_eksik_kaydi = 0;
     std::uint64_t acik_bildirilen = 0;
-    std::array<AcikKanal, kKanalSayisi> acik{};      // açık parçadaki üretici iletileri
+    std::array<KanalDokumu, kKanalSayisi> acik{};    // açık parçadaki üretici iletileri
+    // Erken kapanışta (sınır, yazma hatası, disk dolu) halkalardan alınıp dosyaya yazılamayan iletiler.
+    std::array<KanalDokumu, kKanalSayisi> kalan{};
+    // `bosalt`'ın halkadan okuyup henüz bırakmadığı iletinin üreticisi (yoksa nullptr). İç içe bir
+    // hata kapanışı halkaları toplamadan önce o iletiyi bırakır (ileti açık parçanın dökümündedir).
+    UreticiIc* eldeki = nullptr;
+    // Erken kapanışta dosyaya giremeyen iletilerin (bütün üreticiler, bütün kanallar) en küçük adımı.
+    std::optional<std::uint64_t> kayip_en_kucuk_adim;
     std::vector<EksikKaydi> acik_eksikler;           // açık parçadaki `kayit/eksik` kayıtları
     std::optional<std::uint64_t> acik_en_buyuk_adim;
     std::optional<std::uint64_t> en_buyuk_adim;  // dosyaya girmiş üretici iletilerinin en büyük adımı
@@ -216,6 +259,7 @@ struct YaziciIc {
     std::atomic<std::uint64_t> s_bildirilen{0};
     std::atomic<std::uint64_t> s_yazimda_kaybolan{0};
     std::atomic<std::uint64_t> s_kapali_atilan{0};
+    std::atomic<std::uint64_t> s_bildirilemeyen{0};
     std::atomic<std::uint64_t> s_kapanan_parca{0};
     std::atomic<std::uint64_t> s_dosya_bayt{0};
     std::mutex kilit;  // taslak, bekleyen güncellemeler, bilinen üst veri değerleri
@@ -239,6 +283,7 @@ struct YaziciIc {
         s.bildirilen_dusen = s_bildirilen.load(std::memory_order_acquire);
         s.yazimda_kaybolan = s_yazimda_kaybolan.load(std::memory_order_acquire);
         s.kapali_iken_atilan = s_kapali_atilan.load(std::memory_order_acquire);
+        s.bildirilemeyen_dusen = s_bildirilemeyen.load(std::memory_order_acquire);
         s.kapanan_parca = s_kapanan_parca.load(std::memory_order_acquire);
         s.dosya_bayt = s_dosya_bayt.load(std::memory_order_acquire);
         return s;
@@ -261,6 +306,14 @@ struct YaziciIc {
         }
     }
 
+    // Dosyanın o anki sonu tutarlı bir noktadır (yazılan her bayt işletim sistemine teslim edildi):
+    // hata kapanışı buraya keser ve veri bölümü CRC'sini buradaki ara durumdan sürdürür.
+    void saglam_noktasi()
+    {
+        saglam_boyut = cikti.boyut();
+        saglam_crc = mcap.veri_crc_ara();
+    }
+
     // Açık parçayı dosyaya yazar ve işletim sistemine teslim eder. Hata varsa false (dosya hata
     // kapanışına girmiştir).
     bool parca_kapat()
@@ -276,7 +329,7 @@ struct YaziciIc {
             hata_kapanisi();
             return false;
         }
-        saglam_boyut = cikti.boyut();
+        saglam_noktasi();
         saglam_sira = sonraki_sira;
         s_yazilan_ileti.fetch_add(acik_ileti, std::memory_order_acq_rel);
         s_yazilan_uretici.fetch_add(acik_uretici_iletisi, std::memory_order_acq_rel);
@@ -310,14 +363,7 @@ struct YaziciIc {
         // İleti açık parçanın dökümüne girer: kalıcı olmazsa kayıp olarak bildirilir.
         ++acik_ileti;
         if (ureticiden) {
-            AcikKanal& a = acik[kanal];
-            if (a.sayi == 0) {
-                a.ilk_t = log_t;
-                a.ilk_adim = adim;
-            }
-            a.son_t = log_t;
-            a.son_adim = adim;
-            ++a.sayi;
+            acik[kanal].ekle(log_t, adim);
             ++acik_uretici_iletisi;
             if (!acik_en_buyuk_adim.has_value() || adim > *acik_en_buyuk_adim) {
                 acik_en_buyuk_adim = adim;
@@ -467,9 +513,18 @@ struct YaziciIc {
         g.ilk_eksik_fizik = ilk_eksik_fizik;
         g.ilk_eksik_girdi = ilk_eksik_girdi;
         g.erken_neden = erken_neden;
-        if (!erken_neden.empty() && en_buyuk_adim.has_value() && *en_buyuk_adim > 0) {
-            // Kayıt erken bitti: son adım yarım kalmış olabilir; ondan önceki adım tam kaydedilmiştir.
-            g.erken_son_adim = *en_buyuk_adim - 1u;
+        if (!erken_neden.empty() && en_buyuk_adim.has_value()) {
+            // Kayıt erken bitti. Önek hiçbir eksik adımı kapsayamaz (A6-K12, K33): dosyadaki en büyük
+            // adım yarım kalmış olabilir (ondan önceki adım tam kaydedilmiştir) ve kapanışta dosyaya
+            // giremeyen iletilerin (bütün üreticilerin halkalarında kalanlar ve açık parçada
+            // kaybolanlar; kanal ayrımı yapılmadan) en küçük adımı eksiktir.
+            std::uint64_t ilk_kapsanmayan = *en_buyuk_adim;
+            if (kayip_en_kucuk_adim.has_value()) {
+                ilk_kapsanmayan = std::min(ilk_kapsanmayan, *kayip_en_kucuk_adim);
+            }
+            if (ilk_kapsanmayan > 0) {
+                g.erken_son_adim = ilk_kapsanmayan - 1u;
+            }
         }
         const GuvenceSonucu gs = guvence_belirle(g);
 
@@ -526,6 +581,83 @@ struct YaziciIc {
         return taslak;
     }
 
+    void kayip_adimi(std::uint64_t adim) noexcept
+    {
+        if (!kayip_en_kucuk_adim.has_value() || adim < *kayip_en_kucuk_adim) {
+            kayip_en_kucuk_adim = adim;
+        }
+    }
+
+    // Erken kapanış (sınır, yazma hatası, disk dolu): üreticilerin halkalarında bekleyen iletiler artık
+    // dosyaya yazılamaz. BÜTÜN halkalar boşaltılır ve iletiler kanal başına `kalan` dökümüne alınır;
+    // kapanış kaydından ÖNCE `kayit/eksik`'e çevrilirler (A6-K12, K31, K33: hiçbir ileti sessizce
+    // kaybolmaz; önek onların adımını kapsamaz). Çağrıdan önce `kabul` kesilmiş olmalıdır.
+    void kalanlari_topla()
+    {
+        if (eldeki != nullptr) {
+            // `bosalt` bir iletiyi yazarken hata kapanışına girildi: o ileti açık parçanın dökümünde
+            // sayılmıştır; burada yalnız halkadan bırakılır (iki kez sayılmaz).
+            eldeki->halka.birak();
+            eldeki = nullptr;
+        }
+        for (auto& up : uretici_ic) {
+            UreticiIc& u = *up;
+            for (;;) {
+                std::size_t n = 0;
+                const std::uint8_t* p = u.halka.oku(n);
+                if (p == nullptr) {
+                    break;
+                }
+                std::uint16_t kanal = 0;
+                std::memcpy(&kanal, p, 2);
+                if (n >= kKayitBasligi && kanal < kKanalSayisi && mcap_kanal[kanal] != 0) {
+                    const std::uint64_t adim = oku64(p + 24);
+                    kalan[kanal].ekle(static_cast<std::int64_t>(oku64(p + 8)), adim);
+                    kayip_adimi(adim);
+                }
+                // Geçersiz başlık olamaz (üretici yalnız bu dosyada kayıtlı kanala yazar); olursa da sayılır.
+                s_yazimda_kaybolan.fetch_add(1, std::memory_order_acq_rel);
+                u.halka.birak();
+                s_alinan.fetch_add(1, std::memory_order_acq_rel);
+            }
+        }
+    }
+
+    static EksikKaydi dokum_kaydi(const KanalTanimi& kanal, const KanalDokumu& dk, std::uint8_t neden) noexcept
+    {
+        EksikKaydi e;
+        e.kanal = &kanal;
+        e.ilk_sim_t_ns = dk.en_kucuk_t;
+        e.son_sim_t_ns = dk.en_buyuk_t;
+        e.ilk_adim = dk.en_kucuk_adim;
+        e.son_adim = dk.en_buyuk_adim;
+        e.kayip_sayisi = dk.sayi;
+        e.neden = neden;
+        return e;
+    }
+
+    // Sınır kapanışı: `kalan` dökümünü `kayit/eksik` kayıtları olarak dosyaya yazar. `yuk_kayit_eksik.neden`
+    // kapalı listesinde (A6 §3.4: halka_tasmasi, yazma_hatasi, disk_dolu) sınır için ayrı bir değer
+    // yoktur; "yazılamadı" anlamındaki `yazma_hatasi` kullanılır (A6-K10'daki kullanımla aynı).
+    // Dönüş false: dosya hata kapanışına girdi (kalan kayıtlar orada bildirildi).
+    bool kalanlari_yaz()
+    {
+        const auto katalog = kanallar();
+        for (std::size_t k = 0; k < kKanalSayisi; ++k) {
+            if (kalan[k].sayi == 0) {
+                continue;
+            }
+            const EksikKaydi e = dokum_kaydi(katalog[k], kalan[k], kNedenYazmaHatasi);
+            // Kayıt açık parçanın `kayit/eksik` listesine girer; yazılamazsa hata kapanışı onu oradan
+            // yeniden yazar. Döküm önce sıfırlanır: aynı kayıp iki kez bildirilmez.
+            kalan[k] = KanalDokumu{};
+            if (!eksik_yaz(e)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // A6-K31: yazma hatası ya da disk dolu. Dosya son sağlam parçanın sonuna kesilir; kaybolan
     // iletiler `kayit/eksik` olarak, ardından kapanış kaydı ve dosya sonu elle yazılır (özet
     // bölümü olmadan). Bu da yazılamazsa dosya kapanmamış ama tutarlı kalır (kurtarma okuması).
@@ -537,28 +669,27 @@ struct YaziciIc {
         const std::string_view neden_adi = bitis_durumu_adi(bitis);
         ortak.kabul.store(false, std::memory_order_release);
         mcap.birak();
+        // Kapanış kaydından önce bütün üreticilerin halkaları boşaltılır (önek ve `kayit/eksik` için).
+        kalanlari_topla();
 
         // Bildirilecekler: (1) açık parçadaki `kayit/eksik` kayıtları (üretici sayaçları onaylandı;
-        // aynen yeniden yazılır), (2) açık parçadaki üretici iletileri, kanal başına (dosyaya
-        // giremediler), (3) henüz bildirilmemiş üretici düşmeleri.
+        // aynen yeniden yazılır), (2) dosyaya giremeyen üretici iletileri, kanal başına: açık
+        // parçadakiler ve halkalardan toplananlar, (3) henüz bildirilmemiş üretici düşmeleri.
         std::vector<EksikKaydi> eksikler = acik_eksikler;
         const auto katalog = kanallar();
         std::uint64_t kaybolan = 0;
         for (std::size_t k = 0; k < kKanalSayisi; ++k) {
-            const AcikKanal& a = acik[k];
-            if (a.sayi == 0) {
+            if (acik[k].sayi != 0) {
+                kaybolan += acik[k].sayi;  // halkalardan toplananlar `kalanlari_topla`'da sayıldı
+                kayip_adimi(acik[k].en_kucuk_adim);
+            }
+            KanalDokumu dk = acik[k];
+            dk.birlestir(kalan[k]);
+            kalan[k] = KanalDokumu{};
+            if (dk.sayi == 0) {
                 continue;
             }
-            EksikKaydi e;
-            e.kanal = &katalog[k];
-            e.ilk_sim_t_ns = a.ilk_t;
-            e.son_sim_t_ns = a.son_t;
-            e.ilk_adim = a.ilk_adim;
-            e.son_adim = a.son_adim;
-            e.kayip_sayisi = a.sayi;
-            e.neden = disk_dolu ? kNedenDiskDolu : kNedenYazmaHatasi;
-            eksikler.push_back(e);
-            kaybolan += a.sayi;
+            eksikler.push_back(dokum_kaydi(katalog[k], dk, disk_dolu ? kNedenDiskDolu : kNedenYazmaHatasi));
         }
         (void)dusmeleri_isle(true, &eksikler);
         s_yazimda_kaybolan.fetch_add(kaybolan, std::memory_order_acq_rel);
@@ -575,9 +706,14 @@ struct YaziciIc {
         std::vector<KuyrukIletisi> iletiler;
         std::uint64_t bildirilen = 0;
         for (const EksikKaydi& e : eksikler) {
+            // Kayıt dosyaya yazılamasa da kapanış kaydı onu hesaba katar (`kayit_eksik`, önek).
+            eksik_izle(e);
             std::array<std::uint8_t, 128> tampon{};
             const std::size_t n = eksik_kodla(e, tampon);
             if (n == 0 || sonraki_sira > kSiraSonu) {
+                // Olamaz: kodlama açılışta her kanal için sınandı, sıra yedeği (`sira_yedegi`) kuyruğun
+                // bütün kayıtlarını karşılar (sim.kayit.sira_yedegi). Olursa sessiz kalmaz.
+                s_bildirilemeyen.fetch_add(e.kayip_sayisi, std::memory_order_acq_rel);
                 continue;
             }
             KuyrukIletisi i;
@@ -586,12 +722,12 @@ struct YaziciIc {
             i.publish_time = static_cast<std::uint64_t>(std::max<std::int64_t>(duvar_ns(), 0));
             i.veri.assign(tampon.begin(), tampon.begin() + static_cast<std::ptrdiff_t>(n));
             iletiler.push_back(std::move(i));
-            eksik_izle(e);
             bildirilen += e.kayip_sayisi;
         }
         const std::uint64_t ileti_sayisi = s_yazilan_ileti.load(std::memory_order_acquire) + iletiler.size();
+        // Çalıştırmaya ait alanlar son taslaktan: `kapat(alanlar)` kendi alanlarını girişte taslağa yazar.
         UstVeri kayit = kapanis_kaydi(taslak_al(), bitis, ileti_sayisi, neden_adi);
-        McapYazim::kuyruk_yaz(cikti, kuyruk_kanali, iletiler, kUstVeriKapanis, ciftler(kayit));
+        McapYazim::kuyruk_yaz(cikti, saglam_crc, kuyruk_kanali, iletiler, kUstVeriKapanis, ciftler(kayit));
         if (!cikti.saglam()) {
             // Kuyruk da yazılamadı: dosya son sağlam parçada biter (kapanmamış).
             (void)dosya->kes(saglam_boyut);
@@ -609,11 +745,17 @@ struct YaziciIc {
     void duzgun_kapanis(const KapanisAlanlari& a, BitisDurumu bitis, YaziciDurumu d, std::string_view erken_neden)
     {
         ortak.kabul.store(false, std::memory_order_release);
+        if (!erken_neden.empty()) {
+            // Sınır kapanışı: sıra numarası kalmadı; halkalarda bekleyen iletiler yazılamaz. Kapanış
+            // kaydından önce toplanır ve `kayit/eksik`'e çevrilirler (olağan kapanışta halkaları
+            // `kapat` daha önce dosyaya boşaltmıştır).
+            kalanlari_topla();
+        }
         (void)dusmeleri_isle(true, nullptr);
         if (!acik_mi() || kapanis_yapildi) {
             return;  // düşme kaydı yazılırken hata kapanışına girildi
         }
-        if (!parca_kapat()) {
+        if (!kalanlari_yaz() || !parca_kapat()) {
             return;
         }
         const std::uint64_t ileti_sayisi = s_yazilan_ileti.load(std::memory_order_acquire);
@@ -653,7 +795,13 @@ struct YaziciIc {
                 return;
             }
             cikti.bosalt();
-            saglam_boyut = cikti.boyut();
+            if (!cikti.saglam()) {
+                // Teslim edilemeyen kayıt sağlam nokta sayılmaz: `saglam_boyut` diskteki boyu aşarsa
+                // hata kapanışı dosyayı kesemez ve kuyruk hiç yazılamaz.
+                hata_kapanisi();
+                return;
+            }
+            saglam_noktasi();
             s_dosya_bayt.store(saglam_boyut, std::memory_order_release);
         }
     }
@@ -674,8 +822,10 @@ struct YaziciIc {
                 continue;
             }
             if (sira_kalan() <= sira_yedegi) {
+                // Bu ileti halkada bırakılır: sınır kapanışı onu ve bütün halkalarda kalanları toplar,
+                // `kayit/eksik`'e çevirir ve dosyayı kapatır.
                 sinir_kapanisi();
-                continue;  // bu ileti ve sonrakiler yukarıdaki dalda atılır
+                continue;
             }
             std::uint16_t kanal = 0;
             std::memcpy(&kanal, p, 2);
@@ -683,13 +833,19 @@ struct YaziciIc {
             const auto pub_t = static_cast<std::int64_t>(oku64(p + 16));
             const std::uint64_t adim = oku64(p + 24);
             if (n >= kKayitBasligi && kanal < kKanalSayisi && mcap_kanal[kanal] != 0) {
-                // Yazılamazsa dosya kapanmıştır; ileti hata kapanışında kayıp olarak bildirilmiştir.
+                // Yazılamazsa dosya kapanmıştır; ileti hata kapanışında kayıp olarak bildirilmiştir
+                // ve halkadan orada bırakılmıştır (`eldeki`).
+                eldeki = &u;
                 (void)ileti_yaz(kanal, log_t, pub_t, adim, p + kKayitBasligi, n - kKayitBasligi, true);
+                if (eldeki != nullptr) {
+                    u.halka.birak();
+                    eldeki = nullptr;
+                }
             } else {
                 // Olamaz: üretici yalnız bu dosyada kayıtlı kanala yazar. Olursa sessiz kalmaz, sayılır.
                 s_yazimda_kaybolan.fetch_add(1, std::memory_order_acq_rel);
+                u.halka.birak();
             }
-            u.halka.birak();
             s_alinan.fetch_add(1, std::memory_order_acq_rel);
         }
         return is_yapildi;
@@ -758,6 +914,13 @@ struct YaziciIc {
     KapanisSonucu kapat(const KapanisAlanlari& a)
     {
         is_parcacigini_durdur();
+        if (!kapanis_yapildi) {
+            // Verilen alanlar HER kapanış yolunda kullanılır: bu çağrı sırasında sınıra ya da yazma
+            // hatasına varılırsa kapanış kaydı eski taslağı değil bunları taşır (A6-K53: canlı
+            // müdahale adımı kaybolursa güvence yanlış yazılır).
+            const std::lock_guard<std::mutex> kl(kilit);
+            taslak = a;
+        }
         // Üreticiler durmuş olmalıdır. Yeni ileti kabulü burada kesilir: kurala uymayan bir üretici
         // kapanışı sonsuza dek süremez; halkalarda bekleyenler yazılır.
         ortak.kabul.store(false, std::memory_order_release);
@@ -768,7 +931,8 @@ struct YaziciIc {
         if (acik_mi()) {
             duzgun_kapanis(a, a.bitis_durumu, YaziciDurumu::kapandi, {});
         }
-        // Kabul kesilirken yazmakta olan bir üreticinin iletisi kaldıysa sayılarak atılır.
+        // Dosya kapandıktan SONRA halkaya giren ileti (kabul kesilirken yazmakta olan bir üretici)
+        // dosyaya yazılamaz: sayılarak atılır (`kapali_iken_atilan`).
         halkalari_bosalt();
         sonuc.sayaclar = sayaclar();
         return sonuc;
@@ -1024,9 +1188,14 @@ std::unique_ptr<Yazici> Yazici::ac(const Ayar& ayar, const AcilisUstVerisi& ust_
         c.ureticiler.emplace_back(c.uretici_olustur(c.uretici_ic.back().get()));
         azami_yuk = std::max(azami_yuk, c.uretici_ic.back()->halka.azami_yuk());
     }
-    // A6-K12: düşme bildirimlerine ayrılan sıra numaraları: bir turdaki ve kapanıştaki en çok kayıt
-    // (her biri üretici × kanal × neden).
-    c.sira_yedegi = 2u * static_cast<std::uint64_t>(ayar.ureticiler.size()) * kKanalSayisi * ic::kUreticiNedeni + 16u;
+    // A6-K12: kapanıştaki `kayit/eksik` kayıtlarına ayrılan sıra numaraları. Üretici iletisi yalnız
+    // kalan sıra bu yedekten BÜYÜKKEN yazılır; ondan sonra en çok şunlar yazılır: son turdaki düşme
+    // bildirimleri (üretici × kanal × neden), kapanıştaki düşme bildirimleri (aynı sayı) ve halkalarda
+    // kalıp yazılamayan iletilerin bildirimi (kanal başına bir kayıt; pay üretici × kanal). Hata
+    // kapanışının kuyruğu bu kayıtların numaralarını son sağlam parçadan yeniden verir ve fazladan en
+    // çok kanal başına bir kayıt ister (açık parçada kaybolan her kanalın en az bir iletisi vardı).
+    const std::uint64_t uretici_sayisi = ayar.ureticiler.size();
+    c.sira_yedegi = 2u * uretici_sayisi * kKanalSayisi * ic::kUreticiNedeni + uretici_sayisi * kKanalSayisi + 16u;
 
     // ---- dosya ----
     std::error_code ec;
@@ -1112,7 +1281,7 @@ std::unique_ptr<Yazici> Yazici::ac(const Ayar& ayar, const AcilisUstVerisi& ust_
         std::filesystem::remove(c.yol, ec);  // yarım dosya bırakılmaz; çalıştırma başlamadı
         return nullptr;
     }
-    c.saglam_boyut = c.cikti.boyut();
+    c.saglam_noktasi();
     c.s_dosya_bayt.store(c.saglam_boyut, std::memory_order_release);
 
     c.kapanis_yapildi = false;

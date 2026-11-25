@@ -154,6 +154,13 @@ struct KayitKonumu {
     std::uint64_t boy = 0;    // gövde boyu
 };
 std::vector<KayitKonumu> kayitlari_tara(const std::vector<std::uint8_t>& dosya);
+// Data End kaydındaki veri bölümü CRC'sini dosyanın o anki içeriğinden yeniden hesaplar ve yazar
+// (W5-K39: CRC, ilk bayttan Data End kaydının başına kadar). Bir denetimi veri bölümü CRC'sinden
+// BAĞIMSIZ sınamak için: değişiklik yapılır, CRC yenilenir, öteki denetimin yakaladığı gösterilir.
+// Data End bulunamazsa false.
+bool veri_crc_yenile(std::vector<std::uint8_t>& dosya);
+// Dosyadaki Data End kaydının konumu (opcode); yoksa 0.
+std::uint64_t veri_sonu_konumu(const std::vector<std::uint8_t>& dosya);
 
 // ---- elle MCAP kurucu: okuyucu testleri için kitaplıktan ve yazıcıdan bağımsız yazım ----
 class ElleMcap {
@@ -171,6 +178,8 @@ public:
     ElleMcap& ust_veri(std::string_view ad, const Eslem& icerik);
     ElleMcap& ek(std::string_view ad, std::string_view ortam_turu, const std::vector<std::uint8_t>& veri);
     ElleMcap& veri_sonu(std::uint32_t crc = 0);
+    // Data End, o ana kadarki bütün baytların CRC-32'siyle (W5-K39'daki yazıcının yazdığı gibi).
+    ElleMcap& veri_sonu_crcli();
     ElleMcap& footer();
     ElleMcap& ham(const std::vector<std::uint8_t>& baytlar);
     const std::vector<std::uint8_t>& al() const noexcept { return b_; }

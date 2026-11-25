@@ -11,6 +11,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <set>
 #include <thread>
@@ -31,6 +32,11 @@ struct HedefAyari {
     std::uint64_t hata_esigi = 0;            // 0: yok; toplam bayt bu eşiği aşacaksa yazım hata verir
     Dosya::Sonuc hata_turu = Dosya::Sonuc::disk_dolu;
     bool kesmeden_sonra_yazilir = true;      // false: hata kalıcıdır (kuyruk da yazılamaz)
+    // Çalışırken kurulan eşik (0: yok): `hata_esigi` gibi, ama sınama ortasında belirlenir.
+    std::shared_ptr<std::atomic<std::uint64_t>> sonradan_esik = std::make_shared<std::atomic<std::uint64_t>>(0);
+    // Kuruluyken `yaz` başarılı döner ama baytlar dosyaya ulaşmaz; `bosalt` hata verir (işletim
+    // sistemine teslim edilemeyen tampon).
+    std::shared_ptr<std::atomic<bool>> teslim_hatasi = std::make_shared<std::atomic<bool>>(false);
     std::shared_ptr<std::atomic<std::uint64_t>> yazilan = std::make_shared<std::atomic<std::uint64_t>>(0);
     std::shared_ptr<std::atomic<bool>> hata_verdi = std::make_shared<std::atomic<bool>>(false);
 };
@@ -46,11 +52,15 @@ public:
         if (a_.hata_verdi->load() && !(kesildi_ && a_.kesmeden_sonra_yazilir)) {
             return a_.hata_turu;
         }
-        if (a_.hata_esigi != 0 && !a_.hata_verdi->load() && a_.yazilan->load() + n > a_.hata_esigi) {
+        const std::uint64_t esik = a_.hata_esigi != 0 ? a_.hata_esigi : a_.sonradan_esik->load();
+        if (esik != 0 && !a_.hata_verdi->load() && a_.yazilan->load() + n > esik) {
             a_.hata_verdi->store(true);
             // Gerçek bir dolu disk gibi: baytların bir kısmı yazılmış olabilir.
             (void)ic_->yaz(veri, n / 2);
             return a_.hata_turu;
+        }
+        if (a_.teslim_hatasi->load() && !kesildi_) {
+            return Sonuc::tamam;  // baytlar kaybolur; hata `bosalt`'ta görünür
         }
         a_.yazilan->fetch_add(n);
         return ic_->yaz(veri, n);
@@ -59,6 +69,10 @@ public:
     {
         if (a_.bosaltma_gecikmesi_ms > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(a_.bosaltma_gecikmesi_ms));
+        }
+        if (a_.teslim_hatasi->load() && !kesildi_) {
+            a_.hata_verdi->store(true);
+            return a_.hata_turu;
         }
         if (a_.hata_verdi->load() && !(kesildi_ && a_.kesmeden_sonra_yazilir)) {
             return a_.hata_turu;
@@ -789,7 +803,9 @@ int test_sira_siniri()
         std::string hata;
         DOGRULA(d, Yazici::ac(a, ornek_ust_veri(), ek, hata) == nullptr, "sequence 0'dan başlayamaz");
     }
-    // Enjekte edilen sayaç: sınıra 400 kala. Yedek (düşme bildirimleri için) 2·1·61·2 + 16 = 260.
+    // Enjekte edilen sayaç: sınıra 400 kala. Yedek (kapanıştaki `kayit/eksik` kayıtları için; yazici.cpp):
+    // 2·Ü·K·2 + Ü·K + 16; tek üretici ve 61 kanalda 321.
+    constexpr std::uint64_t kYedek = 2u * kKanalSayisi * 2u + kKanalSayisi + 16u;
     constexpr std::uint32_t kIlk = 0xFFFFFFFFu - 400u;
     Duzenek dz("sira_siniri", Kademe::telemetri, "hil_bariyer", [](Ayar& a) { a.ilk_sira = kIlk; });
     DOGRULA(d, dz.y != nullptr, "yazıcı açıldı: " + dz.hata);
@@ -814,8 +830,12 @@ int test_sira_siniri()
     DOGRULA(d, dz.y->durum() == YaziciDurumu::sinira_ulasti, "yazıcı sınıra ulaştı");
     DOGRULA(d, kapali > 0 && kabul + kapali == 1000, "dosya kapandıktan sonra üretici `kapali` alır; çalıştırma sürer");
     const YaziciSayaclari ys = dz.y->sayaclar();
-    DOGRULA(d, ys.yazilan_uretici_iletisi == 400u - 260u + 1u, "sınırdan önce yazılan ileti: " + std::to_string(ys.yazilan_uretici_iletisi));
-    DOGRULA(d, ys.yazilan_uretici_iletisi + ys.kapali_iken_atilan == kabul, "kuyruktaki iletilerin hesabı");
+    DOGRULA(d, kYedek == 321u && ys.yazilan_uretici_iletisi == 400u - kYedek + 1u,
+            "sınırdan önce yazılan ileti: " + std::to_string(ys.yazilan_uretici_iletisi));
+    // Sınıra varıldığında halkada bekleyen iletiler atılmaz: sayılır ve `kayit/eksik`'e çevrilir.
+    DOGRULA(d, ys.yazimda_kaybolan > 0 && ys.kapali_iken_atilan == 0 && ys.bildirilemeyen_dusen == 0 &&
+                   ys.yazilan_uretici_iletisi + ys.yazimda_kaybolan == kabul && ys.bildirilen_dusen == ys.yazimda_kaybolan,
+            "kuyruktaki iletilerin hesabı: yazılan + kayit/eksik'te bildirilen = kabul edilen");
     const KapanisSonucu ks = dz.kapat();  // daha önce kapandı: o kapanışın sonucu
     DOGRULA(d, ks.dosya_kapandi && ks.bitis_durumu == BitisDurumu::sinira_ulasti && ks.kapanis_kaydi.at("bitis_durumu") == "sinira_ulasti",
             "bitis_durumu = sinira_ulasti");
@@ -825,10 +845,23 @@ int test_sira_siniri()
     if (!o) {
         return d.hata;
     }
-    const std::vector<OkunanIleti> v = hepsini_oku(*o);
-    DOGRULA(d, v.size() == ys.yazilan_uretici_iletisi, "dosyadaki ileti sayısı");
+    std::vector<OkunanIleti> v;
+    for (OkunanIleti& i : hepsini_oku(*o)) {
+        if (i.kanal != "kayit/eksik") {
+            v.push_back(std::move(i));
+        }
+    }
+    DOGRULA(d, v.size() == ys.yazilan_uretici_iletisi && o->ozet().ileti_sayisi == v.size() + 1, "dosyadaki ileti sayısı");
     for (std::size_t i = 0; i < v.size(); ++i) {
         DOGRULA(d, v[i].sequence == kIlk + i && v[i].log_time == static_cast<std::int64_t>(i) * 1000, "sequence sınırın altında ve ardışık");
+    }
+    // Halkada kalan iletiler: tek `kayit/eksik` kaydı, ilk yazılamayan adımdan son kabul edilene.
+    DOGRULA(d, o->ozet().eksikler.size() == 1 && ks.kapanis_kaydi.at("kayit_eksik") == "true", "kalan iletiler bildirildi");
+    if (o->ozet().eksikler.size() == 1) {
+        const EksikKaydi& e = o->ozet().eksikler[0];
+        DOGRULA(d, e.kanal->ad == "calistirma/durum" && e.ilk_adim == v.size() && e.son_adim == kabul - 1 &&
+                       e.kayip_sayisi == ys.yazimda_kaybolan && e.neden == 1,
+                "eksik kaydı: kanal, aralık, sayı, neden (yazma_hatasi: sınır için ayrı neden yok)");
     }
     // Önek güvencesi: son tam kaydedilen adım (A6-K12 → K33).
     const std::uint64_t son_adim = v.empty() ? 0 : static_cast<std::uint64_t>(v.back().log_time / 1000);
@@ -1073,9 +1106,13 @@ int test_hata_kapanisi()
         DOGRULA(d, h.hata_verdi->load() && dz.y->durum() == beklenen_durum, std::string(v.ad) + ": yazıcı hata durumunda");
         DOGRULA(d, kapali > 0 && kabul + kapali == 400, std::string(v.ad) + ": hatadan sonra üretici `kapali` alır; çalıştırma sürer");
         const YaziciSayaclari ys = dz.y->sayaclar();
-        DOGRULA(d, ys.yazilan_uretici_iletisi > 0 && ys.yazimda_kaybolan > 0 &&
-                       ys.yazilan_uretici_iletisi + ys.yazimda_kaybolan + ys.kapali_iken_atilan == kabul,
-                std::string(v.ad) + ": kuyruklanan = yazılan + yazımda kaybolan + kapalıyken atılan");
+        // Hata anında halkada bekleyen iletiler de atılmaz: açık parçada kaybolanlarla birlikte
+        // sayılır (`yazimda_kaybolan`) ve kapanış kaydından önce `kayit/eksik`'e çevrilir.
+        DOGRULA(d, ys.yazilan_uretici_iletisi > 0 && ys.yazimda_kaybolan > 0 && ys.kapali_iken_atilan == 0 &&
+                       ys.bildirilemeyen_dusen == 0 && ys.yazilan_uretici_iletisi + ys.yazimda_kaybolan == kabul,
+                std::string(v.ad) + ": kuyruklanan = yazılan + yazımda kaybolan (kapalıyken atılan yok)");
+        DOGRULA(d, !v.kuyruk_yazilir || ys.bildirilen_dusen == ys.yazimda_kaybolan,
+                std::string(v.ad) + ": kaybolan her ileti kayit/eksik'te bildirildi");
         const KapanisSonucu ks = dz.kapat();
         const BitisDurumu beklenen_bitis = v.tur == Dosya::Sonuc::disk_dolu ? BitisDurumu::disk_dolu : BitisDurumu::yazma_hatasi;
         DOGRULA(d, ks.bitis_durumu == beklenen_bitis && ks.dosya_kapandi == v.kuyruk_yazilir && !ks.hata.empty(),
@@ -1119,6 +1156,16 @@ int test_hata_kapanisi()
                     std::string(v.ad) + ": önek güvencesi");
             DOGRULA(d, oz.ileti_sayisi == adimlar.size() + 1 && oz.kapanis->at("ileti_sayisi") == std::to_string(oz.ileti_sayisi),
                     std::string(v.ad) + ": ileti_sayisi");
+            // W5-K39: elle yazılan kuyruk da doğru veri bölümü CRC'sini taşır (okuyucu kendi CRC
+            // gerçekleştirimiyle doğruladı: dosya sağlam ve güvence kısıtlanmadı); 0 yazılmaz.
+            const std::vector<std::uint8_t> bayt = dosya_oku(dz.y->yol());
+            const std::uint64_t de = veri_sonu_konumu(bayt);
+            std::uint32_t crc = 0;
+            if (de != 0) {
+                std::memcpy(&crc, bayt.data() + de + 9, 4);
+            }
+            DOGRULA(d, de != 0 && crc != 0 && oz.saglam() && oz.guvence_kisitlari.empty(),
+                    std::string(v.ad) + ": hata kapanışının kuyruğu veri bölümü CRC'sini taşır");
             // Özet bölümü olmadan kapanan dosyayı kitaplığın okuyucusu da yedek taramayla okur; burada
             // yalnız A6 okuyucusu ölçüttür.
         } else {
@@ -1195,6 +1242,468 @@ int test_guncelleme()
         }
     }
     DOGRULA(d, kd.acildi && guncelleme == 3, "güncelleme kaydı sayısı: " + std::to_string(guncelleme));
+    return d.hata;
+}
+
+// İnceleme bulgusu 1 (A6-K12, K31, K33): erken kapanışta (sınır, yazma hatası) öteki üreticilerin
+// halkalarında bekleyen iletiler kayda geçmeden atılamaz. Kapanış kaydından ÖNCE bütün halkalar
+// boşaltılır, yazılamayan her ileti kanal başına `kayit/eksik`'e çevrilir ve önek hiçbir eksik
+// adımı kapsamaz.
+//
+// Senaryo (inceleyicinin): üretici 0 adım 0…N'i `fizik/durum`'a yazar; üretici 1 adım 50'de tek bir
+// ileti yazar (`yazildi` döner); yazıcı önce üretici 0'ı boşaltır ve dosya ORADA erken kapanır.
+int test_erken_kapanis_cok_uretici()
+{
+    Denetci d;
+    constexpr std::uint64_t kUretici = 2;
+    // Yazıcının sıra yedeği (yazici.cpp): 2·Ü·K·2 + Ü·K + 16.
+    constexpr std::uint64_t kYedek = 2u * kUretici * kKanalSayisi * 2u + kUretici * kKanalSayisi + 16u;
+    struct Vaka {
+        const char* ad;
+        bool sinir;       // true: `sequence` sınırı; false: disk dolu
+        bool fizik_kanali;  // üretici 1'in iletisi: true `a3/komut` (fizik düzeyinin kanalı), false `olay`
+    };
+    const Vaka vakalar[] = {
+        {"sinir_a3_komut", true, true},
+        {"sinir_olay", true, false},
+        {"disk_dolu_a3_komut", false, true},
+        {"disk_dolu_olay", false, false},
+    };
+    std::uint64_t baslik = 0;
+    {
+        Duzenek olcu("erken_olcu", Kademe::telemetri, "hil_bariyer");
+        baslik = olcu.y ? olcu.y->sayaclar().dosya_bayt : 0;
+        if (olcu.y) {
+            (void)olcu.kapat();
+        }
+    }
+    int no = 0;
+    for (const Vaka& v : vakalar) {
+        const std::string ad = v.ad;
+        const std::uint64_t uretilen0 = v.sinir ? 200 : 400;
+        HedefAyari h;
+        h.hata_turu = Dosya::Sonuc::disk_dolu;
+        h.hata_esigi = v.sinir ? 0 : baslik + 60000;
+        Duzenek dz("erken_" + std::to_string(no++), Kademe::telemetri, "hil_bariyer", [&](Ayar& a) {
+            a.ureticiler.push_back(UreticiAyari{"a3", std::size_t{1} << 16});
+            a.dosya_fabrikasi = hedef_fabrikasi(h);
+            if (v.sinir) {
+                // Üretici iletisi yalnız kalan sıra yedekten büyükken yazılır: tam 97 ileti (adım 0…96).
+                a.ilk_sira = static_cast<std::uint32_t>(0xFFFFFFFFull - (kYedek + 96u));
+            } else {
+                a.parca_hedefi_bayt = 4096;
+            }
+        });
+        DOGRULA(d, dz.y != nullptr && baslik > 0 && dz.y->uretici_sayisi() == kUretici, ad + ": yazıcı açıldı: " + dz.hata);
+        if (!dz.y) {
+            continue;
+        }
+        KapanisAlanlari taslak = ornek_kapanis();
+        taslak.son_adim_no = 123;
+        dz.y->kapanis_taslagi(taslak);
+        Uretici& u0 = dz.y->uretici(0);
+        Uretici& u1 = dz.y->uretici(1);
+        FizikDurumu fd;
+        bool hepsi_yazildi = true;
+        for (std::uint64_t adim = 0; adim < uretilen0; ++adim) {
+            fd.guncelle(adim);
+            fd.y.adim_no = adim;  // yükteki adım = iletinin adımı (okuyucunun "yazılmış son adım" sınırı)
+            hepsi_yazildi = hepsi_yazildi && u0.yaz<Kanal::fizik_durum>(static_cast<std::int64_t>(adim) * 1000, adim, fd.y) == YazmaSonucu::yazildi;
+        }
+        const char* kanal1 = v.fizik_kanali ? "a3/komut" : "olay";
+        if (v.fizik_kanali) {
+            yuk_a3_komut komut;
+            komut.komut_no = 7;
+            komut.yontem = "POST";
+            komut.yol = "/api/v1/calistirma/durdur";
+            komut.govde = "{}";
+            hepsi_yazildi = hepsi_yazildi && u1.yaz<Kanal::a3_komut>(50'000, 50, komut) == YazmaSonucu::yazildi;
+        } else {
+            a3::yuk_olay olay;
+            olay.adim_no = 50;
+            olay.ayrinti = "{}";
+            hepsi_yazildi = hepsi_yazildi && u1.yaz<Kanal::olay>(50'000, 50, olay) == YazmaSonucu::yazildi;
+        }
+        DOGRULA(d, hepsi_yazildi, ad + ": bütün iletiler halkaya girdi (`yazildi`)");
+        // Tek tur: yazıcı önce üretici 0'ı boşaltır; dosya orada erken kapanır.
+        dz.y->isle();
+        const YaziciDurumu beklenen_durum = v.sinir ? YaziciDurumu::sinira_ulasti : YaziciDurumu::disk_dolu;
+        DOGRULA(d, dz.y->durum() == beklenen_durum && (v.sinir || h.hata_verdi->load()), ad + ": dosya erken kapandı");
+        DOGRULA(d, u0.yaz<Kanal::fizik_durum>(999'000, 999, fd.y) == YazmaSonucu::kapali, ad + ": kapanıştan sonra üretici `kapali` alır");
+
+        const YaziciSayaclari ys = dz.y->sayaclar();
+        const std::uint64_t yazilan = ys.yazilan_uretici_iletisi;  // dosyadaki fizik/durum: adım 0…yazilan-1
+        const std::uint64_t kayip0 = uretilen0 - yazilan;
+        DOGRULA(d, v.sinir ? yazilan == 97 : (yazilan > 60 && yazilan < uretilen0), ad + ": dosyaya giren ileti: " + std::to_string(yazilan));
+        if (yazilan <= 51 || yazilan >= uretilen0) {
+            continue;  // sonraki denetimler üretici 1'in adımının (50) dosyadaki son adımdan küçük olmasına dayanır
+        }
+        // Hiçbir ileti sessizce kaybolmaz: kuyruklanan = yazılan + `kayit/eksik`'te bildirilen.
+        DOGRULA(d, ys.kuyruktan_alinan == uretilen0 + 1 && ys.yazimda_kaybolan == kayip0 + 1 && ys.kapali_iken_atilan == 0 &&
+                       ys.bildirilen_dusen == kayip0 + 1 && ys.bildirilemeyen_dusen == 0 && ys.eksik_kaydi == 2,
+                ad + ": sayaçlar: kaybolan " + std::to_string(ys.yazimda_kaybolan) + ", kapalıyken atılan " +
+                    std::to_string(ys.kapali_iken_atilan) + ", bildirilen " + std::to_string(ys.bildirilen_dusen));
+        const KapanisSonucu ks = dz.kapat();
+        const std::string bitis = v.sinir ? "sinira_ulasti" : "disk_dolu";
+        DOGRULA(d, ks.dosya_kapandi && ks.kapanis_kaydi.count("bitis_durumu") == 1 && ks.kapanis_kaydi.at("bitis_durumu") == bitis,
+                ad + ": kapanış sonucu: " + ks.hata);
+        if (!ks.dosya_kapandi) {
+            continue;
+        }
+        // Kapanış kaydı: eksik var; önek üretici 1'in kaybolan iletisinin adımını (50) KAPSAMAZ.
+        const UstVeri& kk = ks.kapanis_kaydi;
+        DOGRULA(d, kk.at("kayit_eksik") == "true" && kk.at("tekrar_guvencesi") == "fizik" && kk.count("guvence_on_eki_son_adim") == 1 &&
+                       kk.at("guvence_on_eki_son_adim") == "49" && kk.at("son_adim_no") == "123",
+                ad + ": kapanış kaydı: kayit_eksik=" + kk.at("kayit_eksik") + ", güvence=" + kk.at("tekrar_guvencesi") + ", önek=" +
+                    (kk.count("guvence_on_eki_son_adim") == 1 ? kk.at("guvence_on_eki_son_adim") : std::string("yok")));
+        // `ilk_eksik_adim`: fizik düzeyinin kanallarındaki ilk eksik adım (`olay` o düzeyin kanalı değildir).
+        DOGRULA(d, kk.count("ilk_eksik_adim") == 1 && kk.at("ilk_eksik_adim") == (v.fizik_kanali ? std::string("50") : std::to_string(yazilan)),
+                ad + ": ilk_eksik_adim");
+        std::printf("  %s: dosyada adım 0…%llu; kayit_eksik=%s, tekrar_guvencesi=%s, guvence_on_eki_son_adim=%s, ilk_eksik_adim=%s\n", v.ad,
+                    static_cast<unsigned long long>(yazilan - 1), kk.at("kayit_eksik").c_str(), kk.at("tekrar_guvencesi").c_str(),
+                    kk.at("guvence_on_eki_son_adim").c_str(), kk.at("ilk_eksik_adim").c_str());
+
+        const auto o = dz.oku();
+        DOGRULA(d, o != nullptr && o->ozet().saglam(), ad + ": dosya sağlam" + (o && o->ozet().bozuk ? ": " + o->ozet().bozulma : std::string()));
+        if (!o) {
+            continue;
+        }
+        const DosyaOzeti& oz = o->ozet();
+        std::set<std::uint64_t> adimlar;
+        std::size_t kanal1_iletisi = 0;
+        for (const OkunanIleti& i : hepsini_oku(*o)) {
+            if (i.kanal == "fizik/durum") {
+                adimlar.insert(static_cast<std::uint64_t>(i.log_time / 1000));
+            } else if (i.kanal == kanal1) {
+                ++kanal1_iletisi;
+            }
+        }
+        DOGRULA(d, adimlar.size() == yazilan && *adimlar.rbegin() == yazilan - 1 && kanal1_iletisi == 0,
+                ad + ": dosyada üretici 0'ın ilk iletileri var, üretici 1'in iletisi yok");
+        // İki `kayit/eksik` kaydı: kanal başına; neden kapanışın nedeni.
+        const std::uint8_t neden = v.sinir ? 1 : 2;
+        bool fizik_kaydi = false;
+        bool kanal1_kaydi = false;
+        for (const EksikKaydi& e : oz.eksikler) {
+            if (e.kanal->ad == "fizik/durum") {
+                fizik_kaydi = e.ilk_adim == yazilan && e.son_adim == uretilen0 - 1 && e.kayip_sayisi == kayip0 && e.neden == neden &&
+                              e.ilk_sim_t_ns == static_cast<std::int64_t>(yazilan) * 1000 &&
+                              e.son_sim_t_ns == static_cast<std::int64_t>(uretilen0 - 1) * 1000;
+            } else if (e.kanal->ad == kanal1) {
+                kanal1_kaydi = e.ilk_adim == 50 && e.son_adim == 50 && e.kayip_sayisi == 1 && e.neden == neden && e.ilk_sim_t_ns == 50'000;
+            }
+        }
+        DOGRULA(d, oz.eksikler.size() == 2 && fizik_kaydi && kanal1_kaydi, ad + ": yazılamayan her ileti kanal başına kayit/eksik'te");
+        DOGRULA(d, oz.guvence == Guvence::fizik && oz.guvence_on_eki_son_adim == std::optional<std::uint64_t>(49) && oz.guvence_kisitlari.empty() &&
+                       oz.son_fizik_adimi == std::optional<std::uint64_t>(yazilan - 1),
+                ad + ": okuyucu: fizik, önek 49");
+    }
+    return d.hata;
+}
+
+// İnceleme bulgusu 2 (A6-K53): `kapat(alanlar)` sırasında yazma hatası ya da sınır çıkarsa kapanış
+// kaydı eski taslağı değil verilen alanları taşır. Senaryo (inceleyicinin): `tekrar_fizik` kipinde
+// kayıt; kapanışta disk dolar; `kapat` `canli_mudahale_adimi = 777`, `son_adim_no = 4800` ile çağrılır.
+int test_kapat_sirasinda_hata()
+{
+    Denetci d;
+    // Aynı içerik her koşuda aynı baytları üretir (enjekte edilen saat): önce hatasız koşunun
+    // dosyasından kapanışta yazılan kayıtların konumları alınır, sonra hata o konumlara yerleştirilir.
+    std::vector<std::uint8_t> tam;
+    const auto kos = [&](const std::string& ad, std::uint64_t hata_esigi, KapanisSonucu& ks, std::unique_ptr<Okuyucu>& o) {
+        HedefAyari h;
+        h.hata_turu = Dosya::Sonuc::disk_dolu;
+        h.hata_esigi = hata_esigi;
+        Duzenek dz(ad, Kademe::telemetri, "tekrar_fizik", [&](Ayar& a) { a.dosya_fabrikasi = hedef_fabrikasi(h); });
+        DOGRULA(d, dz.y != nullptr, ad + ": yazıcı açıldı: " + dz.hata);
+        if (!dz.y) {
+            return false;
+        }
+        KapanisAlanlari eski = ornek_kapanis();
+        eski.son_adim_no = 0;  // bayat taslak: canlı müdahale yok
+        dz.y->kapanis_taslagi(eski);
+        a3::yuk_calistirma_durum cd;
+        FizikDurumu fd;
+        for (std::uint64_t i = 0; i < 12; ++i) {
+            fd.guncelle(i);
+            fd.y.adim_no = i;
+            (void)dz.u().yaz<Kanal::calistirma_durum>(static_cast<std::int64_t>(i) * 1000, i, cd);
+            (void)dz.u().yaz<Kanal::fizik_durum>(static_cast<std::int64_t>(i) * 1000, i, fd.y);
+        }
+        dz.y->isle();
+        dz.saat.ilerlet(1'000'000'000);
+        dz.y->isle();  // parça kapandı: kalıcı
+        DOGRULA(d, dz.y->sayaclar().kapanan_parca == 1 && dz.y->durum() == YaziciDurumu::acik, ad + ": ilk parça kalıcı");
+        for (std::uint64_t i = 12; i < 15; ++i) {
+            (void)dz.u().yaz<Kanal::calistirma_durum>(static_cast<std::int64_t>(i) * 1000, i, cd);  // kapanışta halkada bekler
+        }
+        KapanisAlanlari k = ornek_kapanis();
+        k.bitis_durumu = BitisDurumu::durduruldu;
+        k.son_adim_no = 4800;
+        k.canli_mudahale_adimi = 777;
+        ks = dz.y->kapat(k);
+        if (hata_esigi == 0) {
+            tam = dosya_oku(dz.y->yol());
+        }
+        o = dz.oku();
+        return true;
+    };
+    KapanisSonucu ks;
+    std::unique_ptr<Okuyucu> o;
+    if (!kos("kapat_hata_tam", 0, ks, o) || !o) {
+        DOGRULA(d, false, "hatasız koşu okunamadı");
+        return d.hata;
+    }
+    DOGRULA(d, ks.dosya_kapandi && ks.bitis_durumu == BitisDurumu::durduruldu && o->ozet().saglam() && o->ozet().guvence == Guvence::yok &&
+                   ks.kapanis_kaydi.at("canli_mudahale_adimi") == "777",
+            "hatasız koşu: canlı müdahale → güvence yok");
+    // Kapanışta yazılanlar: son parça (bekleyen 3 ileti), `ida_kayit_kapanis`, Data End, özet, Footer.
+    const std::vector<KayitKonumu> kayitlar = kayitlari_tara(tam);
+    std::uint64_t son_parca = 0;
+    std::uint64_t kapanis_kaydi = 0;
+    for (const KayitKonumu& k : kayitlar) {
+        if (k.op == 0x06) {
+            son_parca = k.konum;
+        }
+        if (k.op == 0x0C) {
+            kapanis_kaydi = k.konum;  // son Metadata kaydı (veri bölümündeki)
+        }
+        if (k.op == 0x0F) {
+            break;
+        }
+    }
+    const std::uint64_t veri_sonu = veri_sonu_konumu(tam);
+    DOGRULA(d, son_parca != 0 && kapanis_kaydi > son_parca && veri_sonu > kapanis_kaydi && tam.size() > veri_sonu + 100, "kapanış kayıtlarının konumları");
+    if (d.hata != 0) {
+        return d.hata;
+    }
+    struct Vaka {
+        const char* ad;
+        std::uint64_t esik;
+        bool parca_kayip;  // son parça (3 ileti) dosyaya giremedi
+    };
+    const Vaka vakalar[] = {
+        {"son parça yazılırken", son_parca + 20, true},
+        {"kapanış kaydı yazılırken", kapanis_kaydi + 5, false},
+        {"özet yazılırken", veri_sonu + 13 + 20, false},
+        {"Footer yazılırken", tam.size() - 10, false},
+    };
+    int no = 0;
+    for (const Vaka& v : vakalar) {
+        const std::string ad = v.ad;
+        KapanisSonucu ks2;
+        std::unique_ptr<Okuyucu> o2;
+        if (!kos("kapat_hata_" + std::to_string(no++), v.esik, ks2, o2)) {
+            continue;
+        }
+        DOGRULA(d, ks2.dosya_kapandi && ks2.bitis_durumu == BitisDurumu::disk_dolu, ad + ": dosya hata kapanışıyla kapandı: " + ks2.hata);
+        if (!ks2.dosya_kapandi) {
+            continue;
+        }
+        const UstVeri& kk = ks2.kapanis_kaydi;
+        // Verilen alanlar: canlı müdahale adımı ve son adım; güvence `yok` (A6-K53), `fizik` DEĞİL.
+        DOGRULA(d, kk.count("canli_mudahale_adimi") == 1 && kk.at("canli_mudahale_adimi") == "777" && kk.at("son_adim_no") == "4800" &&
+                       kk.at("tekrar_guvencesi") == "yok" && kk.count("guvence_nedenleri") == 1 && kk.at("guvence_nedenleri") == "canli_mudahale" &&
+                       kk.at("bitis_durumu") == "disk_dolu",
+                ad + ": kapanış kaydı verilen alanları taşır (son_adim_no=" + kk.at("son_adim_no") + ", güvence=" + kk.at("tekrar_guvencesi") + ")");
+        DOGRULA(d, kk.at("kayit_eksik") == (v.parca_kayip ? "true" : "false"), ad + ": kayit_eksik");
+        DOGRULA(d, o2 != nullptr && o2->ozet().saglam() && o2->ozet().guvence == Guvence::yok && o2->ozet().kapanis.has_value() &&
+                       *o2->ozet().kapanis == kk && o2->ozet().ileti_sayisi == (v.parca_kayip ? 25u : 27u),
+                ad + ": okuyucu: sağlam, güvence yok");
+        std::printf("  %s: canli_mudahale_adimi=%s, son_adim_no=%s, tekrar_guvencesi=%s\n", v.ad, kk.at("canli_mudahale_adimi").c_str(),
+                    kk.at("son_adim_no").c_str(), kk.at("tekrar_guvencesi").c_str());
+    }
+    {
+        // `kapat` sırasında sıra sınırına varılırsa da kapanış kaydı verilen alanları taşır.
+        constexpr std::uint64_t kYedek = 2u * kKanalSayisi * 2u + kKanalSayisi + 16u;
+        Duzenek dz("kapat_sinir", Kademe::telemetri, "tekrar_fizik",
+                   [&](Ayar& a) { a.ilk_sira = static_cast<std::uint32_t>(0xFFFFFFFFull - (kYedek + 9u)); });
+        DOGRULA(d, dz.y != nullptr, "yazıcı açıldı: " + dz.hata);
+        if (dz.y) {
+            KapanisAlanlari eski = ornek_kapanis();
+            eski.son_adim_no = 1;
+            dz.y->kapanis_taslagi(eski);
+            a3::yuk_calistirma_durum cd;
+            for (std::uint64_t i = 0; i < 30; ++i) {
+                (void)dz.u().yaz<Kanal::calistirma_durum>(static_cast<std::int64_t>(i) * 1000, i, cd);
+            }
+            KapanisAlanlari k = ornek_kapanis();
+            k.son_adim_no = 4800;
+            k.canli_mudahale_adimi = 777;
+            const KapanisSonucu ks3 = dz.y->kapat(k);
+            DOGRULA(d, ks3.dosya_kapandi && ks3.bitis_durumu == BitisDurumu::sinira_ulasti && ks3.kapanis_kaydi.at("son_adim_no") == "4800" &&
+                           ks3.kapanis_kaydi.count("canli_mudahale_adimi") == 1 && ks3.kapanis_kaydi.at("tekrar_guvencesi") == "yok" &&
+                           ks3.sayaclar.yazilan_uretici_iletisi == 10 && ks3.sayaclar.yazimda_kaybolan == 20 && ks3.sayaclar.kapali_iken_atilan == 0,
+                    "kapat sırasında sınır: verilen alanlar, kalan iletiler kayit/eksik'te");
+        }
+    }
+    return d.hata;
+}
+
+// İnceleme bulgusu 4: üst veri güncellemesi işletim sistemine teslim edilemezse o nokta sağlam nokta
+// sayılmaz; hata kapanışı dosyayı gerçek son sağlam noktaya keser ve kuyruğu yazar.
+int test_guncelleme_teslim_hatasi()
+{
+    Denetci d;
+    HedefAyari h;
+    h.hata_turu = Dosya::Sonuc::hata;
+    Duzenek dz("guncelleme_teslim", Kademe::telemetri, "hil_bariyer", [&](Ayar& a) { a.dosya_fabrikasi = hedef_fabrikasi(h); });
+    DOGRULA(d, dz.y != nullptr, "yazıcı açıldı: " + dz.hata);
+    if (!dz.y) {
+        return d.hata;
+    }
+    a3::yuk_calistirma_durum cd;
+    for (std::uint64_t i = 0; i < 5; ++i) {
+        (void)dz.u().yaz<Kanal::calistirma_durum>(static_cast<std::int64_t>(i) * 1000, i, cd);
+    }
+    dz.y->isle();
+    dz.saat.ilerlet(1'000'000'000);
+    dz.y->isle();
+    const std::uint64_t saglam_bayt = dz.y->sayaclar().dosya_bayt;
+    DOGRULA(d, dz.y->sayaclar().kapanan_parca == 1, "ilk parça kalıcı");
+    std::string hata;
+    h.teslim_hatasi->store(true);  // bundan sonra yazılanlar dosyaya ulaşmaz; `bosalt` hata verir
+    DOGRULA(d, dz.y->guncelle("kart_fw_version", "17", hata), "güncelleme kabul edildi: " + hata);
+    dz.y->isle();
+    DOGRULA(d, dz.y->durum() == YaziciDurumu::yazma_hatasi, "teslim edilemeyen güncelleme: yazıcı hata durumunda");
+    const KapanisSonucu ks = dz.kapat();
+    DOGRULA(d, ks.dosya_kapandi && ks.bitis_durumu == BitisDurumu::yazma_hatasi, "kuyruk yazıldı, dosya kapandı: " + ks.hata);
+    const auto o = dz.oku();
+    DOGRULA(d, o != nullptr, "dosya okunur");
+    if (!o) {
+        return d.hata;
+    }
+    const DosyaOzeti& oz = o->ozet();
+    DOGRULA(d, oz.saglam() && oz.ileti_sayisi == 5 && oz.kapanis.has_value() && oz.kapanis->at("bitis_durumu") == "yazma_hatasi",
+            "dosya sağlam: gerçek son sağlam noktaya kesildi" + (oz.bozuk ? ": " + oz.bozulma : std::string()));
+    DOGRULA(d, oz.ust_veri.count("kart_fw_version") == 0, "teslim edilemeyen güncelleme dosyada yok");
+    // Dosya: sağlam bölge + kuyruk; arada boşluk (sıfır baytlar) yok.
+    const std::vector<std::uint8_t> bayt = dosya_oku(dz.y->yol());
+    const std::vector<KayitKonumu> kayitlar = kayitlari_tara(bayt);
+    bool kuyruk_yerinde = false;
+    for (const KayitKonumu& k : kayitlar) {
+        kuyruk_yerinde = kuyruk_yerinde || (k.konum == saglam_bayt && k.op == 0x0C);  // eksik yok: kuyruk kapanış kaydıyla başlar
+    }
+    DOGRULA(d, kuyruk_yerinde, "kuyruk son sağlam noktadan başlar (" + std::to_string(saglam_bayt) + ")");
+    return d.hata;
+}
+
+// İnceleme bulgusu 5 (A6-K12): sıra yedeği, kapanışta yazılabilecek en çok `kayit/eksik` kaydını
+// karşılar; hiçbir bildirim sıra numarası kalmadığı için atlanmaz (`bildirilemeyen_dusen` = 0).
+//
+// En ağır durum kurulur: üç üretici, her kanalda (60) iki nedenle (halka taşması, negatif zaman)
+// düşme: bir turda 360 kayıt; ardından aynısı bir kez daha ve halkalarda kalan iletilerle sınır
+// kapanışı. Aynı durumda yazma hatası: bütün kayıtlar kuyrukta yeniden numaralanır.
+int test_sira_yedegi()
+{
+    Denetci d;
+    constexpr std::uint64_t kUretici = 3;
+    constexpr std::uint64_t kYedek = 2u * kUretici * kKanalSayisi * 2u + kUretici * kKanalSayisi + 16u;
+    // Her kanalda en az bir halka taşması ve bir geçersiz (negatif `log_time`) düşme üretir.
+    const auto hepsini_dusur = [](Yazici& y, std::uint64_t adim, std::uint64_t& tohum) {
+        for (std::size_t u = 0; u < y.uretici_sayisi(); ++u) {
+            for (std::size_t k = 0; k < kKanalSayisi; ++k) {
+                const Kanal kanal = static_cast<Kanal>(k);
+                if (kanal == Kanal::kayit_eksik) {
+                    continue;
+                }
+                int deneme = 0;
+                while (ornek_yaz(y.uretici(u), kanal, tohum++, static_cast<std::int64_t>(adim) * 1000, adim) == YazmaSonucu::yazildi &&
+                       ++deneme < 100000) {
+                }
+                (void)ornek_yaz(y.uretici(u), kanal, tohum++, -1, adim);
+            }
+        }
+    };
+    const auto ayarla = [&](Ayar& a, std::uint32_t ilk_sira, const HedefAyari& h) {
+        a.ureticiler[0].halka_bayt = 16384;
+        a.ureticiler.push_back(UreticiAyari{"hil", 16384});
+        a.ureticiler.push_back(UreticiAyari{"a3", 16384});
+        a.ilk_sira = ilk_sira;
+        a.dosya_fabrikasi = hedef_fabrikasi(h);
+    };
+    // Ön koşu: ilk turda halkalardan kaç ileti yazılacağı (kuyruklanan) ölçülür; tohum belirlenimcidir.
+    std::uint64_t ilk_tur_iletisi = 0;
+    {
+        HedefAyari h;
+        Duzenek dz("sira_yedegi_on", Kademe::tam, "sil", [&](Ayar& a) { ayarla(a, 1, h); });
+        DOGRULA(d, dz.y != nullptr, "ön koşu açıldı: " + dz.hata);
+        if (!dz.y) {
+            return d.hata;
+        }
+        std::uint64_t tohum = 1;
+        hepsini_dusur(*dz.y, 10, tohum);
+        for (std::size_t u = 0; u < dz.y->uretici_sayisi(); ++u) {
+            ilk_tur_iletisi += dz.y->uretici(u).sayaclar().kuyruklanan;
+        }
+        (void)dz.kapat();
+    }
+    DOGRULA(d, ilk_tur_iletisi > 0 && ilk_tur_iletisi < 4096, "ön koşu: ilk turda yazılacak ileti " + std::to_string(ilk_tur_iletisi));
+    // Kalan sıra = yedek + ilk turun iletileri + 1: ilk turda bütün iletiler yazılır (son yazımdan önce
+    // kalan = yedek + 2), tur sonunda kalan = yedek + 1 − (ilk turun düşme kayıtları).
+    const auto ilk_sira = static_cast<std::uint32_t>(0xFFFFFFFFull - (kYedek + ilk_tur_iletisi));
+    for (const bool yazma_hatasi : {false, true}) {
+        const std::string ad = yazma_hatasi ? "yazma hatası" : "sınır";
+        HedefAyari h;
+        h.hata_turu = Dosya::Sonuc::hata;
+        Duzenek dz(yazma_hatasi ? "sira_yedegi_hata" : "sira_yedegi", Kademe::tam, "sil", [&](Ayar& a) { ayarla(a, ilk_sira, h); });
+        DOGRULA(d, dz.y != nullptr, ad + ": yazıcı açıldı: " + dz.hata);
+        if (!dz.y) {
+            continue;
+        }
+        std::uint64_t tohum = 1;
+        hepsini_dusur(*dz.y, 10, tohum);
+        dz.y->isle();  // tur 1: iletiler ve düşme kayıtları açık parçaya
+        const YaziciSayaclari y1 = dz.y->sayaclar();
+        DOGRULA(d, dz.y->durum() == YaziciDurumu::acik && y1.kuyruktan_alinan == ilk_tur_iletisi, ad + ": ilk turdan sonra dosya açık");
+        hepsini_dusur(*dz.y, 20, tohum);
+        std::uint64_t kuyruklanan = 0;
+        std::uint64_t dusen = 0;
+        for (std::size_t u = 0; u < dz.y->uretici_sayisi(); ++u) {
+            const UreticiSayaclari us = dz.y->uretici(u).sayaclar();
+            kuyruklanan += us.kuyruklanan;
+            dusen += us.dusen_halka + us.dusen_gecersiz;
+            DOGRULA(d, us.uretilen == us.kuyruklanan + us.dusen_halka + us.dusen_gecersiz && us.dusen_gecersiz >= 2u * (kKanalSayisi - 1u),
+                    ad + ": üretici sayaçları");
+        }
+        if (yazma_hatasi) {
+            h.sonradan_esik->store(h.yazilan->load() + 10);  // kapanışın ilk yazımı (parça) başarısız olur
+        }
+        dz.y->isle();  // tur 2: kalan sıra ≤ yedek → sınır kapanışı
+        DOGRULA(d, dz.y->durum() == (yazma_hatasi ? YaziciDurumu::yazma_hatasi : YaziciDurumu::sinira_ulasti), ad + ": ikinci turda kapanış");
+        const KapanisSonucu ks = dz.kapat();
+        const YaziciSayaclari& ys = ks.sayaclar;
+        DOGRULA(d, ks.dosya_kapandi, ad + ": dosya kapandı: " + ks.hata);
+        // Hiçbir bildirim atlanmadı; her ileti ya dosyada ya `kayit/eksik`'te.
+        DOGRULA(d, ys.bildirilemeyen_dusen == 0, ad + ": bildirilemeyen düşen: " + std::to_string(ys.bildirilemeyen_dusen));
+        DOGRULA(d, ys.kapali_iken_atilan == 0 && ys.yazilan_uretici_iletisi + ys.yazimda_kaybolan == kuyruklanan &&
+                       ys.bildirilen_dusen == dusen + ys.yazimda_kaybolan,
+                ad + ": yazılan + bildirilen = üretilen (yazılan " + std::to_string(ys.yazilan_uretici_iletisi) + ", kaybolan " +
+                    std::to_string(ys.yazimda_kaybolan) + ", düşen " + std::to_string(dusen) + ")");
+        // En ağır durum gerçekten kuruldu: iki turun her birinde üretici × kanal × neden kadar kayıt.
+        DOGRULA(d, ys.eksik_kaydi >= 2u * kUretici * (kKanalSayisi - 1u) * 2u, ad + ": eksik kaydı sayısı: " + std::to_string(ys.eksik_kaydi));
+        const auto o = dz.oku();
+        DOGRULA(d, o != nullptr && o->ozet().saglam(), ad + ": dosya sağlam" + (o && o->ozet().bozuk ? ": " + o->ozet().bozulma : std::string()));
+        if (!o) {
+            continue;
+        }
+        std::uint32_t en_buyuk = 0;
+        std::uint32_t en_kucuk = 0xFFFFFFFFu;
+        std::size_t n = 0;
+        Ileti i;
+        while (o->sonraki(i)) {
+            en_buyuk = std::max(en_buyuk, i.sequence);
+            en_kucuk = std::min(en_kucuk, i.sequence);
+            ++n;
+        }
+        DOGRULA(d, n == ys.yazilan_ileti && n > 0 && en_kucuk == ilk_sira && en_buyuk - en_kucuk + 1u == n,
+                ad + ": sequence ardışık, sınırın altında (" + std::to_string(n) + " ileti)");
+        const std::uint64_t pay = 0xFFFFFFFFull - en_buyuk;
+        DOGRULA(d, pay >= 16, ad + ": kapanıştan sonra kalan sıra payı: " + std::to_string(pay));
+        std::printf("  %s: yedek %llu, eksik kaydı %llu, dosyadaki ileti %zu, kalan sıra payı %llu\n", ad.c_str(),
+                    static_cast<unsigned long long>(kYedek), static_cast<unsigned long long>(ys.eksik_kaydi), n,
+                    static_cast<unsigned long long>(pay));
+    }
     return d.hata;
 }
 
