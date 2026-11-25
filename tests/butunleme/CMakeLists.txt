@@ -327,3 +327,44 @@ add_test(NAME butunleme.ida_sim_a2_yok_cikti
           "-DILETI=sonar taşma (kuyruk 0, teslim 0, tampon 0), oturum 2, kapanış yazımı eksik 0, son hata: yok"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 set_tests_properties(butunleme.ida_sim_a2_ozet butunleme.ida_sim_a2siz_ozet butunleme.ida_sim_a2_yok_cikti PROPERTIES TIMEOUT 600)
+
+# W5-bagla-kayit (docs/gorevler/W5-bagla-kayit.md kabul 1–4; sim/sunucu/BENIOKU.md "A6 kayıt"): A6 kayıt
+# kitaplığının ida_sim'e bağlanması. Dosyayı `Okuyucu` (sim/kayit) okur; SIL koşuları kitaplıkta, ölçüm ve
+# öldürme sınaması `ida_sim` sürecinde. Geçici dizinler benzersiz; sabit port ve gerçek kilit dosyası yok.
+find_package(nlohmann_json CONFIG REQUIRED)
+add_executable(ida_butunleme_kayit_test test_kayit.cpp)
+target_compile_definitions(ida_butunleme_kayit_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
+target_link_libraries(ida_butunleme_kayit_test PRIVATE ida_sunucu ida_kayit nlohmann_json::nlohmann_json Threads::Threads)
+ida_ayar_uygula(ida_butunleme_kayit_test)
+if(NOT MSVC)
+  target_compile_options(ida_butunleme_kayit_test PRIVATE -Wshadow)
+endif()
+foreach(_ad kayit_varsayilan kayit_belirlenim kayit_icerik kayit_a3_acik kayit_olcum)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_kayit_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+# Olağan, hata ve sinyal kapanışı; POSIX'te ayrıca `kill -9` sonrası kurtarma okuması (testin kendi içinde
+# #ifndef _WIN32; `ida_sim` süreci olarak başlatılır).
+add_test(NAME butunleme.kayit_kapanis COMMAND ida_butunleme_kayit_test kayit_kapanis $<TARGET_FILE:ida_sim>)
+set_tests_properties(butunleme.kayit_kapanis PROPERTIES TIMEOUT 600)
+if(NOT WIN32)
+  # Kabul 2 (ölçüm): kartsız HIL 1x (sözde uçbirim, POSIX), iki kez 12 s; zamanlamaya duyarlı.
+  add_test(NAME butunleme.kayit_hil_sayac COMMAND ida_butunleme_kayit_test kayit_hil_sayac)
+  set_tests_properties(butunleme.kayit_hil_sayac PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+endif()
+# ida_sim süreci olarak (W5-K40): `--kayit-dizini` yokken çıktıda kayıt izi yok; yerleşik senaryoyla kullanım
+# hatası; senaryoyla kapanış özet satırı.
+add_test(NAME butunleme.ida_sim_kayit_yok_cikti
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0 "-DYOK=ida_sim: kayıt:"
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETI=sonar taşma (kuyruk 0, teslim 0, tampon 0), oturum 2, kapanış yazımı eksik 0, son hata: yok"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_kayit_yerlesik_senaryo
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 "-DILETI=--kayit-dizini yalnız senaryo dosyasıyla"
+          "-DARGUMANLAR=--kayit-dizini;${CMAKE_CURRENT_BINARY_DIR}/kayit_yerlesik;--sure;1" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_kayit_ozet
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--kayit-dizini;${CMAKE_CURRENT_BINARY_DIR}/kayit_ozet;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETILER=ida_sim: kapanış: düzgün|ida_sim: kayıt: kapandı; dosya |bitiş bitti, güvence izleme (kanal_uretilmiyor:|üretilmeyen kanallar ["
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_kayit_yok_cikti butunleme.ida_sim_kayit_yerlesik_senaryo butunleme.ida_sim_kayit_ozet PROPERTIES TIMEOUT 600)
