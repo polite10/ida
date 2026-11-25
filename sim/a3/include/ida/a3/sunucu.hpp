@@ -9,6 +9,7 @@
 
 #include "ida/a3/kaynak.hpp"
 #include "ida/a3/komut.hpp"
+#include "ida/a3/senaryo.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +28,9 @@ struct SunucuAyari {
     // Panellerin derleme çıktısı (web/dist); boşsa statik yollar 404 döner.
     std::string statik_kok;
     std::string sim_surumu = "ida-a3";
+    // Senaryo ve ön denetim uçlarının veri kaynağı (W5-a3-senaryo); sunucudan uzun yaşamalıdır. Boşsa
+    // bu uçlar 404 `bulunamadi` döner (sahte dünya ve eski sınamalar).
+    SenaryoHizmeti* senaryo = nullptr;
     // Dünya → A3 halkaları (bayt).
     std::size_t telemetri_halkasi = std::size_t{8} << 20u;
     std::size_t olay_halkasi = std::size_t{2} << 20u;

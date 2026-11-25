@@ -119,11 +119,16 @@ public:
     void duraklat() noexcept;   // duraklatma, son verilen sınırda başlar (A2-K24)
     void surdur() noexcept;
 
+    // W5-a3-senaryo (W5-K49): aynı süreçte yeni bir dünya (`sifirla`, `senaryo/yukle`). Önceki çalıştırmanın
+    // sayaçları ve durumu sıfırlanır; sunucu (kilit, dinleyici, bağlı görselleştirici) kalır. Bir sonraki
+    // `calistirma_basladi` A2 çalıştırma nesli artırır ve bağlı oturumu veda(yeni_calistirma) ile kapatır.
+    void yeni_tanim(a2b::Tanim tanim);
+
     // ---- Kapanış (dünya döngüsü bittikten ve A1 kapanışı tamamlandıktan sonra) ----
-    // Çalıştırma tanımlandıysa `calistirma_durdu()`, sonra `kapaniyor()` (bağlı oturuma
-    // veda(sim_kapaniyor); A2-K67) ve `durdur()`. Durum ve sayaçlar `ozet`e yazılır. Yinelenirse
-    // ikinci çağrı yalnız özeti yeniden yazar.
-    void kapat(A2Ozeti& ozet) noexcept;
+    // Çalıştırma tanımlandıysa `calistirma_durdu()` (bir kez); `son` ise ayrıca `kapaniyor()` (bağlı
+    // oturuma veda(sim_kapaniyor); A2-K67) ve `durdur()`. Durum ve sayaçlar `ozet`e yazılır. Yinelenirse
+    // ikinci çağrı yalnız özeti yeniden yazar. `son = false`: sunucu ayakta kalır (sonraki dünya için).
+    void kapat(A2Ozeti& ozet, bool son = true) noexcept;
 
 private:
     A2Baglanti() = default;
@@ -135,6 +140,7 @@ private:
     std::string ilk_aciklama_;
     std::uint16_t ilk_port_ = 0;
     bool tanimli_ = false;            // yeni_calistirma kabul edildi
+    bool durdu_ = false;              // calistirma_durdu() verildi (bu çalıştırma için)
     bool kapandi_ = false;
     std::uint32_t arac_kimligi_ = 0;
     std::uint64_t son_adim_ = 0;      // son yayınlanan adım sınırı

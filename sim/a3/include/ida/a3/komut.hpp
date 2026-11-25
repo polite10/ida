@@ -64,6 +64,7 @@ enum class KomutTuru : std::uint8_t {
     calistirma_hiz,
     calistirma_durdur,
     calistirma_sifirla,
+    senaryo_yukle,       // A3-K77 (W5-a3-senaryo): çalıştırma denetimi gibi `beklenen_*` taşır
     emniyet_degistir,
     yer_istasyonu_komut,
 };
@@ -99,6 +100,8 @@ struct Komut {
     std::uint32_t periyot_sayisi = 0;
     // calistirma/hiz
     double carpan = 0.0;
+    // senaryo/yukle: `SenaryoHizmeti::hazirla`nın verdiği aday (senaryo içeriği dünyaya taşınmaz).
+    std::uint64_t senaryo_aday = 0;
 
     // emniyet/degistir (A3-K89…K95)
     EmniyetGirdisi girdi = EmniyetGirdisi::acil_durdurma;

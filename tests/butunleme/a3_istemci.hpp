@@ -25,6 +25,9 @@ struct FizikOrnegi {
 struct HttpSonuc {
     int durum = 0;          // 0: yanıt gelmedi
     std::string govde;
+    std::string basliklar;  // ham başlık bloğu (durum satırı dahil; W5-a3-senaryo)
+    // Başlık değeri (ad büyük/küçük harf duyarsız); yoksa boş.
+    std::string baslik(const std::string& ad) const;
     std::string kod() const;              // yanit_ret ise hata.kod
     std::uint32_t komut_no() const;       // yoksa 0
 };

@@ -162,6 +162,10 @@ public:
     A3Alici(const A3Alici&) = delete;
     A3Alici& operator=(const A3Alici&) = delete;
 
+    // Zaman kipi (Tablo 4.7b denetimi): ilk dünya kurulurken ve senaryo/yukle ya da sifirla ile yeni dünya
+    // başka kipte kurulduğunda dünya iş parçacığından verilir (yeni dünya hiçbir istek işlenmeden önce).
+    void kip_ayarla(bool hil);
+
     // ---- A3 G/Ç iş parçacığı ----
     a3::AnlikDurum anlik() override;
     a3::AlimSonucu al(const a3::Komut& k) override;

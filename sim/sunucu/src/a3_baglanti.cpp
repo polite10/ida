@@ -75,6 +75,8 @@ bool gecis_gecerli(CalistirmaDurumu d, KomutTuru t)
     case KomutTuru::calistirma_sifirla:
         return d == D::yuklendi || d == D::hazirlaniyor || d == D::kosuyor || d == D::duraklatildi || d == D::bitti ||
                d == D::durduruldu || d == D::hata;
+    // Tablo 4.7a, `senaryo/yukle` sütunu: bos, yuklendi, bitti, durduruldu, hata (bos bu sim'de yoktur).
+    case KomutTuru::senaryo_yukle: return d == D::yuklendi || d == D::bitti || d == D::durduruldu || d == D::hata;
     default: return false;
     }
 }
@@ -96,6 +98,13 @@ A3Alici::A3Alici(bool hil) : hil_(hil), halka_(kGenelKuyruk + 1u)
 }
 
 A3Alici::~A3Alici() = default;
+
+void A3Alici::kip_ayarla(bool hil)
+{
+    // Yeni dünya başka kipte olabilir (senaryo/yukle). Okuma `al` içinde aynı kilit altındadır.
+    std::lock_guard<std::mutex> kl(uretici_m_);
+    hil_ = hil;
+}
 
 // Üçlü tampon, dünya tarafı: kilit almaz, bellek ayırmaz (düz yapının kopyası).
 void A3Alici::anlik_yaz(const AnlikPod& p)
@@ -345,12 +354,6 @@ AlimSonucu A3Alici::al(const Komut& k)
         }
         if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
             return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
-        }
-        if (k.tur == KomutTuru::calistirma_sifirla && a.durum != CalistirmaDurumu::yuklendi) {
-            // Karşılığı olmayan istek (W4-bagla-a3 kapsam 3): ida_sim bu dilimde tek çalıştırma koşar;
-            // çalıştırmayı başa saran sıfırlama yoktur.
-            return ret("gecersiz_durum",
-                       "ida_sim bu dilimde tek çalıştırma koşar: sıfırlama yalnız 'yuklendi' durumunda (A3-K67 bu dilimde yok)");
         }
         return kuyruga(k, a3b::YiKarsilik{});
     }

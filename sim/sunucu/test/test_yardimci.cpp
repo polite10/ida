@@ -285,6 +285,7 @@ int test_a2_fizik_tutarlilik();
 int test_a2_tanim();
 int test_a2_kimlik();
 int test_kayit_tavan();   // test_kayit_baglanti.cpp (W5-bagla-kayit)
+int test_senaryo_hizmeti_ad();   // test_senaryo_hizmeti.cpp (W5-a3-senaryo)
 
 int main(int argc, char** argv)
 {
@@ -320,6 +321,8 @@ int main(int argc, char** argv)
         g_hata += test_a2_tanim();
     } else if (ad == "a2_kimlik") {
         g_hata += test_a2_kimlik();
+    } else if (ad == "senaryo_hizmeti_ad") {
+        g_hata += test_senaryo_hizmeti_ad();
     } else if (ad == "kayit_tavan") {
         g_hata += test_kayit_tavan();
     } else {

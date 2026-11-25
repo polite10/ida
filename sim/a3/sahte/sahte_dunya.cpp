@@ -153,6 +153,7 @@ bool gecis_gecerli(std::uint8_t d, KomutTuru t)
     case KomutTuru::calistirma_hiz: return d == 3 || d == 4;
     case KomutTuru::calistirma_durdur: return d == 2 || d == 3 || d == 4;
     case KomutTuru::calistirma_sifirla: return d >= 1 && d <= 7;
+    case KomutTuru::senaryo_yukle: return d == 1 || d == 5 || d == 6 || d == 7;   // Tablo 4.7a: `senaryo/yukle` sütunu
     default: return false;
     }
 }
@@ -474,6 +475,7 @@ void SahteDunya::uygula_()
                 gecis_(6, nullptr);
             }
             break;
+        case KomutTuru::senaryo_yukle:   // sahte sim'de senaryo içeriği yok: durum yuklendi'ye döner (A3-K77)
         case KomutTuru::calistirma_sifirla:
             d.run_id.reset();
             d.adim_no = 0;

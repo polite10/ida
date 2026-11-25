@@ -4,6 +4,7 @@
 #include "a2_baglanti.hpp"
 #include "a3_baglanti.hpp"
 #include "kayit_baglanti.hpp"
+#include "senaryo_hizmeti.hpp"
 #include "ida/a3/kaynak.hpp"
 #include "ida/a3/sunucu.hpp"
 #include "ida/a3/zaman.hpp"
@@ -32,6 +33,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <type_traits>
 
@@ -96,9 +98,38 @@ void ekle(std::string& s, const char* bicim, ...)
     }
 }
 
+// W5-a3-senaryo: dünyalar arasında yaşayan hizmetler ve yeniden kurma isteği. A3 açıkken `kos` bir sürücü
+// döngüsüdür (`kos_a3`): her dünya (`Calistirici`) bu yapının üzerinde kurulur ve yıkılır; yapı yalnız
+// süreç boyunca yaşaması gerekenleri tutar. Dünyanın kendi durumu (fizik, sensörler, sonar, çekirdek,
+// köprü, emniyet girdileri, kayıt dosyası, A3 durum makinesi) burada DEĞİLDİR: her dünya sıfırdan kurulur.
+struct A3Kalici {
+    std::unique_ptr<SenaryoHizmeti> hizmet;
+    std::unique_ptr<A3Alici> alici;
+    std::unique_ptr<a3::Sunucu> sunucu;
+    std::unique_ptr<A2Baglanti> a2;           // süreç başına bir A2 sunucusu (kilit, dinleyici); tanım dünya başına
+    std::uint64_t durum_rev = 1;              // A3-K122: `durum_rev` süreç boyunca artar (istemci bayat revizyonu yakalar)
+    bool surekli = false;                     // Ayar::a3_surekli
+    std::uint64_t dunya_no = 0;               // kurulan dünya sayısı
+    // Yeni dünya isteği. `yukle`: senaryo/yukle (sonucu yeni dünya `yuklendi` olunca verilir); `sifirla`
+    // (sonucu isteği alan dünya verdi); `yeniden`: komutsuz yeniden kurma (süreklilik kipinde başlamadan biten
+    // dünya, ör. hazırlıkta durdurma).
+    struct Istek {
+        enum class Tur : std::uint8_t { yukle, sifirla, yeniden };
+        Tur tur = Tur::yeniden;
+        A3Giris giris;
+        std::uint64_t aday = 0;
+        Saat::time_point kabul{};               // isteğin dünya tarafından kabul edildiği an (ölçüm)
+        bool basarisiz = false;                 // yeni dünya kurulamadı; önceki senaryo geri kuruldu
+        std::string hata_kodu, ileti;
+    };
+    std::optional<Istek> istek;                 // biten dünyanın bıraktığı
+    std::optional<Istek> tamamlanacak;          // yeni dünyanın kurulunca sonuçlandıracağı
+    std::int64_t son_yeniden_kurma_ns = 0;      // son yeniden kurmanın kabulden `yuklendi`ye süresi (ölçüm)
+};
+
 class Calistirici {
 public:
-    explicit Calistirici(const Ayar& a) : a_(a) {}
+    explicit Calistirici(const Ayar& a, A3Kalici* kalici = nullptr) : a_(a), kalici_(kalici) {}
     Calistirici(const Calistirici&) = delete;
     Calistirici& operator=(const Calistirici&) = delete;
     ~Calistirici()
@@ -119,15 +150,13 @@ public:
     {
         try {
             Sonuc r = kos_ic();
-            a2_kapat(r);
-            kayit_kapat(r);   // W5-bagla-kayit: A1 kapanışı ve A2 kapanışından sonra, aynı tek kapanış yolu
+            kosu_bitir(r);
             return r;
         } catch (const std::exception& e) {
             try {
                 s_.hata = std::string("istisna: ") + e.what();
                 s_.tamam = false;
-                a2_kapat(s_);
-                kayit_kapat(s_);
+                kosu_bitir(s_);
                 return s_;
             } catch (...) {
                 return Sonuc{};
@@ -136,8 +165,7 @@ public:
             try {
                 s_.hata = "istisna (bilinmeyen tür)";
                 s_.tamam = false;
-                a2_kapat(s_);
-                kayit_kapat(s_);
+                kosu_bitir(s_);
                 return s_;
             } catch (...) {
                 return Sonuc{};
@@ -145,8 +173,12 @@ public:
         }
     }
 
+    // `a3_baslat` dünyayı A3'e bağladı ve `yuklendi` durumunu yayınladı (sürücü: dünya kurulamadı mı?).
+    bool a3_kuruldu() const noexcept { return a3_kuruldu_; }
+
 private:
     Sonuc kos_ic();
+    void kosu_bitir(Sonuc& r) noexcept;
 
     // ---- Zaman ----
     std::int64_t duvar() const
@@ -552,8 +584,20 @@ private:
     void evre_ozeti_kur();
 
     // ---- A3 (W4-bagla-a3) ----
+    enum class BaslatBekleme : std::uint8_t { baslat, sinyal, yeniden };
     bool a3_baslat();
-    bool a3_baslat_bekle();
+    BaslatBekleme a3_baslat_bekle();
+    // W5-a3-senaryo: `sifirla` / `senaryo/yukle` kabulü (dünya sonlanır, sıradaki dünya istenir), süreklilik
+    // beklemesi (çalıştırma bitti; sunucu ayakta, yeni komut beklenir), yeni dünyanın ön denetim kaydı ve
+    // `senaryo/yukle` sonucunun verilmesi.
+    void a3_yeniden_kabul(const A3Giris& g, std::uint64_t b);
+    bool a3_bosta_bekle();
+    void a3_kalanlari_reddet();
+    void a3_sunucuyu_durdur();
+    void a3_yukleme_sonucu();
+    void a3_on_denetim_kaydet();
+    bool a3_yeniden_iste_yeniden();
+    bool a3_devam_edecek() const;
     void a3_cek(std::uint16_t atla);
     bool a3_run_uyar(const a3::Komut& k) const;
     bool a3_gevsetme_onu_acik(const A3Giris& g);
@@ -587,7 +631,7 @@ private:
 
     // ---- A2 (W5-bagla-a2) ----
     bool a2_baslat();
-    void a2_kapat(Sonuc& r) noexcept;
+    void a2_kapat(Sonuc& r, bool son) noexcept;
     void sil_hiz_bekle(std::uint64_t b);
 
     // ---- A6 kayıt (W5-bagla-kayit) ----
@@ -621,7 +665,7 @@ private:
         static_assert(std::is_same_v<Y, typename a3::KanalYuku<KA>::tip> &&
                           std::is_same_v<Y, typename kayit::KanalYuku<KK>::tip>,
                       "A3 ve A6 yükü aynı tip olmalı (W5-K36, K42)");
-        if (yay_ != nullptr) {
+        if (yay_ != nullptr && !a3_sessiz_) {
             a3_olc([&] { (void)yay_->yayinla<KA>(t, y); });
         }
         if (kb_) {
@@ -763,7 +807,9 @@ private:
     // ---- A2 (W5-bagla-a2) ----
     // null: A2 kapalı (W5-K31: `--a2-port` yok, görünüm kapalı ya da tanım kurulamadı) → bugünkü
     // davranış. Dolu ama A2'siz (kilit/port alınamadı) olabilir: yayın çağrıları hemen döner.
-    std::unique_ptr<A2Baglanti> a2_;
+    // A3 açıkken sunucu A3Kalici'dedir (dünyalar arasında yaşar); kapalıyken a2_sahip_'tedir.
+    A2Baglanti* a2_ = nullptr;
+    std::unique_ptr<A2Baglanti> a2_sahip_;
     a2b::Tanim a2_tanim_;                         // senaryodan (dosya_plani)
     a2b::TanimSonucu a2_tanim_sonucu_ = a2b::TanimSonucu::hata;
     std::string a2_tanim_hatasi_;
@@ -771,9 +817,19 @@ private:
     // ---- A3 (W4-bagla-a3) ----
     // W4-K27 (5): dünya tarafındaki A3 depoları A3 başlarken ayrılır; hizmet sırasında bellek
     // ayrılmaz, kilit alınmaz.
-    std::unique_ptr<A3Alici> a3al_;
-    std::unique_ptr<a3::Sunucu> a3sv_;
+    // A3 sunucusu ve komut alıcısı süreç boyunca yaşar (A3Kalici); dünya yalnız işaret eder.
+    A3Kalici* kalici_ = nullptr;
+    A3Alici* a3al_ = nullptr;
+    a3::Sunucu* a3sv_ = nullptr;
     a3::Yayinci* yay_ = nullptr;                 // null: A3 kapalı (bugünkü davranış)
+    // W5-a3-senaryo: bu dünya `sifirla` ya da `senaryo/yukle` ile sonlandırıldı; sıradaki dünya istendi.
+    std::optional<A3Kalici::Istek> a3_yeniden_;
+    bool a3_kuruldu_ = false;                    // `a3_baslat` tamam (`yuklendi` yayınlandı)
+    // `sifirla`/`senaryo/yukle` kabul edildi: bu dünya artık A3'e veri yayınlamaz (kayıt dosyasına son
+    // sayaçlar yine yazılır); eski dünyanın bayat kareleri yeni dünyanın `yuklendi` durumunun üstüne binmez.
+    bool a3_sessiz_ = false;
+    std::string a3_ret_ileti_;                   // senaryo/yukle ret nedeni (hizmete iletilir)
+    std::string kanonik_;                        // çözümlenmiş senaryonun kanonik baytları (A3-K80; yalnız A3 açıkken)
     struct A3Durum {                              // dünyanın yetkili çalıştırma durumu (A3 Tablo 4.7a)
         a3::CalistirmaDurumu durum = a3::CalistirmaDurumu::yuklendi;
         bool run_var = false;
@@ -1410,6 +1466,9 @@ bool Calistirici::dosya_plani()
         return kullanim("hil kipi --seri <aygıt> ya da --karsi pty ister");
     }
     s_.senaryo_uyarilari = plan_.uyarilar;
+    if (a_.a3_acik) {
+        kanonik_ = cs.cozumlenmis->kanonik();   // GET /senaryo/cozumlenmis (A3-K80)
+    }
     return true;
 }
 
@@ -2277,6 +2336,7 @@ const char* calistirma_adi(a3::KomutTuru t)
     case a3::KomutTuru::calistirma_hiz: return "calistirma/hiz";
     case a3::KomutTuru::calistirma_durdur: return "calistirma/durdur";
     case a3::KomutTuru::calistirma_sifirla: return "calistirma/sifirla";
+    case a3::KomutTuru::senaryo_yukle: return "senaryo/yukle";
     case a3::KomutTuru::emniyet_degistir: return "emniyet/degistir";
     case a3::KomutTuru::yer_istasyonu_komut: return "yer_istasyonu";
     }
@@ -2457,6 +2517,15 @@ void Calistirici::a3_sonuc(const A3Giris& g, bool uygulandi, std::uint64_t b, co
     s.hata_kodu = kod != nullptr ? std::string_view(kod) : std::string_view();
     s.sonuc_ayrinti_json = ayrinti;
     a3_olc([&] { (void)yay_->komut_sonucu(s); });
+    if (g.k.tur == a3::KomutTuru::senaryo_yukle && g.k.senaryo_aday != 0u && kalici_ != nullptr && kalici_->hizmet) {
+        // W5-a3-senaryo: bekleyen `senaryo/yukle` çağrısı sonuç olay halkasına yazıldıktan sonra serbest kalır.
+        if (uygulandi) {
+            kalici_->hizmet->yukleme_tamam(g.k.senaryo_aday);
+        } else {
+            kalici_->hizmet->yukleme_reddedildi(g.k.senaryo_aday, kod != nullptr ? kod : "sunucu_hatasi", a3_ret_ileti_);
+            a3_ret_ileti_.clear();
+        }
+    }
     if (kb_) {
         // `a3/komut_sonucu` A6'ya özgü yüktür (A3 kanalı değil): A3'ün sonuç girdisinden kurulur.
         kayit::yuk_a3_komut_sonucu ks;
@@ -2514,17 +2583,25 @@ void Calistirici::a3_anlik_guncelle()
     p.durum = static_cast<std::uint8_t>(a3d_.durum);
     p.kip = static_cast<std::uint8_t>(a_.kip == Kip::hil ? a3::ZamanKipi::hil_1x : a3::ZamanKipi::sil);
     p.run_var = a3d_.run_var;
-    p.sim_t_ns = static_cast<std::int64_t>(a3_b_) * kH;
-    p.adim_no = a3_b_;
-    p.gecerli = a3_gecerli_;
-    p.gercek_zamani_kacirdi = a3_rt_kacirdi_;
-    p.gecerlilik_nedenleri = a3_gecerlilik_;
+    // `sifirla`/`senaryo/yukle` kabul edildi: dünya yeniden kurulacak; görüntü, yeni bir dünyanın `yuklendi`
+    // görüntüsüdür (sim zamanı, sayaçlar, geçerlilik ve emniyet durumu başlangıç değerinde). Bayat değer
+    // (ör. basılı acil durdurma) kısa bir süre de olsa yeni durumun yanında görünmez.
+    const bool temiz = a3_yeniden_.has_value();
+    p.sim_t_ns = temiz ? 0 : static_cast<std::int64_t>(a3_b_) * kH;
+    p.adim_no = temiz ? 0u : a3_b_;
+    p.gecerli = temiz || a3_gecerli_;
+    p.gercek_zamani_kacirdi = !temiz && a3_rt_kacirdi_;
+    p.gecerlilik_nedenleri = temiz ? 0u : a3_gecerlilik_;
     p.durum_rev = a3d_.durum_rev;
     p.kademe_sonar = sonar_ ? sonar::kKademeSade : 0u;   // W4-bagla-sonar: 0 kapali, 1 sade
     // W5-bagla-a2: yalnız A2 gerçekten dinliyorken senaryonun kademesi; nesne var ama dinlemiyorsa
     // (kilit başkasında, port dolu, tanım yok) görünüm kapalıdır: 0.
     p.kademe_gorunum = (a2_ && a2_->dinliyor()) ? static_cast<std::uint8_t>(a2_->kademe()) : std::uint8_t{0};
-    if (k_) {
+    if (temiz) {
+        p.a1_run_id = 0;
+        p.sayac = {};
+    }
+    if (k_ && !temiz) {
         const sensor::EmniyetDurumu e = k_->dis_durum().emniyet;
         p.emniyet_rev = e.emniyet_revizyonu;
         p.emniyet_rev_doydu = k_->emniyet_rev_doydu();
@@ -2542,8 +2619,8 @@ void Calistirici::a3_anlik_guncelle()
         p.fis = {static_cast<std::uint8_t>(plan_.fis[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.fis[1] ? 1u : 0u)};
         p.pim = {static_cast<std::uint8_t>(plan_.pim[0] ? 1u : 0u), static_cast<std::uint8_t>(plan_.pim[1] ? 1u : 0u)};
     }
-    p.son_degisim_var = a3_son_degisim_adimi_ != kYok64;
-    p.son_degisim_adimi = a3_son_degisim_adimi_;
+    p.son_degisim_var = !temiz && a3_son_degisim_adimi_ != kYok64;
+    p.son_degisim_adimi = temiz ? 0u : a3_son_degisim_adimi_;
     a3al_->anlik_yaz(p);
     a3_anlik_kirli_ = false;
 }
@@ -2578,12 +2655,28 @@ bool Calistirici::a2_baslat()
         }
     };
     s_.a2.kademe = static_cast<std::uint8_t>(a2_tanim_.kademe);
+    if (kalici_ != nullptr && kalici_->a2) {
+        // W5-a3-senaryo (W5-K49): süreçteki A2 sunucusu önceki dünyadan kalır (kilit, dinleyici, bağlı
+        // görselleştirici); yeni dünyanın tanımı verilir ve `calistirma_basladi` A2 çalıştırma nesli artırır.
+        a2_ = kalici_->a2.get();
+        a2_->yeni_tanim(a2_tanim_);
+        s_.a2.durum = a2_->durum_adi();
+        s_.a2.aciklama = a2_->aciklama();
+        s_.a2.port = a2_->port();
+        return true;
+    }
     std::string hata;
-    a2_ = A2Baglanti::baslat(ba, a2_tanim_, hata);
-    if (!a2_) {
+    a2_sahip_ = A2Baglanti::baslat(ba, a2_tanim_, hata);
+    if (!a2_sahip_) {
         s_.hata = hata;
         s_.hata_turu = HataTuru::kullanim;
         return false;
+    }
+    if (kalici_ != nullptr) {
+        kalici_->a2 = std::move(a2_sahip_);
+        a2_ = kalici_->a2.get();
+    } else {
+        a2_ = a2_sahip_.get();
     }
     s_.a2.durum = a2_->durum_adi();
     s_.a2.aciklama = a2_->aciklama();
@@ -2599,33 +2692,43 @@ bool Calistirici::a2_baslat()
 
 // Koşunun her çıkışında (kos): çalıştırma bitti → `calistirma_durdu()`; süreç kapanıyor →
 // `kapaniyor()` + `durdur()`. Durum ve sayaçlar döndürülen sonuca yazılır.
-void Calistirici::a2_kapat(Sonuc& r) noexcept
+void Calistirici::a2_kapat(Sonuc& r, bool son) noexcept
 {
     if (a2_) {
-        a2_->kapat(r.a2);
+        a2_->kapat(r.a2, son);
     }
 }
 
 bool Calistirici::a3_baslat()
 {
-    a3al_ = std::make_unique<A3Alici>(a_.kip == Kip::hil);
-    a3::SunucuAyari sa;
-    sa.port = a_.a3_port;
-    sa.statik_kok = a_.a3_kok;
-    sa.sim_surumu = "ida_sim";
-    const int gunluk_duzeyi = a_.gunluk;
-    sa.gunluk = [gunluk_duzeyi](std::string_view m) {
-        if (gunluk_duzeyi >= 1) {
-            std::fprintf(stderr, "ida_sim: %.*s\n", static_cast<int>(m.size()), m.data());
+    // W5-a3-senaryo: A3 sunucusu ve komut alıcısı süreçteki ilk dünyada kurulur, sonraki dünyalar ona bağlanır
+    // (port, erişim jetonu, olay sırası, komut numaraları ve bağlı istemciler dünyalar arasında sürer).
+    const bool ilk_dunya = !kalici_->sunucu;
+    if (ilk_dunya) {
+        kalici_->alici = std::make_unique<A3Alici>(a_.kip == Kip::hil);
+        a3::SunucuAyari sa;
+        sa.port = a_.a3_port;
+        sa.statik_kok = a_.a3_kok;
+        sa.sim_surumu = "ida_sim";
+        sa.senaryo = kalici_->hizmet.get();
+        const int gunluk_duzeyi = a_.gunluk;
+        sa.gunluk = [gunluk_duzeyi](std::string_view m) {
+            if (gunluk_duzeyi >= 1) {
+                std::fprintf(stderr, "ida_sim: %.*s\n", static_cast<int>(m.size()), m.data());
+            }
+        };
+        std::string hata;
+        kalici_->sunucu = a3::Sunucu::baslat(sa, *kalici_->alici, hata);
+        if (!kalici_->sunucu) {
+            s_.hata = "A3 sunucusu başlatılamadı: " + hata;
+            kalici_->alici.reset();
+            return false;
         }
-    };
-    std::string hata;
-    a3sv_ = a3::Sunucu::baslat(sa, *a3al_, hata);
-    if (!a3sv_) {
-        s_.hata = "A3 sunucusu başlatılamadı: " + hata;
-        a3al_.reset();
-        return false;
+    } else {
+        kalici_->alici->kip_ayarla(a_.kip == Kip::hil);
     }
+    a3al_ = kalici_->alici.get();
+    a3sv_ = kalici_->sunucu.get();
     yay_ = &a3sv_->yayinci();
     // W4-K27 (5): dünya tarafının kalıcı depoları burada ayrılır; değişmeyen içerik önceden üretilir.
     a3_kisit_.reserve(A3Alici::kKisitYuva + 4u);
@@ -2657,16 +2760,55 @@ bool Calistirici::a3_baslat()
     }
     a3_ariza_yuk_.reserve(a3_arizalar_.size());
     a3d_ = A3Durum{};
+    a3d_.durum_rev = kalici_->durum_rev;   // A3-K122: durum_rev dünyalar arasında da yalnız artar
+    if (kalici_->hizmet) {
+        kalici_->hizmet->yuklu_ayarla(kanonik_, s_.davranis_ozeti.empty() ? std::string() : "sha256:" + s_.davranis_ozeti);
+    }
     a3_anlik_guncelle();
     a3_durum_yayinla(0);
-    gunluk(1, "A3 127.0.0.1:" + std::to_string(a3sv_->port()));
-    if (a_.a3_acilis) {
-        a_.a3_acilis(a3sv_->acilis_adresi());
+    if (ilk_dunya) {
+        gunluk(1, "A3 127.0.0.1:" + std::to_string(a3sv_->port()));
+        if (a_.a3_acilis) {
+            a_.a3_acilis(a3sv_->acilis_adresi());
+        }
+        if (a_.a3_hazir) {
+            a_.a3_hazir(a3sv_->port(), a3sv_->jeton());
+        }
     }
-    if (a_.a3_hazir) {
-        a_.a3_hazir(a3sv_->port(), a3sv_->jeton());
-    }
+    a3_kuruldu_ = true;
+    a3_yukleme_sonucu();
     return true;
+}
+
+// Önceki dünyanın bıraktığı `senaryo/yukle` isteği bu dünya `yuklendi` olunca sonuçlanır (A3-K77): yeni
+// dünya kuruldu, durum ve anlık görüntü yayınlandı. Başarısızsa (yeni senaryo bu dünyada kurulamadı ve
+// önceki senaryo geri kuruldu) ret olarak bildirilir. `sifirla`nın sonucunu isteği alan dünya verdi.
+void Calistirici::a3_yukleme_sonucu()
+{
+    if (!kalici_->tamamlanacak) {
+        return;
+    }
+    A3Kalici::Istek ist = std::move(*kalici_->tamamlanacak);
+    kalici_->tamamlanacak.reset();
+    const std::int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Saat::now() - ist.kabul).count();
+    kalici_->son_yeniden_kurma_ns = ns;
+    s_.yeniden_kurma_ns = ns;
+    if (ist.tur != A3Kalici::Istek::Tur::yukle) {
+        return;
+    }
+    if (ist.basarisiz) {
+        a3_ret_ileti_ = ist.ileti;
+        a3_sonuc(ist.giris, false, 0, ist.hata_kodu.c_str());
+        return;
+    }
+    a3b::JsonYaz j;
+    const auto g = kalici_->hizmet ? kalici_->hizmet->aday_al(ist.aday) : nullptr;
+    if (g && !g->ad.empty()) {
+        j.metin("ad", g->ad);
+    }
+    j.metin("senaryo_ozeti", s_.davranis_ozeti.empty() ? std::string("sha256:") + std::string(64, '0') : "sha256:" + s_.davranis_ozeti);
+    a3_olay(13, 0, 0, ist.giris.k.komut_no, ist.giris.k.istemci_id, j.bitir());   // senaryo_yuklendi
+    a3_sonuc(ist.giris, true, 0, nullptr);
 }
 
 // Tutarlı kesimle çekiş (W4-K27 (2)). `atla`: alınmayacak kısıtlayan yuvalar (hazırlıkta yer
@@ -2699,15 +2841,16 @@ bool Calistirici::a3_gevsetme_onu_acik(const A3Giris& g)
     return !engel;
 }
 
-// `yuklendi`'de `baslat` beklenir (A3-K62); `sifirla` yalnız durum revizyonunu artırır (A3-K67).
-// Canlı çalıştırma gerektiren istekler reddedilir (A3-K91).
-bool Calistirici::a3_baslat_bekle()
+// `yuklendi`'de `baslat` beklenir (A3-K62); `sifirla` yalnız durum revizyonunu artırır (A3-K67: dünya
+// henüz hiç koşmadı, yeniden kurulacak bir şey yoktur); `senaryo/yukle` dünyayı yeni senaryoyla yeniden
+// kurdurur (A3-K77). Canlı çalıştırma gerektiren istekler reddedilir (A3-K91).
+Calistirici::BaslatBekleme Calistirici::a3_baslat_bekle()
 {
     gunluk(1, "A3: çalıştırma panelden `baslat` ile başlayacak");
     std::int64_t son_yayin = 0;
     for (;;) {
         if (sinyal_kesti()) {
-            return false;   // W4-sunucu-kucuk: `baslat` beklenirken kapanış sinyali
+            return BaslatBekleme::sinyal;   // W4-sunucu-kucuk: `baslat` beklenirken kapanış sinyali
         }
         if (a_.a3_sinir_kancasi) {
             a_.a3_sinir_kancasi(0, *a3al_);
@@ -2718,6 +2861,7 @@ bool Calistirici::a3_baslat_bekle()
         }
         a3_kisit_.clear();
         bool basla = false;
+        bool yeniden = false;
         for (A3Giris& g : a3_genel_) {
             const a3::Komut& k = g.k;
             if (basla || !a3b::calistirma_mi(k.tur)) {
@@ -2740,13 +2884,21 @@ bool Calistirici::a3_baslat_bekle()
                 ++a3d_.durum_rev;
                 a3_sonuc(g, true, 0, nullptr);
                 a3_durum_kirli_ = true;
+            } else if (k.tur == a3::KomutTuru::senaryo_yukle) {
+                ++a3d_.durum_rev;   // A3-K122
+                a3_yeniden_kabul(g, 0);
+                yeniden = true;
+                basla = true;       // bu turun öteki istekleri reddedilir (durum_rev değişti)
             } else {
                 a3_sonuc(g, false, 0, "gecersiz_durum");
             }
         }
         a3_genel_.clear();
+        if (yeniden) {
+            return BaslatBekleme::yeniden;
+        }
         if (basla) {
-            return true;
+            return BaslatBekleme::baslat;
         }
         if (a3_durum_kirli_ || gercek() - son_yayin > 100 * kMs) {
             a3_durum_yayinla(0);
@@ -2755,6 +2907,24 @@ bool Calistirici::a3_baslat_bekle()
         }
         sure_uyu(2 * kMs);
     }
+}
+
+// `sifirla` (canlı ya da bitmiş çalıştırma) ve `senaryo/yukle` kabulü (W5-a3-senaryo; A3-K67, K77). Durum
+// `yuklendi` olur ve `run_id` null olur (A3-K124); dünya döngüsü `durdur` ile aynı yoldan sonlanır (A1 oturumu
+// kapanır, kayıt dosyası `durduruldu` ile kapanır) ve sürücü yeni dünyayı kurar. `durum_rev` çağıranda
+// artmıştır. Sıfırlamanın kendisi `emniyet_rev`'i artırmaz (iskelet §3.2): yeni dünya revizyon 1'den başlar.
+void Calistirici::a3_yeniden_kabul(const A3Giris& g, std::uint64_t b)
+{
+    (void)b;
+    A3Kalici::Istek ist;
+    ist.tur = g.k.tur == a3::KomutTuru::senaryo_yukle ? A3Kalici::Istek::Tur::yukle : A3Kalici::Istek::Tur::sifirla;
+    ist.giris = g;
+    ist.aday = g.k.senaryo_aday;
+    ist.kabul = Saat::now();
+    a3_yeniden_ = std::move(ist);
+    a3_durdur_ = true;
+    adimla_hedef_.reset();
+    a3_gecis(a3::CalistirmaDurumu::yuklendi, g.k.tur == a3::KomutTuru::senaryo_yukle ? "senaryo_yukle" : "sifirla", false);
 }
 
 // Çalıştırma kontrolü komutları (A3-K61…K66, K122, K123): durumla aynı atomik adımda yeniden
@@ -2790,8 +2960,7 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             continue;
         }
         const bool hazirlikta = a3d_.durum == a3::CalistirmaDurumu::hazirlaniyor;
-        if (!a3b::gecis_gecerli(a3d_.durum, k.tur) ||
-            (k.tur == a3::KomutTuru::calistirma_sifirla && a3d_.durum != a3::CalistirmaDurumu::yuklendi)) {
+        if (!a3b::gecis_gecerli(a3d_.durum, k.tur)) {
             a3_sonuc(g, false, b, "gecersiz_durum", a3b::JsonYaz().sayi_u("guncel_durum_rev", a3d_.durum_rev).bitir());
             continue;
         }
@@ -2844,10 +3013,18 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             adimla_hedef_ = b + kopru::kPeriyotAdim * static_cast<std::uint64_t>(k.periyot_sayisi);
             a3_gecis(a3::CalistirmaDurumu::kosuyor, nullptr, false);
             break;
+        case a3::KomutTuru::calistirma_sifirla:
+        case a3::KomutTuru::senaryo_yukle:
+            // W5-a3-senaryo (A3-K67, K77): canlı çalıştırma varsa durdurulur (aşağıda, `durdur` ile aynı kapanış
+            // yolu), durum `yuklendi` olur ve dünya baştan kurulur.
+            a3_yeniden_kabul(g, b);
+            break;
         default:
             break;
         }
-        a3_sonuc(g, true, b, nullptr);
+        if (k.tur != a3::KomutTuru::senaryo_yukle) {
+            a3_sonuc(g, true, b, nullptr);   // `senaryo/yukle`nin sonucunu yeni dünya `yuklendi` olunca verir
+        }
     }
     a3_genel_.resize(yaz);   // küçültme: bellek ayırmaz
 }
@@ -3489,6 +3666,7 @@ void Calistirici::a3_durum_yayinla(std::int64_t t)
     c.son_komut_no = a3_son_komut_no_;   // dünyaya ulaşan en büyük komut numarası (okuma; rapor)
     c.durum_rev = a3d_.durum_rev;
     yayin<a3::Kanal::calistirma_durum, kayit::Kanal::calistirma_durum>(t, adim, c);
+    a3_sessiz_ = a3_yeniden_.has_value();   // durum çerçevesi gitti; geri kalan kanallar A3'e artık gitmez
     }
     if (!k_) {
         return;
@@ -3912,24 +4090,53 @@ void Calistirici::a3_kayitlari_aktar()
     a3_emniyet_kaydi_.clear();
 }
 
-// Koşu sonu: kalan istekler reddedilir, son durum yayınlanır, sunucu düzgün durur (A3-K49).
+// Koşu sonu: kalan istekler reddedilir, son durum yayınlanır, sunucu düzgün durur (A3-K49). W5-a3-senaryo:
+// sıradaki dünya istendiyse (`sifirla`, `senaryo/yukle`) ya da süreklilik kipinde çalıştırma bittiyse sunucu
+// kapanmaz: A3 hizmeti süreç boyunca yaşar ve kapanışı sürücüye (ya da süreklilik beklemesinin sonuna) kalır.
+void Calistirici::a3_kalanlari_reddet()
+{
+    if (a3_devam_edecek()) {
+        // Sıradaki dünya istendi ya da süreklilik beklemesi gelecek: bekleyen istekleri o işler (sıfırlamadan
+        // hemen sonraki `baslat` ya da kapanış sırasında gelen `sifirla` reddedilip kaybolmaz).
+        return;
+    }
+    a3_cek(0);
+    for (const A3Giris& g : a3_kisit_) {
+        a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
+    }
+    for (const A3Giris& g : a3_genel_) {
+        a3_sonuc(g, false, a3_b_, a3b::calistirma_mi(g.k.tur) ? "gecersiz_durum" : "canli_calistirma_yok");
+    }
+    a3_kisit_.clear();
+    a3_genel_.clear();
+}
+
+void Calistirici::a3_sunucuyu_durdur()
+{
+    if (yay_ == nullptr) {
+        return;
+    }
+    if (a_.a3_kapanis_bekleme_s > 0.0) {
+        // Son çerçevelerin yayın tikinde (A3-K33, 20 ms) gönderilmesi için.
+        const auto son = Saat::now() + std::chrono::milliseconds(static_cast<std::int64_t>(a_.a3_kapanis_bekleme_s * 1000.0));
+        while (Saat::now() < son) {
+            a3_kalanlari_reddet();
+            sure_uyu(5 * kMs);
+        }
+    }
+    if (kalici_ != nullptr && kalici_->hizmet) {
+        kalici_->hizmet->kapaniyor();   // bekleyen senaryo/yukle çağrısı G/Ç iş parçacığını tutmasın
+    }
+    a3sv_->durdur();
+    yay_ = nullptr;
+}
+
 void Calistirici::a3_bitir()
 {
     if (yay_ == nullptr) {
         return;
     }
-    auto kalanlari_reddet = [this] {
-        a3_cek(0);
-        for (const A3Giris& g : a3_kisit_) {
-            a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
-        }
-        for (const A3Giris& g : a3_genel_) {
-            a3_sonuc(g, false, a3_b_, a3b::calistirma_mi(g.k.tur) ? "gecersiz_durum" : "canli_calistirma_yok");
-        }
-        a3_kisit_.clear();
-        a3_genel_.clear();
-    };
-    kalanlari_reddet();
+    a3_kalanlari_reddet();
     if (k_) {
         a3_kapaniyor_ = true;   // planlı kapanış (A1-K21): oturum değişiminin nedeni
         a3_yi_izle();
@@ -3938,17 +4145,142 @@ void Calistirici::a3_bitir()
     a3_durum_yayinla(static_cast<std::int64_t>(a3_b_) * kH);
     a3_anlik_guncelle();
     s_.a3_halka_tasma = yay_->halka_tasma();
-    if (a_.a3_kapanis_bekleme_s > 0.0) {
-        // Son çerçevelerin yayın tikinde (A3-K33, 20 ms) gönderilmesi için.
-        const auto son = Saat::now() + std::chrono::milliseconds(static_cast<std::int64_t>(a_.a3_kapanis_bekleme_s * 1000.0));
-        while (Saat::now() < son) {
-            kalanlari_reddet();
-            sure_uyu(5 * kMs);
+    if (!a3_devam_edecek()) {
+        a3_sunucuyu_durdur();
+    }
+    a3_kayitlari_aktar();
+}
+
+// A3 hizmeti bu dünyadan sonra da yaşayacak mı (sıradaki dünya istendi ya da süreklilik kipinde çalıştırma
+// sona erdi / başlamadan bitti)? Hata ile biten kurulum ve sinyal sürekliliği bitirir.
+bool Calistirici::a3_devam_edecek() const
+{
+    if (a3_yeniden_) {
+        return true;
+    }
+    if (kalici_ == nullptr || !kalici_->surekli || kapanis_istendi() || s_.sinyal_kesti) {
+        return false;
+    }
+    switch (a3d_.durum) {
+    case a3::CalistirmaDurumu::bitti:
+    case a3::CalistirmaDurumu::durduruldu:
+    case a3::CalistirmaDurumu::hata: return true;
+    case a3::CalistirmaDurumu::yuklendi: return s_.hata.empty() || a3_on_denetim_kaldi_;
+    default: return false;
+    }
+}
+
+// Süreklilik kipinde, çalıştırma başlamadan biten dünya (hazırlıkta durdurma, ön denetimde kalma) için
+// komutsuz yeniden kurma isteği: `yuklendi` durumu sürer, yeni dünya `baslat` bekler.
+bool Calistirici::a3_yeniden_iste_yeniden()
+{
+    if (kalici_ == nullptr || !kalici_->surekli || kapanis_istendi() || a3_yeniden_) {
+        return false;
+    }
+    A3Kalici::Istek ist;
+    ist.tur = A3Kalici::Istek::Tur::yeniden;
+    ist.kabul = Saat::now();
+    a3_yeniden_ = std::move(ist);
+    return true;
+}
+
+// Süreklilik beklemesi (`--a3-surekli`): çalıştırma bitti/durduruldu/hata, dünya durdu, ama A3 sunucusu
+// ayakta ve durum makinesi sürüyor. `sifirla` ve `senaryo/yukle` (Tablo 4.7a) alınır ve yeni dünya istenir
+// (`a3_yeniden_` dolar, true); öteki her istek bu durumda geçersizdir. false: kapanış istendi (sinyal).
+bool Calistirici::a3_bosta_bekle()
+{
+    gunluk(1, std::string("A3: çalıştırma ") + a3b::durum_adi(a3d_.durum) +
+                  "; `calistirma/sifirla` ya da `senaryo/yukle` bekleniyor (--a3-surekli)");
+    std::int64_t son_yayin = gercek();
+    for (;;) {
+        if (kapanis_istendi()) {
+            return false;
+        }
+        if (a_.a3_sinir_kancasi) {
+            a_.a3_sinir_kancasi(0, *a3al_);
+        }
+        a3_cek(0);
+        for (const A3Giris& g : a3_kisit_) {
+            a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
+        }
+        a3_kisit_.clear();
+        a3_calistirma_isle(a3_b_);   // sifirla ve senaryo/yukle (başka hiçbir denetim komutu bu durumda geçerli değildir)
+        for (const A3Giris& g : a3_genel_) {
+            a3_sonuc(g, false, a3_b_, "canli_calistirma_yok");
+        }
+        a3_genel_.clear();
+        if (a3_yeniden_) {
+            return true;
+        }
+        if (gercek() - son_yayin > 100 * kMs) {
+            a3_durum_yayinla(static_cast<std::int64_t>(a3_b_) * kH);
+            a3_anlik_guncelle();
+            son_yayin = gercek();
+        }
+        sure_uyu(2 * kMs);
+    }
+}
+
+// Ön denetim raporu (A3 §3.8): çalıştırma başlarken bir kez. Kayıt açıksa dosyanın eki olan belge (aynı
+// üretici; W5-K49), değilse aynı üreticiyle kayıtsız biçim. `GET /on_denetim` bunu verir.
+void Calistirici::a3_on_denetim_kaydet()
+{
+    if (kalici_ == nullptr || !kalici_->hizmet) {
+        return;
+    }
+    if (kb_) {
+        kalici_->hizmet->on_denetim_ekle(kb_->on_denetim_kimligi(), kb_->on_denetim_json());
+        return;
+    }
+    OnDenetimGirdisi g;
+    g.run_id = a3_run_id_;
+    g.kip = a_.kip == Kip::hil ? "hil_1x" : "sil";
+    const OnDenetimRaporu r = on_denetim_kur(g);
+    kalici_->hizmet->on_denetim_ekle(r.kimlik, r.json);
+}
+
+// Her çıkışın tek kapanış yolu: dünya döngüsü ve A1 kapanışı bitti. A2 ve kayıt kapanır (yeni dünya ya da
+// süreklilik beklemesi varsa A2 sunucusu ayakta kalır; kayıt dosyası her durumda burada kapanır: çalıştırma
+// başına bir dosya, A6). W5-a3-senaryo: sıradaki dünya istendiyse sonucu sürücüye bırakır; süreklilik
+// kipinde çalıştırma bitmişse sunucu ayakta `sifirla`/`senaryo/yukle` bekler.
+void Calistirici::kosu_bitir(Sonuc& r) noexcept
+{
+    if (!a3_yeniden_ && yay_ != nullptr && a3d_.durum == a3::CalistirmaDurumu::yuklendi && a3_devam_edecek()) {
+        // Çalıştırma başlamadan bitti (hazırlıkta durdurma, ön denetimde kalma): `yuklendi`'de kal; yeni dünya
+        // `baslat` bekler. Başka bir hata (kurulum) sürekli yeniden denemeye dönmez: süreç bugünkü gibi biter.
+        (void)a3_yeniden_iste_yeniden();
+    }
+    const bool bekle = !a3_yeniden_ && yay_ != nullptr && a3_devam_edecek();
+    a2_kapat(r, !(a3_yeniden_ || bekle));
+    kayit_kapat(r);   // W5-bagla-kayit: A1 kapanışından ve A2 kapanışından sonra, aynı tek kapanış yolu
+    r.dunya_sayisi = kalici_ != nullptr ? kalici_->dunya_no : 1u;
+    r.yeniden_kurma_ns = s_.yeniden_kurma_ns;
+    if (a_.kosu_sonu_kancasi) {
+        try {
+            a_.kosu_sonu_kancasi(r);
+        } catch (...) {
         }
     }
-    a3sv_->durdur();
-    yay_ = nullptr;
-    a3_kayitlari_aktar();
+    if (bekle) {
+        try {
+            const bool yeni = a3_bosta_bekle();
+            if (!yeni) {
+                a2_kapat(r, true);
+                a3_sunucuyu_durdur();
+            }
+        } catch (...) {
+            a3_yeniden_.reset();
+            try {
+                a3_sunucuyu_durdur();
+            } catch (...) {
+            }
+        }
+    }
+    if (kalici_ != nullptr && a3_yeniden_) {
+        kalici_->istek = std::move(a3_yeniden_);
+        a3_yeniden_.reset();
+        kalici_->durum_rev = a3d_.durum_rev;
+    }
 }
 
 // ======================================================================== Sınır turu (W4-duraklat)
@@ -4431,6 +4763,7 @@ Sonuc Calistirici::kos_ic()
         return s_;
     }
     if (!a_.senaryo_dosyasi.empty()) {
+        s_.senaryo_yolu = a_.senaryo_dosyasi;
         if (!dosya_plani()) {
             return s_;
         }
@@ -4530,10 +4863,20 @@ Sonuc Calistirici::kos_ic()
         if (!a3_baslat()) {
             return s_;
         }
-        if (a_.a3_bekle && !a3_baslat_bekle()) {
-            s_.calistirma_sonu = "yuklendi";   // W4-sunucu-kucuk: sinyal, `baslat` beklenirken (oturum yok)
-            a3_bitir();
-            return s_;
+        if (a_.a3_bekle) {
+            const BaslatBekleme bb = a3_baslat_bekle();
+            if (bb == BaslatBekleme::sinyal) {
+                s_.calistirma_sonu = "yuklendi";   // W4-sunucu-kucuk: sinyal, `baslat` beklenirken (oturum yok)
+                a3_bitir();
+                return s_;
+            }
+            if (bb == BaslatBekleme::yeniden) {
+                // W5-a3-senaryo (A3-K77): `senaryo/yukle` alındı; bu dünya hiç koşmadı, sürücü yenisini kurar.
+                s_.calistirma_sonu = "yuklendi";
+                s_.tamam = true;
+                a3_bitir();
+                return s_;
+            }
         }
         a3_run_id_ = a3b::run_id_uret();   // A3-K63: çalıştırmanın başladığı an
     }
@@ -4572,6 +4915,7 @@ Sonuc Calistirici::kos_ic()
         return s_;
     }
     if (yay_ != nullptr) {
+        a3_on_denetim_kaydet();   // GET /on_denetim (W5-a3-senaryo); kayıt açıksa dosya ekiyle aynı belge
         // A3-K62, K63: çalıştırma başladı (baslat ya da kendiliğinden); ön denetim A1 el sıkışmasıdır.
         a3d_.run_var = true;
         metin_kopyala(a3p_.run_id, a3_run_id_);
@@ -4807,6 +5151,7 @@ Sonuc Calistirici::kos_ic()
         kilit.unlock();
         s_.calistirma_sonu = a3d_.durum == a3::CalistirmaDurumu::bitti        ? "bitti"
                              : a3d_.durum == a3::CalistirmaDurumu::durduruldu ? "durduruldu"
+                             : a3d_.durum == a3::CalistirmaDurumu::yuklendi   ? "yuklendi"   // `sifirla` (W5-a3-senaryo)
                                                                                : "hata";
     }
     // Hiç başlamayan olaylar (A5 §3.15 olay sonucu: uygulanmadi; t = çalıştırma sonu).
@@ -4950,10 +5295,122 @@ const char* csv_basligi()
 int a3_ayirma_sayilir() noexcept { return g_a3_sayim; }
 int sonar_ayirma_sayilir() noexcept { return g_sonar_sayim; }
 
+namespace {
+
+// `senaryo/yukle` ile gelen senaryo için yeni dünyanın ayarı: komut satırından gelen ve yeni senaryoyla
+// çelişebilecek seçenekler uygulanmaz (kip, süre ve tohum senaryoya aittir; yerleşik senaryoya özgü acil
+// durdurma ve arıza seçenekleri dosyayla birlikte kullanılamaz).
+Ayar ayar_yukle(const Ayar& taban, const SenaryoGoruntusu& g)
+{
+    Ayar a = taban;
+    a.senaryo_dosyasi = g.yol;
+    a.senaryo_kaynagi = g.kaynak;
+    a.kip_verildi = false;
+    a.tohum_verildi = false;
+    a.sure_verildi = false;
+    a.acil_verildi = false;
+    a.acil_kalk_verildi = false;
+    a.ariza_verildi = false;
+    a.acil_durdurma_s = -1.0;
+    a.acil_kalkar_s = -1.0;
+    return a;
+}
+
+// W5-a3-senaryo: A3 açıkken sürücü döngüsü. Her dünya (`Calistirici`) sıfırdan kurulur ve bittiğinde yıkılır;
+// A3 sunucusu, A2 sunucusu ve senaryo hizmeti (`A3Kalici`) süreç boyunca yaşar. Yeni dünya bir önceki dünyadan
+// hiçbir durum devralmaz: komut satırından gelen özgün `Ayar`dan (ya da yüklenen senaryonun görüntüsünden)
+// kurulur. `sifirla`/`senaryo/yukle` yoksa ve `--a3-surekli` verilmediyse döngü bir tur döner ve koşu bugünkü
+// davranışla aynıdır (W5-K48).
+Sonuc kos_a3(const Ayar& ayar)
+{
+    A3Kalici kalici;
+    kalici.surekli = ayar.a3_surekli;
+    SenaryoHizmeti::Ayar ha;
+    ha.depo_koku = ayar.depo_koku;
+    ha.dizin = ayar.senaryo_dizini;
+    ha.sil_hiz = ayar.sil_hiz;
+    kalici.hizmet = std::make_unique<SenaryoHizmeti>(ha);
+
+    Ayar bu = ayar;       // kurulacak dünyanın ayarı
+    Ayar son_iyi = ayar;  // `yuklendi`ye ulaşan son dünyanın ayarı (yeni senaryo kurulamazsa geri kurulur)
+    Sonuc son;
+    for (std::uint64_t n = 0;; ++n) {
+        kalici.dunya_no = n + 1u;
+        if (bu.dunya_kancasi) {
+            bu.dunya_kancasi(n);
+        }
+        bool kuruldu = false;
+        {
+            Calistirici c(bu, &kalici);
+            son = c.kos();
+            kuruldu = c.a3_kuruldu();
+        }   // dünya burada yıkılır; A3 hizmeti kalır
+        if (kuruldu) {
+            son_iyi = bu;
+        }
+        if (kapanis_istendi()) {
+            break;
+        }
+        if (!kuruldu && kalici.tamamlanacak) {
+            // Bu dünya bir isteğin sonucu olarak kurulacaktı ama kurulamadı (A5'in geçerli saydığı ama bu dünyada
+            // yürütülemeyen bir senaryo, `--kip` ile çelişen karşı taraf vb.). `senaryo/yukle` ise önceki senaryo
+            // geri kurulur ve istek reddedilir; durum bozulmaz (A3-K77). Sıfırlama ya da geri kurma da kurulamazsa
+            // süreç bugünkü gibi hata ile biter.
+            A3Kalici::Istek ist = std::move(*kalici.tamamlanacak);
+            kalici.tamamlanacak.reset();
+            if (ist.tur != A3Kalici::Istek::Tur::yukle || ist.basarisiz) {
+                break;
+            }
+            ist.basarisiz = true;
+            ist.hata_kodu = son.hata_turu == HataTuru::senaryo_gecersiz ? "senaryo_gecersiz" : "gecersiz_deger";
+            ist.ileti = son.hata;
+            kalici.tamamlanacak = std::move(ist);
+            bu = son_iyi;
+            bu.a3_bekle = true;
+            continue;
+        }
+        if (!kalici.istek) {
+            break;
+        }
+        A3Kalici::Istek ist = std::move(*kalici.istek);
+        kalici.istek.reset();
+        Ayar sonraki = bu;
+        if (ist.tur == A3Kalici::Istek::Tur::yukle) {
+            const auto g = kalici.hizmet->aday_al(ist.aday);
+            if (g) {
+                sonraki = ayar_yukle(ayar, *g);
+            } else {
+                ist.basarisiz = true;   // aday kayboldu (olmamalı): aynı senaryoyla yeniden kur ve isteği reddet
+                ist.hata_kodu = "sunucu_hatasi";
+                ist.ileti = "senaryo adayı bulunamadı";
+            }
+        }
+        sonraki.a3_bekle = true;   // sıfırlanan ya da yüklenen dünya `baslat` bekler (A3-K62)
+        kalici.tamamlanacak = std::move(ist);
+        bu = std::move(sonraki);
+    }
+    if (kalici.hizmet) {
+        kalici.hizmet->kapaniyor();
+    }
+    if (kalici.sunucu) {
+        kalici.sunucu->durdur();
+    }
+    if (kalici.a2) {
+        A2Ozeti o;
+        kalici.a2->kapat(o, true);
+    }
+    return son;
+}
+
+}  // namespace
+
 Sonuc kos(const Ayar& ayar)
 {
-    Calistirici c(ayar);
-    return c.kos();
+    if (!ayar.a3_acik) {
+        Calistirici c(ayar);   // A3 yok: bugünkü yol, bayt bayt aynı (W5-K48)
+        return c.kos();
+    }
+    return kos_a3(ayar);
 }
 
 }  // namespace ida::sunucu

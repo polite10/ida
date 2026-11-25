@@ -46,6 +46,30 @@ std::uint32_t HttpSonuc::komut_no() const
     return v;
 }
 
+std::string HttpSonuc::baslik(const std::string& ad) const
+{
+    auto kucuk = [](std::string x) {
+        for (char& c : x) {
+            if (c >= 'A' && c <= 'Z') {
+                c = static_cast<char>(c - 'A' + 'a');
+            }
+        }
+        return x;
+    };
+    const std::string aranan = "\r\n" + kucuk(ad) + ":";
+    const std::string kb = kucuk(basliklar);
+    const std::size_t k = kb.find(aranan);
+    if (k == std::string::npos) {
+        return {};
+    }
+    std::size_t bas = k + aranan.size();
+    while (bas < basliklar.size() && basliklar[bas] == ' ') {
+        ++bas;
+    }
+    const std::size_t son = basliklar.find("\r\n", bas);
+    return basliklar.substr(bas, son == std::string::npos ? std::string::npos : son - bas);
+}
+
 HttpSonuc http_istek(std::uint16_t port, const std::string& jeton, const std::string& yontem, const std::string& yol,
                      const std::string& govde, const std::string& ek_baslik, int bekle_ms)
 {
@@ -82,6 +106,7 @@ HttpSonuc http_istek(std::uint16_t port, const std::string& jeton, const std::st
             }
             if (tampon.size() >= e + 4u + boy) {
                 s.durum = std::atoi(tampon.c_str() + 9);
+                s.basliklar = tampon.substr(0, e);
                 s.govde = tampon.substr(e + 4u, boy);
                 break;
             }

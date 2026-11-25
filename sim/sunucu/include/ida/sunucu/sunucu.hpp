@@ -37,6 +37,8 @@ class DosyaKaynagi;
 
 namespace ida::sunucu {
 
+struct Sonuc;
+
 enum class Kip { sil, hil };
 
 // Karşı taraf ve taşıma:
@@ -219,6 +221,26 @@ struct Ayar {
     // Yalnız sınama: kayıt açıldı (dosya yolu, run_id); dünya döngüsü başlamadan önce.
     std::function<void(const std::string& yol, const std::string& run_id)> kayit_hazir;
 
+    // ---- Senaryo uçları ve dünyanın yeniden kurulması (W5-a3-senaryo; A3-K67, K76…K80) ----
+    // A3 açıkken panelin `senaryo/yukle` ve `calistirma/sifirla` komutları dünyayı AYNI SÜREÇ içinde baştan
+    // kurar: fizik, sensörler, sonar, çekirdek, köprü sayaçları, emniyet girdileri, A3 revizyonları ve kayıt
+    // dosyası çalıştırmaya özgüdür ve yeni dünya bu `Ayar`dan (komut satırından gelen özgün haliyle) kurulur;
+    // hiçbir durum devralınmaz. Süreç boyunca yaşayan yalnız A3 sunucusu (port, erişim jetonu, olay sırası,
+    // komut numaraları, `durum_rev`), A2 sunucusu ve senaryo hizmetidir.
+    // `--senaryo-dizini`: panelin listelediği, okuduğu ve doğruladığı dizin; depo köküne (--kok) göre göreli
+    // (A3-K78); varsayılan `scenarios`.
+    std::string senaryo_dizini = "scenarios";
+    // `--a3-surekli`: çalıştırma `bitti`, `durduruldu` ya da `hata` ile sona erince süreç kapanmaz; A3
+    // sunucusu ayakta kalır ve `sifirla` ile `senaryo/yukle` beklenir (kapanış: sinyal). Bayrak yokken
+    // süreç, çalıştırma bitince bugünkü gibi kapanır (W5-K48). Sıfırlamadan sonraki dünyalar `baslat`
+    // bekler (`a3_bekle` gibi).
+    bool a3_surekli = false;
+    // Yalnız sınama: her dünya bittiğinde (yeni dünyaya geçmeden ya da süreklilik beklemesine girmeden önce;
+    // A2 ve kayıt kapanışları yapılmıştır) o dünyanın sonucu.
+    std::function<void(const Sonuc& s)> kosu_sonu_kancasi;
+    // Yalnız sınama: dünya kurulurken (A3 sunucusu dünyaya bağlandıktan sonra) dünya sırası (0'dan).
+    std::function<void(std::uint64_t dunya_no)> dunya_kancasi;
+
     // SIL hız çarpanının başlangıç değeri (`--sil-hiz`; A3-K66 ile aynı düzenek: yalnız bekleme,
     // bayt akışı ve CSV değişmez). 0: olabildiğince hızlı (varsayılan). A3 açıkken panelin
     // `calistirma/hiz` komutu bu değerin yerine geçer. Yalnız SIL.
@@ -372,6 +394,7 @@ struct Sonuc {
     std::string hata;
     HataTuru hata_turu = HataTuru::yok;
     // Senaryo dosyası (W4-sim-senaryo).
+    std::string senaryo_yolu;                            // koşan dünyanın senaryo dosyası (A3'ten yüklenen senaryoda `Ayar`dakinden farklı olabilir)
     std::string dogrulama_raporu;                        // A5 §3.14 JSON, değiştirilmeden (geçerli ya da geçersiz)
     std::vector<DogrulamaBulgusu> dogrulama_bulgulari;   // aynı raporun bulguları (uyarılar dahil)
     Kip kip = Kip::sil;                                  // etkin kip (dosyadan seçilebilir; sol #5)
@@ -424,7 +447,12 @@ struct Sonuc {
     std::uint64_t karsi_gecerli_red = 0;
     std::string evre_ozeti;                    // HIL: döngü evrelerinin ölçümü (duvar)       // VALID olduğu halde reddedilen örnek (0 olmalı)
     // ---- A3 (W4-bagla-a3) ----
-    std::string calistirma_sonu;               // A3 açıkken: bitti | durduruldu | hata
+    std::string calistirma_sonu;               // A3 açıkken: bitti | durduruldu | hata | yuklendi
+    // W5-a3-senaryo: bu dünya `sifirla` ya da `senaryo/yukle` ile kurulduysa, isteğin dünya tarafından
+    // kabulünden yeni dünyanın `yuklendi` durumunu yayınlamasına süre (duvar; ölçüm); yoksa 0. Bu sürede
+    // dünya döngüsü yoktur (eski dünya durmuş, yenisi henüz başlamamıştır).
+    std::int64_t yeniden_kurma_ns = 0;
+    std::uint64_t dunya_sayisi = 0;            // bu süreçte bu dünyaya dek kurulan dünya sayısı (1: ilk)
     std::vector<EmniyetDegisimi> emniyet_degisimleri;   // A3 açıkken
     std::uint64_t a3_yayin_cagrisi = 0;        // Yayinci çağrısı (dünya iş parçacığı)
     std::int64_t a3_cagri_en_kotu_ns = 0;      // tek çağrının en uzun süresi (duvar; ölçüm)
