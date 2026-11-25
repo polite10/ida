@@ -28,9 +28,9 @@ Kullanıcının gözlemi: `viz/calistir.sh --sim scenarios/gorev-havuz-3b.toml` 
 
 **Düzeltme (iki katman).**
 1. Senaryo: A5-K101 "görüntü gerçekçiliği için senaryo yazarı vermelidir" der. `gorev-havuz.toml`, `gorev-havuz-3b.toml` ve `gorev-havuz-hil.toml`'a (üçü `tests/butunleme/test_sunucu_kucuk.cpp`'nin gövde eşitliği denetimi yüzünden aynı metinle) `[ortam.su_optigi]` (β_d [0,30; 0,055; 0,04], β_b [0,11; 0,065; 0,055], B∞ [0,02; 0,20; 0,26]) ve `[ortam.isik].ortam_isigi_rgb_dogrusal` ([0,30; 0,36; 0,42]) eklendi. Değerler ölçüm değil yer tutucudur. Güneş yönü ve ışınımı KE varsayılanında bırakıldı (`tests/butunleme/test_a2.cpp` ve `sim/sunucu/test/test_a2_baglanti.cpp` bunları 1000 W/m² ve (0,0,−1) olarak bekler).
-2. Görselleştirici: senaryo su optiğini ya da ortam ışığını vermemişse (üçü birden sıfır) kendi görsel varsayılanını kullanır (`ana.gd` `GORSEL_*`; yalnız çizim, fiziğe ve sensörlere dokunmaz), günlüğe "görsel varsayılan kullanıldı" yazar. Sözleşme değişmedi (W5-K60). `scenarios/sonar-havuz.toml` (optik vermiyor) böyle çalışıyor.
+2. Görselleştirici: senaryo su optiğini ya da ortam ışığını vermemişse ya da sıfır vermişse (A2 bu iki durumu ayırmaz; su optiğinde üç katsayı grubunun hepsi sıfır, ortam ışığında üç kanal sıfır) kendi görsel varsayılanını kullanır (`ana.gd` `GORSEL_*`; yalnız çizim, fiziğe ve sensörlere dokunmaz), günlüğe "görsel varsayılan kullanıldı: ... (sıfır geldi; verilmemiş sayıldı, görsel varsayılan kullanılıyor)" yazar. Bugün `viz/proje`'de kamera sensörü hattı yok. Hat eklendiğinde kamera karesi `GORSEL_*` varsayılanlarını, araç ışık çarpanını ve karo dokusunu değil, A2 değerlerini aynen kullanmalı. Sözleşme değişmedi (W5-K60). `scenarios/sonar-havuz.toml` (optik vermiyor) böyle çalışıyor.
 
-Sim'in okuduğu değerlerde ve sözleşmede eksiklik bulunmadı: A2 `Ortam` alanları görüntüyü kurmaya yeter. Belirsizlik: sade/tam dalga yüzeyi için A2 dalga kümesi sim'de boştur (`sim/sunucu/src/a2_baglanti.cpp`: "fizikte dalga modeli yok"); açık deniz senaryosunda yüzeyin dalgalı görünmesi yalnız gölgelendiricinin ayrıntı normallerindendir, `a2.su_yuksekligi` düzdür (W5-K61).
+Sim'in okuduğu değerlerde eksiklik bulunmadı: senaryonun verdiği değerler A2 `Ortam`'a aynen ulaşır. Sözleşme: A2 `Ortam` verildi/kalibre edilmedi ayrımı taşımıyor; açıkça verilen 0 (berrak su, karanlık sahne) ayırt edilemiyor. Görselleştirici sıfırı "verilmedi" sayar (makul okuma; W5-K60); kapanış yeri A2 küçük sürümüdür (`docs/mimari/acik-bulgular.md`). Belirsizlik: sade/tam dalga yüzeyi için A2 dalga kümesi sim'de boştur (`sim/sunucu/src/a2_baglanti.cpp`: "fizikte dalga modeli yok"); açık deniz senaryosunda yüzeyin dalgalı görünmesi yalnız gölgelendiricinin ayrıntı normallerindendir, `a2.su_yuksekligi` düzdür (W5-K61).
 
 ## 2. Ekran görüntüleri
 
@@ -66,3 +66,9 @@ Yeni sahne (önce yok; bilgi): `gorev-acik-su-3b.toml` tam: ortalama 6,10, p50 5
 - Yalnız bu Mac (Apple M3 Pro, Metal). Hedef Windows makinesi (8 GB, dahili ekran kartı) ölçülmedi; bu rapor onun için rakam tahmin etmez.
 - GPU süresi ölçülemedi: `RenderingServer.viewport_get_measured_render_time_gpu` bu Mac'te her kareyi 0,0 verdi (`gpu_ms_*` = 0; nedeni araştırılmadı). Tablodaki "çizim CPU" yalnız CPU tarafının çizim komutu hazırlama süresidir.
 - Bu iş sırasında ölçüm makinesi bir süre (art arda yaklaşık on koşu boyunca) `--max-fps 0` iken bile sade kademede ≈6,9 ms'ye kilitlendi (önce ve sonra aynı 6,84–6,90 ms, n ≈ 3 900–4 500; `--always-on-top` ile 8,2 ms; pencerenin gizlenmesi değiştirmedi). Nedeni doğrulanmadı (macOS pencere sunumu ya da güç/ısı durumu olabilir; MP6'daki görünmeyen pencere bulgusuyla ilgili olabilir). O dönemin koşuları kare süresini değil sunum hızını ölçtüğü için tablo dışı bırakıldı; tablodaki sekiz koşu bu durumdan sonra, art arda ve aynı durumda alındı. Bu nedenle kare süresi karşılaştırması yalnız tablodaki koşular için geçerlidir.
+
+## 4. Doğrulanmayanlar
+
+- `acik_tam_gecis.jpg` su yüzeyini zayıf gösteriyor; yüzey geçişi görüntüsü kabul 2'yi ancak kısmen karşılıyor. Dalgalı yüzey ayrıca alınamadı: sim'de dalga modeli yok, A2 dalga kümesi boş, açık deniz yüzeyi düz (§1; W5-K61).
+- "Solda gri kavis" açıklaması bir çıkarımdır (§1).
+- Hedef Windows makinesi ve GPU süresi ölçülmedi (§3 "Sınırlar").

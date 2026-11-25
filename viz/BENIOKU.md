@@ -45,13 +45,18 @@ gereği senaryo bunları vermezse sim 0 yazar ("berrak su", ortam ışığı 0) 
 ışıksız sahnedir; görüntü gerçekçiliği için değerleri senaryo yazarı verir (`gorev-havuz*.toml` ve
 `gorev-acik-su-3b.toml` verir; değerler ölçüm değil, yer tutucudur). Senaryo vermemişse görselleştirici
 **yalnız çizim için** kendi görsel varsayılanını (kıyı suyu, `ana.gd` `GORSEL_*`) kullanır ve günlüğe
-"görsel varsayılan kullanıldı" yazar; fiziğe, sonara ve sensörlere dokunmaz. Sahne kurulunca günlüğe
+"görsel varsayılan kullanıldı" yazar; fiziğe, sonara ve sensörlere dokunmaz. Bugün `viz/proje`'de kamera
+sensörü hattı yok. Hat eklendiğinde kamera karesi `GORSEL_*` varsayılanlarını, araç ışık çarpanını ve karo
+dokusunu değil, A2 değerlerini aynen kullanmalı. A2 `Ortam` "verildi" ile "kalibre edilmedi" ayrımını
+taşımaz: açıkça verilen 0 (berrak su, karanlık sahne) da "verilmedi" sayılır ve görsel varsayılan
+kullanılır (günlük: "sıfır geldi; verilmemiş sayıldı"). Sahne kurulunca günlüğe
 A2'den gelen `ortam` değerleri de yazılır (`ida-viz: ortam (A2): ...`). Kademe ayrımı 07 §5'tedir:
 sade = Godot sisi (geri saçılım rengi + zayıflama yoğunluğu), ekran/derinlik dokusu okumaz; tam = son
-işlem gölgelendirici (`su_alti_son`) ve dalga geometrili yüzey. `havuz_beton` malzemesine (havuz tabanı
-ve duvarları) görselleştirici dünya uzayında 0,5 m karolu üç düzlemli bir doku giydirir
-(`varlik_yukleyici.gd` `KAPLAMALAR`; doku çalışma zamanında üretilir, depoda ikili dosya yok): düz renkli
-yüzey su altında ölçek ve derinlik hissi vermiyordu. Aracın ön ışıkları (A7 `KHR_lights_punctual`)
+işlem gölgelendirici (`su_alti_son`) ve dalga geometrili yüzey. `havuz_ornek` varlığının `havuz_beton`
+malzemesine (havuz tabanı ve duvarları) görselleştirici dünya uzayında 0,5 m karolu üç düzlemli bir doku
+giydirir (`varlik_yukleyici.gd` `KAPLAMALAR`; doku çalışma zamanında bir kez üretilir ve paylaşılır, depoda
+ikili dosya yok): düz renkli yüzey su altında ölçek ve derinlik hissi vermiyordu. Aynı malzemeyi kullanan
+`acik_su_sonar/deniz_ornek` (açık deniz tabanı) düz kalır. Aracın ön ışıkları (A7 `KHR_lights_punctual`)
 `ARAC_ISIK_CARPANI` ile kısılır. Açık deniz senaryosunda sim'in fiziğinde dalga modeli olmadığı için A2
 dalga kümesi boştur (`a2_baglanti.cpp`); yüzey sim'de düzdür, yüzeydeki dalgacıklar yalnız
 gölgelendirici ayrıntı normalleridir (W5-K61). Dalgalı yüzey geometrisi sahte kaynakla görülür
@@ -97,7 +102,8 @@ kümelerini de üretir.
 `--ekran-goruntusu=<dizin>` (senaryonun 6, 17,5, 45 ve 104. saniyelerinde ekran görüntüsü),
 `--olcum=<dosya.json>` (kare süresi; senaryo sıfırlanmadan önce yazar ve çıkar),
 `--ekran-plani=<t:ad:sapma:egim:uzak;...>` (ekran görüntüsü anları: sim zamanı s, dosya adı, yörünge sapma°, eğim°,
-uzaklık m; son andan 1 s sonra çıkar; verilmezse yukarıdaki sahte senaryo çizelgesi),
+uzaklık m; t'ye göre sıralanır, bozuk öğe atlanır ve uyarı yazılır; en büyük t'den 1 s sonra çıkar;
+`--ekran-goruntusu` olmadan görüntü alınmaz; verilmezse yukarıdaki sahte senaryo çizelgesi),
 `--max-fps=<n>` (kare sınırı; 0 = sınırsız. Proje 120 fps ile sınırlıdır ve ölçümde bu sınır kare süresini
 maskeler; Godot'ya doğrudan `--max-fps 0` de verilebilir). Örnek:
 `viz/calistir.sh --sim scenarios/gorev-havuz-3b.toml -- --ekran-goruntusu=/tmp/ekran --ekran-plani="6:yuzey:-38:13:1.55;36:gecis:30:-10:1.6;52:alt:-125:24:2.6"`.
