@@ -1055,11 +1055,15 @@ struct HazirlikKosusu {
 HazirlikKosusu hazirlik_kos(std::int64_t baglanti_bekleme_ns, std::int64_t hazirlik_azami_ns, bool sonuc_yut,
                             std::int64_t gecikme_us = 25'000, bool kapat_tekrar = false, double sure_s = 1.0,
                             std::function<void(const ida::sunucu::Ayar::SinirGozlemi&)> kanca = {},
-                            bool kapanis_izi_bekle = false, std::int64_t oturum_sonu_gecikme_us = 0)
+                            bool kapanis_izi_bekle = false, std::int64_t oturum_sonu_gecikme_us = 0,
+                            std::int64_t kurma_azami_ns = 0)
 {
     ida::sunucu::Ayar a;
     a.gunluk = 0;
     a.sure_s = sure_s;
+    if (kurma_azami_ns > 0) {
+        a.kurma_azami_ns = kurma_azami_ns;   // W4-sunucu-kucuk kapsam 3: kurma sınırı hazırlık sınırından kısa
+    }
     a.sinir_kancasi = std::move(kanca);
     a.karsi = ida::sunucu::Karsi::tcp;
     a.baglanti_bekleme_ns = baglanti_bekleme_ns;
@@ -1211,6 +1215,75 @@ int test_sil_istisna_kapanisi()
     return 0;
 }
 
+// W4-sunucu-kucuk kapsam 1 (EMNİYET'e değen kapanış yolu; kart güvenliği bu yola dayanmaz): koşu
+// sırasında kapanış isteği (sinyal işleyicisinin kurduğu bayrak; kapanis_iste) var olan hata
+// kapanışını işletir: kart SESSION_CLOSE(SHUTDOWN)'u görür ve oturum sonu çağrısı yapılır, yerel
+// daraltma uygulanır (izinler kapalı, itki nötr), koşu hatayla ("sinyalle kesildi") ve
+// `sinyal_kesti` ile biter; tam çalıştırmanın satırları üretilmez.
+int test_sil_sinyal_kapanisi()
+{
+    ida::sunucu::kapanis_sifirla();
+    std::atomic<std::int64_t> tetik_ns{0};
+    const auto kanca = [&tetik_ns](const ida::sunucu::Ayar::SinirGozlemi& g) {
+        if (g.b == 3600u) {   // 4,5 s: Z1'de itki yürürlükte
+            tetik_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
+            ida::sunucu::kapanis_iste();
+        }
+    };
+    const HazirlikKosusu h = hazirlik_kos(20'000'000'000, 600'000'000'000, false, 0, false, 30.0, kanca, true);
+    const std::int64_t bitis_ns =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    ida::sunucu::kapanis_sifirla();
+    std::printf("  sinyal: tamam %d, sinyal_kesti %d, hata '%s', sim'in kapanışları %s, kapanıştan sonra kartın oturum sonu "
+                "izi %llu (durdurmadan önce %d), daraltma %d (önce itki %d, sonra izin %d, itki %d), satır %zu, "
+                "kapanış yazımı eksik %llu\n",
+                h.s.tamam ? 1 : 0, h.s.sinyal_kesti ? 1 : 0, h.s.hata.c_str(), nedenler(h.sim_kapanislari).c_str(),
+                static_cast<unsigned long long>(h.kapanis_sonrasi_iz), h.iz_beklendi ? 1 : 0,
+                h.s.kapanis_daraltildi ? 1 : 0, h.s.kapanis_oncesi_itki ? 1 : 0, h.s.kapanis_izin_acik ? 1 : 0,
+                h.s.kapanis_itki_yururlukte ? 1 : 0, h.s.satirlar.size(),
+                static_cast<unsigned long long>(h.s.kapanis_yazim_eksik));
+    dogrula_sa(!h.s.tamam && h.s.sinyal_kesti && h.s.hata == "sinyalle kesildi",
+               "koşu sinyalle kesildi (hata kapanışı): '" + h.s.hata + "'");
+    dogrula_sa(!h.sim_kapanislari.empty() &&
+                   h.sim_kapanislari.back() == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN) &&
+                   h.s.kapanis_yazim_eksik == 0u,
+               "kart SESSION_CLOSE(SHUTDOWN)'u gördü (tamamen yazıldı)");
+    dogrula_sa(h.iz_beklendi && h.kapanis_sonrasi_iz >= 1u && h.kosucu_oturum_sonu >= 1u,
+               "kartın oturum sonu çağrısı yapıldı (SHUTDOWN'dan sonra, koşucu durdurulmadan önce IDA_CALL_TRACE(SESSION_END))");
+    dogrula_sa(h.s.kapanis_daraltildi && h.s.kapanis_oncesi_itki && !h.s.kapanis_izin_acik &&
+                   !h.s.kapanis_itki_yururlukte,
+               "sinyal çıkışında daraltma: itki yürürlükteydi, sonra nötr; izinler kapalı");
+    dogrula_sa(!h.s.satirlar.empty() && h.s.satirlar.size() < 4000u && h.s.satirlar.back().t_s < 5.0,
+               "koşu 30 s'ye gitmedi, tetikten kısa sonra bitti (son satır " +
+                   std::to_string(h.s.satirlar.empty() ? 0.0 : h.s.satirlar.back().t_s) + " s)");
+    const double sure_s = 1e-9 * static_cast<double>(bitis_ns - tetik_ns.load());
+    std::printf("  ÖLÇÜM (bu Mac): tetikten kos() ve koşucunun durdurulmasının bitişine %.3f s\n", sure_s);
+    dogrula_sa(tetik_ns.load() > 0 && sure_s < 30.0, "sınırlı sürede bitti (asılma yok)");
+    return 0;
+}
+
+// W4-sunucu-kucuk kapsam 3 (açık bulgu (a)): hazırlık beklemesi `kurma_azami_ns` ile
+// `hazirlik_azami_ns`'in küçüğüyle sınırlanır. Sahte kart hazırlığı bitirmez (sonuçlar yutulur);
+// hazırlık sınırı uzun (600 s), kurma sınırı kısa (1 s): koşu kurma sınırında, var olan açık hatayla
+// ("oturum kurma süre sınırını aştı") ve sınırlı sürede biter.
+int test_sil_hazirlik_kurma_siniri()
+{
+    const HazirlikKosusu h = hazirlik_kos(20'000'000'000, 600'000'000'000, true, 25'000, false, 1.0, {}, true, 0,
+                                          1'000'000'000);
+    std::printf("  kurma sınırı < hazırlık sınırı: tamam %d, hata '%s', %.2f s, sim'in kapanışları %s, kapanış yazımı eksik %llu\n",
+                h.s.tamam ? 1 : 0, h.s.hata.c_str(), h.sure_s, nedenler(h.sim_kapanislari).c_str(),
+                static_cast<unsigned long long>(h.s.kapanis_yazim_eksik));
+    dogrula_sa(!h.s.tamam && h.s.hata == "oturum kurma süre sınırını aştı",
+               "hazırlık kurma sınırında kesildi: '" + h.s.hata + "'");
+    dogrula_sa(h.sure_s < 30.0, "kurma sınırının çok ötesine gitmedi (" + std::to_string(h.sure_s) + " s; hazırlık sınırı 600 s)");
+    dogrula_sa(!h.sim_kapanislari.empty() &&
+                   h.sim_kapanislari.back() == static_cast<std::uint8_t>(IDAW_CLOSE_REASON_SHUTDOWN),
+               "açık erken kapanış: kart SESSION_CLOSE(SHUTDOWN)'u gördü");
+    return 0;
+}
+
 // Sol 4. denetim #2 (EMNİYET): karşı uç her bağlantıda KOSUYOR olmadan kapatıp yeniden bağlanır.
 // Kurma işleminin deneme sınırı (6) aşılınca koşu sınırlı sürede hatayla biter (deneme sayısıyla
 // belirlenimci; ilk kurulum ve koşu ortası aynı işlev).
@@ -1291,6 +1364,14 @@ int sil_alim_testi(const std::string& ad, int, char**)
     }
     if (ad == "sil_istisna_kapanisi") {
         (void)test_sil_istisna_kapanisi();
+        return g_hata_sa;
+    }
+    if (ad == "sil_sinyal_kapanisi") {
+        (void)test_sil_sinyal_kapanisi();
+        return g_hata_sa;
+    }
+    if (ad == "sil_hazirlik_kurma_siniri") {
+        (void)test_sil_hazirlik_kurma_siniri();
         return g_hata_sa;
     }
     if (ad == "sil_kurma_siniri") {

@@ -269,6 +269,24 @@ private:
         return true;
     }
 
+    // W4-sunucu-kucuk (kapsam 1): SIGINT/SIGTERM (Windows: konsol denetim olayı) bayrağı. Bayrak
+    // görülünce koşu var olan hata kapanışıyla biter (ikinci bir kapanış yolu yok): `hata` ayrılmışsa
+    // ona dokunulmaz; bekleme döngüleri ve sınır turu bunu her turda yoklar. true: kesildi.
+    bool sinyal_kesti()
+    {
+        if (!kapanis_istendi()) {
+            return false;
+        }
+        if (!s_.sinyal_kesti) {
+            s_.sinyal_kesti = true;
+            gunluk(1, "kapanış sinyali alındı: düzgün kapanış");
+        }
+        if (s_.hata.empty()) {
+            s_.hata = "sinyalle kesildi";
+        }
+        return true;
+    }
+
     // Oturum kurulamadan ya da koşu başlamadan biten yolların kapanışı (W4-K28 (3); hazırlıkta
     // durdurma, ön denetim ya da hazırlık kalması, bağlantı beklemesinin iptali; sol 3. denetim
     // #3, A1-K21): oturum açıksa (hazir, kosuyor) SESSION_CLOSE(SHUTDOWN) sıraya girer (köprüde
@@ -840,18 +858,20 @@ bool Calistirici::baglanti_kabul(std::int64_t son_mutlak)
     std::string hata;
     // Bekleme kendi payını alır; süren bir hazırlık işleminin mutlak son tarihini aşmaz.
     const std::int64_t pay = std::max<std::int64_t>(0, std::min(a_.baglanti_bekleme_ns, son_mutlak - gercek()));
-    if (yay_ != nullptr) {
-        // W4-K27 (4): bağlantı beklenirken de çalıştırma denetimi işlenir (100 ms dilimler; toplam
-        // aynı pay). Kabul edilmiş durdurma kazanır.
-        for (std::int64_t kalan = pay / 1000; kalan > 0 && !tas_; kalan -= 100'000) {
-            if (a3_hazirlik_durdu()) {
-                s_.hata = "hazırlanırken durduruldu";
-                return false;
-            }
-            tas_ = din_->kabul(std::min<std::int64_t>(kalan, 100'000), hata);
+    // 100 ms dilimler (toplam aynı pay): W4-K27 (4) çalıştırma denetimi (A3 açıkken) ve kapanış
+    // sinyali her dilimde yoklanır. Kabul edilmiş durdurma kazanır. Pay 0 ise bir kez denenir.
+    for (std::int64_t kalan = pay / 1000;; kalan -= 100'000) {
+        if (sinyal_kesti()) {
+            return false;
         }
-    } else {
-        tas_ = din_->kabul(pay / 1000, hata);
+        if (yay_ != nullptr && a3_hazirlik_durdu()) {
+            s_.hata = "hazırlanırken durduruldu";
+            return false;
+        }
+        tas_ = din_->kabul(std::min<std::int64_t>(std::max<std::int64_t>(kalan, 0), 100'000), hata);
+        if (tas_ || kalan <= 100'000) {
+            break;
+        }
     }
     if (!tas_) {
         s_.hata = "SIL koşucusu bağlanmadı: " + hata;
@@ -917,6 +937,9 @@ bool Calistirici::oturum_kur()
         }
         return true;
     };
+    if (sinyal_kesti()) {
+        return false;
+    }
     if (!tas_ && !kabul()) {
         return false;
     }
@@ -935,6 +958,9 @@ bool Calistirici::oturum_kur()
         return d == kopru::OturumDurumu::kosuyor || d == kopru::OturumDurumu::reddedildi;
     };
     for (;;) {
+        if (sinyal_kesti()) {
+            return false;   // W4-sunucu-kucuk: kapanış sinyali (hata kapanışı)
+        }
         if (a3_hazirlik_durdu()) {
             return false;   // W4-K27 (4)
         }
@@ -963,8 +989,13 @@ bool Calistirici::oturum_kur()
                         hazirlik_son = gercek() + a_.hazirlik_azami_ns;
                     }
                 }
-                const Bekleme r = hazirlik(hazirlik_son);
+                // W4-sunucu-kucuk kapsam 3 (açık bulgu (a)): hazırlık beklemesi iki son tarihin
+                // küçüğüyle sınırlanır (hazırlık kurma sınırını aşamaz); aşımda var olan açık hata.
+                const Bekleme r = hazirlik(std::min(hazirlik_son, kurma_son));
                 if (r == Bekleme::hata) {
+                    if (kurma_son < hazirlik_son && s_.hata == "hazırlık oturumu süre sınırını aştı") {
+                        s_.hata = "oturum kurma süre sınırını aştı";
+                    }
                     return false;
                 }
                 if (r == Bekleme::oturum_bitti) {
@@ -1039,6 +1070,9 @@ Calistirici::Bekleme Calistirici::hazirlik(std::int64_t son_mutlak)
         // Kabul edilmiş durdurma önce (W4-K27 (4), W4-K28 (3)): durdurma kazanır (Bekleme::hata;
         // s_.hata kos()'un durdurma dalında temizlenir); sonra hazırlığın mutlak son tarihi. Erken
         // dönüşlerin kapanışı (SESSION_CLOSE) kos()'taki erken_kapanis'te.
+        if (sinyal_kesti()) {
+            return Bekleme::hata;   // W4-sunucu-kucuk: kapanış sinyali (hata kapanışı)
+        }
         if (a3_hazirlik_durdu()) {
             return Bekleme::hata;   // W4-K27 (4): hazırlık oturumu yarıda bırakılır
         }
@@ -1111,6 +1145,9 @@ Calistirici::Bekleme Calistirici::yuva_bekle(std::uint32_t seq, std::int64_t son
     // değil. Kalan kuyruk atılmaz; el sıkışmada akış sırasıyla işlenir.
     const std::uint64_t beslenen_bas = sil_beslenen_;
     for (;;) {
+        if (sinyal_kesti()) {
+            return Bekleme::hata;   // W4-sunucu-kucuk: kapanış sinyali (hata kapanışı)
+        }
         const std::uint64_t harcanan = sil_beslenen_ - beslenen_bas;
         (void)sil_besle(dur, harcanan < kSilBeklemeAzami ? kSilBeklemeAzami - harcanan : 0u);
         if (!k_->yuva_tamam(seq) && k_->durum() == kopru::OturumDurumu::kosuyor &&
@@ -1200,6 +1237,28 @@ bool Calistirici::dosya_plani()
         s_.hata = "senaryo bu dilimde yürütülemez: " + hata;
         s_.hata_turu = HataTuru::senaryo_yurutulemez;
         return false;
+    }
+    {
+        // W4-sunucu-kucuk kapsam 5: senaryodaki etkin sonar sayısı (A7'ye bağlı değil); bayrak verilmemişse
+        // tek satır bilgi. Varsayılan değişmez: sonar yalnız `--sonar` ile açılır.
+        std::size_t n = 0;
+        if (const senaryo::Deger* sl = cs.cozumlenmis->agac().yol_bul("arac.sensorler");
+            sl != nullptr && sl->tablo_mu()) {
+            for (const auto& [ad, sn] : sl->tablo) {
+                const senaryo::Deger* tur = sn.tablo_mu() ? sn.bul("tur") : nullptr;
+                const senaryo::Deger* etkin = sn.tablo_mu() ? sn.bul("etkin") : nullptr;
+                if (senaryo::deneysel_mi(ad) || tur == nullptr || !tur->dizgi_mi() ||
+                    (tur->dizgi != "ping1d" && tur->dizgi != "ping360") || etkin == nullptr ||
+                    !etkin->mantiksal_mi() || !etkin->mantik) {
+                    continue;
+                }
+                ++n;
+            }
+        }
+        s_.senaryo_etkin_sonar = n;
+        if (n > 0 && !a_.sonar_acik && !a_.sonar_verildi) {
+            gunluk(1, "senaryoda " + std::to_string(n) + " etkin sonar var; `--sonar` ile açılır");
+        }
     }
     if (a_.sonar_acik) {
         // W4-bagla-sonar: sonar kurulumu da yalnız doğrulanmış senaryodan (sensor_kur ile aynı kural);
@@ -2458,6 +2517,9 @@ bool Calistirici::a3_baslat_bekle()
     gunluk(1, "A3: çalıştırma panelden `baslat` ile başlayacak");
     std::int64_t son_yayin = 0;
     for (;;) {
+        if (sinyal_kesti()) {
+            return false;   // W4-sunucu-kucuk: `baslat` beklenirken kapanış sinyali
+        }
         if (a_.a3_sinir_kancasi) {
             a_.a3_sinir_kancasi(0, *a3al_);
         }
@@ -3652,6 +3714,10 @@ void Calistirici::a3_bitir()
 bool Calistirici::sinir_turu(std::uint64_t b, bool duran)
 {
     const std::int64_t t_b = static_cast<std::int64_t>(b) * kH;
+    // W4-sunucu-kucuk: kapanış sinyali her turda (duran kipte de) görülür; hata kapanışına girilir.
+    if (sinyal_kesti()) {
+        return false;
+    }
     // W4-bagla-a3: istek çekme ve çalıştırma denetimi turun başında (her turda; duran kipte
     // sürdür/adımla/durdur burada alınır). Duraklatma ve çıkış turun sonunda (duraklatma_gecisi).
     if (yay_ != nullptr && !a3_sinir_basi(b, duran)) {
@@ -3918,6 +3984,8 @@ Sonuc Calistirici::kos_ic()
             return s_;
         }
         if (a_.a3_bekle && !a3_baslat_bekle()) {
+            s_.calistirma_sonu = "yuklendi";   // W4-sunucu-kucuk: sinyal, `baslat` beklenirken (oturum yok)
+            a3_bitir();
             return s_;
         }
         a3_run_id_ = a3b::run_id_uret();   // A3-K63: çalıştırmanın başladığı an
