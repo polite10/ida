@@ -11,11 +11,20 @@ extends Node
 ##   --a2-port <n>, --a2-operator-gecikme-us <n>   A2-K93 (eklenti okur)
 ##   --sahte                     pencerede "SAHTE VERİ" etiketi (sahte A2 kaynağıyla çalışırken)
 ##   --ekran-goruntusu=<dizin>   senaryonun belirli anlarında ekran görüntüsü kaydet
+##   --ekran-plani=<t:ad:sapma:egim:uzak;...>  ekran görüntüsü anları (sim zamanı s, ad, yörünge sapma°,
+##                               eğim°, uzaklık m); verilmezse sahte senaryonun çizelgesi. Son andan 1 s sonra çıkılır.
 ##   --olcum=<dosya.json>        kare süresi ölçümünü yaz ve senaryo bitince çık
+##   --max-fps=<n>               kare sınırı (0 = sınırsız; ölçümde 120 fps sınırı kare süresini maskeler)
 
 const GOK_UFUK := Color(0.62, 0.74, 0.86)
 const GOK_TEPE := Color(0.18, 0.38, 0.72)
 const Yukleyici := preload("res://betikler/varlik_yukleyici.gd")
+# Görsel varsayılanlar (yalnız çizim; A5-K101: senaryo su optiğini/ortam ışığını vermemişse): kıyı suyu.
+const ARAC_ISIK_CARPANI := 0.35   # aracın ön ışıkları (A7 KHR_lights_punctual) su altında beyaza taşmasın
+const GORSEL_BETA_D := [0.42, 0.085, 0.07]
+const GORSEL_BETA_B := [0.30, 0.08, 0.065]
+const GORSEL_B_SONSUZ := [0.008, 0.10, 0.16]
+const GORSEL_ORTAM_ISIGI := [0.32, 0.42, 0.56]
 
 @onready var a2: IdaA2Istemci = $A2
 @onready var dunya: Node3D = $"Dünya"
@@ -33,6 +42,7 @@ var yukleyici = Yukleyici.new()  # A7 kümesi: doğrulama, şablonlar, örnekler
 var govdeler := {}               # kimlik → Node3D
 var statik: Node3D
 var ortam := {}
+var etkin := {}                  # ortam + görsel varsayılanlar (_etkin_ortam)
 var gunes: DirectionalLight3D
 var env_ust: Environment
 var env_alt: Environment
@@ -42,11 +52,14 @@ var su_altinda := false
 var gunes_enerjisi := 1.2
 var isik_olcegi := 1.0
 var _kare_ms := 0.0
+var _varsayilan_notu := ""
 
 # Otomasyon (ekran görüntüsü ve ölçüm)
 var _goruntu_dizini := ""
 var _olcum_dosyasi := ""
 var _plan: Array = []
+var _plan_arg := ""
+var _bitis_t := 116.0
 var _kareler := PackedFloat32Array()
 var _gpu := PackedFloat32Array()
 var _cpu := PackedFloat32Array()
@@ -62,8 +75,12 @@ func _ready() -> void:
 			sahte = true
 		elif a.begins_with("--ekran-goruntusu="):
 			_goruntu_dizini = a.get_slice("=", 1)
+		elif a.begins_with("--ekran-plani="):
+			_plan_arg = a.get_slice("=", 1)
 		elif a.begins_with("--olcum="):
 			_olcum_dosyasi = a.get_slice("=", 1)
+		elif a.begins_with("--max-fps="):
+			Engine.max_fps = maxi(0, int(a.get_slice("=", 1)))
 	hud.sahte(sahte)
 	_ortami_hazirla()
 	a2.sahne_kurulmali.connect(_sahne_kur)
@@ -179,37 +196,66 @@ func _isiklar(n: Node) -> Array:
 	return sonuc
 
 
+func _sifir_mu(a) -> bool:
+	if a == null or a.size() != 3:   # Array ya da PackedFloat64Array (eklenti)
+		return true
+	return float(a[0]) == 0.0 and float(a[1]) == 0.0 and float(a[2]) == 0.0
+
+
+## A5-K101: senaryo su optiğini ve ortam ışığını vermezse sim 0 yazar ("kalibre edilmedi", berrak su);
+## A2 bunu aynen taşır. 0 katsayılı su görüntüde siyah arka plan ve ışıksız sahne demektir; senaryo
+## yazarı değer vermelidir (A5-K101). Vermediyse görselleştirici KENDİ görsel varsayılanını kullanır
+## (yalnız çizim; fiziğe ve sensörlere dokunmaz) ve bunu günlüğe yazar. W5-K60: sözleşme değişmez.
+func _etkin_ortam(o: Dictionary) -> Dictionary:
+	var e := o.duplicate()
+	var notlar := []
+	if _sifir_mu(o.get("beta_d")) and _sifir_mu(o.get("beta_b")) and _sifir_mu(o.get("b_sonsuz")):
+		e["beta_d"] = GORSEL_BETA_D
+		e["beta_b"] = GORSEL_BETA_B
+		e["b_sonsuz"] = GORSEL_B_SONSUZ
+		notlar.append("su optiği (senaryo vermedi: A5-K101)")
+	if _sifir_mu(o.get("ortam_isigi")):
+		e["ortam_isigi"] = GORSEL_ORTAM_ISIGI
+		notlar.append("ortam ışığı (senaryo vermedi: A5-K101)")
+	if not o.is_empty() and not notlar.is_empty() and _varsayilan_notu != str(notlar):
+		_varsayilan_notu = str(notlar)
+		print("ida-viz: görsel varsayılan kullanıldı: ", ", ".join(notlar))
+	return e
+
+
 func _ortam_uygula(o: Dictionary) -> void:
 	if not o.is_empty():
 		ortam = o
+	var e := _etkin_ortam(ortam)
+	etkin = e
 	var yon: Vector3 = Vector3(0.45, 0.78, 0.43)
-	if ortam.has("gunes_yonu_n"):
-		yon = IdaA2Istemci.ned_vektor(ortam["gunes_yonu_n"]).normalized()
-	var isinim: float = ortam.get("gunes_isinimi", 900.0)
+	if e.has("gunes_yonu_n"):
+		yon = IdaA2Istemci.ned_vektor(e["gunes_yonu_n"]).normalized()
+	var isinim: float = e.get("gunes_isinimi", 900.0)
 	# Işınım → Godot ışık enerjisi (A2-A06 açık): görsel uyum için 700 W/m² = 1,0 (tahmin).
 	gunes_enerjisi = isinim / 700.0
 	isik_olcegi = isinim / 900.0
 	gunes.light_energy = gunes_enerjisi
 	var yukari := Vector3.UP if absf(yon.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
 	gunes.global_transform = Transform3D(Basis.looking_at(-yon, yukari), Vector3.ZERO)
-	var amb: Array = ortam.get("ortam_isigi", [0.32, 0.42, 0.56])
+	var amb: Array = e.get("ortam_isigi", GORSEL_ORTAM_ISIGI)
 	var amb_renk := Color(float(amb[0]), float(amb[1]), float(amb[2]))
 	var amb_enerji := maxf(amb_renk.r, maxf(amb_renk.g, amb_renk.b))
 	env_ust.ambient_light_color = (amb_renk / maxf(amb_enerji, 1e-6)).linear_to_srgb()
 	env_ust.ambient_light_energy = amb_enerji
-	var bs: Array = ortam.get("b_sonsuz", [0.008, 0.10, 0.16])
+	var bs: Array = e.get("b_sonsuz", GORSEL_B_SONSUZ)
 	var bsr := Color(float(bs[0]), float(bs[1]), float(bs[2]))
 	env_alt.background_color = (bsr * isik_olcegi).linear_to_srgb()
 	env_alt.ambient_light_color = Color(0.45, 0.75, 0.85)
 	env_alt.ambient_light_energy = amb_enerji * 0.8
-	var bb: Array = ortam.get("beta_b", [0.3, 0.08, 0.065])
+	var bb: Array = e.get("beta_b", GORSEL_BETA_B)
 	env_alt.fog_light_color = (bsr * isik_olcegi).linear_to_srgb()
 	env_alt.fog_density = (float(bb[0]) + float(bb[1]) + float(bb[2])) / 3.0
 	env_alt.fog_sky_affect = 1.0
-	su.optik(ortam, isik_olcegi, GOK_UFUK, GOK_TEPE, yon)
+	su.optik(e, isik_olcegi, GOK_UFUK, GOK_TEPE, yon)
 	if son_islem_malzeme:
-		son_islem_malzeme.set_shader_parameter("beta_d", su._v3(ortam.get("beta_d", [0.42, 0.085, 0.07])))
-		son_islem_malzeme.set_shader_parameter("beta_b", su._v3(ortam.get("beta_b", [0.3, 0.08, 0.065])))
+		son_islem_malzeme.set_shader_parameter("beta_d", su._v3(e.get("beta_d", GORSEL_BETA_D)))
+		son_islem_malzeme.set_shader_parameter("beta_b", su._v3(bb))
 		son_islem_malzeme.set_shader_parameter("b_sonsuz", su._v3(bs))
 		son_islem_malzeme.set_shader_parameter("isik_olcegi", isik_olcegi)
 	_statik_kur()
@@ -229,7 +275,7 @@ func _su_alti_guncelle() -> void:
 		son_islem_malzeme.set_shader_parameter("kamera_derinligi", d)
 		if kademe != 2:
 			# Sade: aşağı inen güneş ışığının soğurulması kameranın derinliğiyle (yaklaşım).
-			var bd: Array = ortam.get("beta_d", [0.42, 0.085, 0.07])
+			var bd: Array = etkin.get("beta_d", GORSEL_BETA_D)
 			gunes.light_color = Color(exp(-float(bd[0]) * d), exp(-float(bd[1]) * d), exp(-float(bd[2]) * d))
 			su.alt_malzeme.set_shader_parameter("sonum_rengi", Vector3(gunes.light_color.r, gunes.light_color.g, gunes.light_color.b))
 	else:
@@ -261,7 +307,11 @@ func _sahne_kur(bilgi: Dictionary) -> void:
 		Time.get_ticks_msec() - t0, yukleyici.manifest_ozeti])
 	gostergeler.izi_temizle()
 	if durum == 0:
-		_ortam_uygula(bilgi.get("ortam", {}))
+		var oo: Dictionary = bilgi.get("ortam", {})
+		print("ida-viz: ortam (A2): tür %s, güneş ışınımı %s W/m², ortam ışığı %s, β_d %s, β_b %s, B∞ %s" % [
+			oo.get("tur", "?"), oo.get("gunes_isinimi", "?"), oo.get("ortam_isigi", "?"), oo.get("beta_d", "?"),
+			oo.get("beta_b", "?"), oo.get("b_sonsuz", "?")])
+		_ortam_uygula(oo)
 		_kademe_uygula()
 	a2.sahne_sonucu(durum, ozet)
 
@@ -284,6 +334,7 @@ func _govde_olustur(kimlik: int, varlik: int, _tur: int) -> void:
 	gostergeler.eksen_ekle(kok)
 	for l in _isiklar(kok):
 		l.shadow_enabled = false
+		l.light_energy *= ARAC_ISIK_CARPANI
 	govdeler[kimlik] = kok
 	a2.govde_kaydet(kimlik, kok, o["kosullu"])
 
@@ -342,7 +393,7 @@ func _process(delta: float) -> void:
 	bilgi["sag"] = "kare %s ms · %d fps\n127.0.0.1:%d · nesil %d%s" % [hud.ondalik(_kare_ms, 1),
 		Engine.get_frames_per_second(), a2.port(), s.get("calisma_nesli", 0), "\nsu altında" if su_altinda else ""]
 	hud.guncelle(bilgi)
-	if not _plan.is_empty() or _olcum_dosyasi != "":
+	if not _plan.is_empty() or _olcum_dosyasi != "" or _plan_arg != "":
 		_otomasyon()
 
 
@@ -369,6 +420,13 @@ func _unhandled_input(olay: InputEvent) -> void:
 
 func _plan_hazirla() -> void:
 	# [sim zamanı (s), ad, yörünge sapma°, eğim°, uzaklık m]; zamanlar sahte senaryonun çizelgesi.
+	if _plan_arg != "":
+		for oge in _plan_arg.split(";", false):
+			var a := oge.split(":")
+			if a.size() == 5:
+				_plan.append([float(a[0]), a[1], float(a[2]), float(a[3]), float(a[4])])
+				_bitis_t = float(a[0]) + 1.0
+		return
 	_plan = [
 		[6.0, "yuzey", -38.0, 13.0, 1.55],
 		[17.5, "dalis", 45.0, -18.0, 1.35],
@@ -413,7 +471,7 @@ func _otomasyon() -> void:
 			_plan.pop_front()
 			if _goruntu_dizini != "":
 				_goruntu_al(str(p[1]))
-	if t >= 116.0:
+	if t >= _bitis_t:
 		_bitir()
 
 
