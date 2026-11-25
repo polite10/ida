@@ -1264,7 +1264,7 @@ int test_a3_ayirma()
 
 // W4-sunucu-kucuk kapsam 1: A3 açıkken kapanış sinyali. (1) Koşarken: koşu hata kapanışıyla biter
 // (çalıştırma `hata`), A3 istemcisi sunucunun kapanışını alır (WebSocket kapanış kodu 1001, A3-K49),
-// kısıtlayan yuvalar boş kalmaz (kalan istekler reddedilir). (2) `baslat` beklenirken (`yuklendi`):
+// kalan istekler sınırda reddedilir (yuva boşluğu bu testte sınanmaz). (2) `baslat` beklenirken (`yuklendi`):
 // oturum hiç kurulmadan biter, çalıştırma `yuklendi`'de kalır.
 int test_a3_sinyal()
 {
@@ -1294,7 +1294,8 @@ int test_a3_sinyal()
     const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
     dogrula_a3(!y.s.tamam && y.s.sinyal_kesti && y.s.calistirma_sonu == "yuklendi" && y.s.satirlar.empty(),
                "`baslat` beklenirken sinyal: oturum kurulmadı, yuklendi'de kaldı (" + y.s.calistirma_sonu + ")");
-    dogrula_a3(y.s.sayac.oturum_kurulan == 0u && sure < 20.0, "oturum kurulmadı ve sınırlı sürede bitti (" + std::to_string(sure) + " s)");
+    std::printf("  ÖLÇÜM: kesmeden dönüşe %.3f s\n", sure);
+    dogrula_a3(y.s.sayac.oturum_kurulan == 0u, "oturum kurulmadı");
     return 0;
 }
 

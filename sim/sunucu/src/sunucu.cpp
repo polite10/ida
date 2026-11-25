@@ -860,7 +860,10 @@ bool Calistirici::baglanti_kabul(std::int64_t son_mutlak)
     const std::int64_t pay = std::max<std::int64_t>(0, std::min(a_.baglanti_bekleme_ns, son_mutlak - gercek()));
     // 100 ms dilimler (toplam aynı pay): W4-K27 (4) çalıştırma denetimi (A3 açıkken) ve kapanış
     // sinyali her dilimde yoklanır. Kabul edilmiş durdurma kazanır. Pay 0 ise bir kez denenir.
-    for (std::int64_t kalan = pay / 1000;; kalan -= 100'000) {
+    // Her dilimin süresi mutlak son tarihten hesaplanır (dilim gecikmeleri birikmez; toplam bekleme
+    // pay'ı aşmaz).
+    const std::int64_t kabul_son = gercek() + pay;
+    for (;;) {
         if (sinyal_kesti()) {
             return false;
         }
@@ -868,10 +871,16 @@ bool Calistirici::baglanti_kabul(std::int64_t son_mutlak)
             s_.hata = "hazırlanırken durduruldu";
             return false;
         }
-        tas_ = din_->kabul(std::min<std::int64_t>(std::max<std::int64_t>(kalan, 0), 100'000), hata);
-        if (tas_ || kalan <= 100'000) {
+        const std::int64_t kalan_ns = kabul_son - gercek();
+        tas_ = din_->kabul(std::min<std::int64_t>(std::max<std::int64_t>(kalan_ns / 1000, 0), 100'000), hata);
+        if (tas_ || kalan_ns <= 100'000'000) {
             break;
         }
+    }
+    // Bağlantı yoksa ve son dilimde (ya da bekleme sırasında) sinyal geldiyse "zaman aşımı" değil
+    // sinyaldir (select EINTR'ı 0 döndürür; çıkış kodu 5, özet `kapanış: sinyal`).
+    if (!tas_ && sinyal_kesti()) {
+        return false;
     }
     if (!tas_) {
         s_.hata = "SIL koşucusu bağlanmadı: " + hata;

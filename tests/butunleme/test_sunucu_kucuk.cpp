@@ -4,8 +4,10 @@
 //                           (sinyal işleyicisinin kurduğu bayrak) → telde SESSION_CLOSE(SHUTDOWN) görülür,
 //                           yerel daraltma, `sinyal_kesti`; tetikten bitişe süre ölçülür (bu Mac)
 //   senaryo_hil_dosyalari   (POSIX) kapsam 4: scenarios/z1-hil.toml ve gorev-havuz-hil.toml kartsız HIL'de
-//                           (sözde uçbirim) başlar; HIL eşleri SIL dosyalarından yalnız kip ve kipe bağlı
-//                           alan (sil_azami_hiz) bakımından ayrılır; çelişen --kip hâlâ kullanım hatası
+//                           (sözde uçbirim) başlar; HIL eşleri SIL dosyalarından yalnız [meta] ad/aciklama
+//                           ve [calistirma] kip/sil_azami_hiz bakımından ayrılır; çelişen --kip hâlâ kullanım hatası
+//   kabul_son_dilim_sinyali (her platform) kapsam 1, inceleme #2: bağlantı beklemesinin (tek, son dilim) sırasında
+//                           gelen kapanış isteği "bağlanmadı" hatası değil sinyal sınıflamasıyla döner
 //   sonar_acik_su_dosyasi   (her platform) kapsam 6: scenarios/sonar-acik-su.toml --sonar SIL'de koşar;
 //                           iki koşunun CSV'si ve sonar CSV'si bayt bayt aynı
 #include "ida/senaryo/senaryo.hpp"
@@ -18,7 +20,14 @@
 #include <filesystem>
 #include <cstdio>
 #include <string>
+#include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #ifndef IDA_DEPO_KOKU
 #define IDA_DEPO_KOKU "."
@@ -27,6 +36,15 @@
 namespace {
 
 int g_hata_sk = 0;
+
+long surec_kimligi()
+{
+#ifdef _WIN32
+    return static_cast<long>(_getpid());
+#else
+    return static_cast<long>(getpid());
+#endif
+}
 
 void dogrula_sk(bool kosul, const std::string& ileti)
 {
@@ -110,10 +128,13 @@ int test_hil_sinyal_kapanisi()
     return 0;
 }
 
-// İki dosya satırlarının karşılaştırması: yorum ve anahtar farklarını (ad, aciklama, kip, sil_azami_hiz) atlar.
+// İki dosya satırlarının karşılaştırması: yorum satırlarını ve yalnız şu anahtarları atlar: `[meta]`
+// tablosunda `ad` ve `aciklama` (eşin ayrı bir adı olmalı); `[calistirma]` tablosunda `kip` ve
+// `sil_azami_hiz`. Başka bir tablodaki aynı adlı anahtarın farkı yakalanır.
 std::vector<std::string> govde_satirlari(const std::string& m)
 {
     std::vector<std::string> r;
+    std::string tablo;
     std::size_t i = 0;
     while (i < m.size()) {
         std::size_t j = m.find('\n', i);
@@ -122,8 +143,13 @@ std::vector<std::string> govde_satirlari(const std::string& m)
         }
         const std::string l = m.substr(i, j - i);
         i = j + 1u;
-        if (l.empty() || l[0] == '#' || l.rfind("ad = ", 0) == 0 || l.rfind("aciklama = ", 0) == 0 ||
-            l.rfind("kip = \"sil\"", 0) == 0 || l.rfind("kip = \"hil_1x\"", 0) == 0 || l.rfind("sil_azami_hiz", 0) == 0) {
+        if (!l.empty() && l[0] == '[') {
+            tablo = l.substr(0, l.find(']') + 1u);
+        }
+        const bool meta = tablo == "[meta]" && (l.rfind("ad = ", 0) == 0 || l.rfind("aciklama = ", 0) == 0);
+        const bool kip = tablo == "[calistirma]" && (l.rfind("kip = \"sil\"", 0) == 0 ||
+                                                     l.rfind("kip = \"hil_1x\"", 0) == 0 || l.rfind("sil_azami_hiz", 0) == 0);
+        if (l.empty() || l[0] == '#' || meta || kip) {
             continue;
         }
         r.push_back(l);
@@ -217,8 +243,9 @@ int test_sonar_acik_su_dosyasi()
         a.sonar_verildi = true;
         a.csv_uret = true;
         // Sonar CSV'si yol verilince üretilir (ve dosyaya yazılır); dosya geçici dizine yazılıp silinir.
-        const std::filesystem::path gecici =
-            std::filesystem::temp_directory_path() / ("ida_sonar_acik_su_" + std::to_string(i) + ".csv");
+        // Benzersiz yol (süreç kimliği + koşu sırası): paralel koşular ve eski dosyalar çakışmaz.
+        const std::filesystem::path gecici = std::filesystem::temp_directory_path() /
+            ("ida_sonar_acik_su_" + std::to_string(surec_kimligi()) + "_" + std::to_string(i) + ".csv");
         a.sonar_csv_yolu = gecici.string();
         const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
         std::error_code ec;
@@ -239,6 +266,36 @@ int test_sonar_acik_su_dosyasi()
     return 0;
 }
 
+// Koşucusuz TCP SIL; bağlantı payı tek dilimdir (100 ms) ve kapanış isteği o dilimin ortasında gelir
+// (kabul `select` ile bekler, bayrak onu uyandırmaz: dilim zaman aşımıyla biter). Düzeltmeden önce
+// koşu "SIL koşucusu bağlanmadı" hatasıyla ve `sinyal_kesti = false` ile bitiyordu (çıkış 2, özet
+// `kapanış: hata`). Zamanlama: istek kurulum bitmeden gelirse sınıflama yine sinyaldir (test geçer);
+// tipik sürede istek son dilimin ortasına düşer ve düzeltme sınanır.
+int test_kabul_son_dilim_sinyali()
+{
+    ida::sunucu::kapanis_sifirla();
+    ida::sunucu::Ayar a;
+    a.gunluk = 0;
+    a.kip = ida::sunucu::Kip::sil;
+    a.karsi = ida::sunucu::Karsi::tcp;
+    a.a1_port = 0;
+    a.sure_s = 5.0;
+    a.baglanti_bekleme_ns = 100'000'000;
+    std::thread t([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        ida::sunucu::kapanis_iste();
+    });
+    const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
+    t.join();
+    ida::sunucu::kapanis_sifirla();
+    std::printf("  son dilim sinyali: tamam %d, sinyal_kesti %d, hata '%s', oturum %llu\n", s.tamam ? 1 : 0,
+                s.sinyal_kesti ? 1 : 0, s.hata.c_str(), static_cast<unsigned long long>(s.sayac.oturum_kurulan));
+    dogrula_sk(!s.tamam && s.sinyal_kesti && s.hata == "sinyalle kesildi",
+               "bağlantı beklerken gelen sinyal 'bağlanmadı' değil sinyal olarak sınıflandı (" + s.hata + ")");
+    dogrula_sk(s.sayac.oturum_kurulan == 0u, "oturum kurulmadı");
+    return 0;
+}
+
 }  // namespace
 
 int sunucu_kucuk_testi(const std::string& ad, int, char**)
@@ -254,6 +311,10 @@ int sunucu_kucuk_testi(const std::string& ad, int, char**)
         return g_hata_sk;
     }
 #endif
+    if (ad == "kabul_son_dilim_sinyali") {
+        (void)test_kabul_son_dilim_sinyali();
+        return g_hata_sk;
+    }
     if (ad == "sonar_acik_su_dosyasi") {
         (void)test_sonar_acik_su_dosyasi();
         return g_hata_sk;

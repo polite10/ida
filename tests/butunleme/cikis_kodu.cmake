@@ -1,6 +1,7 @@
 # Bir programın çıkış kodunu sınar (CTest, cmake -P).
 #
 #   cmake -DPROGRAM=<ikili> -DBEKLENEN=<kod> [-DARGUMANLAR=<a;b;c>] [-DILETI=<stderr'de aranan>]
+#         [-DILETILER=<a|b|c: hepsi aranır; ';' içeremez>] [-DYOK=<stderr'de bulunmaması gereken>]
 #         -P cikis_kodu.cmake
 execute_process(
   COMMAND "${PROGRAM}" ${ARGUMANLAR}
@@ -14,6 +15,22 @@ if(DEFINED ILETI)
   string(FIND "${_hata}" "${ILETI}" _yer)
   if(_yer EQUAL -1)
     message(FATAL_ERROR "standart hatada '${ILETI}' yok:\n${_hata}")
+  endif()
+endif()
+# ILETILER: '|' ile ayrılmış, hepsi standart hatada bulunması gereken dizgiler; YOK: bulunmaması gereken.
+if(DEFINED ILETILER)
+  string(REPLACE "|" ";" _liste "${ILETILER}")
+  foreach(_aranan IN LISTS _liste)
+    string(FIND "${_hata}" "${_aranan}" _yer)
+    if(_yer EQUAL -1)
+      message(FATAL_ERROR "standart hatada '${_aranan}' yok:\n${_hata}")
+    endif()
+  endforeach()
+endif()
+if(DEFINED YOK)
+  string(FIND "${_hata}" "${YOK}" _yer)
+  if(NOT _yer EQUAL -1)
+    message(FATAL_ERROR "standart hatada '${YOK}' olmamalıydı:\n${_hata}")
   endif()
 endif()
 message(STATUS "çıkış kodu ${_kod} (beklenen)")

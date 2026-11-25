@@ -67,10 +67,6 @@ BOOL WINAPI konsol_isleyici(DWORD olay)
 void sinyal_isleyici_c(int) { kapanis_sinyali(); }
 #endif
 
-#ifdef _WIN32
-void crt_isleyici(int) { kapanis_sinyali(); }
-#endif
-
 }  // namespace
 
 void kapanis_iste() noexcept
@@ -105,12 +101,11 @@ void kapanis_tamamlandi() noexcept
 bool sinyal_kur() noexcept
 {
 #ifdef _WIN32
-    bool tamam = SetConsoleCtrlHandler(konsol_isleyici, TRUE) != 0;
-    tamam = std::signal(SIGINT, crt_isleyici) != SIG_ERR && tamam;
-    tamam = std::signal(SIGTERM, crt_isleyici) != SIG_ERR && tamam;
-    return tamam;
+    // Windows'ta yalnız konsol denetim işleyicisi kaydedilir (CRT `std::signal` ikinci bir yol olurdu):
+    // ilk Ctrl-C bayrak kurar, ikincisi hemen sonlandırır.
+    return SetConsoleCtrlHandler(konsol_isleyici, TRUE) != 0;
 #else
-    struct sigaction sa;
+    struct sigaction sa{};
     sa.sa_handler = sinyal_isleyici_c;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;   // bekleyen sistem çağrıları yeniden başlar; döngüler bayrağı kendileri yoklar

@@ -8,13 +8,19 @@ T="$3"
 SINYAL="$4"
 rm -rf "$T"
 mkdir -p "$T" || exit 2
-# Uzun koşu: 1 500 sim saniyesi (SIL, hızlı); bu betik 2 s sonra keser.
-"$SIM" --kip sil --karsi tcp --a1-port 0 --sil "$SIL" --sure 1500 --csv "$T/k.csv" >"$T/cikti.txt" 2>"$T/hata.txt" &
+# Uzun koşu: 1 500 sim saniyesi (SIL, hızlı); bu betik oturum kurulunca keser (sabit uyku yok).
+"$SIM" --kip sil --karsi tcp --a1-port 0 --sil "$SIL" --sure 1500 --gunluk 2 --csv "$T/k.csv" >"$T/cikti.txt" 2>"$T/hata.txt" &
 PID=$!
-sleep 2
+# Hazır olma işareti: "oturum kuruldu" günlük satırı (en çok 20 s; asılma sınırı, ölçüt değil).
+I=0
+while ! grep -q "oturum kuruldu" "$T/hata.txt" 2>/dev/null && kill -0 "$PID" 2>/dev/null && [ "$I" -lt 200 ]; do
+  sleep 0.1
+  I=$((I + 1))
+done
 if ! kill -0 "$PID" 2>/dev/null; then
-  echo "KALDI: sinyal verilmeden süreç bitti (koşu 2 s'den kısa sürdü)"; cat "$T/hata.txt"; exit 1
+  echo "KALDI: sinyal verilmeden süreç bitti (koşu oturum kurulunca henüz sürmüyordu)"; cat "$T/hata.txt"; exit 1
 fi
+grep -q "oturum kuruldu" "$T/hata.txt" || { kill -9 "$PID"; echo "KALDI: oturum 20 s içinde kurulmadı"; cat "$T/hata.txt"; exit 1; }
 kill -"$SINYAL" "$PID"
 # En çok 20 s bekle (asılma sınırı; ölçüt değil).
 I=0

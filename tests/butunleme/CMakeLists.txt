@@ -211,6 +211,35 @@ add_test(NAME butunleme.ida_sim_sonar_acik_su
           "-DARGUMANLAR=--senaryo;scenarios/sonar-acik-su.toml;--sonar=acik;--kok;${PROJECT_SOURCE_DIR}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 set_tests_properties(butunleme.ida_sim_sonar_acik_su PROPERTIES TIMEOUT 600)
+# W4-sunucu-kucuk kabul 2 (özet satırı): düzgün SIL koşusunda `kapanış: düzgün` ve alanlar sayaçlarla
+# tutarlı (kaçırılan parti 0; oturum 2 = hazırlık oturumu + çalıştırma oturumu, hazırlık 1; kapanış
+# yazımı eksik 0; son hata yok).
+add_test(NAME butunleme.ida_sim_ozet_duzgun
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--sure;3;--gunluk;1"
+          "-DILETILER=ida_sim: kapanış: düzgün|kaçırılan parti 0,|yinelenen yanıt reddi 0, yeniden bağlanma 0|, oturum 2, kapanış yazımı eksik 0, son hata: yok|kopma 0, hazırlık 1,"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# Bilgi satırı (kapsam 5; z1: araç dosyasından 2 etkin sonar, sonarsız koşar): bayraksız koşuda etkin sonar bildirilir, `--sonar=kapali` ile bildirilmez.
+add_test(NAME butunleme.ida_sim_sonar_bilgi_satiri
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETI=senaryoda 2 etkin sonar var" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_sonar_bilgi_satiri_kapali
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--sonar=kapali;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DYOK=etkin sonar var" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_sonar_bilgi_satiri butunleme.ida_sim_sonar_bilgi_satiri_kapali PROPERTIES TIMEOUT 600)
+# Bağlantı kabulünün son diliminde gelen kapanış isteği sinyal sınıflamasıyla döner.
+add_test(NAME butunleme.kabul_son_dilim_sinyali COMMAND ida_butunleme_test kabul_son_dilim_sinyali)
+set_tests_properties(butunleme.kabul_son_dilim_sinyali PROPERTIES TIMEOUT 60)
+if(NOT WIN32)
+  # Bilinen hata çıkışı: var olmayan seri aygıt → çıkış 2, `kapanış: hata` ve son hata alanı.
+  add_test(NAME butunleme.ida_sim_ozet_hata
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=2
+            "-DARGUMANLAR=--kip;hil;--seri;/dev/ida_olmayan_aygit;--sure;1"
+            "-DILETILER=ida_sim: kapanış: hata|oturum 0, kapanış yazımı eksik 0, son hata: seri_ac("
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+endif()
 if(NOT WIN32)
   # Kapsam 1 / kabul 1 (HIL, sözde uçbirim; gerçek zamanlı ≈ 4–6 s) ve kapsam 4 / kabul 4.
   add_test(NAME butunleme.hil_sinyal_kapanisi COMMAND ida_butunleme_test hil_sinyal_kapanisi)

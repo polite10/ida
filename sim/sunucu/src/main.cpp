@@ -298,11 +298,12 @@ int main(int argc, char** argv)
     // W4-sunucu-kucuk kapsam 2: her kapanışta (düzgün, hata, sinyal) bir özet satırı; var olan sayaçlar.
     // Yazılım günlük düzeyinden bağımsızdır (kapanışın tek satırlık kaydı). `düşen kayıt`: A3 yayın
     // halkasında taşan, SIL tamponunda oturum bitince işlenmeden atılan ve oturumla atılan Ping360
-    // kaydı; `yeniden gönderim`: yinelenen yanıt reddi (A1 yinelenen çerçeve) ile yeniden bağlanma;
+    // kaydı; köprüde "yeniden gönderim" sayacı yoktur, alanlar gerçekte saydıklarıyla adlandırılır: yinelenen
+    // yanıt reddi (A1 yinelenen çerçeve) ve yeniden bağlanma (port yeniden açılması);
     // `sonar taşma`: kuyruk, teslim deposu ve tampon yetersizliği.
     std::fprintf(stderr,
                  "ida_sim: kapanış: %s; kaçırılan parti %llu, düşen kayıt (A3 halka %llu, SIL tampon %llu, Ping360 oturum %llu), "
-                 "yeniden gönderim (yinelenen yanıt %llu, yeniden bağlanma %llu), sonar taşma (kuyruk %llu, teslim %llu, tampon %llu), "
+                 "yinelenen yanıt reddi %llu, yeniden bağlanma %llu, sonar taşma (kuyruk %llu, teslim %llu, tampon %llu), "
                  "oturum %llu, kapanış yazımı eksik %llu, son hata: %s\n",
                  s.sinyal_kesti ? "sinyal" : (s.tamam ? "düzgün" : "hata"),
                  static_cast<unsigned long long>(c.parti_kacirildi), static_cast<unsigned long long>(s.a3_halka_tasma),
