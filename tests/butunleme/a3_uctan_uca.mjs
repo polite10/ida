@@ -81,18 +81,9 @@ try {
   await bekle(() => sonuc(baslat.komut_no) !== undefined, 20000, 'baslat sonucu (ön denetim: A1 el sıkışması)');
   dogrula(sonuc(baslat.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'baslat uygulandı (A3-K62)');
   let d = await http.durum();
-  // A3-K123: komut_sonucu olayı GET /durum anlık görüntüsünden önce görünebilir; bayat durum_rev'de
-  // (409 durum_rev_uyusmuyor) istemci durumu yeniler ve yeniden dener (en çok 5 deneme; yavaş CI koşucuları).
-  const kontrol = async (ad, ek) => {
-    for (let deneme = 0; ; deneme++) {
-      try {
-        return await http.calistirma(ad, { run_id: d.run_id, durum_rev: d.durum_rev }, ek);
-      } catch (h) {
-        if (h?.kod !== 'durum_rev_uyusmuyor' || deneme >= 4) throw h;
-        d = await http.durum();
-      }
-    }
-  };
+  // Kesin: yeniden deneme yok. Her komutta d, komuttan hemen önce okunan güncel anlık görüntüdür
+  // (A3-K122: durum_rev komutla artar; anlık görüntü komut_sonucu olayından önce yenilenir).
+  const kontrol = (ad, ek) => http.calistirma(ad, { run_id: d.run_id, durum_rev: d.durum_rev }, ek);
   dogrula(d.durum === 'kosuyor' && /^\d{8}-\d{6}-[0-9a-f]{6}$/.test(d.run_id ?? ''), `kosuyor, run_id ${d.run_id}`);
   // W4-duraklat (kapsam 6): hızdan bağımsız kurulum. SIL olabildiğince hızlı koşar; koşu görülür
   // görülmez hız 8 verilir (A3-K66; yalnız bekleme, bayt akışı değişmez) ki duraklatma koşu bitmeden
@@ -101,7 +92,9 @@ try {
   const hiz = await kontrol('hiz', { carpan: 8 });
   await bekle(() => sonuc(hiz.komut_no) !== undefined, 5000, 'hız sonucu');
   dogrula(sonuc(hiz.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'hız 8 uygulandı');
+  const revOnce = d.durum_rev;
   d = await http.durum();
+  dogrula(d.durum_rev === revOnce + 1, `hız sonucundan hemen sonra GET /durum durum_rev = önceki + 1 (${revOnce} -> ${d.durum_rev}; A3-K122)`);
   const dur = await kontrol('duraklat');
   await bekle(() => sonuc(dur.komut_no) !== undefined, 5000, 'duraklat sonucu');
   dogrula(sonuc(dur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'duraklat uygulandı (Tablo 4.7a)');

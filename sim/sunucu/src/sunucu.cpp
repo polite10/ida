@@ -2634,6 +2634,8 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b)
             hiz_t0_sim_ = static_cast<std::int64_t>(b) * kH;
             hiz_t0_duvar_ = Saat::now();
             a3_durum_kirli_ = true;
+            // A3-K122/K123: durum_rev arttı; anlık görüntü komut_sonucu'ndan ÖNCE yenilenir (a3_gecis gibi).
+            a3_anlik_guncelle();
             break;
         case a3::KomutTuru::calistirma_durdur:
             a3_durdur_ = true;

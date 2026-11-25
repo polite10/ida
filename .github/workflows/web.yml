@@ -5,7 +5,8 @@
 # (derleme yok), bu yüzden Windows ve macOS işlerine eklenmez. C++ A3 sunucusuyla uyumu
 # sınayan dört Node testi ise ikili gerektirir ve derleme iş akışlarında koşar (derleme.yml,
 # derleme-mac.yml; IDA_BAGIMLILIK_ZORUNLU açıkken atlama hata sayılır).
-# Yalnız web/, sözleşme belgeleri ya da bu dosya değişince tetiklenir. Node ve npm önbelleği
+# Yalnız web/, sözleşme belgeleri ya da bu dosya değişince tetiklenir (docs/sozlesmeler/sema/**
+# değişince derleme iş akışları da tetiklenir: şema derlemenin girdisidir). Node ve npm önbelleği
 # derleme iş akışlarıyla aynı sürüm ve kilit dosyasına bağlıdır.
 
 name: web

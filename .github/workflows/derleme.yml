@@ -19,7 +19,7 @@
 #     (github.ref_name). Yani aynı dalın PR koşuları ile elle başlatılan koşuları aynı
 #     gruptadır: hangisi sonra gelirse öncekini iptal eder.
 #   - Sınır: yalnız belge değiştiren gönderim iki derleme iş akışını da tetiklemez
-#     (paths-ignore); böyle bir gönderim süren macOS koşusunu iptal etmez (derlenen kod
+#     (paths; docs/sozlesmeler/sema/** hariç); böyle bir gönderim süren macOS koşusunu iptal etmez (derlenen kod
 #     değişmemiştir).
 #   - workflow_dispatch yalnız dosya varsayılan dalda (main) bulunduktan sonra kullanılabilir;
 #     bu dosyaları getiren ilk PR'da macOS işinin tek yolu `ci-mac` etiketidir. Kayıt agent'ı
@@ -49,9 +49,13 @@ name: derleme
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    # paths-ignore olumsuzlamayı desteklemez: `paths` + `!` (sonraki kural öncekini geçer). Belgeler yok
+    # sayılır, ama docs/sozlesmeler/sema/** derlemenin girdisidir (sim/a3/CMakeLists.txt) ve tetikler.
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/sozlesmeler/sema/**'
+      - '!**/*.md'
   workflow_dispatch:
 
 concurrency:
@@ -96,10 +100,6 @@ jobs:
           node-version: '22.23.2'
           cache: npm
           cache-dependency-path: web/package-lock.json
-
-      - name: Web bağımlılıkları (npm ci)
-        working-directory: web
-        run: npm ci
 
       - name: MSVC geliştirici ortamı (x64)
         shell: pwsh
@@ -166,10 +166,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: tools/ci/surumler.sh
 
+      # Kurulum zincirinin sonunda: düşerse Node testi isteyen derleme adımları atlanır (ikincil hata yok).
+      - name: Web bağımlılıkları (npm ci)
+        id: npm
+        if: ${{ !cancelled() }}
+        working-directory: web
+        run: npm ci
+
       # Derleme adımları birbirinden bağımsız koşar: biri başarısız olsa da ötekiler sonuç verir.
       - name: host-debug (derleme, birim testi, sözleşme başlıkları, sınır denetimi; MSVC /analyze)
         id: host_debug
-        if: ${{ !cancelled() && !matrix.asan && steps.vcpkg.outcome == 'success' }}
+        if: ${{ !cancelled() && !matrix.asan && steps.vcpkg.outcome == 'success' && steps.npm.outcome == 'success' }}
         run: |
           cmake --preset host-debug -DIDA_BAGIMLILIK_ZORUNLU=ON -DIDA_MSVC_ANALYZE=ON
           cmake --build --preset host-debug
@@ -183,7 +190,7 @@ jobs:
           key: ${{ steps.vcpkg_onbellek.outputs.cache-primary-key }}
 
       - name: host-asan (ASan)
-        if: ${{ !cancelled() && matrix.asan && steps.vcpkg.outcome == 'success' }}
+        if: ${{ !cancelled() && matrix.asan && steps.vcpkg.outcome == 'success' && steps.npm.outcome == 'success' }}
         run: |
           cmake --preset host-asan -DIDA_BAGIMLILIK_ZORUNLU=ON
           cmake --build --preset host-asan
