@@ -110,6 +110,9 @@ ida_viz_uyarilar(ida_viz_eklenti)
 if(NOT MSVC)
   # godot-cpp istisnasız derlenir; eklenti de öyle.
   target_compile_options(ida_viz_eklenti PRIVATE -fno-exceptions)
+else()
+  # godot-cpp başlıkları SYSTEM'dir; MSVC'de /W4 /WX onların uyarılarını hata yapmasın.
+  target_compile_options(ida_viz_eklenti PRIVATE /external:W0)
 endif()
 set(_viz_bin "${CMAKE_CURRENT_SOURCE_DIR}/proje/bin")
 set_target_properties(ida_viz_eklenti PROPERTIES

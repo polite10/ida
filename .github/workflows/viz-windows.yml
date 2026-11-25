@@ -1,0 +1,167 @@
+# Görselleştiricinin Windows derlemesi (W5-viz-windows): MSVC ile `-DIDA_VIZ=ON` (godot-cpp
+# GDExtension, soket katmanı, sahte A2 kaynağı), `host.viz.*` testleri, başsız Godot varlık
+# yükleyici testi ve `viz/calistir.ps1` sözdizimi denetimi.
+#
+# Kota ve süre: godot-cpp derlemesi uzundur (soğuk önbellekte onlarca dakika olabilir; ölçüm
+# aşağıda iş özetine ve PR raporuna yazılır). Bu yüzden iş yalnız elle (workflow_dispatch) ve
+# `viz/**` ya da bu dosya değişen PR'larda koşar; derleme.yml ve derleme-mac.yml'den bağımsızdır
+# (onların paths kuralı viz/**'u zaten kapsar; bu iş ek olarak 3B eklentiyi derler).
+# Önbellek: CPM kaynakları (godot-cpp arşivi) ve derleme dizini (godot-cpp nesneleri) ayrı
+# geri yüklenir ve derleme başarılıysa kaydedilir. Eylemler commit SHA ile sabittir.
+#
+# Godot 4.7.2 Windows ikilisi: godotengine/godot-builds sürüm sayfasından (birincil kaynak)
+# indirilir; SHA-512 aynı sürümün SHA512-SUMS.txt dosyasındadır ve burada sabittir; özet
+# tutmazsa dosya kullanılmaz (iş düşer). SHA-256 yalnız bilgi içindir (indirilen dosyadan
+# hesaplanıp günlüğe yazılır; birincil kaynak SHA-256 yayımlamaz).
+
+name: viz-windows
+
+on:
+  pull_request:
+    paths:
+      - 'viz/**'
+      - '.github/workflows/viz-windows.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: viz-windows-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_SURUM: 4.7.2-stable
+  GODOT_ZIP: Godot_v4.7.2-stable_win64.exe.zip
+  GODOT_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
+
+jobs:
+  viz-windows:
+    name: Görselleştirici (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CC: cl
+      CXX: cl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # godot-cpp'nin bağlama üreticisi Python ister.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12.10'
+
+      - name: MSVC geliştirici ortamı (x64)
+        shell: pwsh
+        run: tools/ci/msvc-ortam.ps1
+
+      - name: calistir.ps1 sözdizimi denetimi (pwsh ayrıştırıcısı)
+        shell: pwsh
+        run: |
+          $hata = $null; $belirtec = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path viz/calistir.ps1).Path, [ref]$belirtec, [ref]$hata)
+          if ($hata) { $hata | ForEach-Object { Write-Error $_.ToString() }; exit 1 }
+          Write-Host 'calistir.ps1: sözdizimi geçerli'
+
+      - name: Önbellek yolları
+        run: |
+          t=$(cygpath -m "$RUNNER_TEMP")
+          {
+            echo "CPM_SOURCE_CACHE=$t/cpm"
+            echo "GODOT_DIZIN=$t/godot"
+          } >>"$GITHUB_ENV"
+          mkdir -p "$t/cpm" "$t/godot"
+
+      - name: CPM önbelleğini geri yükle
+        id: cpm_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: viz-cpm-${{ runner.os }}-${{ hashFiles('viz/CMakeLists.txt', 'cmake/CPM.cmake', 'cmake/IdaBagimliliklar.cmake') }}
+
+      # Derleme dizini mutlak yollar içerir; aynı koşucu düzeninde (yol sabit) geri yüklenir.
+      # Anahtar godot-cpp sabitini (viz/CMakeLists.txt) ve ortak derleme dosyalarını içerir;
+      # restore-keys ile kısmen eşleşen önbellekten artımlı derleme yapılır.
+      - name: Derleme önbelleğini geri yükle
+        id: derleme_onbellek
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/viz
+          key: viz-derleme-${{ runner.os }}-${{ hashFiles('viz/CMakeLists.txt', 'cmake/**', 'CMakeLists.txt') }}-${{ github.sha }}
+          restore-keys: |
+            viz-derleme-${{ runner.os }}-${{ hashFiles('viz/CMakeLists.txt', 'cmake/**', 'CMakeLists.txt') }}-
+            viz-derleme-${{ runner.os }}-
+
+      - name: Yapılandır ve derle (eklenti, soket katmanı, sahte kaynak, testler)
+        id: derleme
+        run: |
+          basla=$(date +%s)
+          cmake -S . -B build/viz -G Ninja -DIDA_HEDEF=host -DCMAKE_BUILD_TYPE=Release -DIDA_VIZ=ON
+          cmake --build build/viz --target ida_viz_eklenti ida_sahte_a2 \
+            ida_viz_test_sha256 ida_viz_test_kodek ida_viz_test_cerceve ida_viz_test_sahne \
+            ida_viz_test_oturum ida_viz_test_dalga ida_viz_test_yeniden_baglanma \
+            ida_viz_test_okuma_butcesi
+          sure=$(( $(date +%s) - basla ))
+          echo "derleme_sn=$sure" >>"$GITHUB_OUTPUT"
+          echo "Yapılandırma + derleme süresi: ${sure} s (CPM önbelleği isabeti: ${{ steps.cpm_onbellek.outputs.cache-hit || 'false' }}, derleme önbelleği tam isabet: ${{ steps.derleme_onbellek.outputs.cache-hit || 'false' }})"
+
+      - name: Önbellekleri kaydet
+        if: ${{ !cancelled() && steps.derleme.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/viz
+          key: ${{ steps.derleme_onbellek.outputs.cache-primary-key }}
+
+      - name: CPM önbelleğini kaydet
+        if: ${{ !cancelled() && steps.derleme.outcome == 'success' && steps.cpm_onbellek.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: ${{ steps.cpm_onbellek.outputs.cache-primary-key }}
+
+      # İndirilen dosya güvenilmez veridir: SHA-512 sabit özetle eşleşmezse çıkarılmaz.
+      - name: Godot 4.7.2 Windows ikilisi (resmî kaynak, SHA-512 sabit)
+        run: |
+          zip="$GODOT_DIZIN/$GODOT_ZIP"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o "$zip" "https://github.com/godotengine/godot-builds/releases/download/$GODOT_SURUM/$GODOT_ZIP"
+          echo "$GODOT_SHA512  $zip" | sha512sum -c -
+          echo "SHA-256 (bilgi): $(sha256sum "$zip" | cut -d' ' -f1)"
+          mkdir -p "$GODOT_DIZIN/ac"
+          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$zip' -DestinationPath '$GODOT_DIZIN/ac' -Force"
+          ls -l "$GODOT_DIZIN/ac"
+          # Başsız testler konsol ikilisini kullanır (çıktıyı konsola yazar).
+          echo "GODOT=$GODOT_DIZIN/ac/Godot_v4.7.2-stable_win64_console.exe" >>"$GITHUB_ENV"
+
+      # varlik_godot burada koşar (GODOT verilmiştir; yoksa 77 ile atlanırdı).
+      - name: host.viz.* testleri (soketli olanlar ve başsız Godot dahil)
+        run: |
+          basla=$(date +%s)
+          ctest --test-dir build/viz -R 'host\.viz\.' --output-on-failure --no-tests=error 2>&1 | tee build/ctest-viz.txt
+          test "${PIPESTATUS[0]}" -eq 0
+          echo "Test süresi: $(( $(date +%s) - basla )) s"
+          # Atlanan test sessizce yeşil sayılmasın: varlik_godot koşmuş olmalı.
+          if grep -q 'Skipped' build/ctest-viz.txt; then echo 'bir test atlandı (varlik_godot?)' >&2; exit 1; fi
+
+      - name: İş çıktısı içeriği
+        run: |
+          for f in viz/proje/bin/ida_viz.dll viz/proje/ida_viz.gdextension build/viz/viz/ida_sahte_a2.exe viz/calistir.ps1; do
+            ls -l "$f"
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viz-windows-x64
+          path: |
+            viz/proje/bin/ida_viz.dll
+            viz/proje/ida_viz.gdextension
+            build/viz/viz/ida_sahte_a2.exe
+            viz/calistir.ps1
+          retention-days: 7
+          if-no-files-found: error

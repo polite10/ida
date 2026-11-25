@@ -76,3 +76,45 @@ kümelerini de üretir.
 `--a2-port <n>`, `--a2-operator-gecikme-us <n>` (A2-K93), `--sahte` (etiket),
 `--ekran-goruntusu=<dizin>` (senaryonun 6, 17,5, 45 ve 104. saniyelerinde ekran görüntüsü),
 `--olcum=<dosya.json>` (kare süresi; senaryo sıfırlanmadan önce yazar ve çıkar).
+
+## Windows (x64, MSVC)
+
+Eklenti (`ida_viz.dll`), soket katmanı ve sahte kaynak MSVC ile derlenir; CI işi
+`.github/workflows/viz-windows.yml`'dir (elle ya da `viz/**` değişince koşar; çıktı: `viz-windows-x64`
+iş çıktısı = `ida_viz.dll`, `ida_viz.gdextension`, `ida_sahte_a2.exe`, `calistir.ps1`).
+
+**Gereksinimler (hedef makine).** Windows 10/11 x64; Visual Studio 2022 Build Tools ("C++ ile
+masaüstü geliştirme" + "C++ CMake araçları", Ninja dahil); Python 3 (godot-cpp bağlama üreticisi);
+Godot 4.7.2 Windows ikilisi (resmî: `godotengine/godot-builds`, `Godot_v4.7.2-stable_win64.exe.zip`,
+SHA-512 `83decd58...2259993`, `SHA512-SUMS.txt` ile aynı). Gerçek sim kipi için `ida_sim.exe`
+(`cmake --preset host-release; cmake --build --preset host-release --target ida_sim`, `sim/sunucu/BENIOKU.md`).
+
+**Derleme (elle).** "x64 Native Tools" isteminde ya da `viz\calistir.ps1 -Derle` ile:
+
+```
+cmake -S . -B build\viz -G Ninja -DIDA_HEDEF=host -DCMAKE_BUILD_TYPE=Release -DIDA_VIZ=ON
+cmake --build build\viz --target ida_viz_eklenti ida_sahte_a2
+ctest --test-dir build\viz -R "host\.viz"
+```
+
+**Başlatma.**
+
+```
+$env:GODOT = "C:\araclar\Godot_v4.7.2-stable_win64.exe"
+viz\calistir.ps1                                          # sahte kaynak, sade kademe (varsayılan)
+viz\calistir.ps1 -Kademe tam                              # sahte kaynak, tam kademe
+viz\calistir.ps1 -Sim scenarios\gorev-havuz-3b.toml        # gerçek sim (SIL); -Hiz, -Kok, -A2Port
+```
+
+Betik `calistir.sh`'in eşidir: eklenti derlenmemişse derler, Godot projesini ilk kez başsız içe
+aktarır, sahte kaynağı ya da `ida_sim.exe`'yi başlatır, pencere kapanınca kaynağı kapatır. `-Sim`
+kipinde sim'e pencere kapanınca tek Ctrl-C konsol olayı gider (düzgün kapanış, özet satırı); sahte
+kaynak Windows'ta doğrudan sonlandırılır. Betik imzasız olduğundan ilk seferde
+`powershell -ExecutionPolicy Bypass -File viz\calistir.ps1` gerekebilir.
+
+**Hedef makinede ilk deneme (kullanıcı yapar; CI'da Godot'nun pencereli koşusu yoktur).**
+
+1. `viz\calistir.ps1 -Derle` ile eklentiyi derleyin (ya da iş çıktısındaki `ida_viz.dll`'i `viz\proje\bin\` altına koyun).
+2. `viz\calistir.ps1` açılır ve "SAHTE VERİ" etiketiyle sahne akar mı bakın (8 GB bellek, dahili ekran kartı).
+3. `viz\calistir.ps1 -Sim scenarios\gorev-havuz-3b.toml` ile gerçek sim'e bağlanın; pencereyi kapatınca sim günlüğünde kapanış özeti görünmeli.
+4. Ölçüm: `--olcum` ile kare süresi (`-Ek "--olcum=C:\temp\olcum.json"`); bellek için Görev Yöneticisi'nde `Godot` ve `ida_sim` çalışma kümesi. Sade ve tam kademeyi ayrı koşun, sonuçları `docs/olcumler/` altına rapor olarak işleyin. Bu rakamlar ölçülmeden bilinmez; bu belge tahmin vermez.
