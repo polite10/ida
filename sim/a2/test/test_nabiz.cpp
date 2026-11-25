@@ -3,6 +3,7 @@
 // (A2-U27'nin kamera dışı kısmı; A2-K80, K96, K29, K24).
 #include "takvim.hpp"
 #include "test_destek.hpp"
+#include "zamanlama_olcutu.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -382,8 +383,16 @@ void eszamanli_kos(Denetci& d, std::size_t halka_bayt, bool cogu_olagan)
     int tasma_ile_biten = 0;
     std::uint64_t toplam_durum = 0;
     std::uint64_t toplam_olay = 0;
+    // Kapsama hedefe göre ölçülür, süreye göre değil (W5-K35): hedefe ulaşılana kadar koşulur; cömert
+    // asılma süresi yalnız koşunun sonsuza gitmesini önler. Ulaşılamazsa sonuç paylaşılan CI'da ve
+    // sanitizer'lı derlemede yalnız ölçümdür (zamanlama_olcutu.hpp); doğruluk denetimleri her koşulda düşürücüdür.
     const auto son = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
-    while (std::chrono::steady_clock::now() < son || oturum < 50) {
+    const auto tavan = std::chrono::steady_clock::now() + std::chrono::seconds(90);
+    const auto hedefte = [&] {
+        return oturum >= 50 && toplam_olay > 1000 && toplam_durum > static_cast<std::uint64_t>(oturum) &&
+               (!cogu_olagan || oturum - tasma_ile_biten >= 10);
+    };
+    while ((std::chrono::steady_clock::now() < son || !hedefte()) && std::chrono::steady_clock::now() < tavan) {
         izleyici = KumeIzleyici{};
         if (!z.baglan()) {
             DOGRULA(d, false, "bağlanamadı");
@@ -438,9 +447,13 @@ void eszamanli_kos(Denetci& d, std::size_t halka_bayt, bool cogu_olagan)
                 oturum, tasma_ile_biten, static_cast<unsigned long long>(toplam_durum), static_cast<unsigned long long>(toplam_olay),
                 static_cast<unsigned long long>(adim_a.load()), static_cast<unsigned long long>(s.yayin.dusen_durum),
                 static_cast<unsigned long long>(s.yayin.kayip_korunan));
-    DOGRULA(d, oturum >= 50 && toplam_olay > 1000 && toplam_durum > static_cast<std::uint64_t>(oturum), "yeterli kapsama");
-    if (cogu_olagan) {
-        DOGRULA(d, tasma_ile_biten * 2 < oturum, "oturumların çoğu olağan sürdü (sınama yalnız taşma yolunu koşmadı)");
+    if (d.hata == 0) {
+        // Kapsama: en az 50 oturum, yeterli olay/durum; büyük halkada en az 10 oturum olağan sürdü
+        // (sınama yalnız taşma yolunu koşmadı). Makine hızına bağlı olduğundan zamanlama kuralına tabi.
+        DOGRULA(d, ida::test::zamanlama(hedefte(), "a2 eşzamanlı kapsama",
+                                        std::to_string(oturum) + " oturum, " + std::to_string(oturum - tasma_ile_biten) +
+                                            " olağan, " + std::to_string(toplam_olay) + " olay, " + std::to_string(toplam_durum) + " durum"),
+                "yeterli kapsama (hedefe asılma süresinde ulaşıldı)");
     }
     DOGRULA(d, s.protokol_hatasi == 0 && s.yayin.gecersiz_cagri == 0, "sunucu ve yayıncı hata saymadı");
 }
