@@ -125,9 +125,10 @@ AnlikDurum A3Alici::anlik()
     a.gecerli = p.gecerli;
     a.gercek_zamani_kacirdi = p.gercek_zamani_kacirdi;
     a.gecerlilik_nedenleri = p.gecerlilik_nedenleri;
-    // Kademeler: 3B görünüm ve kamera ida_sim'de yoktur (kapali); sonar `--sonar` ile sade
-    // (W4-bagla-sonar); kayıt (A6) yok: en alt kademe (sözleşmenin değer kümesinde "yok" yok; rapor).
-    a.kademe_gorunum = 0;
+    // Kademeler: 3B görünüm `--a2-port` ile senaryonun kademesi (W5-bagla-a2), yoksa kapali; kamera
+    // ida_sim'de yoktur (kapali); sonar `--sonar` ile sade (W4-bagla-sonar); kayıt (A6) yok: en alt
+    // kademe (sözleşmenin değer kümesinde "yok" yok; rapor).
+    a.kademe_gorunum = p.kademe_gorunum;
     a.kademe_kamera = 0;
     a.kademe_sonar = p.kademe_sonar;
     a.kademe_kayit = 0;

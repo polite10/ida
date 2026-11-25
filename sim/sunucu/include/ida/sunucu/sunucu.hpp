@@ -13,9 +13,10 @@
 // Fizik sınırındaki sıra (her sınır b): köprünün emniyet ve sürekli çıktı işlemleri
 // (A1-K85) → acil durdurma engeli (iskelet §5: etkinken itici girdisi nötr) → senaryonun
 // itici arızası → fizik adımı b → b+1; sensör kümesi b'deki durumla örnekler; b kontrol
-// sınırıysa parti kapanır.
+// sınırıysa parti kapanır. A3 ve A2 yayınları (açıksa) sınırın son işidir, fizik adımından önce.
 #pragma once
 
+#include "ida/a2/sunucu.hpp"
 #include "ida/a3/komut.hpp"
 #include "ida/kopru/kopru.hpp"
 #include "ida/kopru/tasima.hpp"
@@ -181,6 +182,26 @@ struct Ayar {
     std::string sonar_csv_yolu;        // boşsa yazılmaz: sonar kayıtları (arıza zinciri sonrası)
     // Yalnız sınama: sınırda teslim edilen her sonar kaydı (köprüye verilmeden önce).
     std::function<void(const sonar::SonarOlcumu&)> sonar_kancasi;
+
+    // ---- A2 sunucusu (W5-bagla-a2; docs/sozlesmeler/A2-gorsellestirici.md) ----
+    // W5-K31: kapalıyken (varsayılan) sahiplik kilidi alınmaz, dinleyici açılmaz; koşu ve çıktılar
+    // bu iş öncesiyle bayt bayt aynıdır. Açıkken (`--a2-port`) süreç başına bir A2 sunucusu başlar
+    // ve dünyanın durumu her fizik sınırında görselleştiriciye yayınlanır (dünya hiçbir koşulda
+    // beklemez: A2-K47). Yalnız senaryo dosyasıyla (varlık kümesi, ortam ve görünüm kademesi
+    // senaryodandır; yerleşik senaryoda tanım yok). `kalite.gorunum = "kapali"` ise dinleyici açılmaz
+    // (A2-K02). Kilit ya da port alınamazsa koşu A2'siz sürer (A2-K05, K79).
+    bool a2_acik = false;
+    std::uint16_t a2_port = 47210;     // A2-K01, K93: 1024 … 65 535 (aralık dışında koşu başlamaz)
+    bool a2_sinama_bos_port = false;   // yalnız sınama: işletim sisteminin verdiği boş port
+    std::string a2_kilit_dosyasi;      // yalnız sınama: sahiplik kilidinin yolu (boş: A2-K77'deki sabit yer)
+    std::size_t a2_gonderme_kuyrugu_bayt = 0;   // yalnız sınama: 0 → A2-K26 (8 MiB)
+    // Yalnız sınama: A2 sunucusu başlatıldı (dinlenen port; A2'sizken 0 ve dinliyor = false).
+    std::function<void(std::uint16_t port, bool dinliyor)> a2_hazir;
+
+    // SIL hız çarpanının başlangıç değeri (`--sil-hiz`; A3-K66 ile aynı düzenek: yalnız bekleme,
+    // bayt akışı ve CSV değişmez). 0: olabildiğince hızlı (varsayılan). A3 açıkken panelin
+    // `calistirma/hiz` komutu bu değerin yerine geçer. Yalnız SIL.
+    double sil_hiz = 0.0;
 };
 
 // Bir kontrol adımının kaydı (tests/zincir Satir ile aynı anlamlar; kart tarafı A1'den).
@@ -270,6 +291,26 @@ struct GevsetmeReddi {
 };
 
 enum class HataTuru { yok, calisma, kullanim, senaryo_gecersiz, senaryo_yurutulemez };
+
+// A2 sunucusunun koşu sonundaki durumu ve sayaçları (W5-bagla-a2; kapanış özet satırına girer).
+struct A2Ozeti {
+    bool istendi = false;            // --a2-port verildi
+    // kapali (istenmedi) | gorunum_kapali (A2-K02) | tanim_yok (çalıştırma tanımı kurulamadı) |
+    // dinliyor | kilit_baskasinda | kilit_acilamadi | port_acilamadi | ic_hata (a2::A2Durumu adları;
+    // sunucunun BAŞLANGIÇTAKİ durumu: kapanışta dinleyici zaten kapanır)
+    std::string durum = "kapali";
+    std::string aciklama;            // insan için (ör. "A2 sahiplik kilidi başka bir sim sürecinde")
+    std::uint16_t port = 0;          // dinlenen port; A2'sizken 0
+    std::uint8_t kademe = 0;         // 0 kapali, 1 sade, 2 tam (kalite.gorunum)
+    bool calistirma_tanimlandi = false;   // yeni_calistirma kabul edildi
+    std::uint32_t arac_kimligi = 0;  // aracın A2 gövde kimliği (W5-K32)
+    std::uint64_t adim_siniri = 0;   // dünyanın verdiği adım sınırı (çağrı)
+    std::uint64_t reddedilen_cagri = 0;   // kitaplığın uygulamadığı yayın çağrısı (0 beklenir)
+    // Dünya iş parçacığında `adim_siniri` çağrısının süresi (duvar; ölçüm).
+    std::int64_t cagri_toplam_ns = 0;
+    std::int64_t cagri_en_kotu_ns = 0;
+    a2::SunucuSayaclari sayac;       // kitaplığın sayaçları (yayın tarafı `sayac.yayin`)
+};
 
 // Doğrulama raporunun bir bulgusu (A5 §3.14; geçerli senaryonun uyarıları dahil, ör. A5-K71).
 struct DogrulamaBulgusu {
@@ -369,6 +410,8 @@ struct Sonuc {
     std::vector<std::int64_t> sonar_adim_ping_ns;        // ping atılan sınırların süreleri (ölçüm; sıralı değil)
     std::vector<std::string> sonar_uyarilari;
     std::string sonar_csv;
+    // ---- A2 (W5-bagla-a2) ----
+    A2Ozeti a2;
 };
 
 Sonuc kos(const Ayar& ayar);
@@ -379,6 +422,11 @@ int a3_ayirma_sayilir() noexcept;
 // Yalnız sınama (W4-K27 (5); W4-bagla-sonar sol #5): çağıran iş parçacığı dünya tarafındaki sonar
 // hesabının ya da boşaltmasının içindeyken sıfırdan büyük (A3 açık da kapalı da).
 int sonar_ayirma_sayilir() noexcept;
+
+// Yalnız sınama (W5-bagla-a2, W5-K31): bu süreçte A2 sunucusunu başlatma denemesi sayısı (sahiplik
+// kilidini almayı ve dinlemeyi deneyen her çağrı). `--a2-port` verilmeyen koşu bu sayacı değiştirmez:
+// kilit alınmadığının ve port açılmadığının kanıtı.
+std::uint64_t a2_baslatma_sayisi() noexcept;
 
 const char* csv_basligi();
 
