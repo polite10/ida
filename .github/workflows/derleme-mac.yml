@@ -92,6 +92,18 @@ jobs:
         with:
           python-version: '3.12.10'
 
+      # Node testleri (sim.a3.*_web, butunleme.a3_*_web) web/node_modules ister; kurulum başarısızsa
+      # iş düşer, testler IDA_BAGIMLILIK_ZORUNLU ile atlanamaz. Her iki kolda (ASan dahil) gerekir.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Web bağımlılıkları (npm ci)
+        working-directory: web
+        run: npm ci
+
       - name: Önbellek yolları
         run: |
           t=$RUNNER_TEMP

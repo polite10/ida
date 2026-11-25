@@ -156,16 +156,22 @@ endif()
 # Kabul 3: ida_sim + panelin A3 istemcisi (Node; web/src/a3, web/'e dosya eklenmez). Node yoksa
 # kaydedilmez; web/node_modules (esbuild) yoksa 77 döner ve atlanır.
 find_program(IDA_NODE_BUTUNLEME node)
+if(IDA_BAGIMLILIK_ZORUNLU AND NOT IDA_NODE_BUTUNLEME)
+  message(FATAL_ERROR "tests/butunleme: IDA_BAGIMLILIK_ZORUNLU açık ama node bulunamadı")
+endif()
 if(IDA_NODE_BUTUNLEME)
   add_test(NAME butunleme.a3_uctan_uca_web
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_uctan_uca.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node")
-  set_tests_properties(butunleme.a3_uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180)
+  set_tests_properties(butunleme.a3_uctan_uca_web PROPERTIES TIMEOUT 180)
   # W4-bagla-sonar kabul 5: sonar kanallarının panel istemcisiyle çözülen değerleri sonar CSV'siyle.
   add_test(NAME butunleme.a3_sonar_web
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_sonar_web.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_sonar")
-  set_tests_properties(butunleme.a3_sonar_web PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240)
+  set_tests_properties(butunleme.a3_sonar_web PROPERTIES TIMEOUT 240)
+  if(NOT IDA_BAGIMLILIK_ZORUNLU)  # CI'da 77 (atlama) hata sayılır
+    set_tests_properties(butunleme.a3_uctan_uca_web butunleme.a3_sonar_web PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
 endif()
 
 # W4-bagla-sonar (docs/gorevler/W4-bagla-sonar.md kabul 1–6; sim/sunucu/BENIOKU.md "Sonar").
