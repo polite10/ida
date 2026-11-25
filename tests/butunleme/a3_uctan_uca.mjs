@@ -81,16 +81,21 @@ try {
   await bekle(() => sonuc(baslat.komut_no) !== undefined, 20000, 'baslat sonucu (ön denetim: A1 el sıkışması)');
   dogrula(sonuc(baslat.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'baslat uygulandı (A3-K62)');
   let d = await http.durum();
+  // Kesin: yeniden deneme yok. Her komutta d, komuttan hemen önce okunan güncel anlık görüntüdür
+  // (A3-K122: durum_rev komutla artar; anlık görüntü komut_sonucu olayından önce yenilenir).
+  const kontrol = (ad, ek) => http.calistirma(ad, { run_id: d.run_id, durum_rev: d.durum_rev }, ek);
   dogrula(d.durum === 'kosuyor' && /^\d{8}-\d{6}-[0-9a-f]{6}$/.test(d.run_id ?? ''), `kosuyor, run_id ${d.run_id}`);
   // W4-duraklat (kapsam 6): hızdan bağımsız kurulum. SIL olabildiğince hızlı koşar; koşu görülür
   // görülmez hız 8 verilir (A3-K66; yalnız bekleme, bayt akışı değişmez) ki duraklatma koşu bitmeden
   // yerleşsin; sonra çalıştırma duraklatılır ve sim zamanı yalnız adımlamayla ilerler. ARM'ın sim
   // zamanı ve kart yanıtı duvar hızına bağlı değildir. Kanal değerleri adım numarasıyla eşlenir.
-  const hiz = await http.calistirma('hiz', { run_id: d.run_id, durum_rev: d.durum_rev }, { carpan: 8 });
+  const hiz = await kontrol('hiz', { carpan: 8 });
   await bekle(() => sonuc(hiz.komut_no) !== undefined, 5000, 'hız sonucu');
   dogrula(sonuc(hiz.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'hız 8 uygulandı');
+  const revOnce = d.durum_rev;
   d = await http.durum();
-  const dur = await http.calistirma('duraklat', { run_id: d.run_id, durum_rev: d.durum_rev });
+  dogrula(d.durum_rev === revOnce + 1, `hız sonucundan hemen sonra GET /durum durum_rev = önceki + 1 (${revOnce} -> ${d.durum_rev}; A3-K122)`);
+  const dur = await kontrol('duraklat');
   await bekle(() => sonuc(dur.komut_no) !== undefined, 5000, 'duraklat sonucu');
   dogrula(sonuc(dur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'duraklat uygulandı (Tablo 4.7a)');
   d = await http.durum();
@@ -101,7 +106,7 @@ try {
     'duraklatılmışken sim zamanı ilerlemedi (300 ms)');
   let hataDur = null;
   try {
-    await http.calistirma('duraklat', { run_id: d.run_id, durum_rev: d.durum_rev });
+    await kontrol('duraklat');
   } catch (h) {
     hataDur = h;
   }
@@ -110,7 +115,7 @@ try {
   const adimlaBitti = () => olaylar.filter((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.neden === 'adimla_tamamlandi').length;
   const n1 = Math.max(1, Math.min(10000, Math.ceil((2e9 - Number(d.sim_t_ns)) / 5e6)));
   const t0 = Number(d.sim_t_ns);
-  const ad1 = await http.calistirma('adimla', { run_id: d.run_id, durum_rev: d.durum_rev }, { periyot_sayisi: n1 });
+  const ad1 = await kontrol('adimla', { periyot_sayisi: n1 });
   await bekle(() => sonuc(ad1.komut_no) !== undefined && adimlaBitti() >= 1, 20000, 'adımlama bitti');
   d = await http.durum();
   dogrula(d.durum === 'duraklatildi' && Number(d.sim_t_ns) === t0 + n1 * 5e6,
@@ -137,7 +142,7 @@ try {
   await new Promise((coz) => setTimeout(coz, 200));
   dogrula(yanit() === undefined, 'duraklatılmışken kart yanıtı yok (komut tele çıkmadı; A1-K41)');
   d = await http.durum();
-  const ad2 = await http.calistirma('adimla', { run_id: d.run_id, durum_rev: d.durum_rev }, { periyot_sayisi: 200 });
+  const ad2 = await kontrol('adimla', { periyot_sayisi: 200 });
   await bekle(() => sonuc(ad2.komut_no) !== undefined, 5000, 'adımla (2) sonucu');
   await bekle(() => yanit() !== undefined, 10000, 'ARM kart yanıtı (yer_istasyonu_yaniti)');
   const y = yanit().ayrinti;
@@ -150,7 +155,7 @@ try {
   await bekle(() => adimlaBitti() >= 2, 20000, 'adımlama (2) bitti');
   d = await http.durum();
   dogrula(d.durum === 'duraklatildi', 'adımlamadan sonra yeniden duraklatıldı');
-  const sur = await http.calistirma('surdur', { run_id: d.run_id, durum_rev: d.durum_rev });
+  const sur = await kontrol('surdur');
   await bekle(() => sonuc(sur.komut_no) !== undefined, 5000, 'sürdür sonucu');
   dogrula(sonuc(sur.komut_no)?.ayrinti?.sonuc === 'uygulandi', 'sürdür uygulandı');
   await bekle(() => olaylar.some((o) => o.tur === 'calistirma_durumu_degisti' && o.ayrinti?.sonraki === 'bitti'), 60000, 'bitti');

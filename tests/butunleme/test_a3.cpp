@@ -570,6 +570,8 @@ int test_a3_calistirma()
     std::vector<std::uint32_t> nolar;
     int red_tamam = 0, red_deneme = 0;
     bool duraklatildi_goruldu = false;
+    std::optional<decltype(ida::a3::AnlikDurum::durum_rev)> hiz_rev_once;
+    bool hiz_rev_ok = false, hiz_409_ok = false;
     auto ver = [&nolar](ida::a3::KomutAlicisi& al, Komut k, const char* ne) {
         nolar.push_back(k.komut_no);
         dogrula_a3(al.al(k).tur == ida::a3::AlimSonucu::Tur::kuyrukta, std::string(ne) + " kuyrukta");
@@ -581,10 +583,24 @@ int test_a3_calistirma()
             ++red_deneme;
             red_tamam += gecersiz_dene(al) ? 1 : 0;
         }
-        if (b == 2000 && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
+        if (b == 2016 && hiz_rev_once) {
+            // A3-K122/K123: hız komutu durum_rev'i artırdı; anlık görüntü 80 adım beklemeden yenilenmiş olmalı
+            // (komut_sonucu ile GET /durum ve kanal aynı değeri gösterir) ve bayat revizyonla gelen istek
+            // 409'da gerçek güncel değeri alır.
+            hiz_rev_ok = d.durum_rev == *hiz_rev_once + 1u;
+            Komut eski = calistirma(d, KomutTuru::calistirma_duraklat);
+            eski.beklenen_durum_rev = *hiz_rev_once;
+            const auto r = al.al(eski);
+            hiz_409_ok = r.tur == ida::a3::AlimSonucu::Tur::ret && r.hata_kodu == "durum_rev_uyusmuyor" &&
+                         r.ayrinti_json.find("\"guncel_durum_rev\":" + std::to_string(d.durum_rev)) != std::string::npos;
+        }
+        // 2012: 80 adımlık anlık görüntü yenileme sınırında (b % 80 == 0) değil; hız komutunun durum_rev artışı
+        // yalnız komutun kendi yenilemesiyle görünür (A3-K122).
+        if (b == 2012 && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
             Komut h = calistirma(d, KomutTuru::calistirma_hiz);
             h.carpan = 20.0;
             ver(al, h, "hız 20");
+            hiz_rev_once = d.durum_rev;
         } else if (b == 6400 && d.durum == ida::a3::CalistirmaDurumu::kosuyor) {
             Komut h = calistirma(d, KomutTuru::calistirma_hiz);
             h.carpan = 0.0;
@@ -595,6 +611,8 @@ int test_a3_calistirma()
     dogrula_a3(red_deneme >= 4 && red_tamam == red_deneme,
                "Tablo 4.7a: geçersiz duraklat/sürdür/adımla girişte reddedildi; durum ve durum_rev değişmedi (" +
                    std::to_string(red_tamam) + "/" + std::to_string(red_deneme) + ")");
+    dogrula_a3(hiz_rev_ok, "hız komutundan sonra anlık görüntünün durum_rev'i hemen önceki + 1 (A3-K122)");
+    dogrula_a3(hiz_409_ok, "bayat durum_rev'li istek 409'da gerçek güncel değeri taşır (A3-K123)");
     dogrula_a3(!duraklatildi_goruldu, "duraklatma istenmedi: duraklatildi durumu görülmedi");
     dogrula_a3(nolar.size() == 2u, "iki hız komutu");
     bool hepsi = nolar.size() == 2u;

@@ -1,0 +1,57 @@
+# Web panelleri testi (W5-ci-node): `npm ci` + `npm test` (tip denetimi, ardından arac/test.mjs).
+#
+# Koşucu Linux'tur (ubuntu-24.04; dakika ücreti macOS'unkinin onda biri, Windows'unkinin
+# yarısıdır: 0,006 / 0,062 / 0,010 USD): `web/`'in testleri platformdan bağımsız Node kodudur
+# (derleme yok), bu yüzden Windows ve macOS işlerine eklenmez. C++ A3 sunucusuyla uyumu
+# sınayan dört Node testi ise ikili gerektirir ve derleme iş akışlarında koşar (derleme.yml,
+# derleme-mac.yml; IDA_BAGIMLILIK_ZORUNLU açıkken atlama hata sayılır).
+# Yalnız web/, sözleşme belgeleri ya da bu dosya değişince tetiklenir (docs/sozlesmeler/sema/**
+# değişince derleme iş akışları da tetiklenir: şema derlemenin girdisidir). Node ve npm önbelleği
+# derleme iş akışlarıyla aynı sürüm ve kilit dosyasına bağlıdır.
+
+name: web
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'docs/sozlesmeler/**'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web testleri (npm test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Sürümler
+        run: |
+          node --version
+          npm --version
+
+      - name: Bağımlılıklar (npm ci)
+        run: npm ci
+
+      - name: npm test
+        run: npm test

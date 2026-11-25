@@ -58,7 +58,11 @@ set_tests_properties(sim.a3.sahte_dongu_disi PROPERTIES WILL_FAIL TRUE)
 
 # Node ile koşan uyum testleri (web/src/a3'ün çözücüsü ve bağlantı kitaplığı; web/'e dosya eklenmez).
 # Node yoksa kaydedilmez; web/node_modules (esbuild) yoksa test 77 döner ve atlanır.
+# IDA_BAGIMLILIK_ZORUNLU açıkken (CI): Node yoksa yapılandırma düşer, 77 (atlama) hata sayılır.
 find_program(IDA_NODE node)
+if(IDA_BAGIMLILIK_ZORUNLU AND NOT IDA_NODE)
+  message(FATAL_ERROR "sim/a3/test: IDA_BAGIMLILIK_ZORUNLU açık ama node bulunamadı")
+endif()
 if(IDA_NODE)
   add_test(NAME sim.a3.uyum_web_cozucu
     COMMAND "${IDA_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/uyum.mjs"
@@ -66,5 +70,7 @@ if(IDA_NODE)
   add_test(NAME sim.a3.uctan_uca_web
     COMMAND "${IDA_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/uctan_uca.mjs"
             "$<TARGET_FILE:ida_a3_sahte>" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node")
-  set_tests_properties(sim.a3.uyum_web_cozucu sim.a3.uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77)
+  if(NOT IDA_BAGIMLILIK_ZORUNLU)
+    set_tests_properties(sim.a3.uyum_web_cozucu sim.a3.uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
 endif()

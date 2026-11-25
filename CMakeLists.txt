@@ -15,7 +15,7 @@ if(NOT IDA_HEDEF MATCHES "^(host|fw)$")
 endif()
 
 option(IDA_BAGIMLILIK_ZORUNLU
-  "vcpkg bağımlılıkları zorunlu (CI açar); kapalıyken VCPKG_ROOT yoksa duman hedefi atlanır" OFF)
+  "vcpkg bağımlılıkları zorunlu (CI açar); kapalıyken VCPKG_ROOT yoksa duman hedefi atlanır; açıkken Node ya da web/node_modules yokluğunda Node testlerinin atlanması da hata olur" OFF)
 
 if(IDA_HEDEF STREQUAL "host")
   # vcpkg manifest kipi (kökteki vcpkg.json). VCPKG_ROOT ortam değişkeni vcpkg'nin köküdür.
