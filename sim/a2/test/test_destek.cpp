@@ -347,10 +347,15 @@ bool SoketIstemci::pompala()
     if (t == ag::gecersiz()) {
         return false;
     }
-    if (oku) {
+    bool damla_turu = false;
+    if (!oku && damla && saat && saat() - son_damla_ns >= 250'000'000) {
+        son_damla_ns = saat();
+        damla_turu = true;
+    }
+    if (oku || damla_turu) {
         static thread_local std::vector<std::uint8_t> tampon(65536);
-        for (int i = 0; i < 64; ++i) {
-            const long long r = ag::oku(t, tampon.data(), tampon.size());
+        for (int i = 0; i < (oku ? 64 : 1); ++i) {
+            const long long r = ag::oku(t, tampon.data(), oku ? tampon.size() : std::size_t{2048});
             if (r > 0) {
                 k.besle(tampon.data(), static_cast<std::size_t>(r));
                 if (bagli) {

@@ -131,6 +131,11 @@ struct SoketIstemci {
     Kaydedici k;
     bool bagli = false;
     bool oku = true;                 // false: soketten okumaz (donuk/yavaş istemci)
+    // oku == false iken: A2-K62'nin 3 s kuralı (istemci tarafı: 3 s ileti gelmezse istemci kendi
+    // oturumunu kapatır) yavaş makinede donuk istemciyi öldürmesin diye her 250 ms'de bir çok küçük
+    // (2 KiB) okuma yapılır: kuyruk yine hemen hemen hiç boşalmaz (üretim ≥ yüzlerce KiB/s).
+    bool damla = false;
+    std::int64_t son_damla_ns = 0;
     bool otomatik_hazir = true;
     viz::Ozet hazir_ozeti{};
     bool karsi_kapatti = false;

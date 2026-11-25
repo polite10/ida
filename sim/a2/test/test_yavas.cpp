@@ -165,7 +165,8 @@ Olcum kos(Denetci& d, Kosul k, const char* ad, SunucuSayaclari& son)
                 if (c.ist.asama() == viz::Asama::akis) {
                     akista.store(true, std::memory_order_relaxed);
                     if (k == Kosul::okumayan) {
-                        c.oku = false;  // donuk istemci: soketi açık ama okumuyor
+                        c.oku = false;  // donuk istemci: soketi açık, yalnız damla damla okur
+                        c.damla = true;
                     }
                 }
                 if (!c.pompala()) {
@@ -196,7 +197,7 @@ Olcum kos(Denetci& d, Kosul k, const char* ad, SunucuSayaclari& son)
         y.adim_siniri(adim, std::span<const GovdeAni>(an.data(), m));
         const Saat::time_point t1 = Saat::now();
         sure.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
-        if (n % 16 == 0) {
+        if (n % 64 == 0) {
             gercek_bekle_ms(1);
         }
     }
@@ -230,7 +231,8 @@ int test_yayin_suresi()
     DOGRULA(d, s_saglikli.gonderilen_durum >= 800 && s_saglikli.gonderilen_olay == 120 && s_saglikli.oturum_var,
             "sağlıklı: durum ve olaylar gönderildi: " + std::to_string(s_saglikli.gonderilen_durum));
     DOGRULA(d, s_yok.baglanti_sayisi == 0 && s_yok.gonderilen_ileti == 0, "hiç bağlanmayan: hiçbir şey gönderilmedi");
-    DOGRULA(d, s_okumayan.oturum_var && s_okumayan.azami_kuyruk_bayt > 0, "okumayan: oturum açık, kuyruk birikti");
+    DOGRULA(d, s_okumayan.oturum_var && s_okumayan.azami_kuyruk_bayt > 65'536,
+            "okumayan: oturum açık, kuyruk birikti: " + std::to_string(s_okumayan.azami_kuyruk_bayt));
     DOGRULA(d, !s_olen.oturum_var && s_olen.son_kopma_nedeni == KopmaNedeni::karsi_kapatti && s_olen.biten_oturum == 1,
             "ortada ölen: oturum bitti (A2-K64), sunucu yeni bağlantıya hazır");
 
@@ -275,8 +277,8 @@ int test_donuk_istemci_soket()
     c.saat = [&sd] { return sd.saat(); };
     c.basla();
     DOGRULA(d, c.bekle([&] { return c.ist.asama() == viz::Asama::akis && sd.s->sayaclar().hazir_alindi; }), "istemci akışta");
-    c.oku = false;  // istemci donar (soket açık)
-    c.bagli = false;
+    c.oku = false;  // istemci donar (soket açık); nabız sürer, yalnız damla damla okur (3 s kuralı)
+    c.damla = true;
 
     // Atılamayan büyük iletiler (malzeme_optik: 256 girdi ≈ 14,3 KiB) ve takvimli durumlar.
     std::array<MalzemeOptikGirdisi, kAzamiMalzemeOptik> girdi{};
@@ -291,6 +293,7 @@ int test_donuk_istemci_soket()
     std::uint64_t adim = 0;
     const Saat::time_point bitis = Saat::now() + std::chrono::seconds(20);
     while (sd.s->sayaclar().kuyruk_tasmasi == 0 && Saat::now() < bitis) {
+        (void)c.pompala();  // nabız ve damla okuma: yavaş makinede sunucunun 3 s kuralı oturumu öldürmesin
         for (int i = 0; i < 13; ++i) {
             ++adim;
             const std::size_t m = dn.dogru_anlar(adim, an);
