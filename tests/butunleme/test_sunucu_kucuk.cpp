@@ -157,6 +157,8 @@ std::vector<std::string> govde_satirlari(const std::string& m)
     return r;
 }
 
+#endif   // !_WIN32 (pty/HIL testleri)
+
 // 3B eşi (W5-bagla-a2): gorev-havuz.toml'dan yalnız `[meta]` `ad`/`aciklama` ve `[varliklar]` `kume`/
 // `manifest_ozeti` satırları farklı olabilir; başka hiçbir (yorum dışı) satır farklı olamaz.
 std::vector<std::string> govde_satirlari_3b(const std::string& m)
@@ -169,7 +171,10 @@ std::vector<std::string> govde_satirlari_3b(const std::string& m)
         if (j == std::string::npos) {
             j = m.size();
         }
-        const std::string l = m.substr(i, j - i);
+        std::string l = m.substr(i, j - i);
+        if (!l.empty() && l.back() == '\r') {
+            l.pop_back();   // Windows satır sonu
+        }
         i = j + 1u;
         if (!l.empty() && l[0] == '[') {
             tablo = l.substr(0, l.find(']') + 1u);
@@ -214,6 +219,7 @@ int test_senaryo_3b_dosyasi()
     return 0;
 }
 
+#ifndef _WIN32
 int test_senaryo_hil_dosyalari()
 {
     ida::senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
