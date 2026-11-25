@@ -117,19 +117,31 @@ async function panelKomutZinciri() {
     await adim('surdur', {}, 'kosuyor');
     await adim('hiz', { carpan: 2 }, 'kosuyor');
     await bekle(() => b2.son('calistirma/durum')?.yuk.hedef_carpan === 2, 5000, 'hedef çarpan 2 (sunucudan)');
-    await adim('durdur', {}, 'durduruldu');
-    const gSon = a3.dugmeler('durduruldu', 'sil');
-    dogrula(gSon.sifirla.etkin && !gSon.baslat.etkin && !gSon.duraklat.etkin, 'durduruldu: sıfırla etkin, başlat/duraklat etkin değil');
-
-    // Sunucunun reddi görünür: durduruldu durumunda duraklat gecersiz_durum (düğme etkin olmasa da katman sunucuya sorar)
+    // Sunucunun reddi görünür (Tablo 4.7a): duraklatilmis durumda `duraklat` "—" (geçersiz) → reddedildi gecersiz_durum.
+    // Sunucunun kesin açık olduğu bu noktada denetlenir; durdur'dan sonra sunucuya istek atılmaz (aşağıya bak).
+    const dRet0 = await b2.http.durum();
+    await adim('duraklat', {}, 'duraklatildi');
     await senkron();
     const ret = await yon.gonder('duraklat');
-    dogrula(ret.asama === 'reddedildi' && ret.hata_kodu === 'gecersiz_durum', `durdurulmuşken duraklat: reddedildi gecersiz_durum (${ret.asama} ${ret.hata_kodu})`);
-    // ida_sim bu dilimde yalnız 'yuklendi'de sıfırlamayı kabul eder (sim/sunucu/src/a3_baglanti.cpp: "A3-K67 bu
-    // dilimde yok"; Tablo 4.7a'dan sapma). Burada yalnız bilgi: ret görünür biçimde reddedildi yazılır.
+    dogrula(ret.asama === 'reddedildi' && ret.hata_kodu === 'gecersiz_durum', `duraklatılmışken duraklat: reddedildi gecersiz_durum (${ret.asama} ${ret.hata_kodu})`);
+    dogrula((await b2.http.durum()).durum === 'duraklatildi', 'reddedilen komut durumu değiştirmedi (duraklatildi)');
+    void dRet0;
+    await adim('surdur', {}, 'kosuyor');
+
+    // durdur: ida_sim tek çalıştırma koşar ve çalıştırma durduruldu olunca düzgün kapanır (sim/sunucu/src/sunucu.cpp,
+    // calistirma_durdur → a3_durdur_). Bu yüzden durdur'dan sonra sunucuya HTTP isteği (GET /durum, GET /komutlar)
+    // atılmaz; sunucunun kapanma anına göre yarışır (W5-K43: hıza bağlı bekleme yok). Sonuç yalnız komut katmanının
+    // komut_sonucu olayından ve kanalın son durumundan doğrulanır; kanal kapanmışsa bu kapanış olarak kabul edilir.
     await senkron();
-    const sf = await yon.gonder('sifirla');
-    console.log(`  BİLGİ durduruldu'da sıfırla: ${sf.asama} ${sf.hata_kodu ?? ''} (Tablo 4.7a: yuklendi; ida_sim bu dilimde reddeder)`);
+    const rd = await yon.gonder('durdur');
+    dogrula(rd.asama === 'uygulandi', `durdur: komut katmanı sonucu uygulandı (${rd.asama}${rd.hata_kodu ? ' ' + rd.hata_kodu : ''}; ${rd.ileti})`);
+    dogrula(olay2.some((o) => o.tur === 'komut_sonucu' && o.ayrinti?.komut_no === rd.komut_no && o.ayrinti?.sonuc === 'uygulandi'),
+      'durdur: komut_sonucu olayı uygulandi');
+    await bekle(() => kanalDurum() === 'durduruldu' || b2.bilgi.durum !== 'bagli', 20000, `durdur: kanal durumu durduruldu ya da sunucu kapandı (şimdi ${kanalDurum()})`);
+    dogrula(kanalDurum() === 'durduruldu' || b2.bilgi.durum !== 'bagli',
+      `durdur: kanal son durumu durduruldu ya da bağlantı sunucu kapanışıyla düştü (${kanalDurum()}; ${b2.bilgi.durum})`);
+    const gSon = a3.dugmeler('durduruldu', 'sil');
+    dogrula(gSon.sifirla.etkin && !gSon.baslat.etkin && !gSon.duraklat.etkin, 'durduruldu: sıfırla etkin, başlat/duraklat etkin değil');
   } finally {
     yon?.kapat();
     b2?.kapat();
