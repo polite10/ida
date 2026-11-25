@@ -37,6 +37,8 @@ void kullanim()
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
         "  --a2-port <port>         A2 sunucusu (görselleştirici; yalnız 127.0.0.1; 1024–65535, A2-K93); yalnız\n"
         "                           senaryo dosyasıyla; bayrak yoksa A2 açılmaz (kilit alınmaz, port açılmaz)\n"
+        "  --kayit-dizini <dizin>   A6 kayıt dosyası (<dizin>/<run_id>.mcap); yalnız senaryo dosyasıyla; kademe\n"
+        "                           senaryonun kalite.kayit alanından; bayrak yoksa dosya açılmaz, iş parçacığı başlamaz\n"
         "  --sil-hiz <çarpan>       SIL hız çarpanının başlangıcı (1: gerçek zaman; 0: olabildiğince hızlı, varsayılan)\n"
         "  --sonar[=acik|kapali]    senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
         "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla); değersiz = acik;\n"
@@ -258,6 +260,9 @@ int main(int argc, char** argv)
         } else if (s == "--a2-sinama-kilit") {
             // Yalnız sınama: sahiplik kilidinin yolu (A2-K77'deki sabit yer yerine).
             a.a2_kilit_dosyasi = deger();
+        } else if (s == "--kayit-dizini") {
+            a.kayit_dizini = deger();
+            a.kayit_acik = true;
         } else if (s == "--sil-hiz") {
             const std::string v = deger();
             double x = 0.0;
@@ -467,6 +472,33 @@ int main(int argc, char** argv)
                          static_cast<unsigned long long>(s.a2.sayac.gonderilen_ileti),
                          static_cast<unsigned long long>(s.a2.sayac.gonderilen_nabiz),
                          static_cast<unsigned long long>(s.a2.sayac.azami_kuyruk_bayt));
+        }
+        if (s.kayit.istendi) {
+            // W5-bagla-kayit: yalnız `--kayit-dizini` verildiyse (W5-K40: yokken çıktı değişmez).
+            std::string eksik;
+            for (const std::string& k : s.kayit.eksik_kanallar) {
+                eksik += (eksik.empty() ? "" : " ") + k;
+            }
+            std::fprintf(stderr,
+                         "ida_sim: kayıt: %s; dosya %s, kademe %s, bitiş %s, güvence %s%s%s; üretilen %llu, kuyruklanan %llu, "
+                         "düşen (halka %llu, geçersiz %llu), süzülen %llu; dosyadaki ileti %llu (kayıt/eksik %llu, bildirilen düşen %llu), "
+                         "parça %llu, %llu B; üretici çağrısı %llu, ortalama %.3f µs, en çok %.1f µs, taslak en çok %.1f µs "
+                         "(dünya iş parçacığı, duvar; ölçüm); üretilmeyen kanallar [%s]%s%s\n",
+                         s.kayit.acildi ? (s.kayit.dosya_kapandi ? "kapandı" : "kapanmadı") : "AÇILAMADI",
+                         s.kayit.yol.empty() ? "-" : s.kayit.yol.c_str(), s.kayit.kademe.c_str(), s.kayit.bitis_durumu.c_str(),
+                         s.kayit.guvence.c_str(), s.kayit.guvence_nedenleri.empty() ? "" : " (",
+                         s.kayit.guvence_nedenleri.c_str(), static_cast<unsigned long long>(s.kayit.uretilen),
+                         static_cast<unsigned long long>(s.kayit.kuyruklanan), static_cast<unsigned long long>(s.kayit.dusen_halka),
+                         static_cast<unsigned long long>(s.kayit.dusen_gecersiz), static_cast<unsigned long long>(s.kayit.suzulen),
+                         static_cast<unsigned long long>(s.kayit.yazilan_ileti), static_cast<unsigned long long>(s.kayit.eksik_kaydi),
+                         static_cast<unsigned long long>(s.kayit.bildirilen_dusen),
+                         static_cast<unsigned long long>(s.kayit.kapanan_parca), static_cast<unsigned long long>(s.kayit.dosya_bayt),
+                         static_cast<unsigned long long>(s.kayit.cagri_adet),
+                         s.kayit.cagri_adet != 0u
+                             ? 1e-3 * static_cast<double>(s.kayit.cagri_toplam_ns) / static_cast<double>(s.kayit.cagri_adet)
+                             : 0.0,
+                         1e-3 * static_cast<double>(s.kayit.cagri_en_kotu_ns), 1e-3 * static_cast<double>(s.kayit.taslak_en_kotu_ns),
+                         eksik.c_str(), s.kayit.hata.empty() ? "" : "; hata: ", s.kayit.hata.c_str());
         }
         if (s.sonar_acik) {
             std::vector<std::int64_t> p = s.sonar_adim_ping_ns;

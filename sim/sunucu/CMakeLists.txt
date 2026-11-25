@@ -22,7 +22,7 @@ endfunction()
 find_package(nlohmann_json CONFIG REQUIRED)   # A3 yer istasyonu komutlarının parametreleri (W4-bagla-a3)
 
 add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp src/a3_baglanti.cpp src/a2_baglanti.cpp
-  src/sinyal.cpp)
+  src/kayit_baglanti.cpp src/sinyal.cpp)
 target_include_directories(ida_sunucu
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -36,6 +36,10 @@ target_link_libraries(ida_sunucu PUBLIC ida_a3 PRIVATE nlohmann_json::nlohmann_j
 # A2 sunucusu (W5-bagla-a2): --a2-port verilince başlar; ida_a2 sim/a2'de tanımlanır (hedef adı üretimde
 # çözülür). PUBLIC: sunucu.hpp A2 sayaç türlerini (ida/a2/sunucu.hpp) taşır.
 target_link_libraries(ida_sunucu PUBLIC ida_a2)
+# A6 kayıt kitaplığı (W5-bagla-kayit): --kayit-dizini verilince açılır; ida_kayit sim/kayit'te tanımlanır
+# (hedef adı üretimde çözülür; sim/kayit vcpkg ister, sim/sunucu'nun Eigen'i de vcpkg'den gelir).
+# PUBLIC: sunucu.hpp'nin kayıt özeti kitaplık türü taşımaz, ama testler ida_kayit'i okuyucu için kullanır.
+target_link_libraries(ida_sunucu PUBLIC ida_kayit)
 ida_sunucu_ayar(ida_sunucu)
 
 add_executable(ida_sim src/main.cpp)
