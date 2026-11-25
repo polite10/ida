@@ -3,6 +3,7 @@
 // muhasebesidir (A3-K117 (1), (6): istek başına) ve gevşeten isteğin A3-K95 (4) değerlendirmesidir.
 #include "test_destek.hpp"
 
+#include <array>
 #include <atomic>
 #include <cstdlib>
 #include <new>
@@ -194,6 +195,102 @@ int test_operator_ve_senaryo()
     DOGRULA(d, !z.sinirlar.back().gevsetme_reddedildi && !z.k.acil_durdurma(), "senaryonun gevşetmesi uygulandı");
     DOGRULA(d, b != nullptr && b->sonuc == AtamaSonucu::rev_uyusmuyor, "operatörün gevşetmesi bayat revizyonla reddedildi");
     DOGRULA(d, z.k.emniyet_revizyonu() == r3 + 1u, "yalnız senaryonun gevşetmesi revizyonu artırdı");
+    return d.hata;
+}
+
+// W5-K55 (EMNİYET; A3-K117, A3-K67): emniyet revizyonu ve doyma bayrağı süreç boyunca yaşar, köprü
+// ise dünya başına kurulur. Köprü verilen başlangıç revizyonu ve doyma bayrağıyla kurulur; senaryonun
+// başlangıç emniyet durumu (emniyet_baslangic) bu revizyonu değiştirmeden kurulur; önceki dünyanın
+// revizyonunu taşıyan gevşetme bayattır; doyma yeni köprüde de bütün gevşetmeleri reddeder.
+int test_emniyet_rev_baslangici()
+{
+    Denetci d;
+    const std::array<bool, 2> yok{false, false};
+    const std::array<bool, 2> var{true, true};
+    {
+        // Üretim varsayılanı: süreç başı (1, doymamış).
+        Kopru k{KopruAyari{}};
+        DOGRULA(d, k.emniyet_revizyonu() == 1u && !k.emniyet_rev_doydu() && k.yapilandirma_hatasi().empty(),
+                "varsayılan: revizyon 1, doymamış");
+        DOGRULA(d, k.emniyet_baslangic(true, yok, var, var) && k.acil_durdurma() && k.emniyet_revizyonu() == 1u,
+                "varsayılan: başlangıç durumu kuruldu, revizyon 1 kaldı");
+    }
+    {
+        // Önceki dünyadan devralınan revizyon.
+        KopruAyari a;
+        a.ilk_emniyet_rev = 41u;
+        Kopru k{a};
+        DOGRULA(d, k.emniyet_revizyonu() == 41u && k.sayaclar().emniyet_revizyonu == 41u && !k.emniyet_rev_doydu(),
+                "başlangıç revizyonu 41 (" + s(k.emniyet_revizyonu()) + "), sayaçta da (" + s(k.sayaclar().emniyet_revizyonu) + ")");
+        DOGRULA(d, k.emniyet_baslangic(true, yok, var, var), "başlangıç durumu, revizyon 1 olmasa da ilk sınırdan önce kurulur");
+        DOGRULA(d, k.acil_durdurma() && k.emniyet_revizyonu() == 41u, "başlangıç durumu revizyonu artırmaz");
+        (void)k.sinir_isle(0, 0);
+        DOGRULA(d, !k.emniyet_baslangic(false, yok, var, var) && k.acil_durdurma(), "ilk sınırdan sonra başlangıç çağrısı reddedilir");
+        // Önceki dünyanın revizyonunu (ör. 1) taşıyan gevşetme bayattır.
+        k.emniyet_ata(op_acil(11, false, 1u));
+        const SinirSonucu s1 = k.sinir_isle(1, kH);
+        const OperatorSonucu* e = sonuc(s1, 11);
+        DOGRULA(d, e != nullptr && e->sonuc == AtamaSonucu::rev_uyusmuyor && k.acil_durdurma() && k.emniyet_revizyonu() == 41u,
+                "eski revizyonlu gevşetme reddedildi, revizyon değişmedi");
+        k.emniyet_ata(op_acil(12, false, 41u));
+        const SinirSonucu s2 = k.sinir_isle(2, 2 * kH);
+        const OperatorSonucu* g = sonuc(s2, 12);
+        DOGRULA(d, g != nullptr && g->sonuc == AtamaSonucu::uygulandi && !k.acil_durdurma() && k.emniyet_revizyonu() == 42u,
+                "güncel revizyonlu gevşetme uygulandı, 41 → 42");
+    }
+    {
+        // Doymaya bir kala devralınan revizyon: ilk artış doyurur; gevşetme reddedilir.
+        KopruAyari a;
+        a.ilk_emniyet_rev = 0xFFFFFFFEu;
+        Kopru k{a};
+        DOGRULA(d, k.emniyet_revizyonu() == 0xFFFFFFFEu && !k.emniyet_rev_doydu(), "0xFFFFFFFE: doymamış başlar");
+        (void)k.sinir_isle(0, 0);
+        k.emniyet_ata(op_acil(21, true));
+        const SinirSonucu s1 = k.sinir_isle(1, kH);
+        const OperatorSonucu* b = sonuc(s1, 21);
+        DOGRULA(d, b != nullptr && b->sonuc == AtamaSonucu::uygulandi && k.acil_durdurma(), "kısıtlayan uygulandı");
+        DOGRULA(d, k.emniyet_revizyonu() == 0xFFFFFFFFu && k.emniyet_rev_doydu(), "revizyon 0xFFFFFFFF'te doydu");
+        k.emniyet_ata(op_acil(22, false, 0xFFFFFFFFu));
+        const SinirSonucu s2 = k.sinir_isle(2, 2 * kH);
+        const OperatorSonucu* g = sonuc(s2, 22);
+        DOGRULA(d, g != nullptr && g->sonuc == AtamaSonucu::rev_doydu && k.acil_durdurma(), "doymuşken gevşetme rev_doydu");
+    }
+    {
+        // Doymuş devralınan köprü: doyma korunur (süreç yeniden başlayana kadar; A3-K117).
+        KopruAyari a;
+        a.ilk_emniyet_rev = 0xFFFFFFFFu;
+        a.ilk_emniyet_rev_doydu = true;
+        Kopru k{a};
+        DOGRULA(d, k.emniyet_revizyonu() == 0xFFFFFFFFu && k.emniyet_rev_doydu() && k.sayaclar().emniyet_rev_doydu,
+                "doymuş devralındı: bayrak korunur");
+        DOGRULA(d, k.emniyet_baslangic(true, yok, var, var) && k.acil_durdurma() && k.emniyet_rev_doydu(),
+                "doymuşken de senaryonun başlangıç durumu kurulur");
+        (void)k.sinir_isle(0, 0);
+        k.emniyet_ata(op_acil(31, false, 0xFFFFFFFFu));
+        const SinirSonucu s1 = k.sinir_isle(1, kH);
+        const OperatorSonucu* g = sonuc(s1, 31);
+        DOGRULA(d, g != nullptr && g->sonuc == AtamaSonucu::rev_doydu && k.acil_durdurma(), "devralınan doymada gevşetme rev_doydu");
+        // Kısıtlayan doymuşken de uygulanır (A3-K92: hiçbir koşulda reddedilmez).
+        k.emniyet_ata(op_pim(32, 0, true));
+        const SinirSonucu s2 = k.sinir_isle(2, 2 * kH);
+        const OperatorSonucu* b = sonuc(s2, 32);
+        DOGRULA(d, b != nullptr && b->sonuc == AtamaSonucu::uygulandi && k.emniyet_revizyonu() == 0xFFFFFFFFu && k.emniyet_rev_doydu(),
+                "doymuşken kısıtlayan uygulanır; revizyon ve bayrak değişmez");
+    }
+    {
+        // Bayrak verilmese de 0xFFFFFFFF doymuştur (değişmez: revizyon azamideyse bayrak kuruludur).
+        KopruAyari a;
+        a.ilk_emniyet_rev = 0xFFFFFFFFu;
+        Kopru k{a};
+        DOGRULA(d, k.emniyet_rev_doydu(), "0xFFFFFFFF bayraksız verilse de doymuş başlar");
+    }
+    {
+        // 0 geçersizdir: A1'de safety_rev 0 "revizyon yok" demektir.
+        KopruAyari a;
+        a.ilk_emniyet_rev = 0u;
+        Kopru k{a};
+        DOGRULA(d, !k.yapilandirma_hatasi().empty(), "başlangıç revizyonu 0: yapılandırma hatası");
+    }
     return d.hata;
 }
 
