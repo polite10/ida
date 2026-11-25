@@ -36,7 +36,9 @@
 #   - `Windows x64 (ASan)` (asan=true): yalnız host-asan (yapılandırma, derleme, test). Testler
 #     `ctest -j 2` ile koşar (koşucu 4 sanal çekirdek). vcpkg ikili önbelleğini yalnız geri
 #     yükler, kaydetmez: aynı anahtarı iki iş birden kaydetmeye çalışıp çakışmasın.
-# Her işin süre sınırı ayrı ayrı 60 dakikadır; eşzamanlılık grubu iş akışı düzeyindedir.
+# Her işin süre sınırı ayrı ayrı 75 dakikadır (macOS ile aynı; PR #53 emsali); eşzamanlılık grubu iş akışı
+# düzeyindedir. 2026-11-25 ölçümü (PR #57 CI): Windows ASan işi 60 dakikalık sınırda, testlerin 807/810'u
+# bitmişken iptal edildi (host-asan `ctest -j 2`; testler artıyor: A2, kayıt, senaryo).
 # Matris: https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
 #
 # Kota: depo özeldir ve GitHub Free planındadır (aylık 12 USD dahil kullanım; dakika ücreti
@@ -69,7 +71,7 @@ jobs:
   windows:
     name: ${{ matrix.ad }}
     runs-on: windows-2025
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:

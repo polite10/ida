@@ -176,9 +176,15 @@ public:
     void anlik_yaz(const AnlikPod& p);
     // Tutarlı kesimle alır (W4-K27 (2)): kesim, kısıtlayan yuvalar (`atla` maskesindekiler hariç;
     // sıra numarasıyla), sonra genel halka kesime kadar (en çok `genel_azami` istek); ardından
-    // çalıştırma denetimi yollarının tamamı `genel`e eklenir (önce durdur; en çok 2 · kDenetimYolu).
+    // çalıştırma denetimi yolları `genel`e eklenir (önce durdur; en çok 2 · kDenetimYolu). W5-K64: denetim
+    // yollarının uçları da kesimle birlikte, yuvalardan ÖNCE okunur ve yollar yalnız oraya kadar alınır:
+    // görülen bir denetim isteğinden önce kabul edilmiş her kısıtlayan aynı çekişte görünür.
     void cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla = 0,
              std::size_t genel_azami = kGenelKuyruk);
+    // Yalnız kısıtlayan yuvaları alır (`atla` maskesindekiler hariç; sıra numarasıyla; genel halkaya ve denetim
+    // yollarına dokunmaz). `cek`in yuva adımıdır. W5-K65: hazırlıkta (yuvalar `cek`te atlanır) kabul edilen
+    // `sifirla`/`senaryo/yukle`den önceki kısıtlayanları eski dünya için almakta kullanılır.
+    void kisitlayanlari_cek(std::vector<A3Giris>& kisitlayan, std::uint16_t atla = 0);
     // `maske`deki dolu kısıtlayan yuvalardaki isteklerin en küçük sıra numarası (yoksa 0).
     std::uint64_t bekleyen_kisit_en_kucuk(std::uint16_t maske) const;
     std::size_t genel_dolu() const;
@@ -225,7 +231,7 @@ private:
     };
     DenetimYolu durdur_, denetim_;
     static bool yola_koy(DenetimYolu& y, A3Giris&& g);
-    static void yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti);
+    static void yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti, std::size_t son);
 };
 
 }  // namespace ida::sunucu

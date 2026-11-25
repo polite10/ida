@@ -158,6 +158,11 @@ struct Ayar {
     // Yalnız sınama: her fizik sınırının başında (dünya iş parçacığı), A3 komutları çekilmeden
     // önce; hazırlık yoklamalarında ve `a3_bekle`'de `yuklendi` beklemesinde (b = 0) de çağrılır. Sınama komut alıcısına doğrudan istek verebilir.
     std::function<void(std::uint64_t b, ida::a3::KomutAlicisi& alici)> a3_sinir_kancasi;
+    // Yalnız sınama (W5-K64): alıcının her çekişinin (`A3Alici::cek`; dünya iş parçacığı) evreleri arasında çağrılır
+    // (1: kesimden ve denetim yolu uçlarından sonra, kısıtlayan yuvalardan önce; 2: yuvalardan sonra, genel halka
+    // ve denetim yollarından önce). Kanca `alici.al` ile istek verip G/Ç iş parçacığının çekişin ortasına girmesini
+    // belirlenimci kurar. Hizmet kapsamı dışındadır.
+    std::function<void(int evre, ida::a3::KomutAlicisi& alici)> a3_cek_kancasi;
     // Yalnız sınama (W5-K55): sürecin başlangıç emniyet revizyonu. Üretimde 1'dir (A3-K117: süreç başında 1)
     // ve komut satırı seçeneği yoktur; doyma (0xFFFFFFFF) davranışını sınamak için yükseltilir. 0 geçersizdir.
     std::uint32_t sinama_ilk_emniyet_rev = 1;

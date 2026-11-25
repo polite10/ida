@@ -200,9 +200,8 @@ bool A3Alici::yola_koy(DenetimYolu& y, A3Giris&& g)
     return true;
 }
 
-void A3Alici::yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti)
+void A3Alici::yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti, std::size_t son)
 {
-    const std::size_t son = y.son.load(std::memory_order_acquire);
     std::size_t b = y.bas.load(std::memory_order_relaxed);
     while (b != son) {
         cikti.push_back(std::move(y.g[b]));
@@ -260,16 +259,10 @@ AlimSonucu A3Alici::kuyruga(const Komut& k, const a3b::YiKarsilik& yi)
     return a;
 }
 
-void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla,
-                  std::size_t genel_azami)
+// Kısıtlayan yuvalar (`atla` maskesindekiler hariç), sıra numarasıyla. `cek` ve hazırlıktaki bitiriş (W5-K65)
+// ortak kullanır.
+void A3Alici::kisitlayanlari_cek(std::vector<A3Giris>& kisitlayan, std::uint16_t atla)
 {
-    // EMNİYET (W4-K27 (2)): önce kesim. Kesimdeki her genel isteğin yayınlanması (release),
-    // ondan önce teslim edilmiş kısıtlayanların yuvaya yazılmasından sonradır; burada acquire ile
-    // okunan kesimden sonra yuvalar onları gösterir.
-    const std::size_t kesim = son_.load(std::memory_order_acquire);
-    if (cek_kancasi) {
-        cek_kancasi(1);
-    }
     const std::size_t k0 = kisitlayan.size();
     for (std::size_t i = 0; i < kisit_.size(); ++i) {
         if (((atla >> i) & 1u) != 0u) {
@@ -284,6 +277,28 @@ void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel,
     }
     std::sort(kisitlayan.begin() + static_cast<std::ptrdiff_t>(k0), kisitlayan.end(),
               [](const A3Giris& x, const A3Giris& y) { return x.sira < y.sira; });
+}
+
+void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla,
+                  std::size_t genel_azami)
+{
+    // EMNİYET (W4-K27 (2)): önce kesim. Kesimdeki her genel isteğin yayınlanması (release),
+    // ondan önce teslim edilmiş kısıtlayanların yuvaya yazılmasından sonradır; burada acquire ile
+    // okunan kesimden sonra yuvalar onları gösterir.
+    // EMNİYET (W5-K64): aynı ilke çalıştırma denetimi yolları için de geçerlidir. Bu yolların uçları (`durdur_`,
+    // `denetim_`) da yuvalardan ÖNCE okunur ve yollar yalnız bu uçlara kadar alınır. Uçlar yuvalardan sonra
+    // okunsaydı, yuvalar okunurken G/Ç iş parçacığının kabul ettiği "acil durdurma (n), sifirla (n+1)" çiftinde
+    // `sifirla` çekilir, acil durdurma yuvada kalırdı: acil durdurma eski dünyada uygulanmaz, yeni dünyada
+    // `canli_calistirma_yok` alırdı (`a3_onde_kisit_var` onu göremez). Uçtan sonra kabul edilen her istek
+    // sonraki çekişe kalır; görülen her denetim isteğinden ÖNCE kabul edilmiş her kısıtlayan, yuvalar okunurken
+    // (kabul sırası = üretici kilidi sırası; yayınlama acquire/release) görünür.
+    const std::size_t kesim = son_.load(std::memory_order_acquire);
+    const std::size_t durdur_son = durdur_.son.load(std::memory_order_acquire);
+    const std::size_t denetim_son = denetim_.son.load(std::memory_order_acquire);
+    if (cek_kancasi) {
+        cek_kancasi(1);
+    }
+    kisitlayanlari_cek(kisitlayan, atla);
     if (cek_kancasi) {
         cek_kancasi(2);
     }
@@ -293,9 +308,10 @@ void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel,
         b = (b + 1u) % halka_.size();
     }
     bas_.store(b, std::memory_order_release);
-    // Çalıştırma denetimi: depo doluluğundan bağımsız, bütünüyle; önce durdur (W4-K28 sol-3 #1).
-    yoldan_al(durdur_, genel);
-    yoldan_al(denetim_, genel);
+    // Çalıştırma denetimi: depo doluluğundan bağımsız; önce durdur (W4-K28 sol-3 #1). Yalnız en başta okunan
+    // uçlara kadar (W5-K64): sonradan kabul edilenler sonraki çekişe kalır.
+    yoldan_al(durdur_, genel, durdur_son);
+    yoldan_al(denetim_, genel, denetim_son);
 }
 
 std::uint64_t A3Alici::bekleyen_kisit_en_kucuk(std::uint16_t maske) const

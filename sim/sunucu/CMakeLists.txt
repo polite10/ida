@@ -58,6 +58,8 @@ add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)
 # W4-K27 (2) (EMNİYET): A3 alıcısının tutarlı kesimi, belirlenimci iş parçacığı sırasıyla.
 add_test(NAME sim.sunucu.a3_kesim COMMAND ida_sunucu_test a3_kesim)
 add_test(NAME sim.sunucu.a3_duraklatma_tablo COMMAND ida_sunucu_test a3_duraklatma_tablo)
+# W5-K64 (EMNİYET): çalıştırma denetimi yolları kısıtlayan yuvalardan önce okunan uçlara kadar alınır.
+add_test(NAME sim.sunucu.a3_cekis_sirasi COMMAND ida_sunucu_test a3_cekis_sirasi)
 # W4-sunucu-kucuk kapsam 1: kapanış isteği bayrağı (her platform) ve sinyal işleyicileri (POSIX; fork).
 add_test(NAME sim.sunucu.kapanis_bayragi COMMAND ida_sunucu_test kapanis_bayragi)
 # W5-bagla-a2: A2 bağlama katmanı. Hız dönüşümü v_n = R(q_nb) · v_b (kabul 3 (a)), fizik çekirdeğiyle

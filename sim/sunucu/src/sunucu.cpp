@@ -606,7 +606,8 @@ private:
     // beklemesi (çalıştırma bitti; sunucu ayakta, yeni komut beklenir), yeni dünyanın ön denetim kaydı ve
     // `senaryo/yukle` sonucunun verilmesi.
     void a3_yeniden_kabul(const A3Giris& g, std::uint64_t b);
-    bool a3_onde_kisit_var(std::uint32_t komut_no) const;
+    bool a3_onde_kisit_var(const A3Giris& g) const;
+    void a3_hazirlik_kisit_bitir();
     bool a3_ertelenen_yeniden_bitir(std::uint64_t b);
     void a3_emniyet_baslangic_yayinla();
     bool a3_bosta_bekle();
@@ -2764,6 +2765,14 @@ bool Calistirici::a3_baslat()
         kalici_->alici->kip_ayarla(a_.kip == Kip::hil);
     }
     a3al_ = kalici_->alici.get();
+    // Yalnız sınama (W5-K64): çekişin evreleri arasındaki kanca (her dünya kendi Ayar'ınınkini kurar; yoksa kaldırır).
+    if (a_.a3_cek_kancasi) {
+        A3Alici* const al = a3al_;
+        const auto kanca = a_.a3_cek_kancasi;
+        a3al_->cek_kancasi = [kanca, al](int evre) { kanca(evre, *al); };
+    } else {
+        a3al_->cek_kancasi = nullptr;
+    }
     a3sv_ = kalici_->sunucu.get();
     yay_ = &a3sv_->yayinci();
     // W4-K27 (5): dünya tarafının kalıcı depoları burada ayrılır; değişmeyen içerik önceden üretilir.
@@ -2983,13 +2992,20 @@ void Calistirici::a3_yeniden_kabul(const A3Giris& g, std::uint64_t b)
     a3_gecis(a3::CalistirmaDurumu::yuklendi, g.k.tur == a3::KomutTuru::senaryo_yukle ? "senaryo_yukle" : "sifirla", false);
 }
 
-// W5-K56: çekilmiş ve henüz köprüye verilmemiş kısıtlayanlar arasında komut numarası `komut_no`'dan küçük olan.
-bool Calistirici::a3_onde_kisit_var(std::uint32_t komut_no) const
+// W5-K56: `g`den (kabul edilen `sifirla`/`senaryo/yukle`) önce kabul edilmiş, henüz köprüye verilmemiş kısıtlayan var
+// mı? Çekilmişler arasında komut numarası `g`ninkinden küçük olan; W5-K65: hazırlıkta kısıtlayan yuvalar `cek`te
+// atlanır (a3_cek(kButunYuvalar)), bu yüzden yuvada bekleyen ve `g`den önce kabul edilmiş (sıra numarası küçük)
+// kısıtlayan da sayılır.
+bool Calistirici::a3_onde_kisit_var(const A3Giris& g) const
 {
-    for (const A3Giris& g : a3_kisit_) {
-        if (g.k.komut_no < komut_no) {
+    for (const A3Giris& r : a3_kisit_) {
+        if (r.k.komut_no < g.k.komut_no) {
             return true;
         }
+    }
+    if (a3d_.durum == a3::CalistirmaDurumu::hazirlaniyor) {
+        const std::uint64_t y = a3al_->bekleyen_kisit_en_kucuk(A3Alici::kButunYuvalar);
+        return y != 0u && y < g.sira;
     }
     return false;
 }
@@ -3102,13 +3118,14 @@ void Calistirici::a3_calistirma_isle(std::uint64_t b, bool ertele)
         case a3::KomutTuru::senaryo_yukle:
             // W5-a3-senaryo (A3-K67, K77): canlı çalıştırma varsa durdurulur (aşağıda, `durdur` ile aynı kapanış
             // yolu), durum `yuklendi` olur ve dünya baştan kurulur.
-            if (ertele && (a3d_.durum == a3::CalistirmaDurumu::kosuyor || a3d_.durum == a3::CalistirmaDurumu::duraklatildi) &&
-                a3_onde_kisit_var(k.komut_no)) {
+            if (ertele && (a3d_.durum == a3::CalistirmaDurumu::kosuyor || a3d_.durum == a3::CalistirmaDurumu::duraklatildi || hazirlikta) &&
+                a3_onde_kisit_var(g)) {
                 // W5-K56 (EMNİYET; A3-K57, K95): aynı sınırda çekilmiş, komut numarası bu istekten küçük bir
                 // kısıtlayan var. O istek eski dünyada uygulanmalıdır: istek kabul edilmiştir (durum_rev arttı;
                 // bu turun sonraki denetim komutları bayatlar) ama dünya bu sınırın emniyet adımını olağan yoldan
                 // (a3_emniyet_ver → köprü sinir_isle → a3_sinir_sonrasi) tamamladıktan sonra sonlanır
                 // (sinir_on → a3_ertelenen_yeniden_bitir). Sonuç ve `yuklendi` geçişi orada.
+                // W5-K65: hazırlıkta (ilk sınırdan önce) aynı kural; bitiriş a3_hazirlik_kisit_bitir'dedir.
                 a3_yeniden_ertelenen_ = std::move(g);
                 a3_anlik_guncelle();   // giriş denetimi yeni durum_rev'i görsün (A3-K122, K123)
                 continue;
@@ -4183,11 +4200,34 @@ bool Calistirici::a3_hazirlik_durdu(bool kanca)
         a_.a3_sinir_kancasi(0, *a3al_);
     }
     a3_cek(A3Alici::kButunYuvalar);
-    a3_calistirma_isle(0);
+    a3_calistirma_isle(0, true);
+    if (a3_yeniden_ertelenen_) {
+        a3_hazirlik_kisit_bitir();   // W5-K65
+    }
     if (a3_durum_kirli_) {
         a3_durum_yayinla(0);
     }
     return a3_durdur_;
+}
+
+// W5-K65 (EMNİYET; A3-K57, K95): hazırlıkta (ilk sınırdan önce) kabul edilen `sifirla`/`senaryo/yukle`, kendisinden
+// önce kabul edilmiş bir kısıtlayan yuvada beklerken ertelenmiştir (a3_calistirma_isle). Hazırlıkta yuvalar çekilmez
+// (kısıtlayanlar ilk sınırda işlenmek üzere birikir), ama dünya burada sonlanıyor: kısıtlayanlar şimdi çekilir ve
+// sonlanmadan önce W5-K56'nın yoluyla işlenir. Komut numarası `sifirla`dan küçük olanlar eski dünyanın köprüsüne verilir
+// (emniyet girdileri: emniyet_ata; daraltıcı yer istasyonu komutları: a3_yi_uygula) ve köprünün sınır işlemiyle
+// uygulanır (revizyon artar, yetkili durum değişir); kalan her çekilmiş istek (sonradan gelen kısıtlayan, biriken
+// gevşeten ve yer istasyonu istekleri) `canli_calistirma_yok` alır. Sonuçlar `sifirla`nın sonucundan ÖNCE kayda geçer.
+// Köprünün sınır işlemi sınır 0 adıyla çağrılır; dünya hemen sonlanacağı için çıktısı kullanılmaz.
+void Calistirici::a3_hazirlik_kisit_bitir()
+{
+    a3al_->kisitlayanlari_cek(a3_kisit_, 0);
+    for (const A3Giris& g : a3_kisit_) {
+        a3_son_komut_no_ = std::max(a3_son_komut_no_, g.k.komut_no);
+    }
+    a3_emniyet_ver(0);   // `a3_yeniden_ertelenen_` dolu: W5-K56 süzgeci, sonra uygulama
+    const kopru::SinirSonucu ss = k_->sinir_isle(0, duvar());
+    a3_sinir_sonrasi(0, ss, false);
+    (void)a3_ertelenen_yeniden_bitir(0);
 }
 
 // A3 kayıtlarını Sonuc'a çevirir (koşu sonunda; kapsam 4: senaryo olaylarıyla aynı biçim).

@@ -153,3 +153,48 @@ Sayaç tekduze artsaydı, eski revizyona bağlı bir jeton ya da istek oturum so
 - Panelin bayat kareyi nasıl gösterdiği.
 - A2 neslinin bir A2 istemcisinde gerçekten arttığı.
 - Testlerin hiçbirini koşturmadım; CI sonucuna bakmadım.
+
+---
+
+## Dar denetim (Opus, 2026-11-25 gece) ve üçüncü tur
+
+İkinci tur düzeltmesi (uç `46732fc`) dar denetimden geçti; denetim iki K21 sınıfı bulgu (1, 2) ile altı küçük bulgu getirdi. Dar denetimin kendi metni bu belgeye girmedi; aşağıdaki satırlar mimarın üçüncü tur görevindeki özetten alındı (inceleyicinin metni mimardadır; 5, 6 ve 8'in tanımı yalnız oradaki ifadeyle yazıldı). Emniyet zincirine dokunan bulgular için üçüncü tur K21'e göredir; bu turdan sonra yeni bir emniyet girdisi uygulanmama/geç uygulanma bulgusu yoksa dilim kapanır.
+
+### Bulgular (bir satırla)
+
+1. **K21.** `A3Alici::cek` kısıtlayan yuvaları okuduktan SONRA denetim yolunu (`denetim_`, `durdur_`) kesimsiz alıyordu: yuvalar okunurken G/Ç iş parçacığı "acil durdurma (n), `sifirla` (n+1)" çiftini kabul ederse `sifirla` çekilir, acil durdurma yuvada kalırdı; eski dünyada uygulanmaz, yeni dünyada `canli_calistirma_yok` alırdı (`a3_onde_kisit_var` yalnız çekilmişlere bakar). `main`'de `durdur` için aynı yarış vardı.
+2. **K21.** Hazırlıkta (ilk sınırdan önce) `sifirla`/`senaryo/yukle` kabulünde kendisinden önce kabul edilmiş kısıtlayan yuvada kalıyor ve yeni dünyada reddediliyordu (BENIOKU "seçilen okuma"); W5-K56 hazırlığı kapsamıyordu.
+3. Testlerde `hiz` isteğinden sonra `durum_rev` artışı beklenmiyordu: sonraki denetim komutu bayat revizyonla gidip `durum_rev_uyusmuyor` alabiliyordu (CI oynaklığı; `test_kayit` 46732fc'de düzeltilmişti, öteki yerler değil).
+4. Windows ASan işi 60 dakikalık sınırda (testlerin 807/810'u bitmişken) iptal edildi.
+5. `emniyet_rev_doydu` olayı dünya başına yinelenir.
+6. Testler: `senaryo_kayit`te 50 denemeli `durum_rev_uyusmuyor` yeniden deneme döngüsü (bayat revizyonu örter); `kontrol` yardımcısının hata iletisinde HTTP kodu ve ret kodu yok.
+7. PR gövdesindeki "Emniyet mantığına dokunulmadı" cümlesi yanlış (`sim/kopru` W5-K55; W5-K55…K59 emniyet davranışını değiştirdi).
+8. Canlı çalıştırmada senaryo dosyası okuma süresi.
+
+### Mimar kararları (üçüncü tur)
+
+- **W5-K64 — Çekişte sıra korunur (bulgu 1).** Bir A3 çekişi, aldığı denetim ya da genel istekten küçük sıra numaralı, yuvada bekleyen bir kısıtlayan istek bırakmaz.
+- **W5-K65 — W5-K56 hazırlıkta da geçerlidir (bulgu 2).** Hazırlıkta `komut_no`'su `sifirla`dan küçük kısıtlayan istekler eski dünyaya verilir (köprüye `emniyet_ata`) ve kapanıştan önce uygulanır; sonuçları `sifirla`nın sonucundan önce kayda geçer (A3-K57 sırası). "Seçilen okuma" kalktı.
+- **W5-K66 — Testlerde `hiz`dan sonra revizyon beklenir (bulgu 3 ve 6).** Her `hiz`ten sonra, sonraki denetim komutundan önce `durum_rev > önceki`; 50 denemeli döngü kalkar (tek deneme ve kod denetimi); `kontrol` yardımcısı ret nedenini yazar.
+- **W5-K67 — Windows ASan süre sınırı (bulgu 4).** `derleme.yml` iş sınırı 60 → 75 dakika (macOS ile aynı; #53 emsali); `senaryo_yukle_belirlenim` ASan derlemesinde kısaltılır (aynı denetim, daha kısa koşu); ASan'sız derlemeler değişmez.
+
+### Uygulanış (uygulayıcı; ayrıntı PR #57 üçüncü tur raporunda)
+
+- **K64.** Seçilen düzeltme: `A3Alici::cek` denetim yollarının uçlarını (`durdur_.son`, `denetim_.son`) genel halkanın kesimiyle birlikte, kısıtlayan yuvalar okunmadan ÖNCE okur ve yollar yalnız bu uçlara kadar alınır (`sim/sunucu/src/a3_baglanti.cpp`, `cek`, `yoldan_al`). Gerekçe: görülen her denetim isteğinden önce kabul edilmiş kısıtlayan, kabul sırası (üretici kilidi) ve release/acquire nedeniyle yuva taramasında görünür: yarış kurucu olarak kapanır (W4-K27 (2)'deki kesim argümanı). Alternatif (`a3_onde_kisit_var`'da erteleyip yuvaları yeniden çekmek) dünya döngüsünde ikinci bir çekiş ve `a3_kisit_` kapasitesi aşımı (bellek ayırmama kuralı) getirirdi; seçilmedi. `durdur` yolu aynı düzeltmeyle kapanır.
+- **K65.** `a3_calistirma_isle(0, true)` hazırlıkta da erteler (`a3_onde_kisit_var` yuvalarda bekleyen daha eski kısıtlayanı da sayar); `a3_hazirlik_kisit_bitir` yuvaları çeker, `a3_emniyet_ver` (W5-K56 süzgeci) → köprü `sinir_isle(0)` → `a3_sinir_sonrasi` → `a3_ertelenen_yeniden_bitir` sırasıyla uygular (`sim/sunucu/src/sunucu.cpp`). Köprüye dokunulmadı.
+- **K66, K67.** `tests/butunleme/test_a3_senaryo.cpp`, `.github/workflows/derleme.yml`.
+
+### Durum
+
+| Bulgu | Durum |
+|---|---|
+| 1 (K64) | düzeltildi; alıcı düzeyinde `sim.sunucu.a3_cekis_sirasi` ve sunucu düzeyinde `butunleme.senaryo_cekis_yarisi`; düzeltme geri alınınca ikisi de düşer |
+| 2 (K65) | düzeltildi; `butunleme.senaryo_sinir_yarisi` (C) yeniden yazıldı; düzeltme geri alınınca düşer |
+| 3 (K66) | düzeltildi (`Oturum::hiz_gercek_zaman`; `kosu_baslat`, `test_sifirla`, `test_kayit`, `test_yukle_belirlenim`) |
+| 4 (K67) | düzeltildi (sınır 75 dk; ASan'da belirlenim koşuları kısaltıldı); etkisi CI'da görülecek |
+| 5 | açık bulgulara (bu turda kod değişmedi) |
+| 6 (K66) | düzeltildi (tek deneme; `kontrol` ret nedenini yazar) |
+| 7 | düzeltildi (PR gövdesi) |
+| 8 | açık bulgulara (bu turda kod değişmedi) |
+
+İlk incelemeden açık kalan 5, 7, 8, 9, 10 (bu belgenin yukarısı) açık bulgular listesine gider; bu turda kod değişmedi.
