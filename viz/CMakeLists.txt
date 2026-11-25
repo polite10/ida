@@ -12,6 +12,13 @@
 
 option(IDA_VIZ "Görselleştirici eklentisini (godot-cpp) ve soketli araçları derle" OFF)
 
+if(MSVC AND IDA_VIZ)
+  # godot-cpp MSVC'de statik CRT (/MT) ile derlenir (Godot'nun resmî derlemeleri gibi; hedef
+  # makinede VC++ çalışma zamanı kurulumu gerekmez). Eklentiye bağlanan tüm viz hedefleri aynı
+  # çalışma zamanını kullanmalı (LNK2038). Bu değişken yalnız bu dizindeki hedefleri etkiler.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 function(ida_viz_uyarilar hedef)
   ida_ayar_uygula(${hedef})
   if(NOT MSVC)
@@ -82,9 +89,20 @@ ida_viz_uyarilar(ida_viz_test_okuma_butcesi)
 add_test(NAME host.viz.okuma_butcesi COMMAND ida_viz_test_okuma_butcesi)
 # Godot başsız: varlık yükleyicisi (A7-K53 olumsuz kümeleri, REF, özet, önbellek, malzeme).
 # Godot ikilisi yoksa betik 77 döner, test atlanır.
-add_test(NAME host.viz.varlik_godot COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/varlik_godot.sh")
-set_tests_properties(host.viz.varlik_godot PROPERTIES SKIP_RETURN_CODE 77
-  FAIL_REGULAR_EXPRESSION "DENETİM BAŞARISIZ|SCRIPT ERROR")
+# Windows'ta CTest .sh dosyasını doğrudan çalıştıramaz: Git for Windows'un bash'i (WSL'ninki değil) aranır.
+if(WIN32)
+  find_program(IDA_BASH NAMES bash HINTS "$ENV{ProgramFiles}/Git/bin" "$ENV{ProgramW6432}/Git/bin")
+  set(_varlik_komut "${IDA_BASH}")
+else()
+  set(_varlik_komut "")
+endif()
+if(WIN32 AND NOT IDA_BASH)
+  message(STATUS "viz: bash bulunamadı; host.viz.varlik_godot eklenmedi")
+else()
+  add_test(NAME host.viz.varlik_godot COMMAND ${_varlik_komut} "${CMAKE_CURRENT_SOURCE_DIR}/test/varlik_godot.sh")
+  set_tests_properties(host.viz.varlik_godot PROPERTIES SKIP_RETURN_CODE 77
+    FAIL_REGULAR_EXPRESSION "DENETİM BAŞARISIZ|SCRIPT ERROR")
+endif()
 add_test(NAME host.viz.yeniden_baglanma COMMAND ida_viz_test_yeniden_baglanma)
 
 # ---- godot-cpp 10.0.0-stable (09 §2.6, 07 §2.10) ----------------------------------------
@@ -110,6 +128,9 @@ ida_viz_uyarilar(ida_viz_eklenti)
 if(NOT MSVC)
   # godot-cpp istisnasız derlenir; eklenti de öyle.
   target_compile_options(ida_viz_eklenti PRIVATE -fno-exceptions)
+else()
+  # godot-cpp başlıkları SYSTEM'dir; MSVC'de /W4 /WX onların uyarılarını hata yapmasın.
+  target_compile_options(ida_viz_eklenti PRIVATE /external:W0)
 endif()
 set(_viz_bin "${CMAKE_CURRENT_SOURCE_DIR}/proje/bin")
 set_target_properties(ida_viz_eklenti PROPERTIES

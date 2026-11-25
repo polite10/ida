@@ -1,6 +1,5 @@
 // Bloklamayan yerel TCP soketi (A2-K01: yalnız 127.0.0.1; A2-K04: TCP_NODELAY).
-// macOS'ta POSIX soketleri; Windows dalı Winsock ile yazıldı ama bu dilimde derlenip
-// sınanmadı (Windows derlemesi sonraki dilimde).
+// macOS'ta POSIX soketleri, Windows'ta Winsock (derleme: .github/workflows/viz-windows.yml).
 #ifndef IDA_VIZ_SOKET_HPP
 #define IDA_VIZ_SOKET_HPP
 

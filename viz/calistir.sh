@@ -29,7 +29,7 @@
 #
 # Eklenti ve sahte kaynak derlenmemişse (ya da --derle verilirse) önce derlenir (--sim kipinde
 # yalnız eklenti); Godot projesi hiç içe aktarılmamışsa (.godot/ yok) bir kez başsız içe
-# aktarılır. Pencere kapanınca sahte kaynak da kapatılır. Windows eşdeğeri sonraki dilimde.
+# aktarılır. Pencere kapanınca sahte kaynak da kapatılır. Windows eşdeğeri: viz/calistir.ps1.
 set -euo pipefail
 
 BURADA=$(cd "$(dirname "$0")" && pwd)
