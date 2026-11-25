@@ -236,6 +236,25 @@ int test_guvence()
         DOGRULA(d, !s.on_eki_son_adim.has_value() && s.nedenler.empty(), "eksiksiz kayıtta önek ve neden yok");
     }
     {
+        // W5-K41: yazanın tavanı güvenceyi yalnız aşağı çeker ve nedenini yazar.
+        GuvenceGirdisi x = g(Kademe::tam, "sil");
+        x.tavan = Guvence::izleme;
+        x.tavan_nedeni = "kanal_uretilmiyor";
+        const GuvenceSonucu s = guvence_belirle(x);
+        DOGRULA(d, s.duzey == Guvence::izleme && s.beklenen == Guvence::girdi && !s.on_eki_son_adim.has_value() &&
+                       s.nedenler == "kanal_uretilmiyor",
+                "tavan izleme: düzey izleme, neden yazılı, önek yok");
+        GuvenceGirdisi y = g(Kademe::olaylar, "sil");
+        y.tavan = Guvence::fizik;   // beklenenin (izleme) üstündeki tavan hiçbir şeyi yükseltmez
+        y.tavan_nedeni = "kanal_uretilmiyor";
+        const GuvenceSonucu t = guvence_belirle(y);
+        DOGRULA(d, t.duzey == Guvence::izleme && t.nedenler.empty(), "yüksek tavan düzeyi yükseltmez ve neden eklemez");
+        GuvenceGirdisi z = g(Kademe::telemetri, "sil");
+        z.tavan = Guvence::fizik;
+        const GuvenceSonucu u = guvence_belirle(z);
+        DOGRULA(d, u.duzey == Guvence::fizik && u.nedenler.empty(), "tavan düzeye eşitse hiçbir şey değişmez");
+    }
+    {
         // İnceleme bulgusu 7: kip × kademe için beklenen düzey Tablo 4.6'nın izin verdiğini aşamaz.
         // Fiziğin koşmadığı kiplerin (`tekrar_girdi_sil`, `tekrar_yeniden_kurma`) kaydı `fizik` güvencesi
         // iddia edemez; `girdi` yalnız `sil` kipinin `tam` kademesindeki kaydından.

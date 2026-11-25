@@ -57,6 +57,11 @@ struct KapanisAlanlari {
     std::string sayaclar;              // `ad=deger` listesi
     // A6-K53: tekrar koşusunda ilk canlı müdahalenin adımı; varsa güvence `yok` olur.
     std::optional<std::uint64_t> canli_mudahale_adimi;
+    // W5-K41: kaydı yazan taraf, gereken kanalların tamamını üretemiyorsa güvenceyi bu düzeyle sınırlar
+    // (genellikle `izleme`) ve nedenini yazar; güvence düzey kademe ve kipin verdiğinden yüksek olamaz,
+    // bu alan onu yalnız AŞAĞI çeker. `guvence_tavan_nedeni` `guvence_nedenleri`ne eklenir.
+    std::optional<Guvence> guvence_tavani;
+    std::string guvence_tavan_nedeni;
 };
 
 // Bir `kayit/eksik` kaydının içeriği (A6 §3.4 `yuk_kayit_eksik`); `kanal` katalogdaki kanaldır.
@@ -82,6 +87,9 @@ struct GuvenceGirdisi {
     // Kaydın sonu: dosya erken kapandıysa (sınır, yazma hatası) son tam kaydedilen adım.
     std::optional<std::uint64_t> erken_son_adim;
     std::string_view erken_neden;                     // `sinira_ulasti`, `yazma_hatasi`, `disk_dolu`
+    // W5-K41: yazanın üretemediği kanallar yüzünden koyduğu tavan (`KapanisAlanlari::guvence_tavani`).
+    std::optional<Guvence> tavan;
+    std::string_view tavan_nedeni;
 };
 
 struct GuvenceSonucu {

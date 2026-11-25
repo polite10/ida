@@ -513,6 +513,8 @@ struct YaziciIc {
         g.ilk_eksik_fizik = ilk_eksik_fizik;
         g.ilk_eksik_girdi = ilk_eksik_girdi;
         g.erken_neden = erken_neden;
+        g.tavan = a.guvence_tavani;
+        g.tavan_nedeni = a.guvence_tavan_nedeni;
         if (!erken_neden.empty() && en_buyuk_adim.has_value()) {
             // Kayıt erken bitti. Önek hiçbir eksik adımı kapsayamaz (A6-K12, K33): dosyadaki en büyük
             // adım yarım kalmış olabilir (ondan önceki adım tam kaydedilmiştir) ve kapanışta dosyaya
