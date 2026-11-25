@@ -92,7 +92,7 @@ test('adım sayısı ve hız çarpanı girdi denetimi (A3-K65, K66)', () => {
 test('komut satırı: gönderildi / kuyrukta / uygulandı / reddedildi ayrı yazılır', () => {
   const k = (a: Partial<KomutKaydi>): KomutKaydi => ({
     yerel: 1, komut: 'duraklat', etiket: 'Duraklat', asama: 'gonderiliyor', komut_no: null, hata_kodu: null, ileti: '', uygulama_adimi: null,
-    gonderildi: 0, sonuc_zamani: null, gonderildi_mi: true, ...a,
+    gonderildi: 0, sonuc_zamani: null, gonderildi_mi: true, ozet: '', ...a,
   });
   assert.match(komutSatiri(k({})), /gönderiliyor/);
   assert.match(komutSatiri(k({ asama: 'kuyrukta', komut_no: 7 })), /#7 — kuyrukta · uygulanmadı/);

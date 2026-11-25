@@ -19,7 +19,7 @@ import type { OlayKaydi } from './olay';
 
 export type KomutAsamasi = 'gonderiliyor' | 'kuyrukta' | 'uygulandi' | 'reddedildi' | 'bilinmiyor';
 
-export type KomutAdi = CalistirmaKomutu | 'senaryo_yukle';
+export type KomutAdi = CalistirmaKomutu | 'senaryo_yukle' | 'emniyet_degistir' | 'yer_istasyonu_komut';
 
 export interface KomutKaydi {
   /** Bu istemci içinde artan yerel numara. */
@@ -40,6 +40,8 @@ export interface KomutKaydi {
   sonuc_zamani: number | null;
   /** Komut gerçekten sunucuya gönderildi mi (yerel engel değilse true). */
   gonderildi_mi: boolean;
+  /** Komutun neyi değiştirdiğini söyleyen kısa metin (emniyet girdisi ve yer istasyonu komutları). */
+  ozet: string;
 }
 
 export interface KomutAyari {
@@ -64,6 +66,8 @@ export const KOMUT_ETIKETLERI: Readonly<Record<KomutAdi, string>> = {
   durdur: 'Durdur',
   sifirla: 'Sıfırla',
   senaryo_yukle: 'Senaryo yükle',
+  emniyet_degistir: 'Emniyet girdisi',
+  yer_istasyonu_komut: 'Yer istasyonu komutu',
 };
 
 const SONUC_ARABELLEGI = 256;
@@ -144,6 +148,7 @@ export class KomutYoneticisi {
       gonderildi: Date.now(),
       sonuc_zamani: null,
       gonderildi_mi: true,
+      ozet: '',
     };
     this.kayitlar_.unshift(k);
     while (this.kayitlar_.length > this.ayar.enCokKayit) {
@@ -208,6 +213,68 @@ export class KomutYoneticisi {
     k.ileti = 'sunucu kabul etti (kuyrukta); uygulanması bekleniyor';
     this.bildir(k);
     return this.sonucuBekle(k, komut === 'baslat' ? this.ayar.baslatSureMs : this.ayar.sureMs);
+  }
+
+  /**
+   * Emniyet girdisi ve yer istasyonu komutlarının ortak yolu (W5-web-emniyet). Çağıran,
+   * isteği kuran işlevi verir; kimlik, revizyon ve jeton kararları çağıranın (emniyet-istek.ts)
+   * işidir. Bu yöntem yalnız kaydı ve sonucu izler: 202 → komut_sonucu / GET /komutlar.
+   *  - `istekSureMs` içinde HTTP yanıtı gelmezse kayıt "bilinmiyor"a düşer (komut gitmiş olabilir).
+   *  - `aglaGitmedi`: ağ hatasında istek sunucuya ulaşmamış sayılır (kayıt "reddedildi",
+   *    `gonderildi_mi` false: ekranda UYGULANMADI); aksi halde "bilinmiyor".
+   *  - `cifteEngel`: açıksa yanıt beklenirken aynı komut ikinci kez gönderilmez.
+   * Hiçbir koşulda isteği kendiliğinden yinelemez.
+   */
+  async gonderGenel(
+    komut: KomutAdi,
+    gonder: () => Promise<{ komut_no: number }>,
+    secenek: { istekSureMs?: number; aglaGitmedi?: boolean; cifteEngel?: boolean; ozet?: string } = {},
+  ): Promise<KomutKaydi> {
+    if (this.kapali) throw new Error('komut yöneticisi kapatıldı');
+    if (secenek.cifteEngel === true && this.gonderilirken(komut)) {
+      return this.engel(komut, 'gonderiliyor', 'Aynı komut zaten gönderiliyor; yanıt bekleniyor.');
+    }
+    const k = this.yeni(komut);
+    k.ozet = secenek.ozet ?? '';
+    const sureMs = secenek.istekSureMs ?? 10_000;
+    let zamanlayici: ReturnType<typeof setTimeout> | undefined;
+    const sureAsimi = new Promise<'zaman_asimi'>((coz) => {
+      zamanlayici = setTimeout(() => coz('zaman_asimi'), sureMs);
+    });
+    const istek = gonder();
+    istek.catch(() => undefined); // süre aşımından sonra gelen hata yutulur
+    let yanit: { komut_no: number } | 'zaman_asimi';
+    try {
+      yanit = await Promise.race([istek, sureAsimi]);
+    } catch (h) {
+      clearTimeout(zamanlayici);
+      if (secenek.aglaGitmedi === true && h instanceof A3Hatasi && h.kod === 'ag_hatasi') {
+        k.gonderildi_mi = false;
+        this.bitir(k, 'reddedildi', 'sunucuya_ulasilamadi', 'Sunucuya ulaşılamadı; istek gönderilemedi, UYGULANMADI.', null);
+        return k;
+      }
+      this.gonderimHatasi(k, h);
+      return k;
+    }
+    clearTimeout(zamanlayici);
+    if (yanit === 'zaman_asimi') {
+      this.bitir(k, 'bilinmiyor', 'zaman_asimi', hataIletisi('zaman_asimi'), null);
+      return k;
+    }
+    k.komut_no = yanit.komut_no;
+    this.komutNoyaGore.set(yanit.komut_no, k);
+    k.asama = 'kuyrukta';
+    k.ileti = 'sunucu kabul etti (kuyrukta); uygulanması bekleniyor';
+    this.bildir(k);
+    return this.sonucuBekle(k, this.ayar.sureMs);
+  }
+
+  /** Hiç istek göndermeden "uygulanmadı" kaydı bırakır (yerel engel; ekranda UYGULANMADI). */
+  engelle(komut: KomutAdi, kod: string, ileti: string, ozet = ''): KomutKaydi {
+    const k = this.engel(komut, kod, ileti);
+    k.ozet = ozet;
+    this.bildir(k);
+    return k;
   }
 
   /**
