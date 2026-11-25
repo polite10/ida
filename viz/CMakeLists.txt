@@ -89,9 +89,20 @@ ida_viz_uyarilar(ida_viz_test_okuma_butcesi)
 add_test(NAME host.viz.okuma_butcesi COMMAND ida_viz_test_okuma_butcesi)
 # Godot başsız: varlık yükleyicisi (A7-K53 olumsuz kümeleri, REF, özet, önbellek, malzeme).
 # Godot ikilisi yoksa betik 77 döner, test atlanır.
-add_test(NAME host.viz.varlik_godot COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/varlik_godot.sh")
-set_tests_properties(host.viz.varlik_godot PROPERTIES SKIP_RETURN_CODE 77
-  FAIL_REGULAR_EXPRESSION "DENETİM BAŞARISIZ|SCRIPT ERROR")
+# Windows'ta CTest .sh dosyasını doğrudan çalıştıramaz: Git for Windows'un bash'i (WSL'ninki değil) aranır.
+if(WIN32)
+  find_program(IDA_BASH NAMES bash HINTS "$ENV{ProgramFiles}/Git/bin" "$ENV{ProgramW6432}/Git/bin")
+  set(_varlik_komut "${IDA_BASH}")
+else()
+  set(_varlik_komut "")
+endif()
+if(WIN32 AND NOT IDA_BASH)
+  message(STATUS "viz: bash bulunamadı; host.viz.varlik_godot eklenmedi")
+else()
+  add_test(NAME host.viz.varlik_godot COMMAND ${_varlik_komut} "${CMAKE_CURRENT_SOURCE_DIR}/test/varlik_godot.sh")
+  set_tests_properties(host.viz.varlik_godot PROPERTIES SKIP_RETURN_CODE 77
+    FAIL_REGULAR_EXPRESSION "DENETİM BAŞARISIZ|SCRIPT ERROR")
+endif()
 add_test(NAME host.viz.yeniden_baglanma COMMAND ida_viz_test_yeniden_baglanma)
 
 # ---- godot-cpp 10.0.0-stable (09 §2.6, 07 §2.10) ----------------------------------------
