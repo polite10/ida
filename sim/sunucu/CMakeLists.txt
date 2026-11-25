@@ -21,7 +21,7 @@ endfunction()
 
 find_package(nlohmann_json CONFIG REQUIRED)   # A3 yer istasyonu komutlarının parametreleri (W4-bagla-a3)
 
-add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp src/a3_baglanti.cpp)
+add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp src/a3_baglanti.cpp src/sinyal.cpp)
 target_include_directories(ida_sunucu
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -48,3 +48,9 @@ add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)
 # W4-K27 (2) (EMNİYET): A3 alıcısının tutarlı kesimi, belirlenimci iş parçacığı sırasıyla.
 add_test(NAME sim.sunucu.a3_kesim COMMAND ida_sunucu_test a3_kesim)
 add_test(NAME sim.sunucu.a3_duraklatma_tablo COMMAND ida_sunucu_test a3_duraklatma_tablo)
+# W4-sunucu-kucuk kapsam 1: kapanış isteği bayrağı (her platform) ve sinyal işleyicileri (POSIX; fork).
+add_test(NAME sim.sunucu.kapanis_bayragi COMMAND ida_sunucu_test kapanis_bayragi)
+if(NOT WIN32)
+  add_test(NAME sim.sunucu.sinyal_ilk COMMAND ida_sunucu_test sinyal_ilk)
+  add_test(NAME sim.sunucu.sinyal_ikinci COMMAND ida_sunucu_test sinyal_ikinci)
+endif()

@@ -28,3 +28,9 @@ Duraklatma (W4-duraklat); sonar sahne geometrisi (W4-sonar-sahne); A3'ten senary
 4. `z1` HIL kipinde (seçilen yolla) kartsız HIL'de başlar; `zincir.z1` ve `kabul.*` değişmeden; sonar kapalıyken çıktılar bu iş öncesiyle bayt bayt aynı (iki ikilinin bir kez karşılaştırılması).
 5. `scenarios/sonar-acik-su.toml --sonar` SIL'de koşar; iki koşu bayt bayt aynı.
 6. `host-debug` + `host-release` tam tur (sonda bir kez); `host-asan` yalnız derleme; W3-K14; MSVC kalıpları; zamanlama eşikleri yalnız ortak yardımcıyla (W4-K24, K29).
+
+## Mimar eki (2026-11-25)
+
+- **Yürütücü:** W4-K27 uyarınca (2026-11-25 kullanıcı kararı) bu iş `ida-hafif-uygulayici`'da (Sonnet) yürür.
+- **Kapsam 4'e ek:** görev senaryosunun (`scenarios/gorev-havuz.toml`; W5-gorev-yurutucu ile geldi, yalnız SIL kipinde tanımlı) da `z1` için seçilen yolla HIL kipinde koşabilir hâle getirilmesi (A5 komut satırından kip geçersiz kılmasına izin vermiyorsa HIL eşi dosya; yalnız kip ve kipe bağlı alanlar farklı). Kartta koşu bu işin parçası değildir; kartsız HIL'de başlaması yeter.
+- **Kapsam 5:** "varsayılanın senaryodan türetilmesi" bu dilimde de yapılmaz (W4-sonar-sahne `main`'de olsa da); yalnız yukarıda yazılan uygulanır.

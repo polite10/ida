@@ -35,13 +35,15 @@ void kullanim()
         "                           adresi standart çıktıya bir kez yazılır (A3-K05)\n"
         "  --a3-kok <dizin>         A3: panellerin derleme çıktısı (web/dist)\n"
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
-        "  --sonar                  senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
-        "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla)\n"
+        "  --sonar[=acik|kapali]    senaryo dosyasının sonarları (Ping1D, Ping360; sade kademe): karta A1'den,\n"
+        "                           A3 açıksa sonar kanallarından (yalnız senaryo dosyasıyla); değersiz = acik;\n"
+        "                           bayrak yoksa kapalı\n"
         "  --ping360-ornek <n>      sonar: Ping360 örnek sayısı 200–1200, menzil korunur (varsayılan 1200)\n"
         "  --ping360-bekleme-ms <ms>  sonar: Ping360 pingleri arası bekleme (satır hızının kısılması)\n"
         "  --sonar-csv <yol>        sonar: teslim edilen sonar kayıtlarının CSV'si\n"
         "çıkış kodu: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo (doğrulama raporu\n"
-        "standart hataya), 4 senaryo bu dilimde yürütülemez\n");
+        "standart hataya), 4 senaryo bu dilimde yürütülemez, 5 SIGINT/SIGTERM (Windows: Ctrl-C, Ctrl-Break,\n"
+        "pencere kapatma) ile düzgün kapanış, 6 ikinci sinyal (hemen sonlandırma)\n");
 }
 
 // Sayısal seçeneklerin tek ayrıştırıcısı (sol #1 üçüncü dar denetimi): değerin tamamı sayı
@@ -208,8 +210,19 @@ int main(int argc, char** argv)
             a.a3_kok = deger();
         } else if (s == "--a3-bekle") {
             a.a3_bekle = true;
-        } else if (s == "--sonar") {
-            a.sonar_acik = true;
+        } else if (s == "--sonar" || s.rfind("--sonar=", 0) == 0) {
+            // W4-sunucu-kucuk kapsam 5: değersiz `--sonar` = `acik`; `--sonar=acik|kapali`. Varsayılan
+            // (bayrak yok) kapalıdır.
+            const std::string v = s == "--sonar" ? "acik" : s.substr(8);
+            if (v == "acik") {
+                a.sonar_acik = true;
+            } else if (v == "kapali") {
+                a.sonar_acik = false;
+            } else {
+                std::fprintf(stderr, "ida_sim: --sonar acik ya da kapali ister: %s\n", v.c_str());
+                return 1;
+            }
+            a.sonar_verildi = true;
         } else if (s == "--ping360-ornek") {
             const std::string v = deger();
             double x = 0.0;
@@ -265,6 +278,12 @@ int main(int argc, char** argv)
         std::printf("%s\n", adres.c_str());
         std::fflush(stdout);
     };
+    // W4-sunucu-kucuk kapsam 1: SIGINT/SIGTERM (Windows: konsol denetim olayları) yalnız bayrak kurar;
+    // koşu bayrağı sınırda görür ve var olan hata kapanışını işletir. Kurulamazsa kapanış hızlanmaz
+    // (kart zaman aşımıyla güvenli duruma geçer); koşu sürer.
+    if (!ida::sunucu::sinyal_kur()) {
+        std::fprintf(stderr, "ida_sim: uyarı: sinyal işleyicileri kurulamadı; kesilirse kapanış çerçevesi gitmez\n");
+    }
     const ida::sunucu::Sonuc s = ida::sunucu::kos(a);
     const ida::kopru::Sayaclar& c = s.sayac;
     using ida::sunucu::HataTuru;
@@ -276,6 +295,23 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_sim: %s\n", s.hata.c_str());
         return s.hata_turu == HataTuru::kullanim ? 1 : 4;
     }
+    // W4-sunucu-kucuk kapsam 2: her kapanışta (düzgün, hata, sinyal) bir özet satırı; var olan sayaçlar.
+    // Yazılım günlük düzeyinden bağımsızdır (kapanışın tek satırlık kaydı). `düşen kayıt`: A3 yayın
+    // halkasında taşan, SIL tamponunda oturum bitince işlenmeden atılan ve oturumla atılan Ping360
+    // kaydı; köprüde "yeniden gönderim" sayacı yoktur, alanlar gerçekte saydıklarıyla adlandırılır: yinelenen
+    // yanıt reddi (A1 yinelenen çerçeve) ve yeniden bağlanma (port yeniden açılması);
+    // `sonar taşma`: kuyruk, teslim deposu ve tampon yetersizliği.
+    std::fprintf(stderr,
+                 "ida_sim: kapanış: %s; kaçırılan parti %llu, düşen kayıt (A3 halka %llu, SIL tampon %llu, Ping360 oturum %llu), "
+                 "yinelenen yanıt reddi %llu, yeniden bağlanma %llu, sonar taşma (kuyruk %llu, teslim %llu, tampon %llu), "
+                 "oturum %llu, kapanış yazımı eksik %llu, son hata: %s\n",
+                 s.sinyal_kesti ? "sinyal" : (s.tamam ? "düzgün" : "hata"),
+                 static_cast<unsigned long long>(c.parti_kacirildi), static_cast<unsigned long long>(s.a3_halka_tasma),
+                 static_cast<unsigned long long>(c.sil_tampon_atilan), static_cast<unsigned long long>(c.ping360_oturum_atilan),
+                 static_cast<unsigned long long>(c.yanit_ret_yinelenen), static_cast<unsigned long long>(s.yeniden_baglanti),
+                 static_cast<unsigned long long>(s.sonar_kuyruk_tasma), static_cast<unsigned long long>(s.sonar_teslim_tasma),
+                 static_cast<unsigned long long>(s.sonar_tampon_yetersiz), static_cast<unsigned long long>(c.oturum_kurulan),
+                 static_cast<unsigned long long>(s.kapanis_yazim_eksik), s.hata.empty() ? "yok" : s.hata.c_str());
     if (a.gunluk >= 2) {
         std::fprintf(stderr, "ida_sim: başlangıç O_b derinliği %.17g m\n", s.denge_derinligi_m);
     }
@@ -407,5 +443,6 @@ int main(int argc, char** argv)
             }
         }
     }
-    return s.tamam ? 0 : 2;
+    ida::sunucu::kapanis_tamamlandi();   // Windows pencere kapatma işleyicisi bunu bekler
+    return s.sinyal_kesti ? ida::sunucu::kCikisSinyal : (s.tamam ? 0 : 2);
 }

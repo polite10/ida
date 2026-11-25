@@ -1262,6 +1262,43 @@ int test_a3_ayirma()
 
 }  // namespace
 
+// W4-sunucu-kucuk kapsam 1: A3 açıkken kapanış sinyali. (1) Koşarken: koşu hata kapanışıyla biter
+// (çalıştırma `hata`), A3 istemcisi sunucunun kapanışını alır (WebSocket kapanış kodu 1001, A3-K49),
+// kalan istekler sınırda reddedilir (yuva boşluğu bu testte sınanmaz). (2) `baslat` beklenirken (`yuklendi`):
+// oturum hiç kurulmadan biter, çalıştırma `yuklendi`'de kalır.
+int test_a3_sinyal()
+{
+    ida::sunucu::kapanis_sifirla();
+    Istemciler ist;
+    ist.yavas_var = false;
+    const Kosu k = kos(z1_yerlesik(12.0), true, &ist, [](std::uint64_t b, ida::a3::KomutAlicisi&) {
+        if (b == 2000) {
+            ida::sunucu::kapanis_iste();
+        }
+    });
+    ida::sunucu::kapanis_sifirla();
+    dogrula_a3(!k.s.tamam && k.s.sinyal_kesti && k.s.hata == "sinyalle kesildi", "A3 açık: koşu sinyalle kesildi (" + k.s.hata + ")");
+    dogrula_a3(k.s.calistirma_sonu == "hata", "A3: çalıştırma `hata` ile bitti (" + k.s.calistirma_sonu + ")");
+    dogrula_a3(k.s.kapanis_daraltildi && !k.s.kapanis_izin_acik && !k.s.kapanis_itki_yururlukte,
+               "kapanışta yerel daraltma uygulandı");
+    dogrula_a3(!k.s.satirlar.empty() && k.s.satirlar.back().t_s < 4.0, "koşu 12 s'ye gitmedi");
+    dogrula_a3(ist.baglandi && ist.hizli != nullptr && ist.hizli->kapandi && ist.hizli->kapanis_kodu == 1001,
+               "A3 istemcisi sunucunun kapanışını aldı (WebSocket 1001; kod " +
+                   std::to_string(ist.hizli != nullptr ? ist.hizli->kapanis_kodu : 0) + ")");
+    // (2) `baslat` beklenirken kesme.
+    ida::sunucu::Ayar a = z1_yerlesik(12.0);
+    a.a3_bekle = true;
+    const auto bas = std::chrono::steady_clock::now();
+    const Kosu y = kos(a, true, nullptr, [](std::uint64_t, ida::a3::KomutAlicisi&) { ida::sunucu::kapanis_iste(); });
+    ida::sunucu::kapanis_sifirla();
+    const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    dogrula_a3(!y.s.tamam && y.s.sinyal_kesti && y.s.calistirma_sonu == "yuklendi" && y.s.satirlar.empty(),
+               "`baslat` beklenirken sinyal: oturum kurulmadı, yuklendi'de kaldı (" + y.s.calistirma_sonu + ")");
+    std::printf("  ÖLÇÜM: kesmeden dönüşe %.3f s\n", sure);
+    dogrula_a3(y.s.sayac.oturum_kurulan == 0u, "oturum kurulmadı");
+    return 0;
+}
+
 int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
 {
     if (ad == "a3_belirlenim") {
@@ -1286,6 +1323,8 @@ int a3_testi(const std::string& ad, int /*argc*/, char** /*argv*/)
         (void)test_a3_hazirlik_son_durdur();
     } else if (ad == "a3_hazirlik_durdur") {
         (void)test_a3_hazirlik_durdur();
+    } else if (ad == "a3_sinyal") {
+        (void)test_a3_sinyal();
     } else if (ad == "a3_ayirma") {
         (void)test_a3_ayirma();
     } else {

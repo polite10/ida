@@ -5,7 +5,20 @@
 //                   ayrıştırıcısı belgedeki kurallardır); eski kodlamanın karşı örneği
 //   arguman_surec   alt süreç başlatılır, argümanları dosyaya yazar; aynen geldikleri denetlenir
 //                   (Windows'ta CreateProcess + CRT'nin gerçek ayrıştırması; POSIX'te posix_spawn)
+//   kapanis_bayragi W4-sunucu-kucuk kapsam 1 (her platform): kapanış isteği bayrağı (kurma, yoklama,
+//                   sıfırlama); ilk istek süreci sonlandırmaz
+//   sinyal_ilk      (POSIX) sinyal_kur() ile SIGINT ve SIGTERM yalnız bayrağı kurar: süreç yaşar
+//   sinyal_ikinci   (POSIX) ikinci sinyal süreci hemen kCikisIkinciSinyal koduyla sonlandırır
+//                   (Windows'ta konsol olayı CI'da üretilemez: yalnız bayrak işlevi `kapanis_bayragi`
+//                   ile sınanır; konsol işleyicisi derlenir)
 #include "yardimci.hpp"
+#include "ida/sunucu/sunucu.hpp"
+
+#ifndef _WIN32
+#include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 #include <chrono>
 #include <cstdio>
@@ -198,6 +211,69 @@ int test_arguman_surec(const char* kendi)
     return 0;
 }
 
+int test_kapanis_bayragi()
+{
+    ida::sunucu::kapanis_sifirla();
+    dogrula(!ida::sunucu::kapanis_istendi(), "başlangıçta kapanış istenmedi");
+    ida::sunucu::kapanis_iste();
+    dogrula(ida::sunucu::kapanis_istendi(), "kapanis_iste bayrağı kurdu");
+    ida::sunucu::kapanis_iste();   // ikinci programatik istek süreci sonlandırmaz
+    dogrula(ida::sunucu::kapanis_istendi(), "tekrarlanan programatik istek de süreci sonlandırmadı");
+    ida::sunucu::kapanis_sifirla();
+    dogrula(!ida::sunucu::kapanis_istendi(), "kapanis_sifirla bayrağı temizledi");
+    ida::sunucu::kapanis_sinyali();   // işleyicinin çekirdeği: ilk çağrı yalnız bayrak kurar
+    dogrula(ida::sunucu::kapanis_istendi(), "ilk sinyal bayrağı kurdu ve süreç yaşıyor");
+    ida::sunucu::kapanis_sifirla();
+    return 0;
+}
+
+#ifndef _WIN32
+// Çocuk süreçte sinyal_kur()'dan sonra verilen sinyallerin sonucu: çıkış kodu (-1: sinyalle öldü).
+int cocuk_sinyal(int sinyal_sayisi, int ilk, int ikinci)
+{
+    const pid_t p = fork();
+    if (p == 0) {
+        if (!ida::sunucu::sinyal_kur()) {
+            _exit(90);
+        }
+        (void)raise(ilk);
+        if (sinyal_sayisi >= 2) {
+            (void)raise(ikinci);
+            std::this_thread::sleep_for(std::chrono::seconds(5));   // ikinci sinyal bunu bekletmemeli
+            _exit(91);
+        }
+        _exit(ida::sunucu::kapanis_istendi() ? 0 : 92);
+    }
+    int durum = 0;
+    if (p < 0 || waitpid(p, &durum, 0) != p) {
+        return -2;
+    }
+    return WIFEXITED(durum) ? WEXITSTATUS(durum) : -1;
+}
+
+int test_sinyal_ilk()
+{
+    dogrula(cocuk_sinyal(1, SIGINT, 0) == 0, "SIGINT: yalnız bayrak kuruldu, süreç yaşadı");
+    dogrula(cocuk_sinyal(1, SIGTERM, 0) == 0, "SIGTERM: yalnız bayrak kuruldu, süreç yaşadı");
+    return 0;
+}
+
+int test_sinyal_ikinci()
+{
+    const auto bas = std::chrono::steady_clock::now();
+    const int a = cocuk_sinyal(2, SIGINT, SIGINT);
+    const int b = cocuk_sinyal(2, SIGTERM, SIGINT);
+    const double sure = std::chrono::duration<double>(std::chrono::steady_clock::now() - bas).count();
+    dogrula(a == ida::sunucu::kCikisIkinciSinyal, "SIGINT + SIGINT: süreç hemen " +
+                                                   std::to_string(ida::sunucu::kCikisIkinciSinyal) + " koduyla bitti (" +
+                                                   std::to_string(a) + ")");
+    dogrula(b == ida::sunucu::kCikisIkinciSinyal, "SIGTERM + SIGINT: süreç hemen bitti (" + std::to_string(b) + ")");
+    // Süre ölçüt değildir (ikinci sinyal işlenmeseydi çocuk 91 koduyla çıkardı; ayırt eden çıkış kodudur).
+    std::printf("  ÖLÇÜM: iki çocuk toplam %.3f s (bekleme 5 s'ydi)\n", sure);
+    return 0;
+}
+#endif
+
 }  // namespace
 
 int test_a3_kesim();   // test_a3_alici.cpp (W4-K27 (2))
@@ -217,6 +293,14 @@ int main(int argc, char** argv)
         (void)test_arguman_kacisi();
     } else if (ad == "arguman_surec") {
         (void)test_arguman_surec(argv[0]);
+    } else if (ad == "kapanis_bayragi") {
+        (void)test_kapanis_bayragi();
+#ifndef _WIN32
+    } else if (ad == "sinyal_ilk") {
+        (void)test_sinyal_ilk();
+    } else if (ad == "sinyal_ikinci") {
+        (void)test_sinyal_ikinci();
+#endif
     } else if (ad == "a3_kesim") {
         g_hata += test_a3_kesim();
     } else if (ad == "a3_duraklatma_tablo") {

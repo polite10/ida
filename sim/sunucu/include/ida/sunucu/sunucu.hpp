@@ -170,6 +170,9 @@ struct Ayar {
     // Neden varsayılan kapalı (mimar onayına): scenarios/z1.toml araç dosyasından (ida0.toml) iki
     // etkin sonar alır; varsayılan açık olsaydı Z1/Z2 taban çizgisinin A1 akışı değişirdi.
     bool sonar_acik = false;
+    // `--sonar`/`--sonar=acik|kapali` komut satırında verildi (W4-sunucu-kucuk kapsam 5): verilmemişse
+    // ve senaryoda etkin sonar varsa başlangıçta tek satır bilgi yazılır.
+    bool sonar_verildi = false;
     // Kalite kademesi (K16, Ö11): Ping360 tarama yapılandırması A5'te ve A1'de yok (W4-K18 (c));
     // kurulum alanının komut satırından kısılması. 0: modelin varsayılanı (1 200 örnek; A5-K78).
     // 200–1200: örnek sayısı, menzil korunarak (örnek periyodu orantılı).
@@ -325,6 +328,9 @@ struct Sonuc {
     bool kapanis_izin_acik = false;         // daraltmadan sonra bir tüpün izni açık (false beklenir)
     bool kapanis_itki_yururlukte = false;   // daraltmadan sonra yürürlükte itki (false beklenir)
     std::uint64_t kapanis_istisna = 0;      // kapanış koruyucusunda yutulan istisna
+    // W4-sunucu-kucuk (kapsam 1): koşu SIGINT/SIGTERM (Windows: konsol denetim olayı) ile kesildi.
+    // Kapanış, hata kapanışıyla aynı işlevdir (`hata` = "sinyalle kesildi"); `tamam` false.
+    bool sinyal_kesti = false;
     std::uint64_t sil_kuyruk_tasma = 0;        // W4-K26 (3): SIL bekleme tüketim sınırı (akış konumunda) aşıldı (PROTOCOL)
     std::uint32_t karsi_sample_rejected = 0;   // süreç içi karşı tarafın çekirdek sayaçları
     std::uint32_t karsi_sample_future = 0;
@@ -346,6 +352,7 @@ struct Sonuc {
     std::uint64_t a3_sira_korumasi = 0;
     // ---- Sonar (W4-bagla-sonar) ----
     bool sonar_acik = false;
+    std::size_t senaryo_etkin_sonar = 0;   // senaryo dosyasındaki etkin Ping1D + Ping360 (sonar açık olsun olmasın)
     std::uint64_t sonar_ping1d = 0, sonar_ping360 = 0;   // teslim edilen kayıt (arıza zinciri sonrası)
     std::uint64_t sonar_ping = 0, sonar_isin = 0, sonar_havada = 0, sonar_kayip = 0, sonar_kuyruk_tasma = 0;
     // W4-K27 (5) (sol #5): sabit kapasiteli teslim deposuna sığmadığı için düşürülen kayıt ve yük
@@ -374,5 +381,28 @@ int a3_ayirma_sayilir() noexcept;
 int sonar_ayirma_sayilir() noexcept;
 
 const char* csv_basligi();
+
+// ---- Kapanış isteği (W4-sunucu-kucuk kapsam 1) ----
+// Sinyal işleyicisi yalnız bir sayaç artırır (kilitsiz atomik; G/Ç, kilit ve bellek ayırma yok).
+// Dünya döngüsü bayrağı bir sonraki sınırda (ve bağlantı, el sıkışma ve hazırlık beklemelerinin
+// her turunda) görür ve var olan hata kapanışını işletir (ikinci bir kapanış yolu yoktur).
+// Kartın güvenliği bu yola dayanmaz: kart kendi zaman aşımıyla güvenli duruma geçer.
+// ida_sim çıkış kodları: 0 tamam, 1 komut satırı, 2 çalıştırma hatası, 3 geçersiz senaryo,
+// 4 senaryo yürütülemez, 5 sinyalle düzgün kapanış, 6 ikinci sinyal (hemen sonlandırma).
+constexpr int kCikisSinyal = 5;
+constexpr int kCikisIkinciSinyal = 6;
+// Kapanışı ister (programdan; ikinci sinyal gibi sonlandırmaz). Sinyal işleyicisinden çağrılabilir.
+void kapanis_iste() noexcept;
+bool kapanis_istendi() noexcept;
+// Yalnız sınama: bayrağı sıfırlar.
+void kapanis_sifirla() noexcept;
+// İşleyicinin çekirdeği (asenkron sinyal güvenli): ilk çağrı bayrağı kurar; ikincisi süreci hemen
+// sonlandırır (kCikisIkinciSinyal; bekleyen düzgün kapanışı da keser).
+void kapanis_sinyali() noexcept;
+// SIGINT ve SIGTERM (Windows'ta ayrıca konsol denetim olayları: Ctrl-C, Ctrl-Break, pencere
+// kapatma) için işleyicileri kurar. false: kurulamadı.
+bool sinyal_kur() noexcept;
+// Düzgün kapanış bitti (Windows'ta pencere kapatma olayının işleyicisi bunu bekler).
+void kapanis_tamamlandi() noexcept;
 
 }  // namespace ida::sunucu

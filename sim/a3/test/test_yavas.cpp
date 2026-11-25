@@ -8,6 +8,7 @@
 // makinedeki değerlerdir, eşik değildir. Doğrulanan yalnız davranıştır (bekletmeme, düşürme ve
 // bayrak, sınırlı bellek).
 #include "test_destek.hpp"
+#include "../../kopru/test/zamanlama_olcutu.hpp"   // W4-K29: tek zamanlama yardımcısı
 
 #include <algorithm>
 #include <cstdlib>
@@ -253,11 +254,11 @@ int yavas_istemci_kos(bool reddet, int pencere_saniye, YavasSonucu& sonuc)
     // 71/115); bu sözleşmedeki seyreltmedir (A3-K40), yavaş istemcinin etkisi değil. İşlevsel
     // ölçütler her ortamda geçerlidir: hızlı istemcide teslim pencerenin sonuna dek sürer, sıra
     // numaraları artar ve her boşluk sunucunun bu bağlantı için saydığı ezilen değerlerle açıklanır.
-    // Sanitizer'lı derlemede de ölçüt değildir (köprü yardımcısıyla aynı kural; test_destek.hpp).
-    const bool olcut = zamanlama_olcut_mu();
+    // Kural ortak yardımcıdadır (W4-K24, K29): CI, sanitizer'lı ve iyileştirmesiz (NDEBUG yok) derleme ölçüt değildir.
+    const bool olcut = ida::test::zamanlama_olcut_mu();
     auto zamanlama = [&](bool kosul, const std::string& ad) {
         if (!olcut) {
-            std::printf("  ZAMANLAMA (W4-K24, CI'da ya da sanitizer'lı derlemede ölçüt değil): %s: %s\n", ad.c_str(),
+            std::printf("  ZAMANLAMA%s: %s: %s\n", ida::test::zamanlama_muafiyeti(), ad.c_str(),
                         kosul ? "tuttu" : "TUTMADI");
         } else {
             DOGRULA(d, kosul, ad);

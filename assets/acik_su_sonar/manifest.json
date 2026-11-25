@@ -1,0 +1,431 @@
+{
+  "sema_surumu": "1.0",
+  "kume_kimligi": "acik_su_sonar",
+  "kume_surumu": 1,
+  "aciklama": "Açık su sonar örneği kümesi (W4-sunucu-kucuk; scenarios/sonar-acik-su.toml): İDA-0 ve kutu torpido (havuz kümesindekilerin bayt kopyası; A7-K03 gereği her küme kendi dizinindedir), tek statik varlık: 100 m × 100 m kutu taban (deniz_ornek; sim/senaryo/test/glb_yazici.hpp ile üretilir, W4-bagla-sonar testlerinin bellekte kurduğu sahnenin aynısı); hedef ve duvar yok. Akustik değerler tahmindir.",
+  "birimler": {
+    "uzunluk": "m",
+    "aci": "rad",
+    "kutle": "kg",
+    "zaman": "s"
+  },
+  "eksenler": {
+    "gltf": "sag_el_y_yukari_z_on",
+    "gltf_govde": [
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        -1,
+        0
+      ]
+    ],
+    "gltf_godot_yerel": [
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        -1
+      ]
+    ]
+  },
+  "uretim": {
+    "disa_aktarici": {
+      "arac": "betik",
+      "surum": "1",
+      "ayarlar": {
+        "betik": "viz/arac/model-uret/havuz.py"
+      }
+    }
+  },
+  "malzemeler": [
+    {
+      "kimlik": "govde_plastik",
+      "aciklama": "İDA-0 çerçeve, köpük, tüpler, iticiler ve torpido",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.01,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.5,
+        "puruzluluk_gamma_p": 0.5,
+        "kaynak": "tahmin",
+        "dayanak": "750 kHz'te yansıtıcılık bilinmiyor (05 2.4.1); A7 uygunluk örneğiyle aynı yer tutucu"
+      }
+    },
+    {
+      "kimlik": "hedef_boyali_metal",
+      "aciklama": "Hedef kutusu",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.05,
+        "gelis_yasasi": "lambert_cos2",
+        "ayna_yansima_rs": 0.9,
+        "puruzluluk_gamma_p": 0.3,
+        "kaynak": "tahmin",
+        "dayanak": "A7 uygunluk örneğiyle aynı yer tutucu; kalibrasyon A5'te"
+      }
+    },
+    {
+      "kimlik": "havuz_beton",
+      "aciklama": "Havuz tabanı ve duvarları",
+      "optik": {
+        "model": "gltf_metalik_puruzluluk"
+      },
+      "akustik": {
+        "geri_sacilim_mu": 0.02,
+        "gelis_yasasi": "cos1",
+        "ayna_yansima_rs": 0.6,
+        "puruzluluk_gamma_p": 0.7,
+        "kaynak": "tahmin",
+        "dayanak": "A7 uygunluk örneğiyle aynı yer tutucu; Ping360 havuz kayıtlarıyla uydurulacak (05 7)"
+      }
+    }
+  ],
+  "varliklar": [
+    {
+      "kimlik": "ida0",
+      "tur": "arac",
+      "dosya": "ida0.glb",
+      "sha256": "ac3f70d040e7d41a712c91392877ca66d64d593d40ff4ee284374209874f405e",
+      "bayt": 510900,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.235,
+          -0.29,
+          -0.24
+        ],
+        "en_buyuk": [
+          0.235,
+          0.29,
+          0.145
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 1,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 2,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 3,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 4,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 5,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 6,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 7,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 8,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 9,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 10,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 11,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 12,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 13,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 14,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 15,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 16,
+          "malzeme": "govde_plastik"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "govde",
+          "kosul": "her_zaman"
+        },
+        {
+          "dugum": 2,
+          "ad": "torpido_1",
+          "kosul": "tup_1_dolu"
+        },
+        {
+          "dugum": 3,
+          "ad": "torpido_2",
+          "kosul": "tup_2_dolu"
+        }
+      ],
+      "yuzerlik": [
+        {
+          "dugum": 4,
+          "ad": "BUOY_govde",
+          "kosul": "her_zaman",
+          "hacim_m3": 0.0136992,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            0.0,
+            -0.01
+          ],
+          "en_uzun_kenar_m": 0.624819974
+        },
+        {
+          "dugum": 5,
+          "ad": "BUOY_tup_1",
+          "kosul": "tup_1_dolu",
+          "hacim_m3": 0.000167552,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            0.1,
+            0.1
+          ],
+          "en_uzun_kenar_m": 0.026409207
+        },
+        {
+          "dugum": 6,
+          "ad": "BUOY_tup_2",
+          "kosul": "tup_2_dolu",
+          "hacim_m3": 0.000167552,
+          "hacim_merkezi_govde_m": [
+            0.0,
+            -0.1,
+            0.1
+          ],
+          "en_uzun_kenar_m": 0.026409207
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 7,
+          "ad": "COL_govde",
+          "ayristirma": "yok"
+        }
+      ],
+      "baglanti_noktalari": [
+        {
+          "dugum": 8,
+          "ad": "MNT_kamera0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.21,
+            0.0,
+            -0.02
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 9,
+          "ad": "MNT_ping360_0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.12,
+            0.0,
+            -0.2
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 10,
+          "ad": "MNT_dvl0",
+          "tur": "montaj",
+          "konum_govde_m": [
+            0.05,
+            0.0,
+            0.14
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 11,
+          "ad": "TUBE_1",
+          "tur": "tup",
+          "konum_govde_m": [
+            0.0,
+            0.1,
+            0.1
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "dugum": 12,
+          "ad": "TUBE_2",
+          "tur": "tup",
+          "konum_govde_m": [
+            0.0,
+            -0.1,
+            0.1
+          ],
+          "q_govde": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "kimlik": "torpido_ida0",
+      "tur": "torpido",
+      "dosya": "torpido_ida0.glb",
+      "sha256": "a50f3498fdb8ded07239593d7c624fca4e168ac236d79a14191f12eda8911d5f",
+      "bayt": 2420,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.1,
+          -0.02,
+          -0.02
+        ],
+        "en_buyuk": [
+          0.1,
+          0.02,
+          0.02
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "govde_plastik"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "torpido",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 2,
+          "ad": "COL_torpido",
+          "ayristirma": "yok"
+        }
+      ]
+    },
+    {
+      "kimlik": "deniz_ornek",
+      "tur": "statik",
+      "dosya": "deniz_ornek.glb",
+      "sha256": "e3ce20ee3efc9f217410efe4d7f9f90cd399ad1499914e29d9cb10e0b4b4e26d",
+      "bayt": 1332,
+      "taban_derinligi_m": 3.0,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -50,
+          -50,
+          3
+        ],
+        "en_buyuk": [
+          50,
+          50,
+          3.5
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "havuz_beton"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "taban",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 2,
+          "ad": "COL_taban",
+          "ayristirma": "yok"
+        }
+      ]
+    }
+  ]
+}

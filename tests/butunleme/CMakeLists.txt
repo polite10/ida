@@ -15,6 +15,7 @@ add_executable(ida_butunleme_test test_butunleme.cpp test_senaryo.cpp test_sil_b
 target_sources(ida_butunleme_test PRIVATE test_sonar.cpp)   # W4-bagla-sonar
 target_sources(ida_butunleme_test PRIVATE test_duraklat.cpp)   # W4-duraklat
 target_sources(ida_butunleme_test PRIVATE test_gorev_sil.cpp)   # W5-gorev-yurutucu
+target_sources(ida_butunleme_test PRIVATE test_sunucu_kucuk.cpp)   # W4-sunucu-kucuk
 target_compile_definitions(ida_butunleme_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_butunleme_test PRIVATE ida_sunucu ida_zincir ida_sil_kosucu ida_core)
 ida_ayar_uygula(ida_butunleme_test)
@@ -92,7 +93,8 @@ set_tests_properties(butunleme.sil_oturum_dusme_belirlenim PROPERTIES TIMEOUT 90
 # kendi sınırı ayrı (W4-K26 mimar kararı).
 # Sol 3. denetim: sil_eof_konumu (#1), sil_hazirlik_tekrar (#2), sil_hata_kapanisi (#3).
 foreach(_ad sil_kisitlayan_alim_ani sil_akis_sonu_belirlenim sil_sifir_seli sil_hazirlik_suresi sil_butce_konumu
-            sil_eof_konumu sil_hazirlik_tekrar sil_hata_kapanisi sil_istisna_kapanisi sil_kurma_siniri)
+            sil_eof_konumu sil_hazirlik_tekrar sil_hata_kapanisi sil_istisna_kapanisi sil_kurma_siniri
+            sil_sinyal_kapanisi sil_hazirlik_kurma_siniri)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 endforeach()
@@ -119,7 +121,7 @@ if(NOT WIN32)
 endif()
 
 # W4-bagla-a3: A3 sunucusunun ida_sim'e bağlanması (kabul 2, 4, 5; sim/sunucu/BENIOKU.md "A3").
-foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_hazirlik_durdur a3_hazirlik_kapanis a3_ayirma a3_durdur_dolu_depo)
+foreach(_ad a3_belirlenim a3_emniyet_yolu a3_emniyet_ret a3_calistirma a3_hazirlik_durdur a3_hazirlik_kapanis a3_ayirma a3_durdur_dolu_depo a3_sinyal)
   add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_test ${_ad})
   set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
 endforeach()
@@ -190,3 +192,66 @@ add_test(NAME butunleme.ida_sim_gorev_senaryosu
           "-DARGUMANLAR=--kip;sil;--senaryo;scenarios/gorev-havuz.toml;--kok;${PROJECT_SOURCE_DIR}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 set_tests_properties(butunleme.ida_sim_gorev_senaryosu PROPERTIES TIMEOUT 600)
+
+# W4-sunucu-kucuk (docs/gorevler/W4-sunucu-kucuk.md kabul 1, 3–5; sim/sunucu/BENIOKU.md).
+# Kapsam 6 / kabul 5: açık su sonar örneği dosyası SIL'de koşar, iki koşu bayt bayt aynı.
+add_test(NAME butunleme.sonar_acik_su_dosyasi COMMAND ida_butunleme_test sonar_acik_su_dosyasi)
+set_tests_properties(butunleme.sonar_acik_su_dosyasi PROPERTIES TIMEOUT 600)
+# `--sonar=acik|kapali` ayrıştırması (kapsam 5): geçersiz değer 1, kapali ile --ping360-ornek 1 (sonar ister).
+add_test(NAME butunleme.ida_sim_sonar_degeri_gecersiz
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1 -DILETI=--sonar
+          "-DARGUMANLAR=--senaryo;scenarios/sonar-acik-su.toml;--sonar=belki;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_sonar_kapali_ping360
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
+          "-DARGUMANLAR=--senaryo;scenarios/sonar-acik-su.toml;--sonar=kapali;--ping360-ornek;600;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_sonar_acik_su
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/sonar-acik-su.toml;--sonar=acik;--kok;${PROJECT_SOURCE_DIR}"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_sonar_acik_su PROPERTIES TIMEOUT 600)
+# W4-sunucu-kucuk kabul 2 (özet satırı): düzgün SIL koşusunda `kapanış: düzgün` ve alanlar sayaçlarla
+# tutarlı (kaçırılan parti 0; oturum 2 = hazırlık oturumu + çalıştırma oturumu, hazırlık 1; kapanış
+# yazımı eksik 0; son hata yok).
+add_test(NAME butunleme.ida_sim_ozet_duzgun
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--sure;3;--gunluk;1"
+          "-DILETILER=ida_sim: kapanış: düzgün|kaçırılan parti 0,|yinelenen yanıt reddi 0, yeniden bağlanma 0|, oturum 2, kapanış yazımı eksik 0, son hata: yok|kopma 0, hazırlık 1,"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+# Bilgi satırı (kapsam 5; z1: araç dosyasından 2 etkin sonar, sonarsız koşar): bayraksız koşuda etkin sonar bildirilir, `--sonar=kapali` ile bildirilmez.
+add_test(NAME butunleme.ida_sim_sonar_bilgi_satiri
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DILETI=senaryoda 2 etkin sonar var" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+add_test(NAME butunleme.ida_sim_sonar_bilgi_satiri_kapali
+  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=0
+          "-DARGUMANLAR=--senaryo;scenarios/z1.toml;--sonar=kapali;--gunluk;1;--kok;${PROJECT_SOURCE_DIR}"
+          "-DYOK=etkin sonar var" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+set_tests_properties(butunleme.ida_sim_sonar_bilgi_satiri butunleme.ida_sim_sonar_bilgi_satiri_kapali PROPERTIES TIMEOUT 600)
+# Bağlantı kabulünün son diliminde gelen kapanış isteği sinyal sınıflamasıyla döner.
+add_test(NAME butunleme.kabul_son_dilim_sinyali COMMAND ida_butunleme_test kabul_son_dilim_sinyali)
+set_tests_properties(butunleme.kabul_son_dilim_sinyali PROPERTIES TIMEOUT 60)
+if(NOT WIN32)
+  # Bilinen hata çıkışı: var olmayan seri aygıt → çıkış 2, `kapanış: hata` ve son hata alanı.
+  add_test(NAME butunleme.ida_sim_ozet_hata
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=2
+            "-DARGUMANLAR=--kip;hil;--seri;/dev/ida_olmayan_aygit;--sure;1"
+            "-DILETILER=ida_sim: kapanış: hata|oturum 0, kapanış yazımı eksik 0, son hata: seri_ac("
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+endif()
+if(NOT WIN32)
+  # Kapsam 1 / kabul 1 (HIL, sözde uçbirim; gerçek zamanlı ≈ 4–6 s) ve kapsam 4 / kabul 4.
+  add_test(NAME butunleme.hil_sinyal_kapanisi COMMAND ida_butunleme_test hil_sinyal_kapanisi)
+  set_tests_properties(butunleme.hil_sinyal_kapanisi PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+  add_test(NAME butunleme.senaryo_hil_dosyalari COMMAND ida_butunleme_test senaryo_hil_dosyalari)
+  set_tests_properties(butunleme.senaryo_hil_dosyalari PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+  # Gerçek süreç: ida_sim'e SIGINT/SIGTERM (kabul 1): çıkış kodu 5, özet satırı, eksiksiz CSV; ikinci
+  # sinyal hemen sonlandırır (birim testi sim.sunucu.sinyal_ikinci).
+  foreach(_sinyal INT TERM)
+    add_test(NAME butunleme.sinyal_surec_${_sinyal}
+      COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/sinyal_surec.sh" $<TARGET_FILE:ida_sim> $<TARGET_FILE:ida_sil>
+              "${CMAKE_CURRENT_BINARY_DIR}/sinyal_surec_${_sinyal}" ${_sinyal})
+    set_tests_properties(butunleme.sinyal_surec_${_sinyal} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+  endforeach()
+endif()

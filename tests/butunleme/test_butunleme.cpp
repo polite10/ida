@@ -740,6 +740,7 @@ int a3_testi(const std::string& ad, int argc, char** argv);   // test_a3.cpp (W4
 int sonar_testi(const std::string& ad, int argc, char** argv);   // test_sonar.cpp (W4-bagla-sonar)
 int duraklat_testi(const std::string& ad, int argc, char** argv);   // test_duraklat.cpp (W4-duraklat)
 int gorev_sil_testi(const std::string& ad, int argc, char** argv);   // test_gorev_sil.cpp (W5-gorev-yurutucu)
+int sunucu_kucuk_testi(const std::string& ad, int argc, char** argv);   // test_sunucu_kucuk.cpp (W4-sunucu-kucuk)
 
 int main(int argc, char** argv)
 {
@@ -773,6 +774,10 @@ int main(int argc, char** argv)
         return r == 0 ? 0 : 1;
     }
     if (const int r = gorev_sil_testi(ad, argc, argv); r >= 0) {
+        std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
+        return r == 0 ? 0 : 1;
+    }
+    if (const int r = sunucu_kucuk_testi(ad, argc, argv); r >= 0) {
         std::printf("%s %s: %d kalan\n", ad.c_str(), r == 0 ? "GECTI" : "KALDI", r);
         return r == 0 ? 0 : 1;
     }
