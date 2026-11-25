@@ -75,7 +75,10 @@ jobs:
       (github.event_name == 'pull_request' && github.event.action == 'labeled' &&
        github.event.label.name == 'ci-mac')
     runs-on: macos-26
-    timeout-minutes: 45
+    # 2026-11-25 ölçümleri (derleme-mac, tam tur): macOS ASan işi 39, 39, 41, 44 dk sürdü, bir koşu 45.
+    # dakikada süre sınırıyla iptal edildi; testler artıyor (A2 42, kayıt 43 test). Windows ASan işi
+    # (derleme.yml, sınır 60 dk) aynı gün 29-41 dk.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
