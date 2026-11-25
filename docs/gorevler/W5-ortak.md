@@ -48,6 +48,10 @@ Kaynak: mimari Bölüm 03'ün dar düzeltme turu (sürüm 0.2; `docs/mimari/03-a
 - **W5-K28 — Nabız el sıkışma sırasında da gider (A2-K15 ile A2-K62'nin bağdaştırılması; W3'ten kalan not).** A2-K62'nin 1 s'lik nabzı ve 3 s'lik ölü sayma ölçütü bağlantı kurulduğu andan başlar: görselleştirici `merhaba`dan, sim `hosgeldin`den itibaren nabız gönderir; `hazir` beklenen 120 s'lik pencerede (A2-K15) de 3 s ölçütü işler. İstemcinin var olan okuması budur (`viz/a2/src/oturum.cpp`); sunucu aynısını uygular. A2'nin küçük sürüm notu olarak yazılacak.
 - **W5-K29 — Sim tarafı kendi kodlayıcısını yazar.** `ida_a2` ürün kitaplığı `viz/` altındaki hiçbir hedefe bağlanmaz (bağımlılık yönü: sim → viz olmaz); kodlama `a2_wire.h` yapılarından yazılır. Testler ise karşı uç olarak `viz/a2`'nin kodek ve oturumunu (gerçek istemci) kullanır: iki bağımsız gerçekleştirimin birbirini sınaması uygunluk kanıtıdır. Kodeğin tek yerde toplanması ayrı iştir.
 - **W5-K30 — Bu dilimde üretilmeyen iletiler.** `kamera_istegi`, `kamera_iptal`, `halka_yenile` ve `govde_tablosu`/`atlama` (tekrar izleme; A6 işiyle gelir) üretilmez. Görselleştiriciden gelen `kare_hazir`, `kare_dustu`, `halka_eslendi` bu dilimde beklenmeyen iletidir: sözleşme bunlar için başka bir yanıt tanımlamıyorsa kısıtlayan okuma seçilir (protokol hatası, A2-K06) ve raporlanır.
+- **W5-K31 — A2 bu dilimde isteğe bağlı açılır.** `ida_sim` A2 dinleyicisini yalnız `--a2-port <n>` verildiğinde açar (A3'teki `--a3-port` ile aynı düzen); seçenek yokken sahiplik kilidi alınmaz, dinleyici açılmaz, davranış ve çıktılar bu iş öncesiyle bayt bayt aynıdır. Gerekçe: var olan testler ve kart koşuları eşzamanlı çalışır; varsayılanın açık olması (A2-K01'in varsayılan portu) kilit ve port yarışına yol açar. Varsayılanın açılması laboratuvar uygulaması süreçleri başlatır hâle gelince yeniden ele alınır; A2'nin küçük sürüm notu. `kalite.gorunum = "kapali"` iken `--a2-port` verilirse dinleyici açılmaz ve tek satır bilgi yazılır (A2-K02).
+- **W5-K32 — A2 gövde kimliği bağlama katmanında, süreç boyunca tekdüze artan sayaçtan verilir** (A2-K23, K92: kimlik yeniden kullanılmaz). Dünyanın kendi gövde numarası A2'ye taşınmaz; eşleme bağlama katmanında tutulur.
+- **W5-K33 — A3 `calistirma/sifirla` A2'de hiçbir şeye eşlenmez.** Bugün yalnız `yuklendi` durumunda kabul edilir ve durum revizyonunu artırır (A3-K67); sim zamanında süreksizlik üretmez. A2 `sifirla()` çağrılmaz; her `baslat` bir `yeni_calistirma`'dır (A2-K80 (1)). Dünyayı sıfırlayan bir işlem geldiğinde yeniden ele alınır.
+- **W5-K34 — PR #49'un açık okumaları kabul edildi** (1–13; rapordaki numaralarla). Sözleşme notu gerektirenler: `merhaba` alan hatalarında `ret(protokol)` (§3.3 tablosu A2-K06'nın önüne geçer); oturumun ilk `durum`u duraklatılmışken de gider (A2-K24'e istisna); `T − h` ve `T` iletileri doğum ve ölümde de gider; takvime denk gelen sınır iletisi seyreltilmez; yayın taşmasında oturum `veda(tampon_tasti)` ile yeniden eşitlenir.
 
 ## sol inceleme borcu (K25; sol sınırı yenilenince emniyet dilimlerinden başlayarak kapatılır)
 
@@ -59,6 +63,8 @@ Kaynak: mimari Bölüm 03'ün dar düzeltme turu (sürüm 0.2; `docs/mimari/03-a
 | W5-gorev-yurutucu (PR #46; arıza tablosuna eklenen satırlar dahil) | hayır (arıza güvenliğine dokunur) | `ida-inceleyici`: tek inceleme (3 önemli + 5 küçük; düzeltildi, her biri önce düşen testle) | borçlu |
 | W4-sonar-sahne (GLB okuyucu, ağ sahnesi) | hayır | `ida-inceleyici`: tek dar inceleme (1 önemli, 4 küçük; düzeltildi) | borçlu (düşük öncelik) |
 | W5-atis-emniyet'te sol dar denetiminden SONRA gelen değişiklikler: W5-K20 (bağlantı olayında gevşetme yok), W5-K21 (`DET_STALE`), kabul testi düzeltmeleri | evet | dar sol denetimi W5-K20/K21 uygulamasını kapsadı (bulgu yok); sonrası yalnız test dosyaları | kapalı sayılır |
+| W4-sunucu-kucuk (PR #48, `d4b744a`) | hayır | `ida-inceleyici` (Opus): tam inceleme + tek düzeltme turu (kayıt `docs/gorevler/inceleme/W4-sunucu-kucuk-inceleme.md`) | sol incelemesi borçlu |
+| W5-a2-sunucu (PR #49, `cb80d7c`) | hayır | **hiç incelenmedi**: `ida-inceleyici` bir kez denendi, Opus güvenlik filtresine takıldı (istek `req_011ChP4BmhMS1adFx1BNbEZj`); K27 gereği CI yeşil birleştirildi; `sim/a2` ≈ 4 200 satır ürün kodu, eşzamanlılık ağırlıklı | borçlu; sol yenilenince emniyet dilimlerinden hemen sonra, öncelikli |
 
 ## Sözleşmelerin küçük sürümüne yazılacak notlar
 
@@ -69,8 +75,14 @@ Kaynak: mimari Bölüm 03'ün dar düzeltme turu (sürüm 0.2; `docs/mimari/03-a
 | A4 | §3.16, §3.17 | Durum eşlemesi, kabul edilen durumlar, `FC_RESET` davranışı, olay sonucuna göre geçişler | W5-K1, K2, K3 |
 | A4 | parametre tablosu | `T_emn_bayat` (sınıf B; varsayılan tahmin) | W5-K4, K6 |
 | A2 | A2-K15, A2-K62 | Nabız ve 3 s ölçütü bağlantı kurulduğu andan başlar; `hazir` penceresinde de işler | W5-K28 |
+| A2 | A2-K01, K93 | `ida_sim` A2'yi yalnız `--a2-port` verilince açar (varsayılan kapalı) | W5-K31 |
+| A2 | §3.3, A2-K06 | `merhaba` alan hatalarında `ret(protokol)` | W5-K34 |
+| A2 | A2-K24, K65 | Oturumun ilk `durum`u duraklatılmışken de gider | W5-K34 |
+| A2 | A2-K21, K25 | `T − h`/`T` iletileri doğum ve ölümde de gider; takvime denk gelen sınır iletisi seyreltilmez | W5-K34 |
+| A2 | A2-K26 | Yayın taşmasında oturum `veda(tampon_tasti)` ile yeniden eşitlenir | W5-K34 |
 
 ## Açık konular
+- `viz/a2/src/oturum.cpp`'de `calisma_durumu = 3` operatör saatini duraklatmıyor; `viz/arac/sahte-a2`'de üç sözleşme sapması (3 s ölçütü `merhaba`'dan önce işliyor; NUL'suz `merhaba`ya `veda`; ilk durum hep takvim dışı bayraklı) — W5-a2-sunucu raporu; istemci değiştirilmedi. A2 G/Ç iş parçacığının yoklama aralığı (2 ms / 20 ms) ve `durum` gecikmesi (A2-U20) ölçülmedi; TSan bu Mac'te koşturulamadı.
 
 - `T_emn_bayat` varsayılanı ölçülmedi (W5-K4).
 - Bölüm 03'ün kapsam dışı bırakılan 12 bulgusu (hedefleme, algılama, takip) kullanıcı kararıyla açık kalır ve ele alınmaz.

@@ -23,3 +23,7 @@ En büyük çakışma noktası `sim/sunucu/src/sunucu.cpp` (≈ 3 700 satır): g
 5. Kartta sonar işleme (A4-K40, K93, K94; en az irtifa).
 6. Kayıt (önce `olaylar` ve `telemetri` kademeleri, `izleme` tekrarı), sonra öteki tekrar düzeyleri.
 7. Kamera hattı; Windows hedef bilgisayarda deneme ve paketleme; kart ölçümleri.
+
+## Güncelleme (2026-11-25)
+
+W4-sunucu-kucuk (#48) ve W5-a2-sunucu (#49; sim tarafında A2 kitaplığı `sim/a2`, kamera hattı hariç) `main`'de. Sıradaki: W5-bagla-a2 (görev belgesi hazır, başlatıldı). Görselleştirme bloğunda kalan: bağlama, kamera hattı ve kare halkası, Windows derlemesi, CI'da Godot'lu test.
