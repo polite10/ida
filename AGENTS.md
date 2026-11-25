@@ -70,6 +70,8 @@ Bir ham rapor ile 00 numaralı belge çelişirse 00 geçerlidir. Bir ham raporda
 
 **2026-11-25 kullanıcı kararı (K27):** Opus 5.5 bu depoda model güvenlik filtresine takılıyor (olgu; neden doğrulanmadı). W5-a2-sunucu `ida-kritik-uygulayici` (Fable) ile, W4-sunucu-kucuk `ida-hafif-uygulayici` (Sonnet) ile yazılır. `ida-inceleyici` (Opus) her PR'da bir kez denenir; takılırsa iş `docs/gorevler/W5-ortak.md` sol inceleme borcuna yazılır ve CI yeşil PR birleştirilir; emniyet zincirine dokunan dilim incelemesiz birleştirilmez.
 
+**2026-11-25 kullanıcı kararı (K28):** Claude haftalık kullanım sayacı %85'e, Fable sayacı %91'e ulaştı (kullanıcının bildirdiği değerler). İş durmaz, harcama azaltılarak sürer; Fable'ın yükü azaltılır. Yazım Sonnet'te (`ida-hafif-uygulayici`), inceleme Opus'ta (`ida-inceleyici`; 2026-11-28 15:31'den sonra sol); Fable yalnız mimar oturumunda ve hatası sessiz kalan işlerde (emniyet zinciri, kart işleri). K27'nin inceleme kuralı sürer.
+
 1. Mimar oturum kullanıcıyla kararları netleştirir, fikir yapısını kurar, görev belgelerini yazar, alt agent'ları gönderir ve çıktıları denetler. Kod yazmaz ve commit atmaz.
 2. Araştırma ve uygulama işleri alt agent'lara verilir. Codex `gpt-6.1-sol` yalnızca inceleme için değil kodlama için de kullanılabilir.
 3. Yazan ile inceleyen farklı model ailesinden olur: Claude'un yazdığını sol, sol'un yazdığını Claude inceler. Aynı iş iki modele yazdırılmaz.

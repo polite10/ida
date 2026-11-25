@@ -27,3 +27,7 @@ En büyük çakışma noktası `sim/sunucu/src/sunucu.cpp` (≈ 3 700 satır): g
 ## Güncelleme (2026-11-25)
 
 W4-sunucu-kucuk (#48) ve W5-a2-sunucu (#49; sim tarafında A2 kitaplığı `sim/a2`, kamera hattı hariç) `main`'de. Sıradaki: W5-bagla-a2 (görev belgesi hazır, başlatıldı). Görselleştirme bloğunda kalan: bağlama, kamera hattı ve kare halkası, Windows derlemesi, CI'da Godot'lu test.
+
+## Güncelleme (2026-11-25 akşam)
+
+`main`'e girenler #50, #51, #52, #53. Görselleştirici gerçek sim'e bağlı (`viz/calistir.sh --sim scenarios/gorev-havuz-3b.toml`); kayıt kitaplığı `main`'de, bağlama sürüyor (W5-bagla-kayit); görselleştiricinin Windows derlemesi sürüyor (W5-viz-windows). Sıradaki: web uçları ve panelden komut (W5-bagla-kayit `sim/sunucu`'yu bırakınca), W5-atis-platform (emniyet; Fable; sol yenilenmesine yakın), kartta sonar işleme, tekrar sürücüleri, kamera hattı, Windows hedef makinede deneme.
