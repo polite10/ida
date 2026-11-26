@@ -57,6 +57,17 @@ yukseklik = 0.0
 sicaklik_c = 20.0
 ses_hizi = 1482.3
 
+# Görünüm (A5-K101: görüntü gerçekçiliği için senaryo yazarı verir; değerler ölçüm değil, yer tutucudur —
+# W5-viz-gorsel): berrak, hafif turkuaz havuz suyu. Verilmezse sim 0 yazar ("berrak su", ışıksız sahne) ve
+# görselleştirici kendi görsel varsayılanına döner. Güneş yönü ve ışınımı KE varsayılanıyla kalır.
+[ortam.su_optigi]
+beta_d_m = [0.30, 0.055, 0.04]
+beta_b_m = [0.11, 0.065, 0.055]
+b_sonsuz_rgb_dogrusal = [0.02, 0.20, 0.26]
+
+[ortam.isik]
+ortam_isigi_rgb_dogrusal = [0.30, 0.36, 0.42]
+
 [rastgelelik]
 ana_tohum = 1
 

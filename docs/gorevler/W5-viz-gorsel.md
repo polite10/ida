@@ -23,10 +23,10 @@ Kullanıcı 2026-11-25 gecesi görselleştiriciyi gerçek sim'le çalıştırıp
 
 ## Mimar kararları
 
-- **W5-K55 — Sözleşme değişmez.** A2 ve A7 1.0 dondurulmuştur. Görsel düzeltme sözleşmenin verdiği alanlarla yapılır. Bir alanın eksik ya da yanlış olduğu görülürse iş durmaz: görselleştirici tarafında makul okuma seçilir, rapora yazılır.
-- **W5-K56 — Görüntü fizikle çelişmez.** Araç, hedef ve yüzey sim'in bildirdiği konumda çizilir; görsel süs (köpük, parçacık, kostik) fizik durumunu değiştirmiş gibi görünmez. Sade kademede dalga çizilmez (07 §5); tam kademede yüzey `a2.su_yuksekligi` ile aynıdır.
-- **W5-K57 — Dış bağımlılık yok.** Okyanus eklentisi kullanılmaz (07 §2.7); teknik uyarlanırsa kaynağı ve lisansı (MIT) dosyada yazılır. Doku ve model depoda üretilir.
-- **W5-K58 — Sade kademe hafif kalır.** Sade kademenin kare süresi bu değişiklikle bu Mac'te belirgin artarsa (ölçüm; artış raporlanır) ek maliyet yalnız tam kademeye taşınır.
+- **W5-K60 — Sözleşme değişmez.** A2 ve A7 1.0 dondurulmuştur. Görsel düzeltme sözleşmenin verdiği alanlarla yapılır. Bir alanın eksik ya da yanlış olduğu görülürse iş durmaz: görselleştirici tarafında makul okuma seçilir, rapora yazılır.
+- **W5-K61 — Görüntü fizikle çelişmez.** Araç, hedef ve yüzey sim'in bildirdiği konumda çizilir; görsel süs (köpük, parçacık, kostik) fizik durumunu değiştirmiş gibi görünmez. Sade kademede dalga çizilmez (07 §5); tam kademede yüzey `a2.su_yuksekligi` ile aynıdır.
+- **W5-K62 — Dış bağımlılık yok.** Okyanus eklentisi kullanılmaz (07 §2.7); teknik uyarlanırsa kaynağı ve lisansı (MIT) dosyada yazılır. Doku ve model depoda üretilir.
+- **W5-K63 — Sade kademe hafif kalır.** Sade kademenin kare süresi bu değişiklikle bu Mac'te belirgin artarsa (ölçüm; artış raporlanır) ek maliyet yalnız tam kademeye taşınır.
 
 ## Kapsam dışı
 

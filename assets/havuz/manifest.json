@@ -107,8 +107,8 @@
       "kimlik": "ida0",
       "tur": "arac",
       "dosya": "ida0.glb",
-      "sha256": "ac3f70d040e7d41a712c91392877ca66d64d593d40ff4ee284374209874f405e",
-      "bayt": 510900,
+      "sha256": "1d6f190e29773e17d2526bb7d2cbbb1f7968e03424ffa0d630e52d4d70f1ce6b",
+      "bayt": 571384,
       "referans": {
         "dugum": 0,
         "ad": "REF"
@@ -192,6 +192,22 @@
         },
         {
           "gltf_malzeme": 16,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 17,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 18,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 19,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 20,
           "malzeme": "govde_plastik"
         }
       ],

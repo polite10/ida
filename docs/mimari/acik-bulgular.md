@@ -375,7 +375,7 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 
 ### Uygulama: görselleştirme — Godot sahnesi ve GDExtension (W5; 07)
 
-17 bulgu.
+17 bulgu. (2026-11-26: W5-viz-gorsel inceleme turundan AB-248…AB-253 eklendi; yukarıdaki özet tabloları bu 6 satırı içermez.)
 
 | Kimlik | Kaynak | Önem | Bulgu | Not |
 |---|---|---|---|---|
@@ -396,6 +396,12 @@ Gruplar: arayüz sözleşmeleri A1–A8, uygulama işleri, ölçüm işleri. Bir
 | AB-204 | 07 · 07-sol.md notlar (04 ile komşu) | küçük | 07 §3.7 dalga fazı için hâlâ "beklenen iş" diyor; 04 bunu zaten tanımlıyor. | belge güncelliği |
 | AB-205 | 07 · 07-sol.md notlar (M29) | belirtilmemiş | Shader derlemesi ile uzun koşu hatası §4'te tek hata satırında ele alınıyor; ayrıştırılmalı. | M29 |
 | AB-243 | MP6 · docs/olcumler/MP6-godot-kamera.md §7, §4.1 | küçük | Godot 4.7.2 ana pencerenin görünürlüğünü içeriden değiştirmeye izin vermiyor (`scene/main/window.cpp:1017`); "gizli" durumu uygulamanın gizlenmesi (`NSRunningApplication.hide`, Cmd+H eşdeğeri) olarak tanımlanmalı. | 07 belge düzeltmesi; P5 atfı raporda doğrulanmadı |
+| AB-248 | W5-viz-gorsel · docs/olcumler/W5-viz-gorsel.md §1 | belirtilmemiş | A2 `Ortam` "verildi" ile "kalibre edilmedi" ayrımını taşımıyor: senaryo su optiğini ya da ortam ışığını vermediğinde de açıkça 0 verdiğinde de sim 0 yazıyor. Görselleştirici sıfırı "verilmedi" sayıp kendi görsel varsayılanını kullanıyor; açıkça verilen 0 (berrak su, karanlık sahne) çizilemiyor. | Kapanacağı yer: A2 küçük sürüm. Görselleştirici tarafı makul okuma (W5-K60; `ana.gd` `_etkin_ortam`) |
+| AB-249 | W5-viz-gorsel · docs/olcumler/W5-viz-gorsel.md §1; viz/BENIOKU.md | belirtilmemiş | Kamera sensörü hattı eklendiğinde görsel varsayılanlar sensör karesine sızmamalı: `GORSEL_*` varsayılanları, araç ışık çarpanı (`ARAC_ISIK_CARPANI`) ve karo dokusu yalnız operatör görünümüne aittir; kamera karesi A2 değerlerini aynen kullanmalı. Bugün `viz/proje`'de kamera sensörü hattı yok. | Kapanacağı yer: kamera sensörü işi |
+| AB-250 | W5-viz-gorsel · assets/acik_su/manifest.json; docs/sozlesmeler/A7-sahne.md A7-K56 | belirtilmemiş | `deniz_tabani` varlığında A7-K56 `taban_derinligi_m` yok; A5-K36 `ortam.derinlik` denetimi (alan yoksa uyarı) yapılamıyor, `gorev-acik-su-3b.toml`'daki derinlik (6 m) ile taban geometrisinin tutarlılığı yalnız yoruma dayanıyor. | Kapanacağı yer: `viz/arac/model-uret/uret.py` + `assets/acik_su` manifest güncellemesi |
+| AB-251 | W5-viz-gorsel · docs/olcumler/W5-viz-gorsel.md §1, §4 | belirtilmemiş | Sim'de dalga modeli yok, A2 dalga kümesi boş: açık deniz yüzeyi düz (`a2.su_yuksekligi` düz) ve "dalgalı yüzey" görüntüsü sim'le alınamıyor (dalga geometrisi yalnız sahte A2 kaynağıyla görülüyor). | Kapanacağı yer: dalga modeli işi |
+| AB-252 | W5-viz-gorsel · sim/sunucu/BENIOKU.md:59 | belirtilmemiş | `sim/sunucu/BENIOKU.md:59` ve ilgili test yorumlarındaki "`acik_su` kümesinde torpido yok" ifadesi PR #58'den sonra eskidi (`acik_su` kümesine `torpido_ida0` eklendi). | PR #57 birleştikten sonra düzeltilecek (o PR `sim/sunucu` dosyalarına dokunuyor; bu turda dokunulmadı) |
+| AB-253 | W5-viz-gorsel · viz/arac/model-uret/uret.py; viz/CMakeLists.txt | belirtilmemiş | `viz/arac/model-uret/uret.py` çıktısı Windows ile macOS arasında bayt bayt aynı değil (CI, PR #58; `acik_su/ida0.glb`). Neden doğrulanmadı (libm trigonometri ve üs farkı olası). `--denetle` CTest'i yalnız Windows dışında koşuyor. | Kapanacağı yer: koordinatlar paketlenmeden önce sabit hassasiyete yuvarlanır; varlıklar ve `manifest_ozeti` yeniden üretilir |
 
 ### Uygulama: laboratuvar uygulaması (W5 web panelleri, A3 sunucusu, kayıt, hata enjeksiyonu; 08)
 

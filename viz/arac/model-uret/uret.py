@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """İDA-0, hedef ve deniz tabanı varlıklarını basit geometriden üretir (W3-viz kapsam md. 3).
 
-Çıktı: assets/acik_su/{manifest.json, ida0.glb, hedef_samandira.glb, deniz_tabani.glb}.
+Çıktı: assets/acik_su/{manifest.json, ida0.glb, hedef_samandira.glb, deniz_tabani.glb, torpido_ida0.glb}.
 A7 sözleşmesine göre kaynak .glb dosyaları ve manifest depoda durur (A7 §3.1, K47: üretim
 derlemenin parçası değildir). Yalnız Python standart kitaplığı kullanılır.
 
@@ -16,6 +16,11 @@ Oranlar: BlueROV2 Heavy sınıfı açık çerçeve (uzunluk 457 mm, genişlik 57
 254 mm; üretici belgesindeki dış ölçüler, doğrulanmadı) ve A5 araç dosyasındaki
 (scenarios/ida0.toml) itici, tüp ve sensör konumları. A5 konumları yer tutucu [T]/[MV]
 değerlerdir; çakıştıkları yerde (yatay iticiler ile torpido tüpleri) tüp boyu kısaltıldı.
+
+Okunurluk (W5-viz-gorsel): çerçeve üzerinde akış biçimli bir kabuk (kabuk_yuzeyi) durur: üst yüz sarı,
+baş beyaz, kıç kırmızı (dikey kuyruk dümeni ve iki yatay dengeleyici kıç dilimindedir), karın lacivert; çerçeve
+ve itici nozulları açık gri. Bu yalnız görseldir: yüzerlik (BUOY_*), çarpışma (COL_govde), düğüm tablosu, montaj
+noktaları ve sınır kutusu değişmez; kabuk COL_govde'nin içinde kalır. `torpido_ida0` (A5-K19) aynı kümeye eklidir.
 """
 
 from __future__ import annotations
@@ -584,6 +589,48 @@ PING360 = (0.12, 0.0, -0.20)
 DVL = (0.05, 0.0, 0.14)
 
 
+def kabuk_yuzeyi(profil, x0, x1, n_x=14, n=40, us=0.8):
+    """Akış biçimli kabuk dilimi (gövde çerçevesi): x ekseni boyunca profil(x) =
+    (yarı genişlik, üst yarı yükseklik, alt yarı yükseklik, merkez z) ve süper-elips kesit
+    (|y/w|^(2/us) + |z/h|^(2/us) = 1; z aşağı olduğundan üst −z). Köşe normalleri yüzeyin
+    sonlu farkından hesaplanır; bu yüzden bitişik dilimler (baş, orta, kıç) dikişsiz gölgelenir.
+    Dilim uçları profilde 0 genişliğe iniyorsa kapanır (kutup); aksi hâlde açık kalır (komşu
+    dilimle eşleşir). Yalnız görsel: yüzerlik, çarpışma ve sınır kutusu bu ağlara bağlı değildir."""
+    def P(x, t):
+        w, hu, hd, zc = profil(x)
+        c, sn = math.cos(t), math.sin(t)
+        return (x, w * math.copysign(abs(c) ** us, c),
+                zc - (hu if sn > 0 else hd) * math.copysign(abs(sn) ** us, sn))
+
+    def N(x, t):
+        e = 1e-5
+        dx = cikar(P(x + e, t), P(x - e, t))
+        dt = cikar(P(x, t + 1e-4), P(x, t - 1e-4))
+        c = capraz(dx, dt)
+        return birim(c) if boy(c) > 1e-18 else (1.0 if x > (x0 + x1) / 2 else -1.0, 0.0, 0.0)
+
+    parca = Parca()
+    halkalar = []
+    for j in range(n_x + 1):
+        x = x0 + (x1 - x0) * (0.5 - 0.5 * math.cos(math.pi * j / n_x))
+        halka = []
+        for k in range(n):
+            t = 2.0 * math.pi * k / n
+            halka.append(parca.kose(P(x, t), N(x, t)))
+        halkalar.append(halka)
+    # Sarım yönü: ilk üçgenin normali köşe normaliyle aynı yönde olsun.
+    j0, k0 = n_x // 2, n // 4
+    a, b, c = parca.p[halkalar[j0][k0]], parca.p[halkalar[j0][k0 + 1]], parca.p[halkalar[j0 + 1][k0]]
+    ters = nokta(capraz(cikar(b, a), cikar(c, a)), parca.n[halkalar[j0][k0]]) < 0
+    for j in range(n_x):
+        for k in range(n):
+            a, b = halkalar[j][k], halkalar[j][(k + 1) % n]
+            c, d = halkalar[j + 1][k], halkalar[j + 1][(k + 1) % n]
+            for tri in ((a, b, c), (b, d, c)):
+                parca.ucgen(*(tri[::-1] if ters else tri))
+    return parca
+
+
 def itici(merkez, yon, m):
     """T200 benzeri itici: nozul, motor gövdesi, 3 destek, 3 kanatlı pervane."""
     u, v, a = dik_taban(yon)
@@ -622,13 +669,17 @@ def itici(merkez, yon, m):
 
 def ida0(glb):
     mat = {
-        "cerceve": glb.malzeme("cerceve_hdpe", (0.012, 0.012, 0.013, 1.0), 0.0, 0.55),
+        "cerceve": glb.malzeme("cerceve_hdpe", (0.060, 0.065, 0.072, 1.0), 0.0, 0.55),
         "kopuk": glb.malzeme("yuzdurucu_kopuk", (0.010, 0.085, 0.42, 1.0), 0.0, 0.8),
+        "kabuk_ust": glb.malzeme("kabuk_ust_sari", (0.95, 0.52, 0.01, 1.0), 0.0, 0.42),
+        "kabuk_bas": glb.malzeme("kabuk_bas_beyaz", (0.86, 0.88, 0.90, 1.0), 0.0, 0.38),
+        "kabuk_kic": glb.malzeme("kabuk_kic_kirmizi", (0.72, 0.035, 0.025, 1.0), 0.0, 0.42),
+        "karin": glb.malzeme("karin_lacivert", (0.016, 0.030, 0.075, 1.0), 0.1, 0.5),
         "akrilik": glb.malzeme("akrilik_tup", (0.85, 0.92, 0.95, 0.16), 0.0, 0.04, alfa=True),
         "alu_siyah": glb.malzeme("eloksal_siyah", (0.02, 0.02, 0.022, 1.0), 0.85, 0.32),
         "alu": glb.malzeme("aluminyum", (0.62, 0.63, 0.65, 1.0), 0.95, 0.28),
         "kart": glb.malzeme("elektronik_kart", (0.008, 0.10, 0.03, 1.0), 0.1, 0.5),
-        "nozul": glb.malzeme("itici_nozul", (0.015, 0.015, 0.017, 1.0), 0.0, 0.42),
+        "nozul": glb.malzeme("itici_nozul", (0.11, 0.115, 0.125, 1.0), 0.0, 0.42),
         "motor": glb.malzeme("itici_motor", (0.03, 0.03, 0.035, 1.0), 0.3, 0.45),
         "pervane": glb.malzeme("itici_pervane", (0.04, 0.12, 0.38, 1.0), 0.0, 0.35),
         "tup": glb.malzeme("firlatma_tupu", (0.20, 0.22, 0.20, 1.0), 0.6, 0.45),
@@ -667,10 +718,39 @@ def ida0(glb):
     for x in (0.12, -0.05):  # üst köprüler (sonar ve anten taşıyıcı)
         gov["cerceve"].birlestir(kutu_min_max((x - 0.012, -0.062, -0.140), (x + 0.012, 0.062, -0.128), P))
 
-    # ---- yüzdürücü köpük blokları ----
-    for s in (1, -1):
-        yy = sorted((0.062 * s, 0.148 * s))
-        gov["kopuk"].birlestir(kutu_min_max((-0.19, yy[0], -0.140), (0.19, yy[1], -0.064), 0.010))
+    # ---- akış biçimli kabuk (görsel): üst yüz sarı, baş beyaz, kıç kırmızı; karın lacivert ----
+    # Yüzdürücü köpük blokları yerine tek kabuk: uç yuvarlak, kıça doğru incelir. Yüzerlik ve
+    # çarpışma ağları (BUOY_*, COL_govde) ve sınır kutusu değişmez; kabuk COL_govde'nin içindedir.
+    L = 0.215
+
+    def ust_profil(x):
+        if x > 0.095:
+            u = min(1.0, (x - 0.095) / (L - 0.095))
+            f = math.sqrt(max(0.0, 1.0 - u * u))
+        elif x < -0.03:
+            u = min(1.0, (-0.03 - x) / (L - 0.03))
+            f = max(0.0, 1.0 - u * u) ** 0.65
+        else:
+            f = 1.0
+        return (0.130 * f, 0.045 * f, 0.030 * f, -0.105)
+
+    gov["kabuk_bas"].birlestir(kabuk_yuzeyi(ust_profil, 0.150, L, 6))
+    gov["kabuk_ust"].birlestir(kabuk_yuzeyi(ust_profil, -0.170, 0.150, 14))
+    gov["kabuk_kic"].birlestir(kabuk_yuzeyi(ust_profil, -L, -0.170, 6))
+
+    def karin_profil(x):
+        u = abs(x) / 0.185
+        f = math.sqrt(max(0.0, 1.0 - u ** 4))
+        return (0.062 * f, 0.050 * f, 0.058 * f, 0.050)
+
+    gov["karin"].birlestir(kabuk_yuzeyi(karin_profil, -0.185, 0.185, 14))
+    # Kıç kanatçıkları: dikey kuyruk dümeni ve iki yatay dengeleyici (kırmızı; baş-kıç ayrımı).
+    a_s = math.radians(-28.0)  # dikey kanadın geriye eğimi
+    ex = (math.cos(a_s), 0.0, math.sin(a_s))
+    ez = (-math.sin(a_s), 0.0, math.cos(a_s))
+    gov["kabuk_kic"].birlestir(pahli_kutu((-0.168, 0.0, -0.170), (0.050, 0.0030, 0.028), 0.0, (ex, (0.0, 1.0, 0.0), ez)))
+    for s_ in (1, -1):
+        gov["kabuk_kic"].birlestir(pahli_kutu((-0.197, 0.085 * s_, -0.103), (0.034, 0.052, 0.0030), 0.0))
 
     # ---- elektronik tüpü (4"), uç kapaklar, kubbe, içerik ----
     ez = -0.065
@@ -915,6 +995,26 @@ def kum_dokusu(n=512):
     return png_yaz(n, n, bytes(pk))
 
 
+def torpido(glb):
+    """Yalın kutu torpido (A5 arac.torpido.varlik = torpido_ida0; A5-K19 aynı kümede `torpido` türünde
+    varlık ister). havuz.py'deki torpido_ida0 ile aynı boyut ve malzeme (0,20 × 0,04 × 0,04 m)."""
+    m = glb.malzeme("torpido_govde", (0.85, 0.42, 0.02, 1.0), 0.1, 0.35)
+    mn, mx = (-0.10, -0.02, -0.02), (0.10, 0.02, 0.02)
+    gorsel = kutu_min_max(mn, mx)
+    col = kutu_kapali(mn, mx)
+    assert manifold_mu(col) and disbukey_mu(col)
+    ref = glb.dugum("REF")
+    gv = glb.dugum("torpido", glb.ag("torpido", [(m, gorsel)]))
+    cd = glb.dugum("COL_torpido", glb.ag("COL_torpido", [(m, col)]))
+    girdi = {
+        "kimlik": "torpido_ida0", "tur": "torpido", "dosya": "torpido_ida0.glb",
+        "referans": {"dugum": ref, "ad": "REF"},
+        "gorsel": [{"dugum": gv, "ad": "torpido", "kosul": "her_zaman"}],
+        "carpisma": [{"dugum": cd, "ad": "COL_torpido", "ayristirma": "yok"}],
+    }
+    return girdi, [gorsel, col], {m: "govde_plastik"}
+
+
 def deniz_tabani(glb):
     doku = glb.doku_png(kum_dokusu())
     m_kum = glb.malzeme("kum", (1.0, 1.0, 1.0, 1.0), 0.0, 0.95, doku=doku)
@@ -1011,7 +1111,7 @@ def sinir_kutusu(parcalar):
 def uret():
     varliklar = []
     dosyalar = {}
-    for kurucu in (ida0, hedef, deniz_tabani):
+    for kurucu in (ida0, hedef, deniz_tabani, torpido):
         glb = Glb()
         girdi, kutu, atama = kurucu(glb)
         veri = glb.yaz()
@@ -1035,7 +1135,7 @@ def uret():
                      "torpido tüpü, sonar başı), bağlı şamandıra hedef ve kumlu deniz tabanı. Geometri "
                      "viz/arac/model-uret/uret.py ile basit şekillerden üretilir; elle çizilmez. Yüzerlik "
                      "gövde kutusu A7 uygunluk örneğindeki 04 yer tutucusuyla aynıdır. Akustik değerler tahmindir. "
-                     "Varlık sırası sahte A2 kaynağının varlık indeksleridir (0 araç, 1 hedef, 2 taban)."),
+                     "Varlık sırası sahte A2 kaynağının varlık indeksleridir (0 araç, 1 hedef, 2 taban); 3 torpido, A5-K19 için."),
         "birimler": {"uzunluk": "m", "aci": "rad", "kutle": "kg", "zaman": "s"},
         "eksenler": {"gltf": "sag_el_y_yukari_z_on", "gltf_govde": [[0, 0, 1], [-1, 0, 0], [0, -1, 0]],
                      "gltf_godot_yerel": [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]},

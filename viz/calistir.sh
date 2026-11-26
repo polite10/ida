@@ -13,7 +13,7 @@
 # Senaryo yolu depo köküne göre görelidir (`--kok` ile başka bir kök verilebilir); senaryonun
 # varlık kümesinin (`varliklar.kume`) ikili dosyaları bulunmalıdır (`assets/ornek` kümesinin .glb
 # dosyaları yoktur: görselleştirici onu yükleyemez; örnek: `viz/calistir.sh --sim
-# scenarios/gorev-havuz-3b.toml`, havuz kümeli görev senaryosu). Görünüm kademesi senaryonun
+# scenarios/gorev-havuz-3b.toml`, havuz kümeli görev senaryosu; açık deniz eşi: scenarios/gorev-acik-su-3b.toml). Görünüm kademesi senaryonun
 # `kalite.gorunum` alanındandır (`--kademe` bu kipte kullanılmaz). Pencere kapanınca sim düzgün
 # kapatılır (SIGINT; terminalde Ctrl-C sim'e doğrudan ulaşır, betik yinelemez) ve kapanış özeti yazdırılır; senaryo süresi dolarsa sim kendiliğinden biter
 # ve pencere son sahneyle açık kalır.
