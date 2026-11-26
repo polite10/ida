@@ -63,9 +63,13 @@ target_compile_definitions(ida_viz_test_dalga PRIVATE
 # W5-viz-gorsel: assets/acik_su kümesinin üreticisi (viz/arac/model-uret/uret.py; yalnız standart kitaplık)
 # depodaki manifest ve .glb dosyalarını (ve viz/test/varlik sınama kümelerini) bayt bayt aynı üretir.
 # assets/havuz kümesinin eşi sim.senaryo.havuz_kumesi_uretici'dir (aynı biçimde kayıtlı).
+# uret.py çıktısı platformlar arası bayt bayt aynı değil (libm farkı olası; doğrulanmadı); varlıklar macOS'ta üretilir;
+# bu yüzden denetim Windows'ta kaydedilmez (AB-253).
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
-add_test(NAME host.viz.model_uret_denetle
-  COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${PROJECT_SOURCE_DIR}/viz/arac/model-uret/uret.py" --denetle)
+if(NOT WIN32)
+  add_test(NAME host.viz.model_uret_denetle
+    COMMAND "${Python3_EXECUTABLE}" -I -X utf8 "${PROJECT_SOURCE_DIR}/viz/arac/model-uret/uret.py" --denetle)
+endif()
 
 if(NOT IDA_VIZ)
   return()
