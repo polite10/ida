@@ -9,6 +9,7 @@ add_executable(ida_a3_test
   test_destek.cpp
   test_erisim.cpp
   test_komut.cpp
+  test_senaryo.cpp
   test_saglam.cpp
   test_uyum.cpp
   test_yavas.cpp)
@@ -28,7 +29,7 @@ set(_ida_a3_testleri
   merhaba_ve_zorunlu abonelik_ve_ozet seyreltme_hizi olay_gecmisi ws_kapanis_kodlari canlilik
   olay_kuyrugu_tasmasi kapanis_1001
   # komut yolu ve emniyet girdileri (EMNİYET; kabul 5)
-  calistirma_akisi yineleme govde_sinirlari emniyet_kisitlayan emniyet_gevseten sonuc_aynen
+  calistirma_akisi senaryo_uclari yineleme govde_sinirlari emniyet_kisitlayan emniyet_gevseten sonuc_aynen
   kuyruk_dolu_kisitlayan yer_istasyonu kisitlayan_bayat_run_id  # W4-K19
   kisitlayan_mandal_siniri jeton_erken_ret  # W4-K22, A3-K94 (sol #2, #3)
   # ölçüm ve dayanıklılık (kabul 4, 6)

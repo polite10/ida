@@ -183,8 +183,9 @@ int test_calistirma_akisi()
     DOGRULA(d, kmt.json_().bul("durum")->metin == "reddedildi" && kmt.json_().bul("hata")->bul("kod")->metin == "gecersiz_istek",
             "reddedilen komut kaydı");
     DOGRULA(d, o.http(istek("GET", "/api/v1/komutlar/999999")).durum == 404, "bilinmeyen komut 404 (A3-K60)");
-    // Bu dilimde uygulanmayan durum değiştiren uç: komut numarası + 404
-    y = k.post("/api/v1/senaryo/yukle", "{}");
+    // Uygulanmayan durum değiştiren uç: komut numarası + 404 (W5-a3-senaryo: `senaryo/yukle` artık uygulanıyor;
+    // `yeniden_kostur` bu dilimde de yok)
+    y = k.post("/api/v1/calistirma/yeniden_kostur", "{}");
     DOGRULA(d, y.durum == 404 && komut_no(y) > 0, "uygulanmayan uç 404 + komut_no");
     return d.hata;
 }

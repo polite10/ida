@@ -44,6 +44,23 @@ struct KayitGirdisi {
 bool kayit_girdisi_kur(const senaryo::DogrulanmisSenaryo& cozumlenmis, const senaryo::DogrulamaRaporu& rapor,
                        const senaryo::DosyaKaynagi& kaynak, KayitGirdisi& girdi, std::string& hata);
 
+// Ön denetim raporu (A3 §3.8) üreticisi: kayıt dosyasının `on_denetim_raporu.json` eki ve
+// `GET /on_denetim` aynı işlevden gelir (W5-K49: iki ayrı üretici yazılmaz).
+struct OnDenetimGirdisi {
+    std::string run_id;            // rapor kimliği = SHA-256(run_id)'nin ilk 16 onaltılık karakteri
+    std::string kip;               // sil | hil_1x
+    bool kayit_istendi = false;    // true: `kayit_dizini`nde boş alan ölçülür
+    std::filesystem::path kayit_dizini;
+    std::uint64_t disk_siniri_bayt = std::uint64_t{1} << 30;
+};
+struct OnDenetimRaporu {
+    std::string kimlik;
+    std::string json;              // `on_denetim_raporu` (A3 §3.8)
+    bool kaldi = false;            // bir madde `kaldi` (boş alan sınırın altında): çalıştırma başlamaz
+    std::string kaldi_ileti;
+};
+OnDenetimRaporu on_denetim_kur(const OnDenetimGirdisi& g);
+
 struct KayitBaglantiAyari {
     std::filesystem::path dizin;
     std::string run_id;       // A3-K63 metin kimliği (dosya adı)
@@ -84,6 +101,10 @@ public:
     // Kapanış (A6-K44): A1 kapanışından sonra, dünya iş parçacığından. İkinci çağrı aynı sonucu verir.
     kayit::KapanisSonucu kapat(kayit::KapanisAlanlari alanlar);
 
+    // Dosyanın eki olan ön denetim raporu (W5-a3-senaryo: `GET /on_denetim` aynı belgeyi verir).
+    const std::string& on_denetim_json() const noexcept { return on_denetim_json_; }
+    const std::string& on_denetim_kimligi() const noexcept { return on_denetim_kimligi_; }
+
     kayit::YaziciDurumu durum() const noexcept { return y_->durum(); }
     kayit::YaziciSayaclari yazici_sayaclari() const noexcept { return y_->sayaclar(); }
     kayit::UreticiSayaclari uretici_sayaclari() const noexcept { return u_->sayaclar(); }
@@ -123,6 +144,7 @@ private:
     bool sonar_acik_ = false;
     bool kapandi_ = false;
     kayit::Guvence guvence_siniri_ = kayit::Guvence::yok;
+    std::string on_denetim_json_, on_denetim_kimligi_;
     std::vector<std::string> bilinmeyen_;   // açılış üst verisinde `bilinmiyor` yazılanlar (güvence tavanı)
     kayit::KapanisSonucu sonuc_;
 };

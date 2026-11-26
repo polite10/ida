@@ -53,6 +53,7 @@ public:
 
     AnlikDurum anlik() override;
     AlimSonucu al(const Komut& k) override;
+    std::optional<AlimSonucu> on_denetim(const Komut& k) override;   // W5-K57
 
     // Bir dünya döngüsü (5 ms, dört fizik adımı): önce adım sınırında komutlar, sonra yayın.
     void adim();
@@ -80,6 +81,7 @@ public:
 
 private:
     struct Durum;
+    std::optional<AlimSonucu> calistirma_denetle_(const Komut& k);   // `al` ve `on_denetim` ortak denetimi
     void uygula_();
     void yayinla_();
     void olay_(std::uint16_t tur, std::uint8_t onem, std::uint8_t kaynak, std::uint32_t komut_no, std::uint32_t istemci,

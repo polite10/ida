@@ -23,7 +23,7 @@ find_package(Eigen3 CONFIG REQUIRED)   # yalnız sürüm makroları: kayıt üst
 find_package(nlohmann_json CONFIG REQUIRED)   # A3 yer istasyonu komutlarının parametreleri (W4-bagla-a3)
 
 add_library(ida_sunucu STATIC src/sunucu.cpp src/senaryo_plani.cpp src/yardimci.cpp src/a3_baglanti.cpp src/a2_baglanti.cpp
-  src/kayit_baglanti.cpp src/sinyal.cpp)
+  src/kayit_baglanti.cpp src/sinyal.cpp src/senaryo_hizmeti.cpp)
 target_include_directories(ida_sunucu
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -48,7 +48,7 @@ target_link_libraries(ida_sim PRIVATE ida_sunucu)
 ida_sunucu_ayar(ida_sim)
 
 # Yardımcı sınamaları (sim.sunucu.*): Windows argüman kaçışı (sol #14).
-add_executable(ida_sunucu_test test/test_yardimci.cpp test/test_a3_alici.cpp test/test_a2_baglanti.cpp test/test_kayit_baglanti.cpp)
+add_executable(ida_sunucu_test test/test_yardimci.cpp test/test_a3_alici.cpp test/test_a2_baglanti.cpp test/test_kayit_baglanti.cpp test/test_senaryo_hizmeti.cpp)
 target_include_directories(ida_sunucu_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(ida_sunucu_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
 target_link_libraries(ida_sunucu_test PRIVATE ida_sunucu)
@@ -58,6 +58,8 @@ add_test(NAME sim.sunucu.arguman_surec COMMAND ida_sunucu_test arguman_surec)
 # W4-K27 (2) (EMNİYET): A3 alıcısının tutarlı kesimi, belirlenimci iş parçacığı sırasıyla.
 add_test(NAME sim.sunucu.a3_kesim COMMAND ida_sunucu_test a3_kesim)
 add_test(NAME sim.sunucu.a3_duraklatma_tablo COMMAND ida_sunucu_test a3_duraklatma_tablo)
+# W5-K64 (EMNİYET): çalıştırma denetimi yolları kısıtlayan yuvalardan önce okunan uçlara kadar alınır.
+add_test(NAME sim.sunucu.a3_cekis_sirasi COMMAND ida_sunucu_test a3_cekis_sirasi)
 # W4-sunucu-kucuk kapsam 1: kapanış isteği bayrağı (her platform) ve sinyal işleyicileri (POSIX; fork).
 add_test(NAME sim.sunucu.kapanis_bayragi COMMAND ida_sunucu_test kapanis_bayragi)
 # W5-bagla-a2: A2 bağlama katmanı. Hız dönüşümü v_n = R(q_nb) · v_b (kabul 3 (a)), fizik çekirdeğiyle
@@ -67,6 +69,8 @@ foreach(_ad a2_hiz_donusumu a2_fizik_tutarlilik a2_tanim a2_kimlik)
 endforeach()
 # W5-bagla-kayit: güvence tavanı (W5-K41) ve `bilinmiyor` üst veri anahtarları.
 add_test(NAME sim.sunucu.kayit_tavan COMMAND ida_sunucu_test kayit_tavan)
+# W5-a3-senaryo: senaryo hizmetinin ad ve dizin denetimi (A3-K78).
+add_test(NAME sim.sunucu.senaryo_hizmeti_ad COMMAND ida_sunucu_test senaryo_hizmeti_ad)
 if(NOT WIN32)
   add_test(NAME sim.sunucu.sinyal_ilk COMMAND ida_sunucu_test sinyal_ilk)
   add_test(NAME sim.sunucu.sinyal_ikinci COMMAND ida_sunucu_test sinyal_ikinci)

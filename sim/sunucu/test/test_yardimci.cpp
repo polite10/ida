@@ -280,11 +280,13 @@ int test_sinyal_ikinci()
 
 int test_a3_kesim();   // test_a3_alici.cpp (W4-K27 (2))
 int test_a3_duraklatma_tablo();   // test_a3_alici.cpp (W4-duraklat)
+int test_a3_cekis_sirasi();   // test_a3_alici.cpp (W5-K64)
 int test_a2_hiz_donusumu();      // test_a2_baglanti.cpp (W5-bagla-a2)
 int test_a2_fizik_tutarlilik();
 int test_a2_tanim();
 int test_a2_kimlik();
 int test_kayit_tavan();   // test_kayit_baglanti.cpp (W5-bagla-kayit)
+int test_senaryo_hizmeti_ad();   // test_senaryo_hizmeti.cpp (W5-a3-senaryo)
 
 int main(int argc, char** argv)
 {
@@ -312,6 +314,8 @@ int main(int argc, char** argv)
         g_hata += test_a3_kesim();
     } else if (ad == "a3_duraklatma_tablo") {
         g_hata += test_a3_duraklatma_tablo();
+    } else if (ad == "a3_cekis_sirasi") {
+        g_hata += test_a3_cekis_sirasi();
     } else if (ad == "a2_hiz_donusumu") {
         g_hata += test_a2_hiz_donusumu();
     } else if (ad == "a2_fizik_tutarlilik") {
@@ -320,6 +324,8 @@ int main(int argc, char** argv)
         g_hata += test_a2_tanim();
     } else if (ad == "a2_kimlik") {
         g_hata += test_a2_kimlik();
+    } else if (ad == "senaryo_hizmeti_ad") {
+        g_hata += test_senaryo_hizmeti_ad();
     } else if (ad == "kayit_tavan") {
         g_hata += test_kayit_tavan();
     } else {

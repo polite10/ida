@@ -79,6 +79,12 @@ struct KopruAyari {
     // İlk TF'nin batch_seq'i (çalıştırma boyunca kesintisiz artar, 2³²'de sarar; yalnız sınama
     // için değiştirilir: sol #12).
     std::uint32_t ilk_batch_seq = 1;
+    // W5-K55 (A3-K117, A3-K67): emniyet revizyonu ve doyma bayrağı süreç boyunca yaşar; köprü ise
+    // dünya başına kurulur. Yeni dünyanın köprüsü, önceki dünyanın oturum sonu artışından sonraki
+    // değerle başlar. Varsayılan süreç başıdır (1, doymamış). 0 geçersizdir (yapilandirma_hatasi);
+    // revizyon 0xFFFFFFFF ise bayrak verilmese de köprü doymuş başlar.
+    std::uint32_t ilk_emniyet_rev = 1;
+    bool ilk_emniyet_rev_doydu = false;
 };
 
 // Sim sayaçları (A1 Tablo 3.11a; bu dilimde tutulanlar).
@@ -484,8 +490,9 @@ public:
 
     // ---- Emniyet (iskelet §3.2, §5) ----
     void emniyet_ata(const EmniyetAtama& a);
-    // Senaryonun başlangıç emniyet durumu (A5-K86, K87): yalnız ilk fizik sınırından önce;
-    // revizyon 1 kalır ve yetkili geçmişin ilk kaydı bu durumla kurulur. false: geç çağrı.
+    // Senaryonun başlangıç emniyet durumu (A5-K86, K87): yalnız ilk fizik sınırından önce ve revizyon
+    // başlangıç değerindeyken (KopruAyari::ilk_emniyet_rev; W5-K55); revizyon değişmez ve yetkili
+    // geçmişin ilk kaydı bu durumla kurulur. false: geç çağrı.
     bool emniyet_baslangic(bool acil_durdurma, const std::array<bool, 2>& fis, const std::array<bool, 2>& pim,
                            const std::array<bool, 2>& dolu);
     sensor::DisDurum dis_durum() const;

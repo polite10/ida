@@ -1,5 +1,6 @@
 // ida_sim — başsız sim sunucusu (W4-kopru). Kullanım: sim/sunucu/BENIOKU.md.
 #include "ida/sunucu/sunucu.hpp"
+#include "senaryo_hizmeti.hpp"
 
 #include <cerrno>
 #include <cmath>
@@ -35,6 +36,11 @@ void kullanim()
         "                           adresi standart çıktıya bir kez yazılır (A3-K05)\n"
         "  --a3-kok <dizin>         A3: panellerin derleme çıktısı (web/dist)\n"
         "  --a3-bekle               A3: çalıştırma panelden `baslat` ile başlar (varsayılan kendiliğinden)\n"
+        "  --a3-surekli             A3: çalıştırma bitince (bitti, durduruldu, hata) süreç kapanmaz; panelden\n"
+        "                           `sifirla` ve `senaryo/yukle` ile yeni çalıştırma (sinyal: kapanış); sıfırlanan\n"
+        "                           ve yüklenen dünyalar `baslat` bekler; bayrak yoksa süreç bugünkü gibi biter\n"
+        "  --senaryo-dizini <dizin> A3: panelin listelediği, okuduğu ve doğruladığı senaryo dizini; depo köküne\n"
+        "                           (--kok) göre göreli (varsayılan scenarios)\n"
         "  --a2-port <port>         A2 sunucusu (görselleştirici; yalnız 127.0.0.1; 1024–65535, A2-K93); yalnız\n"
         "                           senaryo dosyasıyla; bayrak yoksa A2 açılmaz (kilit alınmaz, port açılmaz)\n"
         "  --kayit-dizini <dizin>   A6 kayıt dosyası (<dizin>/<run_id>.mcap); yalnız senaryo dosyasıyla; kademe\n"
@@ -108,6 +114,7 @@ int main(int argc, char** argv)
 {
     ida::sunucu::Ayar a;
     bool karsi_verildi = false;
+    bool senaryo_dizini_verildi = false;
     for (int i = 1; i < argc; ++i) {
         const std::string s = argv[i];
         auto deger = [&]() -> std::string {
@@ -275,6 +282,11 @@ int main(int argc, char** argv)
             a.a3_kok = deger();
         } else if (s == "--a3-bekle") {
             a.a3_bekle = true;
+        } else if (s == "--a3-surekli") {
+            a.a3_surekli = true;
+        } else if (s == "--senaryo-dizini") {
+            a.senaryo_dizini = deger();
+            senaryo_dizini_verildi = true;
         } else if (s == "--sonar" || s.rfind("--sonar=", 0) == 0) {
             // W4-sunucu-kucuk kapsam 5: değersiz `--sonar` = `acik`; `--sonar=acik|kapali`. Varsayılan
             // (bayrak yok) kapalıdır.
@@ -333,9 +345,16 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_sim: sil kipinde karşı taraf ic ya da tcp olmalı\n");
         return 1;
     }
-    if (!a.a3_acik && (!a.a3_kok.empty() || a.a3_bekle)) {
-        std::fprintf(stderr, "ida_sim: --a3-kok ve --a3-bekle --a3-port ister\n");
+    if (!a.a3_acik && (!a.a3_kok.empty() || a.a3_bekle || a.a3_surekli || senaryo_dizini_verildi)) {
+        std::fprintf(stderr, "ida_sim: --a3-kok, --a3-bekle, --a3-surekli ve --senaryo-dizini --a3-port ister\n");
         return 1;
+    }
+    if (a.a3_acik) {
+        const std::string dh = ida::sunucu::SenaryoHizmeti::dizin_denetle(a.senaryo_dizini);
+        if (!dh.empty()) {
+            std::fprintf(stderr, "ida_sim: --senaryo-dizini: %s\n", dh.c_str());
+            return 1;
+        }
     }
     if (a.a2_port_verildi && a.a2_sinama_bos_port) {
         std::fprintf(stderr, "ida_sim: --a2-port ile --a2-sinama-bos-port birlikte verilemez\n");
@@ -398,8 +417,7 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "ida_sim: başlangıç O_b derinliği %.17g m\n", s.denge_derinligi_m);
     }
     if (a.gunluk >= 1 && !a.senaryo_dosyasi.empty()) {
-        std::fprintf(stderr, "ida_sim: senaryo %s, davranış özeti %s\n", a.senaryo_dosyasi.c_str(),
-                     s.davranis_ozeti.c_str());
+        std::fprintf(stderr, "ida_sim: senaryo %s, davranış özeti %s\n", s.senaryo_yolu.c_str(), s.davranis_ozeti.c_str());
         for (const auto& [dosya, ozet] : s.kaynak_ozetleri) {
             std::fprintf(stderr, "ida_sim:   kaynak %s %s\n", dosya.c_str(), ozet.c_str());
         }

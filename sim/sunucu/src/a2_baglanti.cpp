@@ -437,22 +437,36 @@ void A2Baglanti::surdur() noexcept
     }
 }
 
-void A2Baglanti::kapat(A2Ozeti& ozet) noexcept
+void A2Baglanti::yeni_tanim(a2b::Tanim tanim)
+{
+    tanim_ = std::move(tanim);
+    tanimli_ = false;
+    durdu_ = false;
+    arac_kimligi_ = 0;
+    son_adim_ = 0;
+    adim_siniri_ = 0;
+    reddedilen_ = 0;
+    cagri_toplam_ns_ = 0;
+    cagri_en_kotu_ns_ = 0;
+}
+
+void A2Baglanti::kapat(A2Ozeti& ozet, bool son) noexcept
 {
     try {
-        if (!kapandi_) {
+        if (etkin_ && tanimli_ && !durdu_ && !kapandi_) {
+            durdu_ = true;
+            (void)sv_->yayinci().calistirma_durdu();   // son sınırın durumu "durdu" ile bir kez daha gider
+        }
+        if (son && !kapandi_) {
             kapandi_ = true;
             if (etkin_) {
                 a2::Yayinci& y = sv_->yayinci();
-                if (tanimli_) {
-                    (void)y.calistirma_durdu();   // son sınırın durumu "durdu" ile bir kez daha gider
-                }
                 (void)y.kapaniyor();              // bağlı oturuma veda(sim_kapaniyor) (A2-K67)
                 // G/Ç iş parçacığı kapanış kaydını işlesin (son durum ve veda sırasıyla gitsin):
                 // dinleyicinin kapandığı görülene kadar, en çok 250 ms (G/Ç tiki ≤ 20 ms). Dünya
                 // döngüsü ve A1 kapanışı bu noktada bitmiştir.
-                const Saat::time_point son = Saat::now() + std::chrono::milliseconds(250);
-                while (sv_->durum() != a2::A2Durumu::durduruldu && Saat::now() < son) {
+                const Saat::time_point bitis = Saat::now() + std::chrono::milliseconds(250);
+                while (sv_->durum() != a2::A2Durumu::durduruldu && Saat::now() < bitis) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
