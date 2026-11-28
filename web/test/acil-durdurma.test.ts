@@ -143,7 +143,7 @@ for (const run of [null, RUN]) {
     assert.equal(k.dugme.textContent, 'SANAL ACİL DURDUR');
     k.dugme.tikla();
     await asamaBekle(k.komutlar, 'kuyrukta');
-    assert.match(k.sonuc.textContent, /kuyrukta · uygulanmadı/);
+    assert.match(k.sonuc.textContent, /KUYRUKTA · Uygulama sonucu bekleniyor/);
     assert.equal(k.durum.textContent, 'Sanal girdi: serbest');
     const [i] = basmaIstekleri(k);
     assert.ok(i);
@@ -168,19 +168,44 @@ for (const run of [null, RUN]) {
   });
 }
 
-test('çalıştırma çerçevesi yoksa veya bağlantı kopuksa gönderilmediği açık gösterilir', async (t) => {
+test('bağlıyken ilk çalıştırma çerçevesi beklenmez: tek null run_id POST ve nihai sonuç', async (t) => {
   const k = kur(t);
+  assert.equal(k.dugme.ozellikler.get('aria-disabled'), 'false');
+  assert.equal(k.neden.textContent, '');
+  k.dugme.tikla();
+  await asamaBekle(k.komutlar, 'kuyrukta');
+  assert.match(k.sonuc.textContent, /KUYRUKTA · Uygulama sonucu bekleniyor/);
+  assert.equal(basmaIstekleri(k).length, 1);
+  assert.equal(basmaIstekleri(k)[0]!.govde!.beklenen_run_id, null);
+  assert.equal(basmaIstekleri(k)[0]!.govde!.girdi, 'acil_durdurma');
+  assert.equal(basmaIstekleri(k)[0]!.govde!.hedef_durum, 'basili');
+  assert.equal(k.durum.textContent, 'Sanal girdi: telemetri bekleniyor');
+  k.olay();
+  const sonuc = await asamaBekle(k.komutlar, 'uygulandi');
+  assert.equal(sonuc.gonderildi_mi, true);
+  assert.equal(sonuc.uygulama_adimi, 18);
+  assert.match(k.sonuc.textContent, /uygulandı \(adım 18\)/);
+  assert.equal(k.durum.textContent, 'Sanal girdi: telemetri bekleniyor');
+  assert.equal(basmaIstekleri(k).length, 1);
+});
+
+test('kopuk bağlantıda ilk çerçeve veya önbellekte durum olsa da sıfır POST ve UYGULANMADI', async (t) => {
+  const k = kur(t);
+  k.baglanti('kopuk');
   assert.equal(k.dugme.ozellikler.get('aria-disabled'), 'true');
-  assert.match(k.neden.textContent, /çalıştırma durumu bekleniyor/);
+  assert.match(k.neden.textContent, /bağlantı yok/);
   k.dugme.tikla();
   assert.equal(k.komutlar.kayitlar()[0]!.gonderildi_mi, false);
+  assert.match(k.sonuc.textContent, /UYGULANMADI/);
   assert.match(k.sonuc.textContent, /Gönderilmedi/);
+  k.baglanti('bagli');
   k.hazir();
   k.baglanti('kopuk');
   assert.match(k.neden.textContent, /bağlantı yok/);
   assert.match(k.durum.textContent, /serbest · bayat/);
   k.dugme.tikla();
   assert.equal((await asamaBekle(k.komutlar, 'reddedildi')).gonderildi_mi, false);
+  assert.match(k.sonuc.textContent, /UYGULANMADI/);
   assert.equal(k.istekler.length, 0);
 });
 
@@ -189,7 +214,7 @@ test('sunucunun ret nedeni açıkça gösterilir', async (t) => {
   k.hazir();
   k.dugme.tikla();
   assert.equal((await asamaBekle(k.komutlar, 'reddedildi')).hata_kodu, 'tekrar_kipinde_yasak');
-  assert.match(k.sonuc.textContent, /reddedildi/);
+  assert.match(k.sonuc.textContent, /UYGULANMADI/);
   assert.match(k.sonuc.textContent, /tekrar kipinde/i);
   assert.equal(k.durum.textContent, 'Sanal girdi: serbest');
   assert.equal(basmaIstekleri(k).length, 1);
@@ -200,7 +225,7 @@ test('ağ hatası sonucu bilinmiyor; bağlantı yenilenince POST yinelenmez', as
   k.hazir();
   k.dugme.tikla();
   assert.equal((await asamaBekle(k.komutlar, 'bilinmiyor')).hata_kodu, 'ag_hatasi');
-  assert.match(k.sonuc.textContent, /sonuç bilinmiyor/);
+  assert.match(k.sonuc.textContent, /SONUÇ BİLİNMİYOR/);
   k.baglanti('kopuk');
   k.baglanti('bagli');
   assert.equal(basmaIstekleri(k).length, 1);
@@ -218,7 +243,7 @@ test('kuyruktayken kopma belirsizdir; bağlantı sonrası yalnız komut sonucu s
   await asamaBekle(k.komutlar, 'kuyrukta');
   k.baglanti('kopuk');
   assert.equal(k.komutlar.kayitlar()[0]!.asama, 'bilinmiyor');
-  assert.match(k.sonuc.textContent, /sonuç bilinmiyor/);
+  assert.match(k.sonuc.textContent, /SONUÇ BİLİNMİYOR/);
   k.baglanti('bagli');
   await asamaBekle(k.komutlar, 'uygulandi');
   assert.equal(basmaIstekleri(k).length, 1);
@@ -257,7 +282,7 @@ test('HTTP yanıtı beklenirken bağlantı koparsa 202 sonucu bilinmiyor olur', 
   k.baglanti('kopuk');
   yanit.coz(json({ sonuc: 'kuyrukta', komut_no: 41 }, 202));
   assert.equal((await asamaBekle(k.komutlar, 'bilinmiyor')).hata_kodu, 'baglanti_koptu');
-  assert.match(k.sonuc.textContent, /sonuç bilinmiyor/);
+  assert.match(k.sonuc.textContent, /SONUÇ BİLİNMİYOR/);
   assert.equal(basmaIstekleri(k).length, 1);
 });
 
@@ -302,7 +327,7 @@ test('takılan istemci kaydı, POST veya yanıt gövdesi 5 s bütçesinde iptal 
     t.mock.timers.tick(1);
     const sonuc = await asamaBekle(k.komutlar, 'bilinmiyor');
     assert.equal(sonuc.hata_kodu, 'zaman_asimi');
-    assert.match(k.sonuc.textContent, /sonuç bilinmiyor/);
+    assert.match(k.sonuc.textContent, /SONUÇ BİLİNMİYOR/);
     assert.equal(k.istekler.at(-1)!.sinyal!.aborted, true);
     assert.equal(k.dugme.ozellikler.get('aria-disabled'), 'false');
     assert.equal(k.istekler.length, istekSayisi, 'abort otomatik tekrar göndermez');

@@ -20,10 +20,8 @@ export function acilDurdurmaDenetimi(b: A3Baglanti, komutlar: KomutYoneticisi): 
 
   const guncelle = (): void => {
     const bagli = b.bilgi.durum === 'bagli';
-    const hazir = komutlar.beklenen() !== null;
     const engel = !bagli ? 'Gönderilemez: sunucuyla bağlantı yok.'
-      : !hazir ? 'Gönderilemez: sunucudan çalıştırma durumu bekleniyor.'
-        : gonderiliyor() ? 'İstek gönderiliyor; HTTP yanıtı bekleniyor.' : '';
+      : gonderiliyor() ? 'İstek gönderiliyor; HTTP yanıtı bekleniyor.' : '';
     dugme.setAttribute('aria-disabled', engel === '' ? 'false' : 'true');
     dugme.classList.toggle('kapali', engel !== '');
     dugme.title = engel || 'Sanal acil durdurmaya bas';
@@ -46,14 +44,18 @@ export function acilDurdurmaDenetimi(b: A3Baglanti, komutlar: KomutYoneticisi): 
     telemetriTaze = b.bilgi.durum === 'bagli';
     guncelle();
   });
-  b.abone('calistirma/durum', () => guncelle());
   b.durumDinle(() => {
     if (b.bilgi.durum !== 'bagli') telemetriTaze = false;
     guncelle();
   });
   komutlar.dinle((liste) => {
     const k = liste.find((x) => x.komut === 'acil_durdur');
-    yaz(sonuc, k === undefined ? '' : komutSatiri(k));
+    // W5-K51: doğrulanmış ret ile belirsiz sonuç yalnız stop şeridinde ayrılır.
+    const ozet = k?.asama === 'reddedildi' ? `UYGULANMADI: ${k.ileti}`
+      : k?.asama === 'bilinmiyor' ? `SONUÇ BİLİNMİYOR: ${k.ileti}`
+        : k?.asama === 'kuyrukta' ? 'KUYRUKTA · Uygulama sonucu bekleniyor' : null;
+    yaz(sonuc, k === undefined ? '' : ozet === null ? komutSatiri(k)
+      : `${k.etiket}${k.komut_no !== null ? ` #${k.komut_no}` : ''} — ${ozet}`);
     sinifSec(sonuc, ['iyi', 'uyari', 'kotu', 'vurgu'], k === undefined ? null
       : k.asama === 'reddedildi' ? 'kotu' : k.asama === 'uygulandi' ? 'iyi'
         : k.asama === 'gonderiliyor' ? 'vurgu' : 'uyari');
