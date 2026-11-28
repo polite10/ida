@@ -949,7 +949,11 @@ std::uint32_t Kopru::komut_fc(std::uint8_t op, std::uint8_t tube, std::int64_t t
                op == IDAW_FC_OP_TEST_ENTER) {
         k.sinif = Sinif::genisletir;
     }
-    return ic_->komut_ekle(k);
+    const std::uint32_t id = ic_->komut_ekle(k);
+    if (op == IDAW_FC_OP_FIRE && tube < 2u) {
+        ic_->fire_komutlari[id] = tube;   /* W5-K5: yalnız kendi ilettiği FC_FIRE */
+    }
+    return id;
 }
 
 }  // namespace ida::kopru

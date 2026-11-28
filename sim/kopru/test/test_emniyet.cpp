@@ -233,6 +233,13 @@ int test_olay_fire_kabul()
     Plan p;
     plan_kur(z, p);
     tup0_hazirla(z);
+    // W5-K5: kartın kabul ettiği operatör FC_FIRE'ı olmadan FIRE uygulanmaz.
+    const std::uint32_t fid = z.k.komut_fc(static_cast<std::uint8_t>(IDAW_FC_OP_FIRE), 0u, z.t);
+    (void)z.periyot();
+    (void)z.periyot();
+    DOGRULA(d, !z.sk.fc_komutlari.empty(), "FC_FIRE karta gitti");
+    z.sk.komut_sonucu(fid, static_cast<std::uint8_t>(IDAW_ACK_ACCEPTED), 0u);
+    alisveris(z.k, z.sk, z.t);
     const std::uint32_t rev = z.k.dis_durum().emniyet.emniyet_revizyonu;
     DOGRULA(d, rev == 2u, "gevşetme revizyonu bir artırdı (A1-K106 (6))");
     // Aynı partide izin açan olay ve FIRE: önce SAFETY_OPEN, sonra FIRE (A1-K85 (3)).

@@ -277,7 +277,7 @@ static void test_b6_nihai_kimlik_butun_yollar(void)
     TEST_ASSERT_NOT_NULL(r);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, r->reason);
     dt_kayit_sil();
-    dt_cmd_fc(600u, (uint8_t)IDA_FC_DISARM, 0u);               /* bozuk daraltıcı (tube) */
+    dt_cmd_fc(600u, (uint8_t)IDA_FC_ARM, 99u);                 /* bozuk genişletici (tube) */
     r = dt_sonuc(600u);
     TEST_ASSERT_NOT_NULL(r);
     TEST_ASSERT_EQUAL_UINT16(IDA_REASON_NARROWED, r->reason);

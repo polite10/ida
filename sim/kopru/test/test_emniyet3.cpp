@@ -275,6 +275,14 @@ int test_eksik_kume_tutarli()
         }
         z.sk.yanit(tf.seq, static_cast<std::uint16_t>(kThr | kArmed), pwm_hepsi(1600));
     };
+    // W5-K5: tüp 0 için kartın kabul ettiği operatör FC_FIRE'ı.
+    {
+        const std::uint32_t fid = z.k.komut_fc(static_cast<std::uint8_t>(IDAW_FC_OP_FIRE), 0u, z.t);
+        (void)z.periyot();
+        (void)z.periyot();
+        z.sk.komut_sonucu(fid, static_cast<std::uint8_t>(IDAW_ACK_ACCEPTED), 0u);
+        alisveris(z.k, z.sk, z.t);
+    }
     asama = 1;
     for (int n = 0; n < 3; ++n) {   // TF(n) ilk periyodun sonunda; a_n = t_n + 10 ms işlendi
         (void)z.periyot();

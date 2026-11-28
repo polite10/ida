@@ -699,6 +699,10 @@ static void alim(void)
 static ida_rc_t cekirdek_cagir(void *ctx, ida_link_cagri_t tur, ida_in_t *in, ida_out_t *out)
 {
     (void)ctx;
+    if (!ida_link_ust_cagri_gecerli(&ust, in, tur)) {
+        in->imu_present = 0u;                    /* W5-K70: step zaman çerçevesi ister */
+        tur = IDA_LINK_CAGRI_IZGARA;
+    }
     in->plat.param_store = kal.store;
     in->plat.param_fail = kal.fail;
     in->plat.param_gen = kal.store_gen;

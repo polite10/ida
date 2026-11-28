@@ -540,6 +540,20 @@ static void ornekleri_koy(ida_link_ust_t *l, ida_in_t *in)
     in->n_samples = n;
 }
 
+bool ida_link_ust_cagri_gecerli(ida_link_ust_t *l, const ida_in_t *in, ida_link_cagri_t tur)
+{
+    if (tur != IDA_LINK_CAGRI_STEP) {
+        return true;
+    }
+    if (in != NULL && in->tf.present) {
+        return true;
+    }
+    if (l != NULL) {
+        l->say[IDA_LINK_SAY_STEP_TF_YOK] += 1u;
+    }
+    return false;
+}
+
 ida_link_cagri_t ida_link_ust_take(ida_link_ust_t *l, ida_in_t *in)
 {
     ida_link_cagri_t tur = IDA_LINK_CAGRI_YOK;
@@ -559,6 +573,14 @@ ida_link_cagri_t ida_link_ust_take(ida_link_ust_t *l, ida_in_t *in)
         tur = IDA_LINK_CAGRI_IZGARA;
     } else {
         return IDA_LINK_CAGRI_YOK;
+    }
+    if (tur == IDA_LINK_CAGRI_STEP && !l->ozel_bek_tf.present) {
+        /* W5-K70 (savunma; olağan yolda erişilemez): step zaman çerçevesi ister. Platform
+           sözleşme dışı girdi üretmez; üretilmişse step yapılmaz, çağrı ızgara sayılır ve
+           IMU taşınmaz. Sayaç taşımada görünür. */
+        l->say[IDA_LINK_SAY_STEP_TF_YOK] += 1u;
+        tur = IDA_LINK_CAGRI_IZGARA;
+        l->ozel_bek.imu_var = 0u;
     }
     memset(in, 0, sizeof *in);
     in->now_w = simdi;

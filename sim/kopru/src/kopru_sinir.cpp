@@ -443,6 +443,7 @@ void Kopru::Ic::izin_kapat(int tup)
 {
     emn.izin_acik[static_cast<std::size_t>(tup)] = false;
     izin_bitis[static_cast<std::size_t>(tup)] = 0;
+    fire_kabul[static_cast<std::size_t>(tup)] = false;   /* W5-K5: yetki izinle birlikte düşer */
 }
 
 void Kopru::Ic::sonuc_kuyruga(std::uint64_t event_id, std::uint8_t sonuc, std::int64_t t_apply, std::uint8_t kind,
@@ -552,8 +553,13 @@ void Kopru::Ic::olay_karar(const BekleyenOlay& o, std::int64_t t, std::uint64_t 
         karar(static_cast<std::uint8_t>(IDA_EVR_APPLIED), t);
         return;
     }
-    // FIRE (A1-K88).
+    // FIRE (A1-K88; W5-K5).
     if (!tutarli || !rev_tamam || !girdiler || !emn.izin_acik[tup]) {
+        karar(static_cast<std::uint8_t>(IDA_EVR_REJ_SAFE), 0);
+        return;
+    }
+    if (!fire_kabul[tup]) {
+        /* W5-K5: kendi ilettiği ve kartın kabul ettiği bir operatör FC_FIRE'ı yoksa uygulanmaz. */
         karar(static_cast<std::uint8_t>(IDA_EVR_REJ_SAFE), 0);
         return;
     }

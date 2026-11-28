@@ -354,6 +354,9 @@ struct Kopru::Ic {
     std::map<std::uint32_t, KomutSonucu> sonuclar;
     std::set<std::uint32_t> oturum_komutlari;
     std::set<std::uint32_t> sonuc_bekleyen;
+    // W5-K5: kendi ilettiği ve kartın kabul ettiği operatör FC_FIRE'ı (tüp başına).
+    std::map<std::uint32_t, std::uint8_t> fire_komutlari;   // cmd_id → tube
+    std::array<bool, 2> fire_kabul{};
     std::int64_t kredi = kCcMax;
     double kova = 8.0;
     std::int64_t kova_duvar = 0;

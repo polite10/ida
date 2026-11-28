@@ -413,13 +413,23 @@ static void bozuk_alanli(ida_link_ust_rol_t rol)
 {
     ko_hazir(rol, 0x1209u);
     size_t c0 = ko_cagri_boy();
-    ko_fc(170u, IDAW_FC_OP_DISARM, 0u, 0u);    /* tube 255 olmalı */
-    ko_fc(171u, IDAW_FC_OP_ABORT, 255u, 1u);   /* arg0 ≠ 0 */
+    ko_fc(170u, IDAW_FC_OP_DISARM, 0u, 0u);    /* tube 255 olmalı → W5-K7: yine mandal */
+    ko_fc(171u, IDAW_FC_OP_ABORT, 255u, 1u);   /* arg0 ≠ 0     → W5-K7: yine mandal */
     ko_simple(172u, IDAW_CMD_TYPE_SET_MODE, 1u); /* hedef 2–7 dışında */
     ko_simple(173u, IDAW_CMD_TYPE_SET_MODE, 8u);
     ko_tf(2u);
     ko_pompala();
-    for (uint32_t id = 170u; id <= 173u; ++id) {
+    const ko_cagri_t *c = ilk_cagri(c0);
+    mandal_var(c, 2u, 170u);
+    mandal_var(c, 3u, 171u);
+    for (uint32_t id = 170u; id <= 171u; ++id) {
+        const ko_kimlik_t *k = ko_kimlik(id);
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(1u, k->n_sonuc,
+                                         "biçim hatası daraltıcıya tek sonuç (W5-K7, A1-K67)");
+        TEST_ASSERT_EQUAL_UINT8(IDAW_ACK_ACCEPTED, k->sonuc[0].ack);
+        /* Mandalda (yukarıda) ve cmds[]'te değil; "girdi" sayacı mandalı da sayar. */
+    }
+    for (uint32_t id = 172u; id <= 173u; ++id) {
         const ko_kimlik_t *k = ko_kimlik(id);
         TEST_ASSERT_EQUAL_UINT16_MESSAGE(1u, k->n_sonuc, "dönüşüm hatasına tek sonuç (A1-K64, K67)");
         TEST_ASSERT_EQUAL_UINT8(IDAW_ACK_REJECTED, k->sonuc[0].ack);
@@ -429,8 +439,10 @@ static void bozuk_alanli(ida_link_ust_rol_t rol)
         hic_girmedi(id);
     }
     for (size_t i = c0; i < ko_cagri_boy(); ++i) {
-        TEST_ASSERT_EQUAL_HEX8_MESSAGE(0u, ko_cagri(i)->narrow.mask,
-                                       "bozuk daraltıcı mandala alınmaz (A1-K64)");
+        TEST_ASSERT_EQUAL_HEX8_MESSAGE(0u,
+                                       (uint8_t)(ko_cagri(i)->narrow.mask &
+                                                 (uint8_t)~((1u << 2) | (1u << 3))),
+                                       "yalnız biçim hatası daraltıcılar mandalda (W5-K7)");
     }
     bozuk_yok();
 }
