@@ -170,6 +170,11 @@ void ust_komut_al(ida_link_ust_t *l, uint32_t msgid, const void *mp)
         /* A1-K63: ayrıştırıldığı anda mandala; hiçbir koşulda atılmaz. W3-K11: kimliği nihai
            NARROWED listesinde olsa da biçimce geçerli daraltıcı mandala alınır ve kendi
            olağan sonucunu alır (A4-K46, D-20: daraltıcı yineleme denetimlerinden muaftır). */
+        if (k.bicim_hatali != 0u) {
+            /* W5-K7/G-K14: biçim hatası uygulamayı durdurmaz; ayrıca sayılır ve taşımada
+               `cnt_cmd_bad_field` olarak görünür. Komut sonucu mandaldan olağan yolla gelir. */
+            l->say[IDA_LINK_SAY_CMD_BAD_FIELD] += 1u;
+        }
         mandala_al(l, &k);
         return;
     }

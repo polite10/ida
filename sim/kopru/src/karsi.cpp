@@ -225,7 +225,11 @@ struct KarsiTaraf::Ic {
             if (a.cagri_kancasi) {
                 a.cagri_kancasi(static_cast<int>(tur), in);
             }
-            const ida_rc_t rc = tur == IDA_LINK_CAGRI_STEP ? ida_core_step(cekirdek(), &in, cikti.get())
+            const bool step_gecerli = ida_link_ust_cagri_gecerli(l.get(), &in, tur);
+            if (!step_gecerli) {
+                in.imu_present = 0;   // W5-K70: step zaman çerçevesi ister; tick'e düşer
+            }
+            const ida_rc_t rc = (tur == IDA_LINK_CAGRI_STEP && step_gecerli) ? ida_core_step(cekirdek(), &in, cikti.get())
                                                            : ida_core_tick(cekirdek(), &in, cikti.get());
             if (a.cikti_kancasi) {
                 a.cikti_kancasi(static_cast<int>(tur), in, *cikti);

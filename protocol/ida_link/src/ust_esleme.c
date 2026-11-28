@@ -446,29 +446,28 @@ ust_komut_tur_t ust_esl_komut(uint32_t msgid, const void *mp, ust_komut_t *k)
     }
     case MAVLINK_MSG_ID_IDA_CMD_FC: {
         const mavlink_ida_cmd_fc_t *m = (const mavlink_ida_cmd_fc_t *)mp;
+        const bool arg_hatali = (m->arg0 != 0u || m->arg1 != 0u);
         k->cmd_id = m->cmd_id;
         k->cmd_type = (uint8_t)IDA_CMD_FC;
         k->cmd.cmd_id = m->cmd_id;
         k->cmd.type = (uint8_t)IDA_CMD_FC;
         k->cmd.source = m->source;
-        if (m->arg0 != 0u || m->arg1 != 0u) {
-            return UST_KOMUT_BOZUK;                       /* A1-K64 */
-        }
         switch (m->op) {
         case IDA_FC_DISARM:
         case IDA_FC_ABORT:
-            if (m->tube != IDA_TUBE_ALL) {
-                return UST_KOMUT_BOZUK;                   /* P2-3 */
-            }
+            /* W5-K7/G-K14: biçim hatası daraltıcıyı REDDETMEZ; mandala alınır ve bütün
+               tüplere uygulanır. Biçim hatası (tube ≠ ALL ya da arg ≠ 0) sonuçta ayrıca
+               bildirilir (sayacı ust_komut_al yazar). */
             k->bit = (uint8_t)(m->op == IDA_FC_DISARM ? IDA_NARROW_FC_DISARM : IDA_NARROW_FC_ABORT);
+            k->bicim_hatali = (uint8_t)(arg_hatali || (m->tube != IDA_TUBE_ALL));
             return UST_KOMUT_DARALTICI;
         case IDA_FC_ARM:
         case IDA_FC_FIRE:
         case IDA_FC_RESET:
         case IDA_FC_TEST_ENTER:
         case IDA_FC_TEST_EXIT:
-            if (m->tube >= IDA_PORT_N_TUBE) {
-                return UST_KOMUT_BOZUK;
+            if (arg_hatali || (m->tube >= IDA_PORT_N_TUBE)) {
+                return UST_KOMUT_BOZUK;                   /* A1-K64, A4-K119 */
             }
             k->genisletici = (uint8_t)(m->op != IDA_FC_TEST_EXIT);
             k->cmd.u.fc.op = m->op;

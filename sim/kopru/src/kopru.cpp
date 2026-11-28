@@ -688,6 +688,15 @@ bool Kopru::Ic::sonuc_al(const mavlink_ida_cmd_result_t& m)
         return false;
     }
     sonuc_bekleyen.erase(m.cmd_id);
+    const auto fk = fire_komutlari.find(m.cmd_id);
+    if (fk != fire_komutlari.end()) {
+        /* W5-K5: kartın kabul ettiği operatör FC_FIRE'ı tüp için yetki olur; izin
+           kapandığında (izin_kapat) yetki düşer. */
+        if (m.ack == IDAW_ACK_ACCEPTED && fk->second < 2u) {
+            fire_kabul[fk->second] = true;
+        }
+        fire_komutlari.erase(fk);
+    }
     if (sonuclar.count(m.cmd_id) != 0u) {
         return true;   // A1-K67: ilk sonuç iletilir, sonrakiler yalnız kaydedilir
     }

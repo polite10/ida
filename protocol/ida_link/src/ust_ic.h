@@ -119,6 +119,7 @@ typedef struct {
     uint8_t  genisletici;    /* A1 Tablo 3.6                                           */
     uint8_t  bit;            /* DARALTICI: IDA_NARROW_*                                 */
     uint8_t  kip;            /* DARALTICI ve NARROW_MODE: hedef kip                     */
+    uint8_t  bicim_hatali;   /* DARALTICI: biçim hatası (W5-K7/G-K14); uygulama sürer   */
     ida_cmd_t cmd;           /* OLAGAN                                                 */
 } ust_komut_t;
 /* msgid bir komut mesajı değilse BOZUK döner ve cmd_id 0 olur. */

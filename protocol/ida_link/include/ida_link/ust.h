@@ -115,7 +115,8 @@ enum {
     IDA_LINK_SAY_EVENTS_SENT = 33,
     IDA_LINK_SAY_EVENTS_RESENT = 34,
     IDA_LINK_SAY_SESSIONS = 35,
-    IDA_LINK_SAY_N = 36
+    IDA_LINK_SAY_STEP_TF_YOK = 36,       /* W5-K70: zaman çerçevesiz step engellendi  */
+    IDA_LINK_SAY_N = 37
 };
 
 /* ------------------------------------------------------------------ */
@@ -416,6 +417,14 @@ void ida_link_ust_poll_tx(ida_link_ust_t *l);
  * YOK dönüşünde *in yazılmaz. l ya da in NULL ise YOK.
  */
 ida_link_cagri_t ida_link_ust_take(ida_link_ust_t *l, ida_in_t *in);
+
+/*
+ * ida_link_ust_cagri_gecerli — çağrı türünün girdiyle tutarlılığı (W5-K70).
+ * STEP zaman çerçevesi (`tf.present = 1`) ister; değilse false döner ve
+ * `say[IDA_LINK_SAY_STEP_TF_YOK]` bir artar. Platform böyle bir girdi üretmez; bu, çağrı
+ * yollarının savunma denetimidir. false dönüşte çağıran çekirdeği step olarak çağırmaz.
+ */
+bool ida_link_ust_cagri_gecerli(ida_link_ust_t *l, const ida_in_t *in, ida_link_cagri_t tur);
 
 /*
  * ida_link_ust_put_out — take'in verdiği çağrı döndü. in take'in doldurup çekirdeğe verdiği

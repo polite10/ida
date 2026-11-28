@@ -60,6 +60,7 @@ struct SahteKart {
     std::vector<std::uint32_t> uye_msgid;   // TF dışındaki üyeler (son partiden beri)
     std::vector<std::vector<std::uint32_t>> parti_uyeleri;
     std::vector<mavlink_ida_cmd_simple_t> komutlar;
+    std::vector<mavlink_ida_cmd_fc_t> fc_komutlari;
     bool kabul_reddi = false;
     std::vector<std::uint8_t> kapanis_nedenleri;   // alınan IDA_SESSION_CLOSE.reason
     std::uint8_t son_kabul = 0xFF;
@@ -99,6 +100,18 @@ struct SahteKart {
         a.core_rc = rc;
         a.n_events = n_events;
         yaz(MAVLINK_MSG_ID_IDA_ACTUATOR, a);
+    }
+
+    // Komut sonucu (W5-K5 testleri: kartın kabul ettiği FC_FIRE).
+    void komut_sonucu(std::uint32_t cmd_id, std::uint8_t ack = 1u, std::uint16_t reason = 0u)
+    {
+        mavlink_ida_cmd_result_t r{};
+        r.cmd_id = cmd_id;
+        r.sess = sess;
+        r.kind = 1u;
+        r.ack = ack;
+        r.reason = reason;
+        yaz(MAVLINK_MSG_ID_IDA_CMD_RESULT, r);
     }
 
     // Olay: kimlik (boot_count << 32 | ctr).
@@ -218,6 +231,13 @@ struct SahteKart {
             mavlink_ida_cmd_simple_t r{};
             (void)ida_link_coz(&c, c.msgid, &r, sizeof r);
             komutlar.push_back(r);
+            uye_msgid.push_back(c.msgid);
+            break;
+        }
+        case MAVLINK_MSG_ID_IDA_CMD_FC: {
+            mavlink_ida_cmd_fc_t r{};
+            (void)ida_link_coz(&c, c.msgid, &r, sizeof r);
+            fc_komutlari.push_back(r);
             uye_msgid.push_back(c.msgid);
             break;
         }

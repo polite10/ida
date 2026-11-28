@@ -206,10 +206,9 @@ static void test_donusum_hatalari(void)
     }
     dt_cmd_simple(id, 6u, 0u);   /* GUIDED_SP CMD_SIMPLE'da yok */
     sonuc_bekle(id++, (uint8_t)IDA_ACK_REJECTED, (uint16_t)IDAW_REASON_LINK_BAD_FIELD);
-    dt_cmd_fc(id, (uint8_t)IDA_FC_DISARM, 0u);
-    sonuc_bekle(id++, (uint8_t)IDA_ACK_REJECTED, (uint16_t)IDAW_REASON_LINK_BAD_FIELD);
     dt_cmd_fc(id, (uint8_t)IDA_FC_ARM, (uint8_t)IDA_TUBE_ALL);
     sonuc_bekle(id++, (uint8_t)IDA_ACK_REJECTED, (uint16_t)IDAW_REASON_LINK_BAD_FIELD);
+    /* W5-K7/G-K14: FC_DISARM'ın biçim hatası artık reddetmez; test_gk14_bozuk_daraltici'de. */
     dt_cmd_fc(id, 4u, 0u);       /* eski FC_SELECT */
     sonuc_bekle(id++, (uint8_t)IDA_ACK_REJECTED, (uint16_t)IDAW_REASON_LINK_BAD_FIELD);
     {
@@ -281,6 +280,24 @@ static void test_donusum_hatalari(void)
     TEST_ASSERT_EQUAL_UINT32(id - 701u, DT.l.say[IDA_LINK_SAY_CMD_BAD_FIELD]);
 }
 
+/* W5-K7/G-K14: FC_DISARM/FC_ABORT biçim hatası daraltıcıyı reddetmez; mandala alınır, bütün
+   tüplere uygulanır ve sonuç ACCEPTED olur; biçim hatası CMD_BAD_FIELD sayacında görünür. */
+static void test_gk14_bozuk_daraltici(void)
+{
+    ida_in_t in;
+    dt_kayit_sil();
+    dt_cmd_fc(820u, (uint8_t)IDA_FC_DISARM, 0u);     /* tube = ALL değil */
+    TEST_ASSERT_NULL_MESSAGE(dt_sonuc(820u), "biçim hatası daraltıcıyı reddetmez");
+    TEST_ASSERT_EQUAL_UINT32(1u, DT.l.say[IDA_LINK_SAY_CMD_BAD_FIELD]);
+    dt_imu(900u, 5 * DT_MS);
+    dt_tf(900u, 5 * DT_MS, 1u, true);
+    TEST_ASSERT_EQUAL_INT(IDA_LINK_CAGRI_STEP, dt_take(&in));
+    TEST_ASSERT_EQUAL_UINT8(IDA_NARROW_FC_DISARM, in.narrow.mask);
+    TEST_ASSERT_EQUAL_UINT32(820u, in.narrow.cmd_id[2]);
+    dt_put(&in, IDA_LINK_CAGRI_STEP, IDA_RC_OK, NULL, 0u);
+    sonuc_bekle(820u, (uint8_t)IDA_ACK_ACCEPTED, (uint16_t)IDA_REASON_NONE);
+}
+
 static void test_eski_oturum_komutu(void)
 {
     ida_in_t in;
@@ -320,6 +337,7 @@ int main(void)
     RUN_TEST(test_daraltici_her_kosulda);
     RUN_TEST(test_nihai_kimlikli_daraltici_mandala);
     RUN_TEST(test_donusum_hatalari);
+    RUN_TEST(test_gk14_bozuk_daraltici);
     RUN_TEST(test_eski_oturum_komutu);
     RUN_TEST(test_dup_penceresi_komutlari);
     return UNITY_END();
