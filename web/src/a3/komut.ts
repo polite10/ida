@@ -220,15 +220,14 @@ export class KomutYoneticisi {
    * isteği kuran işlevi verir; kimlik, revizyon ve jeton kararları çağıranın (emniyet-istek.ts)
    * işidir. Bu yöntem yalnız kaydı ve sonucu izler: 202 → komut_sonucu / GET /komutlar.
    *  - `istekSureMs` içinde HTTP yanıtı gelmezse kayıt "bilinmiyor"a düşer (komut gitmiş olabilir).
-   *  - `aglaGitmedi`: ağ hatasında istek sunucuya ulaşmamış sayılır (kayıt "reddedildi",
-   *    `gonderildi_mi` false: ekranda UYGULANMADI); aksi halde "bilinmiyor".
+   *  - Gönderim başladıktan sonra ağ hatası "bilinmiyor"dur; uygulanmış olabilir.
    *  - `cifteEngel`: açıksa yanıt beklenirken aynı komut ikinci kez gönderilmez.
    * Hiçbir koşulda isteği kendiliğinden yinelemez.
    */
   async gonderGenel(
     komut: KomutAdi,
     gonder: () => Promise<{ komut_no: number }>,
-    secenek: { istekSureMs?: number; aglaGitmedi?: boolean; cifteEngel?: boolean; ozet?: string } = {},
+    secenek: { istekSureMs?: number; cifteEngel?: boolean; ozet?: string } = {},
   ): Promise<KomutKaydi> {
     if (this.kapali) throw new Error('komut yöneticisi kapatıldı');
     if (secenek.cifteEngel === true && this.gonderilirken(komut)) {
@@ -248,11 +247,6 @@ export class KomutYoneticisi {
       yanit = await Promise.race([istek, sureAsimi]);
     } catch (h) {
       clearTimeout(zamanlayici);
-      if (secenek.aglaGitmedi === true && h instanceof A3Hatasi && h.kod === 'ag_hatasi') {
-        k.gonderildi_mi = false;
-        this.bitir(k, 'reddedildi', 'sunucuya_ulasilamadi', 'Sunucuya ulaşılamadı; istek gönderilemedi, UYGULANMADI.', null);
-        return k;
-      }
       this.gonderimHatasi(k, h);
       return k;
     }

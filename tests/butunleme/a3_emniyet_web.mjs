@@ -31,18 +31,32 @@ const surec = spawn(idaSim, ['--kip', 'sil', '--senaryo', 'scenarios/z1.toml', '
   { stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 surec.stderr.on('data', (d) => { stderr += d.toString(); });
-const bitti = new Promise((coz) => surec.on('exit', (kod) => coz(kod)));
-const adres = await new Promise((coz, red) => {
-  const t = setTimeout(() => red(new Error('açılış adresi gelmedi')), 20000);
-  createInterface({ input: surec.stdout }).once('line', (s) => { clearTimeout(t); coz(s.trim()); });
-});
-const m = /^http:\/\/127\.0\.0\.1:(\d+)\/#erisim=([0-9a-f]{64})$/.exec(adres);
-dogrula(m !== null, 'açılış adresi standart çıktıda (A3-K05)');
+const bitti = new Promise((coz) => surec.once('close', (kod) => coz(kod)));
 let b = null;
+let komutlar = null;
+let em = null;
 try {
+  const adres = await new Promise((coz, red) => {
+    const satirlar = createInterface({ input: surec.stdout });
+    const temizle = () => {
+      clearTimeout(t);
+      satirlar.close();
+      surec.off('error', hata);
+      surec.off('close', erkenBitti);
+    };
+    const hata = (h) => { temizle(); red(h); };
+    const erkenBitti = (kod) => hata(new Error(`sim açılış adresinden önce bitti (çıkış ${kod})`));
+    const t = setTimeout(() => hata(new Error('açılış adresi gelmedi')), 20000);
+    surec.once('error', hata);
+    surec.once('close', erkenBitti);
+    satirlar.once('line', (s) => { temizle(); coz(s.trim()); });
+  });
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)\/#erisim=([0-9a-f]{64})$/.exec(adres);
+  dogrula(m !== null, 'açılış adresi standart çıktıda (A3-K05)');
+  if (m === null) throw new Error('sim geçerli A3 açılış adresi vermedi');
   b = new a3.A3Baglanti({ taban: `http://127.0.0.1:${m[1]}`, jeton: m[2], gecmisOlay: 100 });
-  const komutlar = new a3.KomutYoneticisi(b);
-  const em = new a3.EmniyetIstekleri(b, komutlar);
+  komutlar = new a3.KomutYoneticisi(b);
+  em = new a3.EmniyetIstekleri(b, komutlar);
   let girdi = null;
   b.abone('emniyet/girdiler', (c) => { girdi = c.yuk; });
   const olaylar = [];
@@ -68,7 +82,9 @@ try {
   const KALDIR = { girdi: 'acil_durdurma', hedef: 'serbest' };
   const bas0 = girdi.acil_durdurma;
   dogrula(bas0 === 0 || bas0 === 'serbest', `başlangıçta acil durdurma serbest (${bas0})`);
-  const rev0 = Number(girdi.emniyet_rev);
+  // Başlangıç revizyonu yetkili uçtan okunur: kanal çerçevesi en çok 100 ms (10 Hz) bayat olabilir ve
+  // hazırlık oturumunun sonu revizyonu kanaldan önce artırır (A3-K117 md. 4; yarış değil, seyreltme).
+  const rev0 = Number((await http.istek('GET', '/emniyet')).emniyet_rev);
 
   // 1) Acil durdurmaya bas: tek adım; sunucunun kanalında etkisi görülür.
   const r1 = await em.artir(BAS);
@@ -76,7 +92,10 @@ try {
   await bekle(() => girdi.acil_durdurma === 1 || girdi.acil_durdurma === 'basili', 5000, 'kanalda acil durdurma basılı');
   await bekle(() => olaylar.some((o) => o.tur === 'emniyet_girdisi_degisti' && o.ayrinti?.girdi === 'acil_durdurma' && o.ayrinti?.sonraki === 'basili'), 5000, 'emniyet_girdisi_degisti olayı');
   dogrula(true, 'sunucu emniyet_girdisi_degisti olayını üretti (acil_durdurma → basili)');
-  dogrula(Number(girdi.emniyet_rev) === rev0 + 1, `emniyet_rev bir arttı (${rev0} -> ${girdi.emniyet_rev})`);
+  const olay1 = olaylar.find((o) => o.tur === 'emniyet_girdisi_degisti' && o.ayrinti?.girdi === 'acil_durdurma' && o.ayrinti?.sonraki === 'basili');
+  dogrula(Number(olay1?.ayrinti?.emniyet_rev) === rev0 + 1, `olaydaki emniyet_rev yetkili revizyondan tam bir fazla (${rev0} -> ${olay1?.ayrinti?.emniyet_rev})`);
+  await bekle(() => Number(girdi.emniyet_rev) === rev0 + 1, 5000, 'kanalda emniyet_rev yetkili değere yetişti');
+  dogrula(Number(girdi.emniyet_rev) === rev0 + 1, `kanaldaki emniyet_rev yetişti (${rev0} -> ${girdi.emniyet_rev})`);
   const e1 = await http.istek('GET', '/emniyet');
   dogrula(e1.yetkili.acil_durdurma === 'basili', 'GET /emniyet yetkili durum: basili');
 
@@ -138,9 +157,12 @@ try {
 } catch (h) {
   hatalar.push(`beklenmeyen hata: ${h?.stack ?? h}`);
 } finally {
-  try { b?.kapat(); } catch { /* yut */ }
-  surec.kill('SIGTERM');
-  await bitti;
+  em?.kapat();
+  komutlar?.kapat();
+  b?.kapat();
+  if (surec.exitCode === null && surec.signalCode === null) surec.kill('SIGTERM');
+  const zorlaKapat = setTimeout(() => surec.kill('SIGKILL'), 5000);
+  try { await bitti; } finally { clearTimeout(zorlaKapat); }
 }
 if (hatalar.length > 0) {
   console.log(`KALDI (${hatalar.length}):\n- ${hatalar.join('\n- ')}`);

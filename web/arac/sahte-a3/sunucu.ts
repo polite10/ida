@@ -1113,11 +1113,14 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     else {
       const h = komutParametreHatasi(b);
       if (h !== null) return red(h.http, h.kod, h.ileti);
-      kisitlayan = !yerKatalogu.komutlar.find((k) => k.ad === b.komut)!.onay;
+      kisitlayan = yerKatalogu.komutlar.find((k) => k.ad === b.komut)!.sinif === 'daraltici';
     }
     if (!kisitlayan) {
-      // Gevşeten: A3-K93, K94, K103, K118
       if (b.beklenen_run_id !== oz.run_id) return red(409, 'beklenen_durum_uyusmuyor', 'beklenen_run_id güncel değil', { guncel_run_id: oz.run_id, guncel_durum: oz.durum });
+    }
+    const onayli = emn ? !kisitlayan : yerKatalogu.komutlar.find((k) => k.ad === b.komut)!.onay;
+    if (onayli) {
+      // Gevşeten: A3-K93, K94, K103, K118. Nötr komut kısıtlayan değildir.
       const jetonKodu = typeof b.onay_jetonu === 'string' ? b.onay_jetonu : null;
       if (b.onay !== true || jetonKodu === null) return red(409, 'onay_gerekli', 'gevşetme onay ve onay jetonu ister (A3-K93)');
       if (typeof b.beklenen_emniyet_rev !== 'number') return red(400, 'gecersiz_istek', 'beklenen_emniyet_rev zorunlu (A3-K118)');
@@ -1134,15 +1137,21 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
   }
 
   /** Adım sınırında emniyet ve yer istasyonu komutları (A3-K95: kısıtlayanlar önce, gevşetmeler revizyon artmadıysa). */
-  function emniyetKomutUygula(k: BekleyenKomut): void {
+  function emniyetKomutUygula(k: BekleyenKomut, buSinirdaKisitlama: boolean): void {
     const b = k.govde;
     const oz = dunya.ozet();
     const emn = k.komut === 'emniyet';
-    const kisitlayan = emn ? emniyetArtiranMi(b) : !yerKatalogu.komutlar.find((t) => t.ad === b.komut)!.onay;
+    const t = emn ? null : yerKatalogu.komutlar.find((t) => t.ad === b.komut)!;
+    const kisitlayan = emn ? emniyetArtiranMi(b) : t!.sinif === 'daraltici';
+    const gevseten = emn ? !kisitlayan : t!.sinif === 'genisletici';
     let ayrinti: Record<string, unknown>;
-    if (!kisitlayan && b.beklenen_emniyet_rev !== oz.emniyet_rev) {
-      komutSonuclari.set(k.no, { durum: 'reddedildi', hata: { kod: 'emniyet_rev_uyusmuyor', ileti: 'emniyet_rev_uyusmuyor' } });
-      ayrinti = { komut_no: k.no, sonuc: 'reddedildi', hata_kodu: 'emniyet_rev_uyusmuyor', sonuc_ayrinti: { guncel_emniyet_rev: oz.emniyet_rev } };
+    const kod = !kisitlayan && b.beklenen_run_id !== oz.run_id ? 'beklenen_durum_uyusmuyor'
+      : !kisitlayan && !CANLI.includes(oz.durum) ? 'canli_calistirma_yok'
+      : gevseten && buSinirdaKisitlama ? 'kisitlama_hakim'
+      : gevseten && b.beklenen_emniyet_rev !== oz.emniyet_rev ? 'emniyet_rev_uyusmuyor' : null;
+    if (kod !== null) {
+      komutSonuclari.set(k.no, { durum: 'reddedildi', hata: { kod, ileti: kod } });
+      ayrinti = { komut_no: k.no, sonuc: 'reddedildi', hata_kodu: kod, sonuc_ayrinti: { guncel_emniyet_rev: oz.emniyet_rev } };
     } else {
       if (emn) dunya.emniyetOperatorUygula(b.girdi as 'acil_durdurma', b.tup === undefined ? null : b.tup === 'f1' ? 0 : 1, GIRDI_DEGERI[b.hedef_durum as string]!);
       else if (kisitlayan) dunya.emniyetRevZorlaArtir(); // daraltıcı yer istasyonu komutu revizyonu artırır (A3-K117 md. 1)
@@ -1155,11 +1164,16 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     }
   }
 
-  /** Dünyanın adım sınırı: kuyruktaki komutlar `komut_no` sırasıyla uygulanır (A3-K57). */
+  /** A3-K95: kısıtlayan emniyet işlemleri, sonra ötekiler; sınıf içinde komut_no sırası. */
   function komutlariUygula(): void {
-    for (const k of komutKuyrugu.splice(0)) {
+    const kisitlayanMi = (k: BekleyenKomut): boolean => k.komut === 'emniyet' ? emniyetArtiranMi(k.govde)
+      : k.komut === 'yer_istasyonu' && yerKatalogu.komutlar.find((t) => t.ad === k.govde.komut)!.sinif === 'daraltici';
+    const bekleyen = komutKuyrugu.splice(0).sort((a, b) => Number(kisitlayanMi(b)) - Number(kisitlayanMi(a)) || a.no - b.no);
+    let buSinirdaKisitlama = false;
+    for (const k of bekleyen) {
       if (k.komut === 'emniyet' || k.komut === 'yer_istasyonu') {
-        emniyetKomutUygula(k);
+        emniyetKomutUygula(k, buSinirdaKisitlama);
+        if (kisitlayanMi(k)) buSinirdaKisitlama = true;
         continue;
       }
       const oz = dunya.ozet();

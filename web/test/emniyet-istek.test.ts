@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { EmniyetIstekleri, JETON_PAYI_MS, atisKomutuMu, secimHatasi, sonucMetni, yonu, type Secim } from '../src/a3/emniyet-istek';
 import type { KomutKaydi } from '../src/a3/komut';
+import { girdiGosterimi } from '../src/ortak/emniyet';
 import { kosul, kur, semayaUy, type Kurulum } from './yardimci-komut';
 
 const acik: Kurulum[] = [];
@@ -142,10 +143,23 @@ test('gösterge sunucu verisi gelmeden değişmez', async () => {
   o.komutlar.dinle((l) => {
     if (l[0] !== undefined) kayitlar.push({ ...l[0] });
   });
+  // Ekranın kullandığı türetim (`girdiGosterimi`): tıklamadan sunucunun bildirmesine kadar her örnek "serbest" kalmalı.
+  const gosterilen = (): string | undefined => {
+    const c = o.baglanti.son('emniyet/girdiler');
+    return c === undefined ? undefined : girdiGosterimi(c.yuk, c.gecersiz).satirlar[0]?.yetkili.metin;
+  };
+  const ornekler: (string | undefined)[] = [];
+  const ornekle = (): void => void ornekler.push(gosterilen());
+  o.baglanti.abone('emniyet/girdiler', ornekle, 10);
+  o.komutlar.dinle(ornekle);
   const bekleyen = o.em.artir(ACIL_BAS) as Promise<KomutKaydi>;
+  ornekle(); // isteğin gönderilmesinden hemen sonra
   await kosul(() => kayitlar.some((x) => x.komut === 'emniyet_degistir' && x.asama === 'kuyrukta'), 3000, 'kayıt kuyrukta');
+  assert.equal(o.acil(), 0, 'kuyruğa alınır alınmaz (kanal çerçevesi gelmeden) gösterge değişmedi');
   await cerceveBekle(o, 3);
   assert.equal(o.acil(), 0, 'sunucu uygulamadan gösterge değişmedi');
+  assert.equal(gosterilen(), 'serbest');
+  assert.deepEqual([...new Set(ornekler)], ['serbest'], 'sunucu bildirene kadar hiçbir an başka bir gösterge değeri görülmedi');
   const e = (await o.baglanti.http.istek('GET', '/emniyet')) as { yetkili: { acil_durdurma: string } };
   assert.equal(e.yetkili.acil_durdurma, 'serbest', 'sunucunun yetkili durumu da değişmedi');
   const ara = o.komutlar.kayitlar()[0]!;
@@ -400,6 +414,35 @@ test('yer istasyonu: yanıtsız istek SONUÇ BİLİNMİYOR olur ve yinelenmez', 
   assert.equal(o.em.jeton(), null, 'jeton tüketildi');
   await cerceveBekle(o, 3);
   assert.equal(o.ag.deneme, 1);
+});
+
+test('sahte sunucu: aynı sınırda sonradan gelen kısıtlama önce uygulanır, gevşetme reddedilir', async () => {
+  const o = await yeni();
+  const j = await o.em.jetonIste(ACIL_KALDIR);
+  assert.ok('jeton' in j);
+  o.sunucu.test.komutlariTut(true);
+  const gevsek = o.em.gevset(ACIL_KALDIR, true);
+  await kosul(() => o.komutlar.kayitlar()[0]?.asama === 'kuyrukta', 3000, 'gevşetme kuyrukta');
+  const kisit = o.em.artir(ACIL_BAS);
+  await kosul(() => o.komutlar.kayitlar()[0]?.asama === 'kuyrukta', 3000, 'kısıtlama kuyrukta');
+  o.sunucu.test.komutlariTut(false);
+  assert.equal((await gevsek).hata_kodu, 'kisitlama_hakim');
+  assert.equal((await kisit).asama, 'uygulandi');
+  await kosul(() => o.acil() === 1, 3000, 'kısıtlayan değer kanalda');
+});
+
+test('sahte sunucu: nötr komut revizyonu artırmaz ve bayat run_id ile kabul edilmez', async () => {
+  const o = await yeni();
+  const l = await o.em.yerKomutlari();
+  assert.ok('komutlar' in l);
+  const once = await o.baglanti.http.istek<{ emniyet_rev: number }>('GET', '/emniyet');
+  const r = await o.em.yerGonder('param_get', { param_id: 1 });
+  assert.equal(r.asama, 'uygulandi', r.ileti);
+  const sonra = await o.baglanti.http.istek<{ emniyet_rev: number }>('GET', '/emniyet');
+  assert.equal(sonra.emniyet_rev, once.emniyet_rev);
+  await assert.rejects(o.baglanti.http.komut('/yer_istasyonu/komut', {
+    beklenen_run_id: '19990101-000000-000000', komut: 'param_get', parametreler: { param_id: 1 },
+  }), (h: { kod?: string }) => h.kod === 'beklenen_durum_uyusmuyor');
 });
 
 test('W5-K53: kısayol, toplu eylem ve depolama yok; jeton yalnız bellekte (kaynak denetimi)', () => {

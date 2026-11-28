@@ -72,7 +72,7 @@ export interface OnayJetonu {
   jeton: string;
   run_id: string | null;
   emniyet_rev: number;
-  /** İstemci saatiyle alındığı an (ms). */
+  /** İstemcinin monotonik saatiyle isteğin başladığı an (ms). */
   alindi: number;
   gecerlilik_ms: number;
   ozet: string;
@@ -138,6 +138,8 @@ interface JetonYaniti {
 export class EmniyetIstekleri {
   private jeton_: OnayJetonu | null = null;
   private jetonNedeni_ = '';
+  /** Bekleyen jeton yanıtları kopma, vazgeçme ve yeni istekten sonra kullanılamaz. */
+  private jetonNesli = 0;
   private katalog_: KomutTanimi[] | null = null;
   private readonly dinleyiciler = new Set<() => void>();
   private readonly kaldir: (() => void)[] = [];
@@ -145,7 +147,7 @@ export class EmniyetIstekleri {
   constructor(
     private readonly baglanti: A3Baglanti,
     private readonly komutlar: KomutYoneticisi,
-    private readonly simdi: () => number = () => Date.now(),
+    private readonly simdi: () => number = () => performance.now(),
   ) {
     // Bağlantı koparsa ya da emniyet revizyonu jetonun revizyonunu aşarsa jeton düşer (W5-K52).
     this.kaldir.push(
@@ -166,6 +168,7 @@ export class EmniyetIstekleri {
   }
 
   kapat(): void {
+    this.jetonNesli++;
     for (const k of this.kaldir) k();
     this.kaldir.length = 0;
     this.jeton_ = null;
@@ -187,10 +190,11 @@ export class EmniyetIstekleri {
   }
 
   private jetonuDusur(neden: string): void {
-    if (this.jeton_ === null) return;
+    this.jetonNesli++;
+    const vardi = this.jeton_ !== null;
     this.jeton_ = null;
     this.jetonNedeni_ = neden;
-    this.bildir();
+    if (vardi) this.bildir();
   }
 
   /** Elde tutulan onay jetonu; süresi dolduysa düşürülür ve null döner. */
@@ -227,11 +231,14 @@ export class EmniyetIstekleri {
     const h = secimHatasi(s);
     if (h !== null) return this.komutlar.engelle('emniyet_degistir', 'gecersiz_istek', h, secimOzeti(s));
     if (yonu(s) !== 'artiran') return this.komutlar.engelle('emniyet_degistir', 'yon_yanlis', 'Bu yön emniyeti azaltır; iki adımlı gevşetme gerekir.', secimOzeti(s));
+    if (this.baglanti.bilgi.durum !== 'bagli') {
+      return this.komutlar.engelle('emniyet_degistir', 'sunucuya_ulasilamadi', 'Bağlantı yok; istek gönderilmedi. Bağlantı kurulunca yeniden basın.', secimOzeti(s));
+    }
     const govde: Record<string, unknown> = { beklenen_run_id: this.runId(), girdi: s.girdi, hedef_durum: s.hedef };
     if (s.tup !== undefined) govde.tup = s.tup;
-    // Bağlantı yokken ağ hatası = istek sunucuya ulaşmadı (UYGULANMADI); bağlıyken sonuç bilinmiyor.
+    // Gönderime başlandıktan sonraki her taşıma hatasında sonuç bilinmiyor;
+    // WebSocket'in kopuk olması HTTP isteğinin ulaşmadığını kanıtlamaz (W5-K51).
     return this.komutlar.gonderGenel('emniyet_degistir', () => this.baglanti.http.komut<{ komut_no: number }>('/emniyet/degistir', govde), {
-      aglaGitmedi: this.baglanti.bilgi.durum !== 'bagli',
       ozet: secimOzeti(s),
     });
   }
@@ -288,6 +295,11 @@ export class EmniyetIstekleri {
     govde: Record<string, unknown>,
     ek: Pick<OnayJetonu, 'ozet'> & Partial<OnayJetonu>,
   ): Promise<JetonSonucu> {
+    if (this.baglanti.bilgi.durum !== 'bagli') {
+      return { hata: { kod: 'sunucuya_ulasilamadi', ileti: 'Bağlantı yok; onay jetonu istenmedi.' } };
+    }
+    const nesil = this.jetonNesli;
+    const alindi = this.simdi(); // Ağda geçen süre de jetonun ömründen düşer.
     let y: JetonYaniti;
     try {
       y = await this.baglanti.http.kimlikliIstek<JetonYaniti>(yol, govde);
@@ -298,12 +310,18 @@ export class EmniyetIstekleri {
     if (typeof y.onay_jetonu !== 'string' || !/^[0-9a-f]{32}$/.test(y.onay_jetonu) || typeof y.gecerlilik_ms !== 'number' || typeof y.emniyet_rev !== 'number') {
       return { hata: { kod: 'yanit_cozulemedi', ileti: hataIletisi('yanit_cozulemedi') } };
     }
+    const rev = this.baglanti.son('emniyet/girdiler')?.yuk.emniyet_rev;
+    if (nesil !== this.jetonNesli || this.baglanti.bilgi.durum !== 'bagli' ||
+        (rev !== undefined && rev !== null && Number(rev) > y.emniyet_rev) ||
+        this.simdi() - alindi >= y.gecerlilik_ms - JETON_PAYI_MS) {
+      return { hata: { kod: 'onay_jetonu_gecersiz', ileti: 'Bekleyen onay geçersizleşti; iki adımı baştan yapın.' } };
+    }
     const j: OnayJetonu = {
       tur,
       jeton: y.onay_jetonu,
       run_id: typeof y.run_id === 'string' ? y.run_id : null,
       emniyet_rev: y.emniyet_rev,
-      alindi: this.simdi(),
+      alindi,
       gecerlilik_ms: y.gecerlilik_ms,
       ...ek,
     };
@@ -353,10 +371,13 @@ export class EmniyetIstekleri {
     const ozet = `${ad} ${kanonik(parametreler)}`;
     const t = this.tanim(ad);
     if (t === null) return this.komutlar.engelle('yer_istasyonu_komut', 'komut_listede_yok', hataIletisi('komut_listede_yok'), ozet);
-    const gonder = (govde: Record<string, unknown>, ag: boolean, cifte: boolean): Promise<KomutKaydi> =>
-      this.komutlar.gonderGenel('yer_istasyonu_komut', () => this.baglanti.http.komut<{ komut_no: number }>('/yer_istasyonu/komut', govde), { aglaGitmedi: ag, cifteEngel: cifte, ozet });
+    if (this.baglanti.bilgi.durum !== 'bagli') {
+      return this.komutlar.engelle('yer_istasyonu_komut', 'sunucuya_ulasilamadi', 'Bağlantı yok; komut gönderilmedi.', ozet);
+    }
+    const gonder = (govde: Record<string, unknown>, cifte: boolean): Promise<KomutKaydi> =>
+      this.komutlar.gonderGenel('yer_istasyonu_komut', () => this.baglanti.http.komut<{ komut_no: number }>('/yer_istasyonu/komut', govde), { cifteEngel: cifte, ozet });
     if (!EmniyetIstekleri.ikiAdimli(t)) {
-      return gonder({ beklenen_run_id: this.runId(), komut: ad, parametreler }, t.sinif === 'daraltici' && this.baglanti.bilgi.durum !== 'bagli', false);
+      return gonder({ beklenen_run_id: this.runId(), komut: ad, parametreler }, false);
     }
     const j = this.jeton();
     if (j === null || j.tur !== 'yer_istasyonu') {
@@ -369,6 +390,6 @@ export class EmniyetIstekleri {
     }
     const govde = { beklenen_run_id: j.run_id, komut: ad, parametreler: j.parametreler ?? {}, onay: true, onay_jetonu: j.jeton, beklenen_emniyet_rev: j.emniyet_rev };
     this.jetonuDusur('Onay jetonu kullanıldı (tek kullanımlık).');
-    return gonder(govde, false, true);
+    return gonder(govde, true);
   }
 }
