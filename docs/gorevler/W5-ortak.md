@@ -78,6 +78,9 @@ Kaynak: mimari Bölüm 03'ün dar düzeltme turu (sürüm 0.2; `docs/mimari/03-a
 | W5-ci-node (PR #50, `df4a525`) | hayır | `ida-inceleyici`: tam inceleme + düzeltme turu (kayıt `docs/gorevler/inceleme/W5-ci-node-inceleme.md`) | sol incelemesi borçlu |
 | W5-kayit dilim 1 (PR #52, `36f757d`) | hayır | `ida-inceleyici`: tam inceleme (3 önemli + 6 küçük), düzeltme turu (kayıt `docs/gorevler/inceleme/W5-kayit-inceleme.md`) | sol incelemesi borçlu |
 | CI kararlılığı (PR #53, `72b36af`) | hayır | **incelenmedi**: yalnız test ve tek satır iş akışı değişikliği | borçlu (düşük öncelik) |
+| W5-viz-windows (PR #54, uç `f00d5ac`) | hayır | **hiç incelenmedi**: `ida-inceleyici` bir kez denendi, Opus güvenlik filtresine takıldı (istek `req_011ChPguJKRtuvh4Cczv1eMW`); K27 gereği CI yeşilse birleştirilir. `viz/calistir.ps1` gerçek Windows makinede hiç koşturulmadı (Ctrl-C yönlendirmesi denenmedi); iş akışındaki önbellek anahtarları ve Godot ikilisi özet denetimi incelenmedi | borçlu |
+| W5-bagla-kayit (PR #55, uç `d00809f`) | hayır | `ida-inceleyici`: tam inceleme (6 önemli + 7 küçük), tek düzeltme turu (kayıt `docs/gorevler/inceleme/W5-bagla-kayit-inceleme.md`); düzeltmeler ayrıca denetlenmedi | sol incelemesi borçlu |
+| W5-web-komut (PR #56, uç `8ef35d3`) | hayır | **hiç incelenmedi**: `ida-inceleyici` bir kez denendi, Opus güvenlik filtresine takıldı (istek `req_011ChPpB43x6dN2eDB5vyNqn`); K27 gereği CI yeşilse birleştirilir. ≈ 2 800 satır; panelin ilk komut gönderen kodu (`web/src/a3/komut.ts`, `etkinlik.ts`, `web/src/ortak/denetim.ts`); W5-K44 (ekran yalnız sunucunun bildirdiğini gösterir) bağımsız gözle doğrulanmadı | borçlu; sol yenilenince #49'dan sonra öncelikli |
 
 ## Sözleşmelerin küçük sürümüne yazılacak notlar
 

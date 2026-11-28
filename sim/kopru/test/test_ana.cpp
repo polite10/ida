@@ -64,6 +64,7 @@ int test_pty_tasima();
 int test_seri_cikis_bosalt();
 int test_operator_emniyet();
 int test_operator_ve_senaryo();
+int test_emniyet_rev_baslangici();
 int test_duran_operator_basili_kalir();
 int test_duran_bas_birak();
 int test_duran_oturum_sonu();
@@ -152,6 +153,7 @@ const Test kTestler[] = {
     {"seri_cikis_bosalt", test_seri_cikis_bosalt},
     {"operator_emniyet", test_operator_emniyet},
     {"operator_ve_senaryo", test_operator_ve_senaryo},
+    {"emniyet_rev_baslangici", test_emniyet_rev_baslangici},
     {"duran_operator_basili_kalir", test_duran_operator_basili_kalir},
     {"duran_bas_birak", test_duran_bas_birak},
     {"duran_oturum_sonu", test_duran_oturum_sonu},

@@ -31,6 +31,7 @@ int test_canlilik();
 int test_olay_kuyrugu_tasmasi();
 int test_kapanis_1001();
 int test_calistirma_akisi();
+int test_senaryo_uclari();
 int test_yineleme();
 int test_govde_sinirlari();
 int test_emniyet_kisitlayan();
@@ -108,6 +109,7 @@ int main(int argc, char** argv)
         {"olay_kuyrugu_tasmasi", test_olay_kuyrugu_tasmasi},
         {"kapanis_1001", test_kapanis_1001},
         {"calistirma_akisi", test_calistirma_akisi},
+        {"senaryo_uclari", test_senaryo_uclari},   // W5-a3-senaryo
         {"yineleme", test_yineleme},
         {"govde_sinirlari", test_govde_sinirlari},
         {"emniyet_kisitlayan", test_emniyet_kisitlayan},

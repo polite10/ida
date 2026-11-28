@@ -688,7 +688,9 @@ bool Kopru::emniyet_baslangic(bool acil_durdurma, const std::array<bool, 2>& fis
                               const std::array<bool, 2>& dolu)
 {
     Ic& i = *ic_;
-    if (i.sinir_var || i.emn.emniyet_revizyonu != 1u || !i.atama_bekleyen.empty()) {
+    // W5-K55: "revizyon henüz artmadı" koşulu köprünün başlangıç revizyonuna göredir (süreç başında 1;
+    // sonraki dünyalarda önceki dünyadan devralınan değer).
+    if (i.sinir_var || i.emn.emniyet_revizyonu != i.a.ilk_emniyet_rev || !i.atama_bekleyen.empty()) {
         return false;
     }
     i.emn.acil_durdurma = acil_durdurma;

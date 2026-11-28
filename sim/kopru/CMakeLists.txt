@@ -122,6 +122,7 @@ set(_ida_kopru_testleri
   seri_cikis_bosalt  # W4-K28 sol-3 #3 EMNİYET: seri gönderim kuyruğu son tarihle boşaltılır
   operator_emniyet  # W4-bagla-a3 EMNİYET: A3 paneli isteği aynı emniyet_ata yolundan
   operator_ve_senaryo  # W4-bagla-a3 EMNİYET: senaryo ve panel aynı sınırda (A1-K85)
+  emniyet_rev_baslangici  # W5-K55 EMNİYET: revizyon ve doyma bayrağı dünyalar arasında köprüye verilir (A3-K117)
   duran_operator_basili_kalir  # W4-duraklat EMNİYET: sol-1 #1, duran kip aynı sinir_isle
   duran_bas_birak  # W4-duraklat EMNİYET: W4-K3, aynı turda kısıtlayan önce
   duran_oturum_sonu  # W4-duraklat EMNİYET: sol-2 #3, HIL oturum sonu duran turda

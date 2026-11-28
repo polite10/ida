@@ -13,6 +13,7 @@
 #include "statik.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1359,6 +1360,15 @@ struct Cekirdek::Ic {
             yaz(b, ret("bulunamadi", "uç yok"));
             return;
         }
+        // A3-K78 (W5-a3-senaryo): `GET /senaryolar/<ham yol>`; yol parçası ne olursa olsun (eğik çizgi,
+        // `..`, yüzde kaçışı, mutlak yol) kalıba uymayan ad 400 ile reddedilir, dosya sistemine gidilmez.
+        {
+            constexpr std::string_view kOn = "/api/v1/senaryolar/";
+            if (r.yontem == "GET" && r.yol.size() >= kOn.size() && r.yol.compare(0, kOn.size(), kOn) == 0) {
+                senaryo_dosyasi_ucu(b, std::string_view(r.yol).substr(kOn.size()));
+                return;
+            }
+        }
         std::vector<std::string> p;
         const UcTanimi* uc = nullptr;
         std::string izinli;
@@ -1463,11 +1473,235 @@ struct Cekirdek::Ic {
             yaz(b, onay_jetonu_emniyet(b, simdi));
         } else if (yol == "/api/v1/yer_istasyonu/onay_jetonu") {
             yaz(b, onay_jetonu_yi(b, simdi));
+        } else if (yol == "/api/v1/senaryolar") {
+            senaryo_listesi(b);
+        } else if (yol == "/api/v1/senaryolar/{ad}") {
+            senaryo_dosyasi_ucu(b, p[0]);
+        } else if (yol == "/api/v1/senaryo/dogrula") {
+            senaryo_dogrula(b);
+        } else if (yol == "/api/v1/senaryo/cozumlenmis") {
+            senaryo_cozumlenmis(b);
+        } else if (yol == "/api/v1/on_denetim") {
+            on_denetim_ucu(b, {});
+        } else if (yol == "/api/v1/on_denetim/{rapor_kimligi}") {
+            on_denetim_ucu(b, p[0]);
         } else {
-            // Bu dilimin kapsamı dışında (W4-a3 "Kapsam dışı"): senaryo, ön denetim, arıza,
-            // kayıt, izleme, süreçler. Sözleşmede "uygulanmadı" yanıtı yok; kısıtlayan seçim 404.
+            // Bu dilimin kapsamı dışında (W4-a3 "Kapsam dışı"): arıza, kayıt, izleme, süreçler.
+            // Sözleşmede "uygulanmadı" yanıtı yok; kısıtlayan seçim 404.
             yaz(b, ret("bulunamadi", "bu uç bu sürümde uygulanmadı (W4-a3 dilim 1)"));
         }
+    }
+
+    // ---- senaryo ve ön denetim uçları (W5-a3-senaryo; A3 §3.6, §3.8, §4.9) -----------------------
+
+    static SenaryoGirdisi senaryo_girdisi(const json::Deger& g)
+    {
+        SenaryoGirdisi s;
+        if (const json::Deger* ad = g.bul("ad"); ad != nullptr && ad->tur == json::Tur::metin) {
+            s.adli = true;
+            s.ad = ad->metin;
+        } else if (const json::Deger* ic = g.bul("icerik"); ic != nullptr && ic->tur == json::Tur::metin) {
+            s.adli = false;
+            s.icerik = ic->metin;
+        }
+        return s;
+    }
+
+    bool senaryo_hizmeti_var(Baglanti& b)
+    {
+        if (ayar.senaryo != nullptr) {
+            return true;
+        }
+        yaz(b, ret("bulunamadi", "bu uç bu sürümde uygulanmadı (senaryo hizmeti yok)"));
+        return false;
+    }
+
+    // Gömülecek JSON'un bir nesne olduğunu en azından biçimden doğrular (hizmetin ürettiği metin).
+    static bool json_nesne_gibi(std::string_view s)
+    {
+        return s.size() >= 2 && s.front() == '{' && s.back() == '}';
+    }
+
+    // A3-K78: ad kalıba uymuyorsa hizmete hiç gidilmez (dosya sistemine dokunulmaz).
+    void senaryo_dosyasi_ucu(Baglanti& b, std::string_view ad)
+    {
+        if (!senaryo_hizmeti_var(b)) {
+            return;
+        }
+        if (!senaryo_adi_gecerli(ad)) {
+            yaz(b, ret("gecersiz_istek", "senaryo adı ^[a-z0-9_-]{1,64}\\.toml$ kalıbına uymuyor (A3-K78)"));
+            return;
+        }
+        std::string icerik;
+        std::string ileti;
+        switch (ayar.senaryo->oku(ad, icerik, ileti)) {
+        case DosyaDurumu::yok: yaz(b, ret("bulunamadi", "senaryo dosyası yok")); return;
+        case DosyaDurumu::gecersiz: yaz(b, ret("gecersiz_istek", ileti.empty() ? "senaryo dosyası okunamadı" : ileti)); return;
+        case DosyaDurumu::tamam: break;
+        }
+        if (!json::utf8_gecerli(icerik)) {
+            yaz(b, ret("gecersiz_deger", "senaryo dosyası UTF-8 değil (A5-K01)"));
+            return;
+        }
+        json::Nesne n;
+        n.metin("sonuc", "kabul").metin("ad", ad).metin("icerik", icerik);
+        yaz_ham(b, 200, "application/json", n.bitir());
+    }
+
+    void senaryo_listesi(Baglanti& b)
+    {
+        if (!senaryo_hizmeti_var(b)) {
+            return;
+        }
+        std::string g = "{\"sonuc\":\"kabul\",\"senaryolar\":[";
+        bool ilk = true;
+        for (const SenaryoDosyasi& d : ayar.senaryo->listele()) {
+            if (!senaryo_adi_gecerli(d.ad)) {
+                continue;   // hizmet kalıp dışı bir ad verse bile listelenmez (A3-K78)
+            }
+            json::Nesne n;
+            n.metin("ad", d.ad).sayi_u("boyut_bayt", d.boyut_bayt);
+            if (!d.degisim_utc.empty()) {
+                n.metin("degisim_utc", d.degisim_utc);
+            }
+            g += ilk ? "" : ",";
+            g += n.bitir();
+            ilk = false;
+        }
+        g += "]}";
+        yaz_ham(b, 200, "application/json", g);
+    }
+
+    void senaryo_dogrula(Baglanti& b)
+    {
+        if (!senaryo_hizmeti_var(b)) {
+            return;
+        }
+        // W5-K57 (EMNİYET; A3-K76'dan bilinçli sapma, mimar kararı): canlı çalıştırmada senaryo ayrıştırılmaz.
+        // Tek G/Ç iş parçacığında uzun bir gövde çözümü ve A5 ayrıştırması, o sırada gelen acil durdurma
+        // isteğinin okunmasını geciktirir; istek gövdesi çözülmeden reddedilir.
+        if (canli(alici.anlik().durum)) {
+            yaz(b, ret("gecersiz_durum", "canlı çalıştırmada senaryo doğrulanmaz (W5-K57); çalıştırma bitince yeniden deneyin"));
+            return;
+        }
+        json::Deger g;
+        if (auto hata = govde_coz(b, "istek_senaryo_dogrula", g, 0)) {
+            yaz(b, *hata);
+            return;
+        }
+        const SenaryoDogrulama d = ayar.senaryo->dogrula(senaryo_girdisi(g));
+        if (d.dosya == DosyaDurumu::yok) {
+            yaz(b, ret("bulunamadi", "senaryo dosyası yok"));
+            return;
+        }
+        if (d.dosya == DosyaDurumu::gecersiz || !json_nesne_gibi(d.rapor_json)) {
+            yaz(b, ret("gecersiz_istek", d.ileti.empty() ? "senaryo okunamadı" : d.ileti));
+            return;
+        }
+        json::Nesne n;
+        n.metin("sonuc", "kabul").mantik("gecerli", d.gecerli);
+        if (d.gecerli && !d.ozet.empty()) {
+            n.metin("senaryo_ozeti", d.ozet);
+        } else {
+            n.bos("senaryo_ozeti");
+        }
+        n.ham("rapor", d.rapor_json);
+        yaz_ham(b, 200, "application/json", n.bitir());
+    }
+
+    // A3-K80: kanonik baytlar değiştirilmeden; davranış özeti başlıkta.
+    void senaryo_cozumlenmis(Baglanti& b)
+    {
+        if (!senaryo_hizmeti_var(b)) {
+            return;
+        }
+        std::string bayt;
+        std::string ozet;
+        if (!ayar.senaryo->cozumlenmis(bayt, ozet)) {
+            yaz(b, ret("bulunamadi", "yüklü çözümlenmiş senaryo yok"));
+            return;
+        }
+        yaz_ham(b, 200, "application/json", bayt, false, {{"Ida-Davranis-Ozeti", ozet}});
+    }
+
+    void on_denetim_ucu(Baglanti& b, std::string_view kimlik)
+    {
+        if (!senaryo_hizmeti_var(b)) {
+            return;
+        }
+        if (!kimlik.empty()) {
+            bool ok = kimlik.size() == 16;
+            for (const char c : kimlik) {
+                ok = ok && ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+            }
+            if (!ok) {
+                yaz(b, ret("gecersiz_istek", "rapor kimliği 16 küçük harfli onaltılık karakter olmalı (A3-K62)"));
+                return;
+            }
+        }
+        std::string rapor;
+        if (!ayar.senaryo->on_denetim(kimlik, rapor) || !json_nesne_gibi(rapor)) {
+            yaz(b, ret("bulunamadi", kimlik.empty() ? "henüz ön denetim raporu yok" : "ön denetim raporu yok (son 64 saklanır; A3-K62)"));
+            return;
+        }
+        yaz_ham(b, 200, "application/json", rapor);
+    }
+
+    // A3-K77: senkron yükleme. Doğrulama burada (G/Ç iş parçacığı), uygulama dünyada; yanıt dünya
+    // yeni senaryoyu kurup durum `yuklendi` olduktan sonra gelir. Dünya bu sırada G/Ç'yi beklemez.
+    // W5-K57 (EMNİYET): durum, run_id ve durum revizyonu denetimi ayrıştırmadan ÖNCE yapılır (alıcının ön
+    // denetimi; `al` ile aynı kurallar). Reddedilecek istek (canlı çalıştırma, bayat revizyon) dosyayı
+    // okutmaz ve A5 ayrıştırmasını çalıştırmaz: G/Ç iş parçacığı acil durdurma isteğini okumaktan alıkonmaz.
+    Yanit senaryo_yukle(const json::Deger& g, std::uint32_t istemci, std::uint32_t no)
+    {
+        if (ayar.senaryo == nullptr) {
+            return ret("bulunamadi", "bu uç bu sürümde uygulanmadı (senaryo hizmeti yok)", {}, no);
+        }
+        Komut k;
+        k.tur = KomutTuru::senaryo_yukle;
+        k.komut_no = no;
+        k.istemci_id = istemci;
+        k.beklenen_run_id = run_id_al(g);
+        k.beklenen_durum_rev = static_cast<std::uint64_t>(g.bul("beklenen_durum_rev")->sayi);
+        if (const std::optional<AlimSonucu> on = alici.on_denetim(k); on && on->tur == AlimSonucu::Tur::ret) {
+            return alim_yaniti(*on, k, no);
+        }
+        const SenaryoAdayi a = ayar.senaryo->hazirla(senaryo_girdisi(g));
+        switch (a.sonuc) {
+        case SenaryoAdayi::Sonuc::dosya_yok: return ret("bulunamadi", "senaryo dosyası yok", {}, no);
+        case SenaryoAdayi::Sonuc::dosya_gecersiz:
+            return ret("gecersiz_istek", a.ileti.empty() ? "senaryo okunamadı" : a.ileti, {}, no);
+        case SenaryoAdayi::Sonuc::gecersiz: {
+            json::Nesne ay;
+            ay.ham("rapor", json_nesne_gibi(a.rapor_json) ? std::string_view(a.rapor_json) : std::string_view("{}"));
+            return ret("senaryo_gecersiz", "senaryo A5 doğrulamasından geçmedi (A3-K77)", ay.bitir(), no);
+        }
+        case SenaryoAdayi::Sonuc::yurutulemez: return ret("gecersiz_deger", a.ileti, {}, no);
+        case SenaryoAdayi::Sonuc::hazir: break;
+        }
+        k.senaryo_aday = a.aday_id;   // yetkili denetim `al`'da yinelenir (hazırlık sırasında durum değişmiş olabilir)
+        Yanit y = alici_gonder(k, no);
+        if (y.http != 202) {
+            ayar.senaryo->aday_birak(a.aday_id);   // reddedildi (revizyon, durum, kuyruk): aday atılır
+            return y;
+        }
+        const YuklemeSonucu s = ayar.senaryo->yukleme_bekle(a.aday_id, std::chrono::seconds(10));
+        switch (s.tur) {
+        case YuklemeSonucu::Tur::uygulandi: {
+            json::Nesne n;
+            n.metin("sonuc", "kabul").sayi_u("komut_no", no).metin("senaryo_ozeti", a.ozet);
+            n.ham("rapor", json_nesne_gibi(a.rapor_json) ? std::string_view(a.rapor_json) : std::string_view("{}"));
+            Yanit r;
+            r.http = 200;
+            r.govde = n.bitir();
+            return r;
+        }
+        case YuklemeSonucu::Tur::reddedildi:
+            return ret(hata_http(s.hata_kodu) == 0 ? std::string_view("sunucu_hatasi") : std::string_view(s.hata_kodu),
+                       s.ileti.empty() ? std::string_view("senaryo yüklenemedi") : std::string_view(s.ileti), {}, no);
+        case YuklemeSonucu::Tur::zaman_asimi: break;
+        }
+        return ret("mesgul", "senaryo yükleme süresi doldu; nihai sonuç komut_sonucu olayıyla gelir (A3-K57)", {}, no);
     }
 
     void istemci_unut(std::uint32_t id)
@@ -1820,7 +2054,8 @@ struct Cekirdek::Ic {
     {
         return yol.rfind("/api/v1/calistirma/", 0) == 0 ? yol != "/api/v1/calistirma/yeniden_kostur"
                                                          : (yol == "/api/v1/emniyet/degistir" ||
-                                                            yol == "/api/v1/yer_istasyonu/komut" || yol == "/api/v1/yayin");
+                                                            yol == "/api/v1/yer_istasyonu/komut" || yol == "/api/v1/yayin" ||
+                                                            yol == "/api/v1/senaryo/yukle");
     }
 
     // Doğrulanmamış gövdede biçimden kısıtlayan mı (jeton tüketimi için; alan yoksa ya da tipi
@@ -1948,6 +2183,8 @@ struct Cekirdek::Ic {
             y = emniyet_degistir(g, istemci, no, simdi, sunulan);
         } else if (uc.yol == "/api/v1/yer_istasyonu/komut") {
             y = yer_istasyonu_komut(g, istemci, no, simdi, sunulan);
+        } else if (uc.yol == "/api/v1/senaryo/yukle") {
+            y = senaryo_yukle(g, istemci, no);
         } else if (uc.yol == "/api/v1/yayin") {
             tavan = static_cast<std::uint8_t>(g.bul("yayin_tavani_hz")->sayi);
             komut_kaydet(no, istemci, KomutDurum::uygulandi);
@@ -2881,10 +3118,25 @@ struct Cekirdek::Ic {
             kr->t_ns = t_ns;
             kr->sira = static_cast<std::uint32_t>(s.uretim);  // A3-K27
             kr->yuk = std::move(yuk);
+            bool yeni_dunya = false;
             if (k.indeks == idx_calistirma) {
-                calistirma_gozle(*kr);
+                yeni_dunya = calistirma_gozle(*kr);
             }
             s.kare = std::move(kr);
+            if (yeni_dunya) {
+                // W5-a3-senaryo: dünya sıfırlandı ya da yeni senaryo yüklendi (`yuklendi`ye dönüş). Önceki
+                // çalıştırmanın son değerleri, yeni dünyanın üstüne tam durum olarak (abonelik, yeniden bağlanma)
+                // gönderilmez: yalnız `calistirma/durum` kalır; öteki kanallar yeni dünya yayınlayınca dolar.
+                // W5-K58: yalnız kare bırakılır, üretim sayacı korunur. Sayaç da silinirse yeni dünyanın ilk
+                // kareleri (üretim 1, 2, …) zaten abone olan bağlantının `gonderilen` değerinden küçük kalır ve
+                // sayaç eski değeri aşana dek o bağlantıya hiç gönderilmez: panel önceki dünyanın son karesini
+                // (ör. basılı acil durdurma) göstermeyi sürdürürdü. Kare sırası (A3-K27) da geri dönmez.
+                for (auto& [anahtar, deger] : son) {
+                    if (anahtar.kanal != idx_calistirma) {
+                        deger.kare.reset();
+                    }
+                }
+            }
             return;
         }
         std::uint64_t& sayac = dizi_sayac[ka];
@@ -2916,14 +3168,18 @@ struct Cekirdek::Ic {
         }
     }
 
-    void calistirma_gozle(const Kare& kr)
+    // Dönüş: önceki durum canlı ya da bitmiş bir çalıştırmaydı ve şimdi `yuklendi` (dünya yeniden kuruluyor).
+    bool calistirma_gozle(const Kare& kr)
     {
         yuk_calistirma_durum c;
+        bool yeni_dunya = false;
         if (coz(kr.yuk.data(), kr.yuk.size(), c)) {
+            yeni_dunya = c.durum == 1 && son_durum >= 2 && son_durum <= 7;
             son_durum = c.durum;
             son_run_id = c.run_id.empty() ? std::nullopt : std::optional<std::string>(std::string(c.run_id));
             son_sim_t_ns = kr.t_ns;
         }
+        return yeni_dunya;
     }
 
     void olay_halkasi_isle()

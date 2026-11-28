@@ -153,6 +153,7 @@ bool gecis_gecerli(std::uint8_t d, KomutTuru t)
     case KomutTuru::calistirma_hiz: return d == 3 || d == 4;
     case KomutTuru::calistirma_durdur: return d == 2 || d == 3 || d == 4;
     case KomutTuru::calistirma_sifirla: return d >= 1 && d <= 7;
+    case KomutTuru::senaryo_yukle: return d == 1 || d == 5 || d == 6 || d == 7;   // Tablo 4.7a: `senaryo/yukle` sütunu
     default: return false;
     }
 }
@@ -163,6 +164,45 @@ bool calistirma_mi(KomutTuru t)
 }
 
 }  // namespace
+
+// W5-K57: çalıştırma denetimi türündeki komutun ön denetimi; `al` ile aynı denetim (calistirma_denetle_).
+std::optional<AlimSonucu> SahteDunya::on_denetim(const Komut& k)
+{
+    if (!calistirma_mi(k.tur)) {
+        return std::nullopt;
+    }
+    std::lock_guard<std::mutex> kl(kilit_);
+    return calistirma_denetle_(k);
+}
+
+// Çalıştırma denetimi komutunun giriş denetimi (A3-K54, K123, K124; Tablo 4.7a/b). `kilit_` çağıranda.
+std::optional<AlimSonucu> SahteDunya::calistirma_denetle_(const Komut& k)
+{
+    const Durum& d = *d_;
+    const bool run_uyar = d.run_id.has_value() == k.beklenen_run_id.has_value() &&
+                          (!d.run_id || *d.run_id == *k.beklenen_run_id);
+    if (k.beklenen_durum_rev != d.durum_rev) {
+        return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil",
+                   "{\"guncel_durum_rev\":" + std::to_string(d.durum_rev) + "}");
+    }
+    if (!run_uyar) {
+        std::string a = "{\"guncel_run_id\":" + (d.run_id ? metin_json(*d.run_id) : std::string("null")) +
+                        ",\"guncel_durum\":" + metin_json(durum_adi(d.durum)) +
+                        ",\"guncel_durum_rev\":" + std::to_string(d.durum_rev) + "}";
+        return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil", a);
+    }
+    if (!gecis_gecerli(d.durum, k.tur)) {
+        return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
+    }
+    const bool hil = d.kip == ZamanKipi::hil_1x || d.kip == ZamanKipi::hil_bariyer;
+    if (hil && (k.tur == KomutTuru::calistirma_adimla || k.tur == KomutTuru::calistirma_hiz)) {
+        return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
+    }
+    if (hil && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
+        return ret("onay_gerekli", "HIL'de duraklatma geçersizliği onay ister (Tablo 4.7b)");
+    }
+    return std::nullopt;
+}
 
 AlimSonucu SahteDunya::al(const Komut& k)
 {
@@ -179,22 +219,8 @@ AlimSonucu SahteDunya::al(const Komut& k)
         return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil", a);
     };
     if (calistirma_mi(k.tur)) {
-        if (k.beklenen_durum_rev != d.durum_rev) {
-            return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil",
-                       "{\"guncel_durum_rev\":" + std::to_string(d.durum_rev) + "}");
-        }
-        if (!run_uyar) {
-            return run_ret();
-        }
-        if (!gecis_gecerli(d.durum, k.tur)) {
-            return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
-        }
-        const bool hil = d.kip == ZamanKipi::hil_1x || d.kip == ZamanKipi::hil_bariyer;
-        if (hil && (k.tur == KomutTuru::calistirma_adimla || k.tur == KomutTuru::calistirma_hiz)) {
-            return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
-        }
-        if (hil && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
-            return ret("onay_gerekli", "HIL'de duraklatma geçersizliği onay ister (Tablo 4.7b)");
+        if (const std::optional<AlimSonucu> r = calistirma_denetle_(k)) {
+            return *r;
         }
     } else {
         // W4-K19 (EMNİYET): kısıtlayan istekte beklenen_run_id denetlenmez; A3-K54 yalnız
@@ -474,6 +500,7 @@ void SahteDunya::uygula_()
                 gecis_(6, nullptr);
             }
             break;
+        case KomutTuru::senaryo_yukle:   // sahte sim'de senaryo içeriği yok: durum yuklendi'ye döner (A3-K77)
         case KomutTuru::calistirma_sifirla:
             d.run_id.reset();
             d.adim_no = 0;

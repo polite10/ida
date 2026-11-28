@@ -189,19 +189,12 @@ std::vector<std::string> govde_satirlari_3b(const std::string& m)
     return r;
 }
 
-int test_senaryo_3b_dosyasi()
+// Senaryo dosyası SIL'de kurulur ve geçerlidir (A2 kapalı; ilk sekiz sınırdan sonra kapanış isteği).
+void senaryo_3b_kurulur(const char* yol, const char* ad)
 {
-    ida::senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
-    const std::string a = d.oku("scenarios/gorev-havuz.toml").value_or("");
-    const std::string b = d.oku("scenarios/gorev-havuz-3b.toml").value_or("");
-    dogrula_sk(!a.empty() && !b.empty() && govde_satirlari_3b(a) == govde_satirlari_3b(b),
-               "gorev-havuz-3b.toml: gorev-havuz.toml'dan yalnız ad, aciklama, varlık kümesi ve manifest özeti farklı");
-    dogrula_sk(b.find("kume = \"havuz\"") != std::string::npos && b.find("kume = \"ornek\"") == std::string::npos,
-               "gorev-havuz-3b.toml: varlık kümesi havuz");
-    // Özet, kümenin manifest dosyasının SHA-256'sına eşit olmalı: senaryo doğrulaması kaynak özetini bununla karşılaştırır.
     ida::sunucu::Ayar ay;
     ay.gunluk = 0;
-    ay.senaryo_dosyasi = "scenarios/gorev-havuz-3b.toml";
+    ay.senaryo_dosyasi = yol;
     ay.depo_koku = IDA_DEPO_KOKU;
     ay.sinir_kancasi = [](const ida::sunucu::Ayar::SinirGozlemi& g) {
         if (g.b == 8u) {
@@ -215,7 +208,32 @@ int test_senaryo_3b_dosyasi()
         hata_bulgusu = hata_bulgusu || bl.onem == "hata";
     }
     dogrula_sk(s.hata_turu == ida::sunucu::HataTuru::yok && !hata_bulgusu && !s.davranis_ozeti.empty(),
-               "gorev-havuz-3b.toml: senaryo geçerli ve kuruldu (hata '" + s.hata + "')");
+               std::string(ad) + ": senaryo geçerli ve kuruldu (hata '" + s.hata + "')");
+}
+
+int test_senaryo_3b_dosyasi()
+{
+    ida::senaryo::DiskKaynagi d(IDA_DEPO_KOKU);
+    const std::string a = d.oku("scenarios/gorev-havuz.toml").value_or("");
+    const std::string b = d.oku("scenarios/gorev-havuz-3b.toml").value_or("");
+    dogrula_sk(!a.empty() && !b.empty() && govde_satirlari_3b(a) == govde_satirlari_3b(b),
+               "gorev-havuz-3b.toml: gorev-havuz.toml'dan yalnız ad, aciklama, varlık kümesi ve manifest özeti farklı");
+    dogrula_sk(b.find("kume = \"havuz\"") != std::string::npos && b.find("kume = \"ornek\"") == std::string::npos,
+               "gorev-havuz-3b.toml: varlık kümesi havuz");
+    // Özet, kümenin manifest dosyasının SHA-256'sına eşit olmalı: senaryo doğrulaması kaynak özetini bununla karşılaştırır.
+    senaryo_3b_kurulur("scenarios/gorev-havuz-3b.toml", "gorev-havuz-3b.toml");
+
+    // Açık deniz eşi (W5-viz-gorsel): acik_su kümesi ve tam kademe; senaryodaki manifest özeti, kümenin
+    // manifest dosyasının SHA-256'sıdır (senaryo doğrulaması aynı karşılaştırmayı yükleme sırasında yapar).
+    const std::string acik = d.oku("scenarios/gorev-acik-su-3b.toml").value_or("");
+    const std::string acik_manifest = d.oku("assets/acik_su/manifest.json").value_or("");
+    dogrula_sk(!acik.empty() && acik.find("kume = \"acik_su\"") != std::string::npos &&
+                   acik.find("gorunum = \"tam\"") != std::string::npos,
+               "gorev-acik-su-3b.toml: varlık kümesi acik_su, kalite.gorunum = tam");
+    dogrula_sk(!acik_manifest.empty() &&
+                   acik.find("manifest_ozeti = \"" + ida::senaryo::sha256_hex(acik_manifest) + "\"") != std::string::npos,
+               "gorev-acik-su-3b.toml: manifest_ozeti assets/acik_su/manifest.json'un SHA-256'sı");
+    senaryo_3b_kurulur("scenarios/gorev-acik-su-3b.toml", "gorev-acik-su-3b.toml");
     return 0;
 }
 

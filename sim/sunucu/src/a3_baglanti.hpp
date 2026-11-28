@@ -136,6 +136,7 @@ struct AnlikPod {
     std::array<std::uint8_t, 2> pim{1, 1};
     bool son_degisim_var = false;
     std::uint64_t son_degisim_adimi = 0;
+    bool kuruluyor = false;          // W5-K58: dünya yeniden kuruluyor (yeni dünya `yuklendi` olana dek)
     // parti_gonderilen, parti_kacirildi, oturum_kopma, sim_gecikmesi, a3_halka_tasma
     std::array<std::int64_t, 5> sayac{};
     std::uint8_t kademe_sonar = 0;   // W4-bagla-sonar: 0 kapali, 1 sade
@@ -162,17 +163,28 @@ public:
     A3Alici(const A3Alici&) = delete;
     A3Alici& operator=(const A3Alici&) = delete;
 
+    // Zaman kipi (Tablo 4.7b denetimi): ilk dünya kurulurken ve senaryo/yukle ya da sifirla ile yeni dünya
+    // başka kipte kurulduğunda dünya iş parçacığından verilir (yeni dünya hiçbir istek işlenmeden önce).
+    void kip_ayarla(bool hil);
+
     // ---- A3 G/Ç iş parçacığı ----
     a3::AnlikDurum anlik() override;
     a3::AlimSonucu al(const a3::Komut& k) override;
+    std::optional<a3::AlimSonucu> on_denetim(const a3::Komut& k) override;   // W5-K57
 
     // ---- Dünya iş parçacığı (kilitsiz, bellek ayırmaz; vektörler çağıranın ayırdığı kapasitede) ----
     void anlik_yaz(const AnlikPod& p);
     // Tutarlı kesimle alır (W4-K27 (2)): kesim, kısıtlayan yuvalar (`atla` maskesindekiler hariç;
     // sıra numarasıyla), sonra genel halka kesime kadar (en çok `genel_azami` istek); ardından
-    // çalıştırma denetimi yollarının tamamı `genel`e eklenir (önce durdur; en çok 2 · kDenetimYolu).
+    // çalıştırma denetimi yolları `genel`e eklenir (önce durdur; en çok 2 · kDenetimYolu). W5-K64: denetim
+    // yollarının uçları da kesimle birlikte, yuvalardan ÖNCE okunur ve yollar yalnız oraya kadar alınır:
+    // görülen bir denetim isteğinden önce kabul edilmiş her kısıtlayan aynı çekişte görünür.
     void cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla = 0,
              std::size_t genel_azami = kGenelKuyruk);
+    // Yalnız kısıtlayan yuvaları alır (`atla` maskesindekiler hariç; sıra numarasıyla; genel halkaya ve denetim
+    // yollarına dokunmaz). `cek`in yuva adımıdır. W5-K65: hazırlıkta (yuvalar `cek`te atlanır) kabul edilen
+    // `sifirla`/`senaryo/yukle`den önceki kısıtlayanları eski dünya için almakta kullanılır.
+    void kisitlayanlari_cek(std::vector<A3Giris>& kisitlayan, std::uint16_t atla = 0);
     // `maske`deki dolu kısıtlayan yuvalardaki isteklerin en küçük sıra numarası (yoksa 0).
     std::uint64_t bekleyen_kisit_en_kucuk(std::uint16_t maske) const;
     std::size_t genel_dolu() const;
@@ -190,6 +202,8 @@ public:
 private:
     static int etki_yuvasi(const a3::Komut& k);
     a3::AlimSonucu kuyruga(const a3::Komut& k, const a3b::YiKarsilik& yi);   // uretici_m_ tutulurken
+    // Çalıştırma denetimi komutunun giriş denetimi (`al` ve `on_denetim` ortak; uretici_m_ tutulurken).
+    std::optional<a3::AlimSonucu> calistirma_denetle_(const a3::Komut& k, const a3::AnlikDurum& a) const;
 
     bool hil_ = false;
     // Üçlü tampon: dünya `arka_`'ya yazar ve `orta_` ile değiştirir; okuyucu `on_`'u okur.
@@ -217,7 +231,7 @@ private:
     };
     DenetimYolu durdur_, denetim_;
     static bool yola_koy(DenetimYolu& y, A3Giris&& g);
-    static void yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti);
+    static void yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti, std::size_t son);
 };
 
 }  // namespace ida::sunucu

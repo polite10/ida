@@ -63,3 +63,7 @@ EMNİYET (W4-K22 a): alıcı doluyken kısıtlayan etkiler sabit boylu, etki ba�
 ## Kitaplık seçimi
 
 HTTP/WebSocket için dış kitaplık kullanılmadı (W4-a3 dilim 1 raporunda ayrıntılı). Gerekçe: sözleşmenin istediği ayrıntılar (A3-K51'in "en çok ilk 4096 bayt" okuması, A3-K07'de jetonu yansıtmadan alt protokol seçimi, A3-K39'un bağlantı başına sınırlı uygulama kuyrukları, A3-K46/K47 kapanış kodları) düşük düzey denetim gerektirir; gereken protokol alt kümesi (yalnız sunucu, TLS ve uzantı yok) küçüktür; bağımlılık eklenmediği için Windows CI süresi ve vcpkg kurulumu değişmez.
+
+## Senaryo ve ön denetim uçları (W5-a3-senaryo)
+
+`SunucuAyari::senaryo` (`ida/a3/senaryo.hpp`, `SenaryoHizmeti`) verilirse `GET /senaryolar`, `GET /senaryolar/{ad}`, `POST /senaryo/dogrula`, `POST /senaryo/yukle`, `GET /senaryo/cozumlenmis`, `GET /on_denetim[/{kimlik}]` çalışır; verilmezse 404 `bulunamadi` (sahte dünya). Kitaplık A5'i bilmez: dizin, doğrulama ve raporlar hizmetten gelir. Ad kalıbı (A3-K78) çekirdekte denetlenir; `/senaryolar/<ham yol>` yolundaki her parça (eğik çizgi, `..`, `%2F`) 400 alır ve hizmete ulaşmaz. `senaryo/yukle` senkrondur: hazırlama G/Ç iş parçacığında, uygulama dünyada; `yukleme_bekle` yanıtı yeni dünya hazır olana dek tutar (10 s). Dünya `yuklendi`'ye döndüğünde (önceki çalıştırma bitmiş ya da canlıydı) çekirdek `calistirma/durum` dışındaki son-değer önbelleğini boşaltır: yeni dünyaya önceki çalıştırmanın bayat kareleri tam durum olarak gitmez. Testler: `sim.a3.senaryo_uclari`.

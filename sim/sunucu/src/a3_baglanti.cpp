@@ -75,6 +75,8 @@ bool gecis_gecerli(CalistirmaDurumu d, KomutTuru t)
     case KomutTuru::calistirma_sifirla:
         return d == D::yuklendi || d == D::hazirlaniyor || d == D::kosuyor || d == D::duraklatildi || d == D::bitti ||
                d == D::durduruldu || d == D::hata;
+    // Tablo 4.7a, `senaryo/yukle` sütunu: bos, yuklendi, bitti, durduruldu, hata (bos bu sim'de yoktur).
+    case KomutTuru::senaryo_yukle: return d == D::yuklendi || d == D::bitti || d == D::durduruldu || d == D::hata;
     default: return false;
     }
 }
@@ -96,6 +98,13 @@ A3Alici::A3Alici(bool hil) : hil_(hil), halka_(kGenelKuyruk + 1u)
 }
 
 A3Alici::~A3Alici() = default;
+
+void A3Alici::kip_ayarla(bool hil)
+{
+    // Yeni dünya başka kipte olabilir (senaryo/yukle). Okuma `al` içinde aynı kilit altındadır.
+    std::lock_guard<std::mutex> kl(uretici_m_);
+    hil_ = hil;
+}
 
 // Üçlü tampon, dünya tarafı: kilit almaz, bellek ayırmaz (düz yapının kopyası).
 void A3Alici::anlik_yaz(const AnlikPod& p)
@@ -137,6 +146,7 @@ AnlikDurum A3Alici::anlik()
     }
     a.a1_run_id = p.a1_run_id;
     a.durum_rev = p.durum_rev;
+    a.kuruluyor = p.kuruluyor;
     a.emniyet_rev = p.emniyet_rev;
     a.emniyet_rev_doydu = p.emniyet_rev_doydu;
     a.acil_durdurma = p.acil;
@@ -190,9 +200,8 @@ bool A3Alici::yola_koy(DenetimYolu& y, A3Giris&& g)
     return true;
 }
 
-void A3Alici::yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti)
+void A3Alici::yoldan_al(DenetimYolu& y, std::vector<A3Giris>& cikti, std::size_t son)
 {
-    const std::size_t son = y.son.load(std::memory_order_acquire);
     std::size_t b = y.bas.load(std::memory_order_relaxed);
     while (b != son) {
         cikti.push_back(std::move(y.g[b]));
@@ -250,16 +259,10 @@ AlimSonucu A3Alici::kuyruga(const Komut& k, const a3b::YiKarsilik& yi)
     return a;
 }
 
-void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla,
-                  std::size_t genel_azami)
+// Kısıtlayan yuvalar (`atla` maskesindekiler hariç), sıra numarasıyla. `cek` ve hazırlıktaki bitiriş (W5-K65)
+// ortak kullanır.
+void A3Alici::kisitlayanlari_cek(std::vector<A3Giris>& kisitlayan, std::uint16_t atla)
 {
-    // EMNİYET (W4-K27 (2)): önce kesim. Kesimdeki her genel isteğin yayınlanması (release),
-    // ondan önce teslim edilmiş kısıtlayanların yuvaya yazılmasından sonradır; burada acquire ile
-    // okunan kesimden sonra yuvalar onları gösterir.
-    const std::size_t kesim = son_.load(std::memory_order_acquire);
-    if (cek_kancasi) {
-        cek_kancasi(1);
-    }
     const std::size_t k0 = kisitlayan.size();
     for (std::size_t i = 0; i < kisit_.size(); ++i) {
         if (((atla >> i) & 1u) != 0u) {
@@ -274,6 +277,28 @@ void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel,
     }
     std::sort(kisitlayan.begin() + static_cast<std::ptrdiff_t>(k0), kisitlayan.end(),
               [](const A3Giris& x, const A3Giris& y) { return x.sira < y.sira; });
+}
+
+void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel, std::uint16_t atla,
+                  std::size_t genel_azami)
+{
+    // EMNİYET (W4-K27 (2)): önce kesim. Kesimdeki her genel isteğin yayınlanması (release),
+    // ondan önce teslim edilmiş kısıtlayanların yuvaya yazılmasından sonradır; burada acquire ile
+    // okunan kesimden sonra yuvalar onları gösterir.
+    // EMNİYET (W5-K64): aynı ilke çalıştırma denetimi yolları için de geçerlidir. Bu yolların uçları (`durdur_`,
+    // `denetim_`) da yuvalardan ÖNCE okunur ve yollar yalnız bu uçlara kadar alınır. Uçlar yuvalardan sonra
+    // okunsaydı, yuvalar okunurken G/Ç iş parçacığının kabul ettiği "acil durdurma (n), sifirla (n+1)" çiftinde
+    // `sifirla` çekilir, acil durdurma yuvada kalırdı: acil durdurma eski dünyada uygulanmaz, yeni dünyada
+    // `canli_calistirma_yok` alırdı (`a3_onde_kisit_var` onu göremez). Uçtan sonra kabul edilen her istek
+    // sonraki çekişe kalır; görülen her denetim isteğinden ÖNCE kabul edilmiş her kısıtlayan, yuvalar okunurken
+    // (kabul sırası = üretici kilidi sırası; yayınlama acquire/release) görünür.
+    const std::size_t kesim = son_.load(std::memory_order_acquire);
+    const std::size_t durdur_son = durdur_.son.load(std::memory_order_acquire);
+    const std::size_t denetim_son = denetim_.son.load(std::memory_order_acquire);
+    if (cek_kancasi) {
+        cek_kancasi(1);
+    }
+    kisitlayanlari_cek(kisitlayan, atla);
     if (cek_kancasi) {
         cek_kancasi(2);
     }
@@ -283,9 +308,10 @@ void A3Alici::cek(std::vector<A3Giris>& kisitlayan, std::vector<A3Giris>& genel,
         b = (b + 1u) % halka_.size();
     }
     bas_.store(b, std::memory_order_release);
-    // Çalıştırma denetimi: depo doluluğundan bağımsız, bütünüyle; önce durdur (W4-K28 sol-3 #1).
-    yoldan_al(durdur_, genel);
-    yoldan_al(denetim_, genel);
+    // Çalıştırma denetimi: depo doluluğundan bağımsız; önce durdur (W4-K28 sol-3 #1). Yalnız en başta okunan
+    // uçlara kadar (W5-K64): sonradan kabul edilenler sonraki çekişe kalır.
+    yoldan_al(durdur_, genel, durdur_son);
+    yoldan_al(denetim_, genel, denetim_son);
 }
 
 std::uint64_t A3Alici::bekleyen_kisit_en_kucuk(std::uint16_t maske) const
@@ -310,6 +336,54 @@ std::size_t A3Alici::genel_dolu() const
     return (s + halka_.size() - b) % halka_.size();
 }
 
+// Çalıştırma denetimi komutunun giriş denetimi (A3-K54, K123, K124; Tablo 4.7a/b). `al` (yetkili; kuyruğa
+// koymadan hemen önce, aynı kilit altında) ve `on_denetim` (W5-K57) aynı işlevi kullanır.
+std::optional<AlimSonucu> A3Alici::calistirma_denetle_(const Komut& k, const AnlikDurum& a) const
+{
+    // A3-K123: eşzamanlı denetim; dünya uygulamada aynı atomik adımda yeniden denetler.
+    if (k.beklenen_durum_rev != a.durum_rev) {
+        return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil (A3-K123)",
+                   "{\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}");
+    }
+    const bool run_uyar = a.run_id.has_value() == k.beklenen_run_id.has_value() &&
+                          (!a.run_id || *a.run_id == *k.beklenen_run_id);
+    if (!run_uyar) {
+        std::string ay = "{\"guncel_run_id\":" + (a.run_id ? json_metin(*a.run_id) : std::string("null")) +
+                         ",\"guncel_durum\":" + json_metin(durum_adi(a.durum)) +
+                         ",\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}";
+        return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil (A3-K54, K124)", ay);
+    }
+    if (!gecis_gecerli(a.durum, k.tur)) {
+        return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
+    }
+    if (k.tur == KomutTuru::calistirma_baslat && a.kuruluyor) {
+        // W5-K58: `sifirla`/`senaryo/yukle` kabul edildi, yeni dünya henüz kurulmadı. Durum `yuklendi` görünür
+        // ama yüklü senaryo yoktur (özet null); eski özeti görmüş bir istemci, görmediği senaryoyu başlatamaz.
+        return ret("gecersiz_durum", "dünya yeniden kuruluyor; baslat kuruluş bitince kabul edilir (W5-K58)");
+    }
+    if (hil_ && (k.tur == KomutTuru::calistirma_hiz || k.tur == KomutTuru::calistirma_adimla)) {
+        return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
+    }
+    if (hil_ && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
+        // Tablo 4.7b: HIL'de duraklatma çalıştırmayı geçersiz kılar (A1-K41, K79); onay ister.
+        return ret("onay_gerekli", "HIL'de duraklatma çalıştırmayı geçersiz kılar: gecersizligi_onayla gerekli (Tablo 4.7b)");
+    }
+    if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
+        return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
+    }
+    return std::nullopt;
+}
+
+// W5-K57: çalıştırma denetimi türündeki komutun (`senaryo/yukle` dahil) ön denetimi; kuyruğa koymaz.
+std::optional<AlimSonucu> A3Alici::on_denetim(const Komut& k)
+{
+    if (!calistirma_mi(k.tur)) {
+        return std::nullopt;
+    }
+    std::lock_guard<std::mutex> kl(uretici_m_);
+    return calistirma_denetle_(k, anlik());
+}
+
 AlimSonucu A3Alici::al(const Komut& k)
 {
     // EMNİYET (W4-K28 (3)): görüntünün okunması, denetim ve kuyruğa koyma tek kilit altında
@@ -325,32 +399,8 @@ AlimSonucu A3Alici::al(const Komut& k)
         return ret("beklenen_durum_uyusmuyor", "beklenen_run_id güncel değil (A3-K54, K124)", ay);
     };
     if (calistirma_mi(k.tur)) {
-        // A3-K123: eşzamanlı denetim; dünya uygulamada aynı atomik adımda yeniden denetler.
-        if (k.beklenen_durum_rev != a.durum_rev) {
-            return ret("durum_rev_uyusmuyor", "beklenen_durum_rev güncel değil (A3-K123)",
-                       "{\"guncel_durum_rev\":" + std::to_string(a.durum_rev) + "}");
-        }
-        if (!run_uyar) {
-            return run_ret();
-        }
-        if (!gecis_gecerli(a.durum, k.tur)) {
-            return ret("gecersiz_durum", "komut bu çalıştırma durumunda geçersiz (Tablo 4.7a)");
-        }
-        if (hil_ && (k.tur == KomutTuru::calistirma_hiz || k.tur == KomutTuru::calistirma_adimla)) {
-            return ret("kipte_gecersiz", "HIL kiplerinde geçersiz (Tablo 4.7b)");
-        }
-        if (hil_ && k.tur == KomutTuru::calistirma_duraklat && !k.gecersizligi_onayla) {
-            // Tablo 4.7b: HIL'de duraklatma çalıştırmayı geçersiz kılar (A1-K41, K79); onay ister.
-            return ret("onay_gerekli", "HIL'de duraklatma çalıştırmayı geçersiz kılar: gecersizligi_onayla gerekli (Tablo 4.7b)");
-        }
-        if (k.tur == KomutTuru::calistirma_adimla && (k.periyot_sayisi < 1u || k.periyot_sayisi > 10000u)) {
-            return ret("gecersiz_deger", "periyot_sayisi 1–10 000 (A3-K65)");
-        }
-        if (k.tur == KomutTuru::calistirma_sifirla && a.durum != CalistirmaDurumu::yuklendi) {
-            // Karşılığı olmayan istek (W4-bagla-a3 kapsam 3): ida_sim bu dilimde tek çalıştırma koşar;
-            // çalıştırmayı başa saran sıfırlama yoktur.
-            return ret("gecersiz_durum",
-                       "ida_sim bu dilimde tek çalıştırma koşar: sıfırlama yalnız 'yuklendi' durumunda (A3-K67 bu dilimde yok)");
+        if (const std::optional<AlimSonucu> r = calistirma_denetle_(k, a)) {
+            return *r;
         }
         return kuyruga(k, a3b::YiKarsilik{});
     }

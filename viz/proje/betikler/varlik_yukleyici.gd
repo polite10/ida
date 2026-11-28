@@ -15,6 +15,14 @@ const GltfIndeks := preload("res://betikler/gltf_indeks.gd")
 const GLTF_GODOT := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, -1))  # A7-K14: C·M
 const IZINLI_UZANTILAR := ["KHR_lights_punctual", "KHR_materials_emissive_strength", "KHR_texture_transform"]
 const GOSTERGE_KATMANI := 1 << 10
+# Görsel kaplama tablosu (yalnız çizim): A7 varlık kimliği → {A7 malzeme kimliği → desen}. Havuz tabanı ve
+# duvarları düz renkli olunca su altında ölçek ve derinlik hissi vermiyordu (W5-viz-gorsel); doku burada
+# üretilir, depoya ikili dosya girmez (W5-K62). Fiziğe, sonar akustiğine ve A7 malzeme değerlerine dokunmaz.
+# Seçim varlık kimliğine göredir, malzeme kimliğine tek başına göre değil: `havuz_beton` malzemesini
+# `acik_su_sonar/deniz_ornek` (100 m × 100 m açık deniz tabanı) da kullanır ve 0,5 m'lik havuz karosu orada
+# yanlış ölçek ve yanlış görünüm olur. Karo yalnız 0,5 m'lik kabuğu olan havuz varlığına (`havuz_ornek`) giyer.
+const KAPLAMALAR := {"havuz_ornek": {"havuz_beton": "karo"}}
+const KARO_KENARI_M := 0.5      # bir karo (m); doku 4 × 4 karo = 2 m
 const AGLI_ROLLER := ["gorsel", "yuzerlik", "carpisma", "akustik", "isabet_bolgeleri"]
 const AGSIZ_ROLLER := ["referans", "baglanti_noktalari"]
 
@@ -28,6 +36,7 @@ var son_neden := ""
 var _malzeme_hedefleri := {}
 
 static var _kayitli := false
+static var _karo_dokusu: ImageTexture   # bir kez üretilir, sahne kurulumları arasında paylaşılır
 
 
 func _init() -> void:
@@ -547,7 +556,58 @@ func _varlik_yukle(dizin: String, g: Dictionary, baytlar: PackedByteArray, m: Di
 				_malzeme_hedefleri[mi] = []
 			_malzeme_hedefleri[mi].append([sm, sm.albedo_color, sm.metallic, sm.roughness])
 	_mipmap(kok)
+	var kaplama: Dictionary = KAPLAMALAR.get(str(g["kimlik"]), {})
+	if not kaplama.is_empty():
+		for at in g["malzeme_atamasi"]:
+			var gk := int(at["gltf_malzeme"])
+			if kaplama.get(str(at["malzeme"]), "") == "karo" and gk < gm.size() and gm[gk] is StandardMaterial3D:
+				_karo_kaplama(gm[gk] as StandardMaterial3D)
 	return sonuc
+
+
+## Dünya uzayında üç düzlemli karo deseni: 0,5 m karolar, derz çizgileri, karo başına hafif ton farkı;
+## her 2 m'de (doku sınırı) belirgin bir derz (ölçek işareti). Albedo rengiyle çarpılır (A7-K30 sürer).
+## Doku bir kez üretilir (statik önbellek): sahne kurulumu her seferinde 65 536 pikseli yeniden hesaplamaz.
+func _karo_kaplama(sm: StandardMaterial3D) -> void:
+	sm.albedo_texture = _karo_dokusu_al()
+	sm.uv1_triplanar = true
+	sm.uv1_world_triplanar = true
+	var olcek := 1.0 / (KARO_KENARI_M * 4.0)
+	sm.uv1_scale = Vector3(olcek, olcek, olcek)
+	sm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+
+
+@warning_ignore("integer_division")
+static func _karo_dokusu_al() -> ImageTexture:
+	if _karo_dokusu != null:
+		return _karo_dokusu
+	var n := 256
+	var k := n / 4
+	var img := Image.create_empty(n, n, false, Image.FORMAT_RGB8)
+	for y in n:
+		for x in n:
+			var kx := x / k
+			var ky := y / k
+			var h := float(((kx * 7 + ky * 13) * 2654435761) % 1000) / 1000.0
+			var ton := 0.90 + 0.10 * h
+			var fx := x % k
+			var fy := y % k
+			var derz := mini(mini(fx, k - 1 - fx), mini(fy, k - 1 - fy))
+			if derz < 1:
+				ton = 0.48
+			elif derz < 2:
+				ton = minf(ton, 0.72)
+			if x < 3 or y < 3 or x >= n - 3 or y >= n - 3:
+				ton = minf(ton, 0.34)   # 2 m'lik ana derz
+			img.set_pixel(x, y, Color(ton * 0.97, ton, ton * 1.02))
+	img.generate_mipmaps()
+	_karo_dokusu = ImageTexture.create_from_image(img)
+	return _karo_dokusu
+
+
+## Önbellekteki karo dokusunu bırakır (uygulama kapanırken; yükleyici örnekleri arasında bırakılmaz).
+static func karo_onbellegini_birak() -> void:
+	_karo_dokusu = null
 
 
 func _mipmap(n: Node) -> void:

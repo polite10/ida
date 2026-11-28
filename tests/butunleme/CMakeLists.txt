@@ -174,8 +174,13 @@ if(IDA_NODE_BUTUNLEME)
     COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_emniyet_web.mjs" "$<TARGET_FILE:ida_sim>"
             "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_emniyet")
   set_tests_properties(butunleme.a3_emniyet_web PROPERTIES TIMEOUT 180)
+  # W5-a3-senaryo kabul 4: senaryo listele/doğrula/yükle/başlat/durdur/sıfırla, süreç açık (--a3-surekli).
+  add_test(NAME butunleme.a3_senaryo_uctan_uca_web
+    COMMAND "${IDA_NODE_BUTUNLEME}" "${CMAKE_CURRENT_SOURCE_DIR}/a3_senaryo_uctan_uca.mjs" "$<TARGET_FILE:ida_sim>"
+            "${PROJECT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/web" "${CMAKE_CURRENT_BINARY_DIR}/node_senaryo")
+  set_tests_properties(butunleme.a3_senaryo_uctan_uca_web PROPERTIES TIMEOUT 300)
   if(NOT IDA_BAGIMLILIK_ZORUNLU)  # CI'da 77 (atlama) hata sayılır
-    set_tests_properties(butunleme.a3_uctan_uca_web butunleme.a3_sonar_web butunleme.a3_emniyet_web PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(butunleme.a3_uctan_uca_web butunleme.a3_sonar_web butunleme.a3_emniyet_web butunleme.a3_senaryo_uctan_uca_web PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 endif()
 
@@ -374,3 +379,39 @@ add_test(NAME butunleme.ida_sim_kayit_ozet
           "-DILETILER=ida_sim: kapanış: düzgün|ida_sim: kayıt: kapandı; dosya |bitiş bitti, güvence izleme (kanal_uretilmiyor:|,ust_veri_bilinmiyor:sim_surumu+|+dalga_listesi_ozeti); üretilen |üretilmeyen kanallar ["
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
 set_tests_properties(butunleme.ida_sim_kayit_yok_cikti butunleme.ida_sim_kayit_yerlesik_senaryo butunleme.ida_sim_kayit_ozet PROPERTIES TIMEOUT 600)
+
+# W5-a3-senaryo (docs/gorevler/W5-a3-senaryo.md kabul 1–3, 5; W5-K47…K50; sim/sunucu/BENIOKU.md "Senaryo uçları"):
+# senaryo ve ön denetim uçları, geçersiz adlar, yüklenen senaryonun belirlenimi, sıfırlama, geri kurma, kayıt.
+# Ayrı program: kayıt dosyasını `Okuyucu` okur, yanıtlar nlohmann ile çözülür.
+add_executable(ida_butunleme_senaryo_test test_a3_senaryo.cpp a3_istemci.cpp)
+target_compile_definitions(ida_butunleme_senaryo_test PRIVATE "IDA_DEPO_KOKU=\"${PROJECT_SOURCE_DIR}\"")
+target_link_libraries(ida_butunleme_senaryo_test PRIVATE ida_sunucu ida_kayit nlohmann_json::nlohmann_json Threads::Threads)
+ida_ayar_uygula(ida_butunleme_senaryo_test)
+if(NOT MSVC)
+  target_compile_options(ida_butunleme_senaryo_test PRIVATE -Wshadow)
+endif()
+# PR #57 düzeltme turu (W5-K55…K59; EMNİYET): senaryo_emniyet_rev, senaryo_emniyet_rev_doyma, senaryo_sinir_yarisi,
+# senaryo_canli_ayristirma, senaryo_emniyet_karesi. Üçüncü tur (W5-K64, K65): senaryo_cekis_yarisi; senaryo_sinir_yarisi (C).
+foreach(_ad senaryo_uclar senaryo_ad_denetimi senaryo_yukle_belirlenim senaryo_sifirla senaryo_geri_kurma senaryo_kayit
+            senaryo_a2 senaryo_surekli_kapanis senaryo_emniyet_rev senaryo_emniyet_rev_doyma senaryo_sinir_yarisi
+            senaryo_canli_ayristirma senaryo_emniyet_karesi senaryo_cekis_yarisi)
+  add_test(NAME butunleme.${_ad} COMMAND ida_butunleme_senaryo_test ${_ad})
+  set_tests_properties(butunleme.${_ad} PROPERTIES TIMEOUT 600)
+endforeach()
+if(NOT WIN32)
+  # Kartsız HIL (sözde uçbirim; gerçek zamanlı): sıfırlanan HIL dünyası yeniden başlar.
+  add_test(NAME butunleme.senaryo_sifirla_hil COMMAND ida_butunleme_senaryo_test senaryo_sifirla_hil)
+  set_tests_properties(butunleme.senaryo_sifirla_hil PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+endif()
+
+# W5-a3-senaryo: komut satırı seçenekleri. --senaryo-dizini göreli ve dizin dışına çıkamaz; --a3-surekli ve
+# --senaryo-dizini --a3-port ister (W5-K48: A3'süz koşular bugünkü gibi).
+foreach(_c "dizin_mutlak|--a3-port;0;--senaryo-dizini;/tmp" "dizin_ust|--a3-port;0;--senaryo-dizini;../x" "surekli_a3_yok|--a3-surekli"
+           "dizin_a3_yok|--senaryo-dizini;scenarios")
+  string(REPLACE "|" ";" _p "${_c}")
+  list(GET _p 0 _ad)
+  list(GET _p 1 _arg)
+  add_test(NAME butunleme.ida_sim_${_ad}
+    COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:ida_sim> -DBEKLENEN=1
+            "-DARGUMANLAR=${_arg};--sure;1" -P "${CMAKE_CURRENT_SOURCE_DIR}/cikis_kodu.cmake")
+endforeach()

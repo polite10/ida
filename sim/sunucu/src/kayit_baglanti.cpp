@@ -121,6 +121,80 @@ std::string json_dizisi(const std::map<std::string, std::string>& m, bool onek)
 
 }  // namespace
 
+OnDenetimRaporu on_denetim_kur(const OnDenetimGirdisi& g)
+{
+    // Rapor yalnız gerçekten yapılan denetimleri `gecti` gösterir: senaryonun A5 doğrulaması (rapor onsuz
+    // kurulamaz) ve kayıt isteniyorsa boş alan ölçümü. Yapılmayanlar şemanın `atlandi` durumuyla ve
+    // nedeniyle yazılır; `gecti` uydurulmaz (W5-K50). Bu sim'de A1 el sıkışması bu raporun parçası değildir:
+    // rapor çalıştırma başlarken, el sıkışmasından önce üretilir (A3-K62).
+    OnDenetimRaporu r;
+    r.kimlik = senaryo::sha256_hex(g.run_id).substr(0, 16);
+    nlohmann::json maddeler = nlohmann::json::array();
+    maddeler.push_back({{"kod", "senaryo_gecerli"},
+                        {"durum", "gecti"},
+                        {"ileti", g.kayit_istendi
+                                      ? "senaryo A5 doğrulamasından geçti; doğrulama raporu dosyada (dogrulama_raporu.json)"
+                                      : "senaryo A5 doğrulamasından geçti; doğrulama raporu GET /senaryo/dogrula ile alınır"},
+                        {"dayanak", "A5"}});
+    if (g.kayit_istendi) {
+        std::error_code ec_alan;
+        const std::filesystem::space_info alan = std::filesystem::space(g.kayit_dizini, ec_alan);
+        const bool olculdu = !ec_alan;
+        const std::uint64_t bos = olculdu ? static_cast<std::uint64_t>(alan.available) : 0u;
+        if (olculdu && bos < g.disk_siniri_bayt) {
+            r.kaldi = true;
+            r.kaldi_ileti = "ön denetim kaldı: kayit_disk_alani: " + g.kayit_dizini.generic_string() + " dizininde boş alan " +
+                            std::to_string(bos) + " bayt, en az " + std::to_string(g.disk_siniri_bayt) + " bayt gerekir (A3 §3.8)";
+            maddeler.push_back({{"kod", "kayit_disk_alani"},
+                                {"durum", "kaldi"},
+                                {"olculen", bos},
+                                {"sinir", g.disk_siniri_bayt},
+                                {"birim", "bayt"},
+                                {"ileti", "kayıt dizininde yeterli boş alan yok"},
+                                {"dayanak", "A3 §3.8; 8. başlık md.6"}});
+        } else if (olculdu) {
+            maddeler.push_back({{"kod", "kayit_disk_alani"},
+                                {"durum", "gecti"},
+                                {"olculen", bos},
+                                {"sinir", g.disk_siniri_bayt},
+                                {"birim", "bayt"},
+                                {"ileti", "kayıt dizininde yeterli boş alan"},
+                                {"dayanak", "A3 §3.8; 8. başlık md.6"}});
+        } else {
+            maddeler.push_back({{"kod", "kayit_disk_alani"},
+                                {"durum", "uyari"},
+                                {"sinir", g.disk_siniri_bayt},
+                                {"birim", "bayt"},
+                                {"ileti", "boş alan ölçülemedi: " + ec_alan.message()},
+                                {"dayanak", "A3 §3.8; 8. başlık md.6"}});
+        }
+    } else {
+        maddeler.push_back({{"kod", "kayit_disk_alani"},
+                            {"durum", "atlandi"},
+                            {"ileti", "yapılmadı: kayıt kapalı (--kayit-dizini verilmedi); boş alan ölçülmedi"},
+                            {"dayanak", "A3 §3.8"}});
+    }
+    for (const char* kod : {"surum_uyumu", "kontrol_hizi", "a1_bant_payi", "a7_manifest", "ping360_zamanlama", "gorsellestirici",
+                            "algilama_bileseni"}) {
+        maddeler.push_back({{"kod", kod},
+                            {"durum", "atlandi"},
+                            {"ileti", "yapılmadı: bu sim bu maddeyi ölçmüyor; rapor çalıştırma başlarken, A1 el sıkışmasından önce üretilir (A3-K62)"},
+                            {"dayanak", "A3 §3.8"}});
+    }
+    bool kaldi = false;
+    for (const nlohmann::json& m : maddeler) {
+        kaldi = kaldi || m.at("durum") == "kaldi";
+    }
+    const nlohmann::json rapor = {{"rapor_surumu", "1.0"},
+                                  {"rapor_kimligi", r.kimlik},
+                                  {"sonuc", kaldi ? "kaldi" : "gecti"},
+                                  {"kip", g.kip},
+                                  {"olusturma_utc", utc_simdi()},
+                                  {"maddeler", maddeler}};
+    r.json = rapor.dump();
+    return r;
+}
+
 bool kayit_girdisi_kur(const senaryo::DogrulanmisSenaryo& cozumlenmis, const senaryo::DogrulamaRaporu& rapor,
                        const senaryo::DosyaKaynagi& kaynak, KayitGirdisi& girdi, std::string& hata)
 {
@@ -206,59 +280,20 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
         hata = "kayıt dizini oluşturulamadı: " + ayar.dizin.generic_string() + ": " + ec.message();
         return nullptr;
     }
-    std::error_code ec_alan;
-    const std::filesystem::space_info alan = std::filesystem::space(ayar.dizin, ec_alan);
-    const bool olculdu = !ec_alan;
-    const std::uint64_t bos = olculdu ? static_cast<std::uint64_t>(alan.available) : 0u;
-    if (olculdu && bos < ayar.disk_siniri_bayt) {
-        hata = "ön denetim kaldı: kayit_disk_alani: " + ayar.dizin.generic_string() + " dizininde boş alan " + std::to_string(bos) +
-               " bayt, en az " + std::to_string(ayar.disk_siniri_bayt) + " bayt gerekir (A3 §3.8)";
+    // Ön denetim raporu (A3 §3.8): tek üretici `on_denetim_kur`dur (W5-a3-senaryo, W5-K49): kayıt eki ile
+    // `GET /on_denetim` aynı işlevden gelir.
+    OnDenetimGirdisi odg;
+    odg.run_id = ayar.run_id;
+    odg.kip = ayar.kip;
+    odg.kayit_istendi = true;
+    odg.kayit_dizini = ayar.dizin;
+    odg.disk_siniri_bayt = ayar.disk_siniri_bayt;
+    OnDenetimRaporu od = on_denetim_kur(odg);
+    if (od.kaldi) {
+        hata = od.kaldi_ileti;
         return nullptr;
     }
-    // Ön denetim raporu (A3 §3.8): bu sim'de A3 ön denetimi yoktur (A3-K62; ön denetim = A1 el sıkışması ve
-    // `baslat` sonrasıdır) ve kayıt dosyası el sıkışmadan ÖNCE açılır. Rapor yalnız bu noktada gerçekten
-    // yapılan denetimleri `gecti` gösterir: senaryonun A5 doğrulaması (kayıt girdisi onsuz kurulamaz) ve boş
-    // alan ölçümü. Yapılmayanlar şemanın `atlandi` durumuyla ve nedeniyle yazılır; `gecti` uydurulmaz.
-    const std::string rapor_kimligi = senaryo::sha256_hex(ayar.run_id).substr(0, 16);
-    nlohmann::json maddeler = nlohmann::json::array();
-    maddeler.push_back({{"kod", "senaryo_gecerli"},
-                        {"durum", "gecti"},
-                        {"ileti", "senaryo A5 doğrulamasından geçti; doğrulama raporu dosyada (dogrulama_raporu.json)"},
-                        {"dayanak", "A5"}});
-    if (olculdu) {
-        maddeler.push_back({{"kod", "kayit_disk_alani"},
-                            {"durum", "gecti"},
-                            {"olculen", bos},
-                            {"sinir", ayar.disk_siniri_bayt},
-                            {"birim", "bayt"},
-                            {"ileti", "kayıt dizininde yeterli boş alan"},
-                            {"dayanak", "A3 §3.8; 8. başlık md.6"}});
-    } else {
-        maddeler.push_back({{"kod", "kayit_disk_alani"},
-                            {"durum", "uyari"},
-                            {"sinir", ayar.disk_siniri_bayt},
-                            {"birim", "bayt"},
-                            {"ileti", "boş alan ölçülemedi: " + ec_alan.message()},
-                            {"dayanak", "A3 §3.8; 8. başlık md.6"}});
-    }
-    for (const char* kod : {"surum_uyumu", "kontrol_hizi", "a1_bant_payi", "a7_manifest", "ping360_zamanlama", "gorsellestirici",
-                            "algilama_bileseni"}) {
-        maddeler.push_back({{"kod", kod},
-                            {"durum", "atlandi"},
-                            {"ileti", "yapılmadı: bu sim'de A3 ön denetimi yok ve kayıt dosyası A1 el sıkışmasından önce açılır (A3-K62)"},
-                            {"dayanak", "A3 §3.8"}});
-    }
-    bool kaldi = false;
-    for (const nlohmann::json& m : maddeler) {
-        kaldi = kaldi || m.at("durum") == "kaldi";
-    }
-    nlohmann::json on_denetim = {{"rapor_surumu", "1.0"},
-                                 {"rapor_kimligi", rapor_kimligi},
-                                 {"sonuc", kaldi ? "kaldi" : "gecti"},
-                                 {"kip", ayar.kip},
-                                 {"olusturma_utc", utc_simdi()},
-                                 {"maddeler", maddeler}};
-    const std::string on_denetim_json = on_denetim.dump();
+    const std::string on_denetim_json = od.json;
     const auto ek = [](const char* ad, const std::string& s) {
         return kayit::Ek{ad, std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(s.data()), s.size())};
     };
@@ -317,6 +352,8 @@ std::unique_ptr<KayitBaglanti> KayitBaglanti::ac(const KayitBaglantiAyari& ayar,
     b->a3_acik_ = ayar.a3_acik;
     b->sonar_acik_ = ayar.sonar_acik;
     b->bilinmeyen_ = bilinmeyen_anahtarlar(uv);
+    b->on_denetim_json_ = on_denetim_json;
+    b->on_denetim_kimligi_ = od.kimlik;
     b->guvence_siniri_ = b->guvence_hesapla_();   // kanal bağlantıları ve üst veri çalıştırma boyunca değişmez
     // W5-K41: tavanlı ilk kapanış taslağı, ilk üretici çağrısından ÖNCE. Dosya erken kapanırsa (disk dolu,
     // yazma hatası, sınır, yıkıcı) kapanış kaydı bu taslağı kullanır; taslak yazılmadan kapanan dosya

@@ -5,6 +5,8 @@
 # `acik_su` kümesinde A5-K19'un istediği `torpido` türünde varlık yoktur (araç dosyası `torpido_ida0`
 # atfeder) ve A7-K03 kümeler arası dosya kullanımına izin vermez; `havuz`un `havuz_ornek`i duvarlıdır
 # (sonar açıkken reddedilir, sim/sunucu/BENIOKU.md "Sonar").
+# (W5-viz-gorsel: `acik_su` kümesine sonradan `torpido_ida0` eklendi ve gorev-acik-su-3b.toml onu gösterir; bu
+# senaryo kendi kümesiyle sürer.)
 #
 # Çalıştırma: ida_sim --senaryo scenarios/sonar-acik-su.toml --sonar [--a3-port 0] [--sonar-csv <yol>]
 # (`--sonar` olmadan sonar kurulmaz). Birimler SI; açılar radyan; süreler tamsayı ns.
@@ -28,7 +30,7 @@ etkin = false
 [varliklar]
 kume = "acik_su_sonar"
 kume_surumu = 1
-manifest_ozeti = "8f66eba67fc7725765710a7eb73f2dafaf154bac3c9c96c2d009150186392dcf"
+manifest_ozeti = "ce7ccef4649783c88a72c41fdfce9bf39fe95f8ca86e451a7f6a38914bd00a6a"
 
 [calistirma]
 kip = "sil"

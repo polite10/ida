@@ -1,0 +1,152 @@
+# Açık deniz 3B görev senaryosu (W5-viz-gorsel): gorev-havuz-3b.toml'un açık su eşi. Aynı görev (yüzeyde iki yol
+# noktası → bulunduğu yerde dalış → su altında yol noktası → yüzeye çıkış), aynı araç ve başlangıç; fark: `acik_su`
+# kümesi (viz/arac/model-uret/uret.py; İDA-0, bağlı şamandıra, 6 m derinde kumlu deniz tabanı + kayalar), açık
+# su ortamı (deniz suyu: A5-K98 varsayılanları 1025 kg/m³, tuzluluk 0,035), kıyı suyu optiği, eğik güneş,
+# `kalite.gorunum = "tam"` (dalgalı yüzey için tam kademe; fizikte dalga modeli olmadığından yüzey sim'de düzdür,
+# W5-K61). Görselleştirici ile gösterim:
+#   viz/calistir.sh --sim scenarios/gorev-acik-su-3b.toml
+# Su optiği ve ışık değerleri ölçüm değil, yer tutucudur (A5-K101); görüntü gerçekçiliği için senaryo yazarı verir.
+# Sözleşme: docs/sozlesmeler/A5-senaryo.md (1.0). Birimler SI; açılar radyan; süreler tamsayı ns.
+
+# Kurulum z1.toml'unkidir (GNSS etkin, aynı parametre bloğu; açık denizde GNSS açık olması gerçekçidir). Görev
+# A5'in görev yüklemesiyle gelir (A5-K57); AUTO'ya giriş yüklü görevi başlatır. Yol noktaları orijinin
+# çevresindedir; deniz tabanı 6 m derindedir (sim'de araç dikey konumu tabana göre sınırlanır, A5-K36).
+
+[meta]
+sema_surumu = "1.0"
+tur = "senaryo"
+ad = "gorev-acik-su-3b"
+aciklama = "3B acik su: yuzeyde iki yol noktasi, dalis, su altinda yol noktasi, yuzeye cikis (acik_su kumesi, tam kademe)."
+
+[arac]
+dosya = "ida0.toml"
+
+[arac.sensorler.kamera0]
+etkin = false
+
+[varliklar]
+kume = "acik_su"
+kume_surumu = 1
+manifest_ozeti = "a061d80a5dec1a626835ba5fa1f948beeacc5935513ba786fab964e6815b416f"
+
+[calistirma]
+kip = "sil"
+sure_ns = 240_000_000_000     # 240 s
+sil_azami_hiz = true
+
+[otopilot]
+parametreler = [
+  { kimlik = 534, tip = "f32", deger = 9.82 },                  # YER_G = ortam.yercekimi
+  { kimlik = 532, tip = "f32", deger = 0.04471300408133902 },   # BARO_KAL_D = başlangıç O_b derinliği
+]
+
+[ortam]
+tur = "acik_su"
+sahne = "deniz_tabani"
+derinlik = 6.0
+manyetik_alan = [25.6e-6, 2.7e-6, 40.3e-6]
+
+[ortam.sahne_poz]
+konum = [0.0, 0.0, 6.0]       # deniz_tabani REF'i ortalama taban yüzeyinde (z = 0); taban 6 m derinde
+
+[ortam.orijin]
+enlem = 0.7155849933176751
+boylam = 0.5061454830783556
+yukseklik = 0.0
+
+[ortam.su]
+sicaklik_c = 20.0
+
+# Görünüm (A5-K101): kıyı suyu; gökyüzünden ortam ışığı; güneş eğik (sahnede gölge ve ışık hüzmesi okunsun).
+[ortam.su_optigi]
+beta_d_m = [0.40, 0.070, 0.050]
+beta_b_m = [0.20, 0.070, 0.060]
+b_sonsuz_rgb_dogrusal = [0.008, 0.10, 0.16]
+
+[ortam.isik]
+gunes_yonu_n = [0.4649905549752772, -0.3487429162314579, -0.8137334712067349]
+ortam_isigi_rgb_dogrusal = [0.30, 0.40, 0.55]
+
+[rastgelelik]
+ana_tohum = 1
+
+[kalite]
+kamera = "kapali"
+gorunum = "tam"
+
+[baslangic]
+konum = [0.0, 0.0, 0.04471300408133902]
+yonelim = [1.0, 0.0, 0.0, 0.0]
+yuklu_tupler = ["f1", "f2"]
+
+[gorev]
+yukleme_zamani_ns = 1_000_000_000
+
+[[gorev.ogeler]]                # 0: yüzeyde kuzeye 6 m
+item_type = "WAYPOINT"
+frame = "LOCAL"
+p = [0.5, 0.4, 0.0, 0.0]        # kabul yarıçapı 0,5 m; seyir hızı 0,4 m/s
+lat_e7 = 0
+lon_e7 = 0
+north_m = 6.0
+east_m = 0.0
+depth = 0.0
+
+[[gorev.ogeler]]                # 1: yüzeyde doğuya 4 m (köşe)
+item_type = "WAYPOINT"
+frame = "LOCAL"
+p = [0.5, 0.4, 0.0, 0.0]
+lat_e7 = 0
+lon_e7 = 0
+north_m = 6.0
+east_m = 4.0
+depth = 0.0
+
+[[gorev.ogeler]]                # 2: bulunduğu yerde 1,5 m'ye dalış
+item_type = "DIVE_TO"
+frame = "NONE"
+p = [0.2, 0.2, 0.0, 0.0]        # dikey hız 0,2 m/s; derinlik toleransı 0,2 m
+lat_e7 = 0
+lon_e7 = 0
+north_m = 0.0
+east_m = 0.0
+depth = 1.5
+
+[[gorev.ogeler]]                # 3: su altında güneye 6 m
+item_type = "WAYPOINT"
+frame = "LOCAL"
+p = [0.5, 0.3, 0.0, 0.0]
+lat_e7 = 0
+lon_e7 = 0
+north_m = 0.0
+east_m = 4.0
+depth = 1.5
+
+[[gorev.ogeler]]                # 4: yüzeye çıkış
+item_type = "SURFACE"
+frame = "NONE"
+p = [0.2, 0.0, 0.0, 0.0]        # çıkış hızı 0,2 m/s
+lat_e7 = 0
+lon_e7 = 0
+north_m = 0.0
+east_m = 0.0
+depth = 0.0
+
+[[olaylar]]
+kimlik = "arm"
+sinif = "gcs_komutu"
+zaman_ns = 10_000_000_000
+komut = "ARM"
+
+[[olaylar]]
+kimlik = "auto"
+sinif = "gcs_komutu"
+zaman_ns = 10_500_000_000
+komut = "SET_MODE"
+kip = "AUTO"
+
+[[olaylar]]
+kimlik = "disarm"
+sinif = "gcs_komutu"
+zaman_ns = 230_000_000_000
+komut = "DISARM"

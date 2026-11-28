@@ -2,7 +2,7 @@
   "sema_surumu": "1.0",
   "kume_kimligi": "acik_su",
   "kume_surumu": 1,
-  "aciklama": "W3-viz görselleştirici geliştirme kümesi: İDA-0 (BlueROV2 Heavy sınıfı açık çerçeve, iki torpido tüpü, sonar başı), bağlı şamandıra hedef ve kumlu deniz tabanı. Geometri viz/arac/model-uret/uret.py ile basit şekillerden üretilir; elle çizilmez. Yüzerlik gövde kutusu A7 uygunluk örneğindeki 04 yer tutucusuyla aynıdır. Akustik değerler tahmindir. Varlık sırası sahte A2 kaynağının varlık indeksleridir (0 araç, 1 hedef, 2 taban).",
+  "aciklama": "W3-viz görselleştirici geliştirme kümesi: İDA-0 (BlueROV2 Heavy sınıfı açık çerçeve, iki torpido tüpü, sonar başı), bağlı şamandıra hedef ve kumlu deniz tabanı. Geometri viz/arac/model-uret/uret.py ile basit şekillerden üretilir; elle çizilmez. Yüzerlik gövde kutusu A7 uygunluk örneğindeki 04 yer tutucusuyla aynıdır. Akustik değerler tahmindir. Varlık sırası sahte A2 kaynağının varlık indeksleridir (0 araç, 1 hedef, 2 taban); 3 torpido, A5-K19 için.",
   "birimler": {
     "uzunluk": "m",
     "aci": "rad",
@@ -122,8 +122,8 @@
       "kimlik": "ida0",
       "tur": "arac",
       "dosya": "ida0.glb",
-      "sha256": "ac3f70d040e7d41a712c91392877ca66d64d593d40ff4ee284374209874f405e",
-      "bayt": 510900,
+      "sha256": "1d6f190e29773e17d2526bb7d2cbbb1f7968e03424ffa0d630e52d4d70f1ce6b",
+      "bayt": 571384,
       "referans": {
         "dugum": 0,
         "ad": "REF"
@@ -207,6 +207,22 @@
         },
         {
           "gltf_malzeme": 16,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 17,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 18,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 19,
+          "malzeme": "govde_plastik"
+        },
+        {
+          "gltf_malzeme": 20,
           "malzeme": "govde_plastik"
         }
       ],
@@ -466,6 +482,49 @@
         {
           "dugum": 3,
           "ad": "COL_taban",
+          "ayristirma": "yok"
+        }
+      ]
+    },
+    {
+      "kimlik": "torpido_ida0",
+      "tur": "torpido",
+      "dosya": "torpido_ida0.glb",
+      "sha256": "f09aacc0a1e42b8edcdc552b162de89b145f821b16aaf34f66e9ca1923540478",
+      "bayt": 2420,
+      "referans": {
+        "dugum": 0,
+        "ad": "REF"
+      },
+      "sinir_kutusu_govde_m": {
+        "en_kucuk": [
+          -0.1,
+          -0.02,
+          -0.02
+        ],
+        "en_buyuk": [
+          0.1,
+          0.02,
+          0.02
+        ]
+      },
+      "malzeme_atamasi": [
+        {
+          "gltf_malzeme": 0,
+          "malzeme": "govde_plastik"
+        }
+      ],
+      "gorsel": [
+        {
+          "dugum": 1,
+          "ad": "torpido",
+          "kosul": "her_zaman"
+        }
+      ],
+      "carpisma": [
+        {
+          "dugum": 2,
+          "ad": "COL_torpido",
           "ayristirma": "yok"
         }
       ]

@@ -5,6 +5,9 @@
 //   a3_kesim   sol'un sırası (dünya yuvayı boş görür → G/Ç "bas"ı yuvaya, "bırak"ı halkaya koyar →
 //              dünya halkayı okur) artık "bas"tan önce "bırak" teslim ettirmez; bekleyen kısıtlayan
 //              sorgusu (değişmezin denetimi) yuvada kalan kısıtlayanı gösterir
+//   a3_cekis_sirasi  W5-K64 (EMNİYET): çalıştırma denetimi yolları (`durdur`, `sifirla`) yuvalardan sonra
+//              okunmaz: yuvalar okunurken araya giren "kısıtlayan (n), sifirla (n+1)" çiftinde sifirla
+//              kısıtlayandan önce çekilmez (kısıtlayan aynı çekişte ya da daha önce görünür)
 #include "a3_baglanti.hpp"
 
 #include <cstdio>
@@ -210,5 +213,88 @@ int test_a3_duraklatma_tablo()
                   "girişte beklenen sonuç (" + std::to_string(dogru) + "/" + std::to_string(toplam) + ")");
     dogrula_alici(kuyruk == beklenen_kuyruk && beklenen_kuyruk > 0u,
                   "yalnız geçerli istekler kuyruğa girdi (" + std::to_string(kuyruk) + "/" + std::to_string(beklenen_kuyruk) + ")");
+    return g_hata_alici - hata0;
+}
+
+// W5-K64 (EMNİYET; PR #57 dar denetimi, bulgu 1): çalıştırma denetimi yolları (`durdur_`, `denetim_`) kısıtlayan
+// yuvalar okunurken değil, onlardan ÖNCE okunan uçlara kadar alınır. Yuvalar okunurken G/Ç iş parçacığı "acil
+// durdurma (n), sifirla (n+1)" çiftini kabul ederse, `sifirla` bu çekişe giremez; acil durdurma ise ya aynı çekişte
+// (evre 1: yuvalardan önce) ya sonraki çekişte `sifirla` ile birlikte görünür. Eski kod yolları okuyup `sifirla`yı
+// çekiyor, acil durdurmayı yuvada bırakıyordu (eski dünyada hiç uygulanmıyordu).
+namespace {
+
+Komut denetim_komutu(std::uint32_t no, ida::a3::KomutTuru tur)
+{
+    Komut k;
+    k.komut_no = no;
+    k.tur = tur;
+    k.beklenen_run_id = "20261124-000000-abcdef";
+    k.beklenen_durum_rev = 7;
+    return k;
+}
+
+// Dönüş: komutun hangi çekişte (1 ya da 2) göründüğü; 0: görünmedi.
+int cekis_no(const std::vector<ida::sunucu::A3Giris>& k1, const std::vector<ida::sunucu::A3Giris>& g1,
+             const std::vector<ida::sunucu::A3Giris>& k2, const std::vector<ida::sunucu::A3Giris>& g2, std::uint32_t no)
+{
+    if (icerir(k1, no) || icerir(g1, no)) {
+        return 1;
+    }
+    return icerir(k2, no) || icerir(g2, no) ? 2 : 0;
+}
+
+}  // namespace
+
+int test_a3_cekis_sirasi()
+{
+    const int hata0 = g_hata_alici;
+    const std::string run = "20261124-000000-abcdef";
+    for (const ida::a3::KomutTuru tur : {ida::a3::KomutTuru::calistirma_sifirla, ida::a3::KomutTuru::calistirma_durdur}) {
+        const char* ad = tur == ida::a3::KomutTuru::calistirma_sifirla ? "sifirla" : "durdur";
+        for (int evre = 1; evre <= 2; ++evre) {
+            ida::sunucu::A3Alici al(false);
+            ida::sunucu::AnlikPod p;
+            p.durum = static_cast<std::uint8_t>(ida::a3::CalistirmaDurumu::kosuyor);
+            p.run_var = true;
+            for (std::size_t i = 0; i < run.size(); ++i) {
+                p.run_id[i] = run[i];
+            }
+            p.durum_rev = 7;
+            p.emniyet_rev = 5;
+            al.anlik_yaz(p);
+            bool verildi = false;
+            ida::a3::AlimSonucu a_acil, a_den;
+            al.cek_kancasi = [&](int e) {
+                if (e == evre && !verildi) {
+                    verildi = true;
+                    a_acil = al.al(acil(10, true, 0));
+                    a_den = al.al(denetim_komutu(11, tur));
+                }
+            };
+            std::vector<ida::sunucu::A3Giris> k1, g1, k2, g2;
+            k1.reserve(16);
+            g1.reserve(512);
+            k2.reserve(16);
+            g2.reserve(512);
+            al.cek(k1, g1);
+            al.cek_kancasi = nullptr;
+            al.cek(k2, g2);
+            const std::string on = std::string("evre ") + std::to_string(evre) + ", acil durdurma (10) + " + ad + " (11): ";
+            dogrula_alici(verildi && a_acil.tur == ida::a3::AlimSonucu::Tur::kuyrukta && a_den.tur == ida::a3::AlimSonucu::Tur::kuyrukta,
+                          on + "iki istek de kuyruğa alındı");
+            const int c_acil = cekis_no(k1, g1, k2, g2, 10);
+            const int c_den = cekis_no(k1, g1, k2, g2, 11);
+            dogrula_alici(c_acil != 0 && c_den != 0, on + "ikisi de iki çekişte alındı (kaybolmadı)");
+            dogrula_alici(c_acil != 0 && c_den != 0 && c_acil <= c_den,
+                          on + "acil durdurma " + ad + "'dan önce ya da aynı çekişte (acil: " + std::to_string(c_acil) + ". çekiş, " + ad +
+                              ": " + std::to_string(c_den) + ". çekiş)");
+            // Aynı çekişte görünüyorlarsa kısıtlayan `kisit`te, denetim komutu `genel`dedir (dünyanın sınır başı
+            // işlemi `sifirla`yı kısıtlayana göre erteleyebilsin).
+            if (c_acil == c_den) {
+                const bool ayni1 = c_acil == 1;
+                dogrula_alici(icerir(ayni1 ? k1 : k2, 10) && icerir(ayni1 ? g1 : g2, 11), on + "aynı çekişte: kısıtlayan `kisit`te, " + ad + " `genel`de");
+            }
+        }
+    }
     return g_hata_alici - hata0;
 }

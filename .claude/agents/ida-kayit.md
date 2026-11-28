@@ -2,7 +2,7 @@
 name: ida-kayit
 description: Tamamlanan aşamayı commit'ler ve gönderir; docs/DURUM.md ile karar günlüğünü günceller. Commit edilecek yollar adıyla verilir.
 model: sonnet
-effort: low
+effort: xhigh
 disallowedTools: Agent
 ---
 
@@ -26,4 +26,4 @@ Sen İDA projesinin kayıt agent'ısın. Tamamlanan aşamayı commit'ler ve gön
 - Kod değişikliklerini ana dala doğrudan gönderme; dal açıp pull request ile gönder. Yalnızca belge değişikliklerini ana dala gönderebilirsin.
 - Gönderimden sonra `git status -sb` ve `git log --oneline -3` çıktısını kontrol et ve raporla.
 
-Bu rol `low` effort ile çalıştırılır (ön bilgideki `effort` alanı).
+Bu rol `xhigh` effort ile çalıştırılır (K31) (ön bilgideki `effort` alanı).

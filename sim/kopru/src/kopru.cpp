@@ -726,6 +726,11 @@ Kopru::Kopru(const KopruAyari& ayar) : ic_(std::make_unique<Ic>())
     i.board_tohum = d7_u64(i.a.ana_tohum, "a1/board_tohum", 0);
     i.pwm.fill(static_cast<double>(i.a.esc_notr_us));
     i.emn = sensor::EmniyetDurumu{};
+    // W5-K55 (A3-K117): revizyon ve doyma bayrağı süreç boyunca yaşar; bu köprü (dünya) verilen değerle
+    // başlar. Değişmez: revizyon azamideyse bayrak kuruludur (rev_artir de böyle kurar).
+    i.emn.emniyet_revizyonu = i.a.ilk_emniyet_rev;
+    i.say.emniyet_revizyonu = i.a.ilk_emniyet_rev;
+    i.say.emniyet_rev_doydu = i.a.ilk_emniyet_rev_doydu || i.a.ilk_emniyet_rev == kRevAzami;
     i.izin_bitis.fill(0);
     i.rev_girdi[i.emn.emniyet_revizyonu] = RevDurum{i.girdi_kodu(), i.izin_kodu()};   // W4-K12
 }
@@ -926,6 +931,9 @@ std::uint64_t Kopru::board_tohumu() const { return ic_->board_tohum; }
 std::string Kopru::yapilandirma_hatasi() const
 {
     const KopruAyari& a = ic_->a;
+    if (a.ilk_emniyet_rev == 0u) {
+        return "ilk_emniyet_rev 0 olamaz (A3-K117: revizyon 1…0xFFFFFFFF; A1'de safety_rev 0 \"yok\" demektir)";
+    }
     if (a.valid_for_ns < 60 * kMs || a.valid_for_ns > 450 * kMs) {
         return "valid_for_ns 60–450 ms dışında (E2, E3)";
     }
