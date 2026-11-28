@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const kok = dirname(dirname(fileURLToPath(import.meta.url)));
-export const PANELLER = ['index', 'durum', 'grafik', 'harita', 'sonar', 'atis', 'senaryo'];
+export const PANELLER = ['index', 'durum', 'grafik', 'harita', 'sonar', 'atis', 'emniyet', 'senaryo'];
 
 /** Panel derleme ayarı (gelistir.mjs de kullanır). */
 export function panelAyari({ uretim }) {

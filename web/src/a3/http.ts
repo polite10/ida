@@ -3,8 +3,9 @@
 // Her `/api/` isteği `Authorization: Bearer <jeton>` taşır (A3-K06). Durum
 // değiştiren istekler ayrıca `Ida-Istemci` başlığı ve gövdede `istek_kimligi`
 // taşır (A3-K50). Çalıştırma kontrolü ve senaryo yükleme dışında durum değiştiren
-// sarmalayıcı yoktur: emniyet girdisini değiştiren, yer istasyonu komutu gönderen ya da
-// atışa giden bir yöntem bu kitaplıkta bulunmaz (W5-K46, A3-K99).
+// sarmalayıcı yoktur: atışa giden bir yöntem bu kitaplıkta bulunmaz (A3-K99). Emniyet girdisi ve
+// yer istasyonu isteklerinin tamamı tek modülde toplanır: `emniyet-istek.ts` (W5-web-emniyet);
+// bu dosya onlar için yalnız `kimlikliIstek` ve `komut` taşımasını sunar.
 
 import { HTTP_TABAN_YOLU } from './katalog';
 import type {
@@ -192,6 +193,12 @@ export class A3Http {
       beklenen_durum_rev: beklenen.durum_rev,
       ...girdi,
     });
+  }
+
+  /** Durum değiştirmeyen ama `Ida-Istemci` isteyen POST (onay jetonu; A3-K93, K103). */
+  async kimlikliIstek<T>(yol: string, govde: Record<string, unknown>): Promise<T> {
+    if (this.istemciId === null) await this.istemciKaydet();
+    return this.istek<T>('POST', yol, govde, { 'Ida-Istemci': String(this.istemciId) });
   }
 
   /** `POST /istemciler` (A3 §2): durum değiştiren isteklerin kimliği. */

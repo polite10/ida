@@ -57,7 +57,7 @@ panelBaslat(
   ({ baglanti: b, icerik }) => {
     icerik.classList.add('atis-izgara');
 
-    const notGosterim = el('span', { class: 'cip notr', title: 'Bu panelde atış tetikleyen ya da emniyet girdisi değiştiren denetim yoktur' }, 'Yalnız gösterim');
+    const notGosterim = el('span', { class: 'cip notr', title: 'Bu panelde atış tetikleyen ya da emniyet girdisi değiştiren denetim yoktur; acil durdur düğmesi ortak şeritte, girdi isteği Girdiler panelindedir' }, 'Yalnız gösterim');
     const revEl = el('span', { class: 'rev', title: 'Emniyet revizyonu (iskelet §3.2; A3-K117)' }, 'rev —');
 
     // ---- 1. Zincir ----

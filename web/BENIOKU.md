@@ -20,7 +20,7 @@ Laboratuvarın tarayıcı arayüzü (iskelet §7; bölüm 08; görev `docs/gorev
 | `npm run olc -- --olc 30` | Beş panel aynı anda açıkken sekme başına işlemci ve bellek ölçer (macOS/Linux; `ps` kullanır) |
 | `npm run olc -- --kopma ekran --paneller durum` | Bağlantı kopması ve toparlanma görüntüleri |
 
-Paneller: `/` (liste), `/panel/durum.html`, `/panel/grafik.html`, `/panel/harita.html`, `/panel/sonar.html`, `/panel/atis.html`, `/panel/senaryo.html`. Erişim jetonu adresin `#erisim=` parçasındadır (A3-K05); panel bağlantıları onu taşır.
+Paneller: `/` (liste), `/panel/durum.html`, `/panel/grafik.html`, `/panel/harita.html`, `/panel/sonar.html`, `/panel/atis.html`, `/panel/emniyet.html`, `/panel/senaryo.html`. Erişim jetonu adresin `#erisim=` parçasındadır (A3-K05); panel bağlantıları onu taşır.
 
 ## Yapı
 
@@ -32,11 +32,12 @@ src/a3/          A3 istemci kitaplığı
   baglanti.ts      sürüm el sıkışması, WebSocket, abonelik, yeniden bağlanma, olay boşluğu doldurma
   http.ts          HTTP uçları (okuma uçları; çalıştırma kontrolü ve senaryo yükleme taşıması)
   komut.ts         KomutYoneticisi: durum değiştiren komutların tek yolu (202 → komut_sonucu eşlemesi, süre sınırı, kopma)
+  emniyet-istek.ts EmniyetIstekleri: emniyet girdisi ve yer istasyonu isteklerinin tek modülü (iki adımlı gevşetme, onay jetonu; DOM yok)
   etkinlik.ts      düğme etkinliği (A3 Tablo 4.7a ve 4.7b; saf işlev)
   hata.ts          A3 §3.9 hata kodlarının Türkçe iletileri
   olay.ts, iletiler.ts
-src/ortak/       kabuk (üst çubuk + durum şeridi), çalıştırma denetimi (denetim.ts), tema, biçimler, olay günlüğü
-src/paneller/    altı panel (durum, grafik, harita, sonar, atış, senaryo) ve kök sayfa
+src/ortak/       kabuk (üst çubuk + durum şeridi), çalıştırma denetimi (denetim.ts), acil durdurma şeridi (acil.ts), yer istasyonu parametre formu (sema-form.ts), tema, biçimler, olay günlüğü
+src/paneller/    yedi panel (durum, grafik, harita, sonar, atış, emniyet girdileri, senaryo) ve kök sayfa
 sayfalar/        HTML iskeletleri
 arac/            derleme, geliştirme, test, ölçüm betikleri; sahte-a3/ (yalnız geliştirme)
 test/            birim, sözleşme ve bağlantı testleri
@@ -44,7 +45,7 @@ test/            birim, sözleşme ve bağlantı testleri
 
 ## Sahte A3 sunucusu
 
-`arac/sahte-a3/` yalnız geliştirme aracıdır; ürünle dağıtılmaz. A3 tel biçimini (HTTP, WebSocket, ikili çerçeveler, abonelik, seyreltme, erişim koruması) konuşur ve yazılı bir senaryoyu **basit kinematikle** oynatır: araç yüzeyde silahsız başlar, silahlanır, 3 m'ye dalar, dört yol noktasını dolaşır, ~72 s'de 3 numaralı itici zayıflar ve denetleyici toparlar, ~100 s ve ~118 s'de senaryodan emniyet girdisi değişir, ~125–140 s fırlatıcı geri okuma arızası kartın okumasını yetkili durumdan ayırır; sonra yüzer, biter ve yeniden başlar. Değerler fizik değildir; panellerde "SAHTE VERİ" rozeti görünür (`sim_surumu` "sahte" ile başlar). `--elle` verilmezse çalıştırma kendiliğinden başlar. Çalıştırma kontrolü uçlarını (`/calistirma/*`), `/senaryo/yukle` ve `/senaryo/dogrula`, `/senaryolar`, `/komutlar/{no}` uçlarını sözleşme şemalarına uygun taklit eder (`arac/sahte-a3/sema.ts` şemaları `a3-kanallar.json`'dan doğrular); senaryo dosyaları ve A5 raporu sahtedir (üç küçük dosya, iki satırlık kural). Emniyet, yer istasyonu, arıza, kayıt ve izleme uçlarını uygulamaz (404).
+`arac/sahte-a3/` yalnız geliştirme aracıdır; ürünle dağıtılmaz. A3 tel biçimini (HTTP, WebSocket, ikili çerçeveler, abonelik, seyreltme, erişim koruması) konuşur ve yazılı bir senaryoyu **basit kinematikle** oynatır: araç yüzeyde silahsız başlar, silahlanır, 3 m'ye dalar, dört yol noktasını dolaşır, ~72 s'de 3 numaralı itici zayıflar ve denetleyici toparlar, ~100 s ve ~118 s'de senaryodan emniyet girdisi değişir, ~125–140 s fırlatıcı geri okuma arızası kartın okumasını yetkili durumdan ayırır; sonra yüzer, biter ve yeniden başlar. Değerler fizik değildir; panellerde "SAHTE VERİ" rozeti görünür (`sim_surumu` "sahte" ile başlar). `--elle` verilmezse çalıştırma kendiliğinden başlar. Çalıştırma kontrolü uçlarını (`/calistirma/*`), `/senaryo/yukle` ve `/senaryo/dogrula`, `/senaryolar`, `/komutlar/{no}` uçlarını sözleşme şemalarına uygun taklit eder (`arac/sahte-a3/sema.ts` şemaları `a3-kanallar.json`'dan doğrular); senaryo dosyaları ve A5 raporu sahtedir (üç küçük dosya, iki satırlık kural). Emniyet girdisi (`/emniyet`, `/emniyet/onay_jetonu`, `/emniyet/degistir`) ve yer istasyonu (`/yer_istasyonu/komutlar`, `/onay_jetonu`, `/komut`) uçlarını sözleşmeye uygun taklit eder (iki adımlı gevşetme, tek kullanımlık jeton, revizyon bağı; `protocol/komutlar.json` listesi); arıza, kayıt ve izleme uçlarını uygulamaz (404).
 
 ## Araçlar ve bağımlılıklar
 
@@ -66,6 +67,17 @@ Her panelin durum şeridinin altındaki satır çalıştırmayı denetler: başl
 - **İyimser gösterim yoktur (W5-K44).** Komut "gönderiliyor" → "kuyrukta · uygulanmadı" → "uygulandı" / "reddedildi" / "sonuç bilinmiyor" diye ayrı gösterilir; çalıştırma durumu şeritte yalnız sunucu yeni durumu bildirince değişir. Komut ekranın gösterdiği `run_id` ve `durum_rev` ile gider; eski bir ekran sunucuda `durum_rev_uyusmuyor` ile reddedilir ve bu görünür.
 - **Süre sınırı ve kopma:** sonuç `komut_sonucu` olayıyla beklenir, olay kaçarsa `GET /komutlar/{no}` sorulur; 15 s (başlat için 60 s) içinde sonuç gelmezse ya da bağlantı koparsa kayıt "sonuç bilinmiyor" olur; sonra sonuç öğrenilirse kayıt düzelir.
 - HIL kiplerinde duraklatma çalıştırmayı geçersiz kıldığı için onay ister (tarayıcı onay kutusu); adımla ve hız HIL'de kapalıdır.
-- Emniyet, yer istasyonu ve atışa giden hiçbir denetim yoktur (W5-K46, A3-K99).
+- Çalıştırma denetimi satırında emniyet, yer istasyonu ya da atışa giden denetim yoktur (W5-K46, A3-K99); emniyet istekleri aşağıdaki bölümdedir.
 
 **Senaryo paneli** (`/panel/senaryo.html`): dosya listesi, salt okunur metin, doğrula (A5 raporu: kural, yol, satır; bulgulu satırlar metinde işaretlenir), yükle, yüklü çözümlenmiş senaryonun özeti ve ön denetim raporu. Sunucu bir ucu sunmuyorsa (404/405) ilgili bölüm bunu söyler ve yeniden denemez (W5-K45); çalıştırma denetimi buna bağlı değildir.
+
+## Emniyet girdileri ve yer istasyonu komutu (W5-web-emniyet)
+
+Emniyet kararını sunucu ve çekirdek verir (A3 §4.11, §4.15); panel yalnız istek gönderir ve sunucunun bildirdiğini gösterir. Tek yol `src/a3/emniyet-istek.ts`'tir (`EmniyetIstekleri`); `KomutYoneticisi` ile aynı kayıt ve sonuç izlemeyi kullanır.
+
+- **Acil durdur düğmesi** (`src/ortak/acil.ts`) her panelin üst bloğundadır: tek adım, onay yok. Emniyeti artıran yön olduğu için gövdesi onay, jeton ve `beklenen_emniyet_rev` taşımaz; sunucu da onu revizyon ya da bayat `run_id` yüzünden reddetmez (A3-K92, K119; W4-K19). Kısayolu yoktur.
+- **Emniyet girdileri paneli** (`/panel/emniyet.html`): acil durdurma, tüp başına silahlandırma fişi ve emniyet pimi. Artıran yön (basılı, fiş çıkarılmış, pim takılı) tek adım. Azaltan yön iki adım: önce "…" düğmesiyle onay jetonu istenir, sonra işaretsiz başlayan onay kutusu işaretlenip gönderilir. Tabloda yetkili durum (sim) ile kartın geri okuması yan yana, ikisi de yalnız `emniyet/girdiler` kanalından.
+- **W5-K51:** düğmeye basmak göstergeyi değiştirmez; gösterge yalnız sunucunun `emniyet/girdiler` çerçevesinden gelir. Bağlantı kopukken istek başlatılmaz: açıkça **UYGULANMADI** ve yeniden basma gereği gösterilir. Gönderim başladıktan sonra yanıt kaybolursa **SONUÇ BİLİNMİYOR** yazılır; 202 yalnız **KUYRUKTA** demektir. Nihai sonuç ayrı satırda, sunucunun sonucu geldiğinde gösterilir. WebSocket'in kopması HTTP isteğinin ulaşmadığını kanıtlamaz; başlamış istek için uygulanmadı varsayımı yapılmaz.
+- **W5-K52:** azaltan istek hiçbir koşulda kendiliğinden yinelenmez. Jeton tek kullanımlıktır, gönderilirken tüketilir; bekleyen jeton yanıtı kopma, vazgeçme ya da yeni istekten sonra eski onayı geri getiremez; süre dolarsa (istemci tarafında 10 s − 1 s pay; sunucu ömrü 10 s, A3-K94), emniyet revizyonu artarsa, bağlantı koparsa, istek reddedilirse ya da sonucu bilinmezse jeton düşer ve iki adım baştan yapılır. Artıran yönde revizyon çakışması yoktur (revizyon bağı taşımaz), bu yüzden "güncel revizyonla yeniden gönderme" yazılmamıştır; hiçbir istek yinelenmez.
+- **W5-K53:** azaltan yön için klavye kısayolu, toplu eylem ve önceden işaretli onay yoktur; jeton yalnız bellekte durur (depolamaya ve adres çubuğuna yazılmaz). Onay sayfa içindedir (tarayıcı `confirm` kullanılmaz).
+- **W5-K54:** yer istasyonu bölümü yalnız sunucunun `GET /yer_istasyonu/komutlar` listesini gösterir; atış isteği komutu (`fc_fire`) bu panelde gösterilmez ve istemci listeye komut eklemez. Parametre formu komutun JSON Schema'sından üretilir (`sema-form.ts`; sunucu doğrulaması asıldır); basit türlerin dışındaki şemalar "bu formda desteklenmiyor" diye bildirilir. Genişletici komut (`onay: true`) iki adımlıdır; daraltıcı ve nötr komut tek adımdır.

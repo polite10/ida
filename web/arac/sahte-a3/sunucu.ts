@@ -11,7 +11,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 
 import { BAYRAK, kanalBul } from '../../src/a3/cerceve';
@@ -53,6 +53,8 @@ export interface SahteSunucuAyari {
   emniyetKipi?: EmniyetKipi;
   /** Elle yönetim: çalıştırma yalnız A3 komutlarıyla başlar ve ilerler (panelden denetim). */
   elle?: boolean;
+  /** Onay jetonu ömrü (ms); varsayılan 10 000 (A3-K94). Testler jetonu `jetonlariSonlandir` ile de düşürür. */
+  jetonOmruMs?: number;
 }
 
 export interface SahteSunucu {
@@ -72,6 +74,10 @@ export interface SahteSunucu {
     olayEkle(): void;
     /** Kuyruktaki komutları uygulamaz (sonuç gecikmesi benzetimi); false verilince boşaltır. */
     komutlariTut(tut: boolean): void;
+    /** Verilmiş bütün onay jetonlarını sunucu tarafında geçersiz kılar (süre dolumu öykünmesi). */
+    jetonlariSonlandir(): void;
+    /** Başka bir kısıtlamanın kabulünü öykünür: `emniyet_rev` bir artar ve yayınlanır. */
+    emniyetRevArtir(): void;
     /** Alınan durum değiştiren isteklerin kaydı (yöntem, yol, başlıklar, gövde, yanıt). */
     readonly istekKaydi: { yontem: string; yol: string; istemci: string | null; govde: unknown; http: number; yanit: unknown }[];
   };
@@ -310,6 +316,48 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     govde: Record<string, unknown>;
   }
   const komutKuyrugu: BekleyenKomut[] = [];
+  // ---- Emniyet ve yer istasyonu (W5-web-emniyet): onay jetonları, A3-K91…K95, K100…K104, K118 ----
+  interface JetonKaydi {
+    istemci: number;
+    run_id: string | null;
+    rev: number;
+    islem: string;
+    alindi: number;
+  }
+  const jetonlar = new Map<string, JetonKaydi>();
+  const jetonOmru = ayar.jetonOmruMs ?? 10_000;
+  const kanonik = (v: unknown): string => {
+    if (Array.isArray(v)) return `[${v.map(kanonik).join(',')}]`;
+    if (v !== null && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonik(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(v);
+  };
+  interface KomutTanimiSahte {
+    ad: string;
+    sinif: 'daraltici' | 'genisletici' | 'notr';
+    onay: boolean;
+    parametreler: Record<string, unknown>;
+    sonuc: unknown;
+    bilesik: boolean;
+  }
+  const yerKatalogu: { surum: string; komutlar: KomutTanimiSahte[] } = (() => {
+    try {
+      const yol = join(dirname(ayar.katalogYolu), '..', '..', '..', 'protocol', 'komutlar.json');
+      return JSON.parse(readFileSync(yol, 'utf8')) as { surum: string; komutlar: KomutTanimiSahte[] };
+    } catch {
+      const bos = { type: 'object', additionalProperties: false, properties: {}, required: [] };
+      return {
+        surum: '1.0',
+        komutlar: [
+          { ad: 'arm', sinif: 'genisletici', onay: true, parametreler: bos, sonuc: null, bilesik: false },
+          { ad: 'fc_disarm', sinif: 'daraltici', onay: false, parametreler: bos, sonuc: null, bilesik: false },
+          { ad: 'fc_fire', sinif: 'genisletici', onay: true, parametreler: { type: 'object', additionalProperties: false, properties: { tube: { type: 'integer', minimum: 0, maximum: 1 } }, required: ['tube'] }, sonuc: null, bilesik: false },
+        ],
+      };
+    }
+  })();
   /** Yineleme anahtarı (A3-K53): istemci|yöntem|yol|istek_kimligi -> gövde + yanıt. */
   const yinelemeler = new Map<string, { govde: string; http: number; yanit: unknown }>();
 
@@ -815,6 +863,9 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
         emniyet_rev: oz.emniyet_rev,
       });
     }
+    if (y === 'GET' && yol === '/yer_istasyonu/komutlar') return json(res, 200, yerKatalogu);
+    if (y === 'POST' && (yol === '/emniyet/onay_jetonu' || yol === '/yer_istasyonu/onay_jetonu')) return jetonIsle(req, res, yol);
+    if (y === 'POST' && (yol === '/emniyet/degistir' || yol === '/yer_istasyonu/komut')) return emniyetKomutIsle(req, res, yol);
     if (y === 'GET' && yol === '/arizalar/etkin') {
       const sinif = ['sensor', 'aktuator', 'guc', 'baglanti', 'protokol', 'sistem'];
       return json(res, 200, {
@@ -971,9 +1022,160 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
     return sonuc(202, { sonuc: 'kuyrukta', komut_no: no });
   }
 
-  /** Dünyanın adım sınırı: kuyruktaki komutlar `komut_no` sırasıyla uygulanır (A3-K57). */
+
+  const CANLI = ['hazirlaniyor', 'kosuyor', 'duraklatildi'];
+  const GIRDI_DEGERI: Record<string, number> = { basili: 1, serbest: 0, takili: 1, cikarilmis: 0 };
+  const emniyetArtiranMi = (b: Record<string, unknown>): boolean =>
+    b.girdi === 'acil_durdurma' ? b.hedef_durum === 'basili' : b.girdi === 'silahlandirma_fisi' ? b.hedef_durum === 'cikarilmis' : b.hedef_durum === 'takili';
+  const islemOzeti = (yol: string, b: Record<string, unknown>): string =>
+    yol.startsWith('/emniyet') ? `emniyet|${String(b.girdi)}|${String(b.tup ?? '')}|${String(b.hedef_durum)}` : `yer|${String(b.komut)}|${kanonik(b.parametreler)}`;
+
+  /** Kimlik, gövde ve şema denetimleri (A3-K50, K51); hata varsa yanıtı yazar ve null döner. */
+  async function onHazirlik(req: IncomingMessage, res: ServerResponse, yol: string, semaAdi: string) {
+    const kayit = { yontem: 'POST', yol: '/api/v1' + yol, istemci: (req.headers['ida-istemci'] as string | undefined) ?? null, govde: null as unknown, http: 0, yanit: null as unknown };
+    const yanitla = (http: number, nesne: unknown): void => {
+      kayit.http = http;
+      kayit.yanit = nesne;
+      istekKaydi.push(kayit);
+      json(res, http, nesne);
+    };
+    const reddet = (http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>, no: number | null = null): void =>
+      yanitla(http, { sonuc: 'ret', komut_no: no, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
+    const istemciId = Number(kayit.istemci);
+    if (kayit.istemci === null || !istemciler.has(istemciId)) {
+      await govdeOku(req, 1 << 20);
+      reddet(400, 'gecersiz_istek', 'Ida-Istemci başlığı yok ya da istemci kayıtlı değil (A3-K50)');
+      return null;
+    }
+    const g = await jsonGovde(req, res, 1 << 20);
+    if (g === null) return null;
+    kayit.govde = g;
+    const hata = semaDogrula(sema, sema.$defs[semaAdi]!, g);
+    if (hata.length > 0) {
+      reddet(400, 'gecersiz_istek', hata.join('; '));
+      return null;
+    }
+    return { kayit, yanitla, reddet, istemciId, b: g as Record<string, unknown> };
+  }
+
+  function komutParametreHatasi(b: Record<string, unknown>): { http: number; kod: string; ileti: string } | null {
+    const t = yerKatalogu.komutlar.find((k) => k.ad === b.komut);
+    if (t === undefined) return { http: 422, kod: 'komut_listede_yok', ileti: 'komut katalogda yok (A3-K100)' };
+    const h = semaDogrula(sema, t.parametreler, b.parametreler);
+    return h.length > 0 ? { http: 422, kod: 'gecersiz_deger', ileti: h.join('; ') } : null;
+  }
+
+  /** `POST /emniyet/onay_jetonu` ve `POST /yer_istasyonu/onay_jetonu` (A3-K93, K94, K103). */
+  async function jetonIsle(req: IncomingMessage, res: ServerResponse, yol: string): Promise<void> {
+    const emn = yol.startsWith('/emniyet');
+    const c = await onHazirlik(req, res, yol, emn ? 'istek_onay_jetonu_emniyet' : 'istek_onay_jetonu_yer_istasyonu');
+    if (c === null) return;
+    const oz = dunya.ozet();
+    if (!CANLI.includes(oz.durum)) return c.reddet(409, 'canli_calistirma_yok', 'komut canlı bir çalıştırma gerektiriyor');
+    if (c.b.beklenen_run_id !== oz.run_id) return c.reddet(409, 'beklenen_durum_uyusmuyor', 'beklenen_run_id güncel değil', { guncel_run_id: oz.run_id, guncel_durum: oz.durum });
+    if (emn && emniyetArtiranMi(c.b)) return c.reddet(400, 'gecersiz_istek', 'emniyeti artıran yön onay jetonu istemez (A3-K92)');
+    if (!emn) {
+      const h = komutParametreHatasi(c.b);
+      if (h !== null) return c.reddet(h.http, h.kod, h.ileti);
+      const t = yerKatalogu.komutlar.find((k) => k.ad === c.b.komut)!;
+      if (!t.onay) return c.reddet(400, 'gecersiz_istek', 'bu komut onay jetonu istemez (A3-K104)');
+    }
+    const kod = randomBytes(16).toString('hex');
+    jetonlar.set(kod, { istemci: c.istemciId, run_id: oz.run_id, rev: oz.emniyet_rev, islem: islemOzeti(yol, c.b), alindi: Date.now() });
+    return c.yanitla(200, { sonuc: 'kabul', onay_jetonu: kod, gecerlilik_ms: 10000, run_id: oz.run_id, emniyet_rev: oz.emniyet_rev });
+  }
+
+  /** `POST /emniyet/degistir` ve `POST /yer_istasyonu/komut` (A3-K91…K95, K100…K104, K118, K119). */
+  async function emniyetKomutIsle(req: IncomingMessage, res: ServerResponse, yol: string): Promise<void> {
+    const emn = yol.startsWith('/emniyet');
+    const c = await onHazirlik(req, res, yol, emn ? 'istek_emniyet_degistir' : 'istek_yer_istasyonu_komut');
+    if (c === null) return;
+    const b = c.b;
+    // Yineleme (A3-K53)
+    const anahtar = `${c.istemciId}|POST|${yol}|${String(b.istek_kimligi)}`;
+    const ham = JSON.stringify(b);
+    const eski = yinelemeler.get(anahtar);
+    if (eski !== undefined) {
+      if (eski.govde !== ham) return c.reddet(409, 'kimlik_cakismasi', 'aynı istek kimliği farklı gövdeyle');
+      return c.yanitla(eski.http, { ...(eski.yanit as Record<string, unknown>), yineleme: true });
+    }
+    const no = ++komutNo;
+    const sonuc = (http: number, nesne: unknown): void => {
+      yinelemeler.set(anahtar, { govde: ham, http, yanit: nesne });
+      c.yanitla(http, nesne);
+    };
+    const red = (http: number, kod: string, ileti: string, ayrinti?: Record<string, unknown>): void =>
+      sonuc(http, { sonuc: 'ret', komut_no: no, hata: ayrinti ? { kod, ileti, ayrinti } : { kod, ileti } });
+    const oz = dunya.ozet();
+    if (!CANLI.includes(oz.durum)) return red(409, 'canli_calistirma_yok', 'komut canlı bir çalıştırma gerektiriyor');
+    let kisitlayan: boolean;
+    if (emn) kisitlayan = emniyetArtiranMi(b);
+    else {
+      const h = komutParametreHatasi(b);
+      if (h !== null) return red(h.http, h.kod, h.ileti);
+      kisitlayan = yerKatalogu.komutlar.find((k) => k.ad === b.komut)!.sinif === 'daraltici';
+    }
+    if (!kisitlayan) {
+      if (b.beklenen_run_id !== oz.run_id) return red(409, 'beklenen_durum_uyusmuyor', 'beklenen_run_id güncel değil', { guncel_run_id: oz.run_id, guncel_durum: oz.durum });
+    }
+    const onayli = emn ? !kisitlayan : yerKatalogu.komutlar.find((k) => k.ad === b.komut)!.onay;
+    if (onayli) {
+      // Gevşeten: A3-K93, K94, K103, K118. Nötr komut kısıtlayan değildir.
+      const jetonKodu = typeof b.onay_jetonu === 'string' ? b.onay_jetonu : null;
+      if (b.onay !== true || jetonKodu === null) return red(409, 'onay_gerekli', 'gevşetme onay ve onay jetonu ister (A3-K93)');
+      if (typeof b.beklenen_emniyet_rev !== 'number') return red(400, 'gecersiz_istek', 'beklenen_emniyet_rev zorunlu (A3-K118)');
+      const j = jetonlar.get(jetonKodu);
+      jetonlar.delete(jetonKodu); // tek kullanım: kabul ya da ret (A3-K94)
+      if (b.beklenen_emniyet_rev !== oz.emniyet_rev) return red(409, 'emniyet_rev_uyusmuyor', 'beklenen_emniyet_rev güncel değil', { guncel_emniyet_rev: oz.emniyet_rev });
+      if (j === undefined || j.istemci !== c.istemciId || Date.now() - j.alindi >= jetonOmru || j.rev !== oz.emniyet_rev || j.run_id !== oz.run_id || j.islem !== islemOzeti(yol, b)) {
+        return red(409, 'onay_jetonu_gecersiz', 'onay jetonu geçersiz ya da süresi geçmiş');
+      }
+    }
+    komutSonuclari.set(no, { durum: 'kuyrukta' });
+    komutKuyrugu.push({ no, istemci: c.istemciId, komut: emn ? 'emniyet' : 'yer_istasyonu', govde: b });
+    return sonuc(202, { sonuc: 'kuyrukta', komut_no: no });
+  }
+
+  /** Adım sınırında emniyet ve yer istasyonu komutları (A3-K95: kısıtlayanlar önce, gevşetmeler revizyon artmadıysa). */
+  function emniyetKomutUygula(k: BekleyenKomut, buSinirdaKisitlama: boolean): void {
+    const b = k.govde;
+    const oz = dunya.ozet();
+    const emn = k.komut === 'emniyet';
+    const t = emn ? null : yerKatalogu.komutlar.find((t) => t.ad === b.komut)!;
+    const kisitlayan = emn ? emniyetArtiranMi(b) : t!.sinif === 'daraltici';
+    const gevseten = emn ? !kisitlayan : t!.sinif === 'genisletici';
+    let ayrinti: Record<string, unknown>;
+    const kod = !kisitlayan && b.beklenen_run_id !== oz.run_id ? 'beklenen_durum_uyusmuyor'
+      : !kisitlayan && !CANLI.includes(oz.durum) ? 'canli_calistirma_yok'
+      : gevseten && buSinirdaKisitlama ? 'kisitlama_hakim'
+      : gevseten && b.beklenen_emniyet_rev !== oz.emniyet_rev ? 'emniyet_rev_uyusmuyor' : null;
+    if (kod !== null) {
+      komutSonuclari.set(k.no, { durum: 'reddedildi', hata: { kod, ileti: kod } });
+      ayrinti = { komut_no: k.no, sonuc: 'reddedildi', hata_kodu: kod, sonuc_ayrinti: { guncel_emniyet_rev: oz.emniyet_rev } };
+    } else {
+      if (emn) dunya.emniyetOperatorUygula(b.girdi as 'acil_durdurma', b.tup === undefined ? null : b.tup === 'f1' ? 0 : 1, GIRDI_DEGERI[b.hedef_durum as string]!);
+      else if (kisitlayan) dunya.emniyetRevZorlaArtir(); // daraltıcı yer istasyonu komutu revizyonu artırır (A3-K117 md. 1)
+      komutSonuclari.set(k.no, { durum: 'uygulandi', uygulama_adimi: dunya.adim_no });
+      ayrinti = { komut_no: k.no, sonuc: 'uygulandi', uygulama_adimi: dunya.adim_no };
+    }
+    olayiIsle({ tur: 5, onem: 0, kaynak: 1, adim_no: dunya.adim_no, komut_no: k.no, istemci_id: k.istemci, ayrinti });
+    if (!emn && ayrinti.sonuc === 'uygulandi') {
+      olayiIsle({ tur: 11, onem: 0, kaynak: 6, adim_no: dunya.adim_no, komut_no: k.no, istemci_id: k.istemci, ayrinti: { komut_no: k.no, komut: b.komut, durum: 'karta_iletildi' } });
+    }
+  }
+
+  /** A3-K95: kısıtlayan emniyet işlemleri, sonra ötekiler; sınıf içinde komut_no sırası. */
   function komutlariUygula(): void {
-    for (const k of komutKuyrugu.splice(0)) {
+    const kisitlayanMi = (k: BekleyenKomut): boolean => k.komut === 'emniyet' ? emniyetArtiranMi(k.govde)
+      : k.komut === 'yer_istasyonu' && yerKatalogu.komutlar.find((t) => t.ad === k.govde.komut)!.sinif === 'daraltici';
+    const bekleyen = komutKuyrugu.splice(0).sort((a, b) => Number(kisitlayanMi(b)) - Number(kisitlayanMi(a)) || a.no - b.no);
+    let buSinirdaKisitlama = false;
+    for (const k of bekleyen) {
+      if (k.komut === 'emniyet' || k.komut === 'yer_istasyonu') {
+        emniyetKomutUygula(k, buSinirdaKisitlama);
+        if (kisitlayanMi(k)) buSinirdaKisitlama = true;
+        continue;
+      }
       const oz = dunya.ozet();
       let kod: string | null = null;
       if (k.govde.beklenen_run_id !== oz.run_id) kod = 'beklenen_durum_uyusmuyor';
@@ -1076,6 +1278,8 @@ export async function sahteSunucuBaslat(ayar: SahteSunucuAyari): Promise<SahteSu
       komutlariTut: (tut: boolean) => {
         komutTutuldu = tut;
       },
+      jetonlariSonlandir: () => jetonlar.clear(),
+      emniyetRevArtir: () => dunya.emniyetRevZorlaArtir(),
       istekKaydi,
       olayEkle: () => olayiIsle({ tur: 22, onem: 1, kaynak: 0, adim_no: null, ayrinti: { kod: 'test', ileti: 'sınama olayı' } }),
     },

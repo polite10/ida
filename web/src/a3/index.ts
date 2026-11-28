@@ -8,3 +8,4 @@ export * from './baglanti';
 export * from './hata';
 export * from './etkinlik';
 export * from './komut';
+export * from './emniyet-istek';

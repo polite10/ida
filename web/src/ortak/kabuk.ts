@@ -3,12 +3,14 @@
 
 import { A3Baglanti, adrestenAyar, type BaglantiBilgisi } from '../a3/baglanti';
 import { GECERLILIK_NEDENLERI, YUKLER } from '../a3/katalog';
+import { EmniyetIstekleri } from '../a3/emniyet-istek';
 import { KomutYoneticisi } from '../a3/komut';
+import { acilDurdurmaSeridi } from './acil';
 import { calismaDenetimi } from './denetim';
 import { buyuk, durumAdi, kipAdi, sayi, simZamani, sure_ns, tamsayi } from './bicim';
 import { el, sinifSec, yaz } from './dom';
 
-export type PanelAdi = 'durum' | 'grafik' | 'harita' | 'sonar' | 'atis' | 'senaryo';
+export type PanelAdi = 'durum' | 'grafik' | 'harita' | 'sonar' | 'atis' | 'emniyet' | 'senaryo';
 
 export const PANELLER: readonly { ad: PanelAdi; baslik: string; kisa: string; aciklama: string }[] = [
   { ad: 'durum', baslik: 'Araç ve sistem', kisa: 'Durum', aciklama: 'Araç durumu, güç ve iticiler, kart sağlığı, gerçek zaman sayaçları, olay günlüğü' },
@@ -16,6 +18,7 @@ export const PANELLER: readonly { ad: PanelAdi; baslik: string; kisa: string; ac
   { ad: 'harita', baslik: 'Harita', kisa: 'Harita', aciklama: 'NED yerel düzlem: gerçek iz, kestirim izi, yol noktaları, hedef' },
   { ad: 'sonar', baslik: 'Sonar', kisa: 'Sonar', aciklama: 'Ping360 kutupsal tarama ve Ping1D zaman–menzil şeridi' },
   { ad: 'atis', baslik: 'Atış kontrol ve emniyet', kisa: 'Emniyet', aciklama: 'Emniyet zinciri durumu, sanal girdiler ve kart geri okuması (yalnız gösterim)' },
+  { ad: 'emniyet', baslik: 'Emniyet girdileri ve yer istasyonu', kisa: 'Girdiler', aciklama: 'Sanal acil durdurma, silahlandırma fişi ve emniyet pimi (gevşetme iki adımlı); yer istasyonu komutu' },
   { ad: 'senaryo', baslik: 'Senaryo', kisa: 'Senaryo', aciklama: 'Senaryo dosyaları: listele, doğrula, yükle; yüklü senaryo ve ön denetim raporu' },
 ];
 
@@ -31,6 +34,8 @@ export interface Panel {
   baglanti: A3Baglanti;
   /** Durum değiştiren komutların tek yolu (çalıştırma denetimi ve senaryo yükleme). */
   komutlar: KomutYoneticisi;
+  /** Emniyet girdisi ve yer istasyonu isteklerinin tek yolu (acil durdurma düğmesi ve emniyet paneli). */
+  emniyet: EmniyetIstekleri;
   icerik: HTMLElement;
   /** Bağlantı koptuysa ya da hiç kurulmadıysa true (veri bayat). */
   bayat(): boolean;
@@ -271,8 +276,10 @@ export function panelBaslat(ad: PanelAdi, kur: (p: Panel) => void, secenek: Pane
   const serit = durumSeridi(b, ust.sahte);
   const komutlar = new KomutYoneticisi(b);
   const denetim = calismaDenetimi(b, komutlar);
+  const emniyet = new EmniyetIstekleri(b, komutlar);
+  const acil = acilDurdurmaSeridi(b, emniyet, komutlar);
   const icerik = el('main', { class: `icerik ${secenek.icerikSinifi ?? ''}` });
-  kok.append(ust.kok, el('div', { class: 'ust-blok' }, serit.kok, denetim.kok), icerik, kopukPerdesi(b));
+  kok.append(ust.kok, el('div', { class: 'ust-blok' }, serit.kok, denetim.kok, acil.kok), icerik, kopukPerdesi(b));
 
   let ekran: HTMLElement | null = null;
   b.durumDinle((bi) => {
@@ -286,6 +293,6 @@ export function panelBaslat(ad: PanelAdi, kur: (p: Panel) => void, secenek: Pane
     }
   });
 
-  kur({ baglanti: b, komutlar, icerik, bayat: () => b.bilgi.durum !== 'bagli' });
+  kur({ baglanti: b, komutlar, emniyet, icerik, bayat: () => b.bilgi.durum !== 'bagli' });
   b.baslat();
 }
