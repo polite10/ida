@@ -19,7 +19,7 @@ import type { OlayKaydi } from './olay';
 
 export type KomutAsamasi = 'gonderiliyor' | 'kuyrukta' | 'uygulandi' | 'reddedildi' | 'bilinmiyor';
 
-export type KomutAdi = CalistirmaKomutu | 'senaryo_yukle';
+export type KomutAdi = CalistirmaKomutu | 'senaryo_yukle' | 'acil_durdur';
 
 export interface KomutKaydi {
   /** Bu istemci içinde artan yerel numara. */
@@ -64,6 +64,7 @@ export const KOMUT_ETIKETLERI: Readonly<Record<KomutAdi, string>> = {
   durdur: 'Durdur',
   sifirla: 'Sıfırla',
   senaryo_yukle: 'Senaryo yükle',
+  acil_durdur: 'Sanal acil durdurma',
 };
 
 const SONUC_ARABELLEGI = 256;
@@ -208,6 +209,47 @@ export class KomutYoneticisi {
     k.ileti = 'sunucu kabul etti (kuyrukta); uygulanması bekleniyor';
     this.bildir(k);
     return this.sonucuBekle(k, komut === 'baslat' ? this.ayar.baslatSureMs : this.ayar.sureMs);
+  }
+
+  /** Yalnız basma isteği; HTTP kabulü telemetriyi değiştirmez ve tamamlanma sayılmaz. */
+  async acilDurdur(): Promise<KomutKaydi> {
+    if (this.kapali) throw new Error('komut yöneticisi kapatıldı');
+    if (this.gonderilirken('acil_durdur')) {
+      return this.engel('acil_durdur', 'gonderiliyor', 'Aynı komut zaten gönderiliyor; yanıt bekleniyor.');
+    }
+    if (this.baglanti.bilgi.durum !== 'bagli') {
+      return this.engel('acil_durdur', 'durum_yok', 'Gönderilmedi: sunucuyla bağlantı yok.');
+    }
+    const runId = this.beklenen()?.run_id ?? null;
+    const k = this.yeni('acil_durdur');
+    // Yalnız bu gönderim: istemci kaydı + POST + yanıt gövdesi toplam en çok 5 s.
+    // Abort sonrası sonuç belirsizdir; sonraki elle tıklama yeniden gönderilebilir.
+    const iptal = new AbortController();
+    const zamanlayici = setTimeout(() => iptal.abort(), Math.min(5_000, this.ayar.sureMs));
+    try {
+      // A3-K54 1.0.1: kısıtlayan isteğin eski run_id ile uyuşmaması ret nedeni
+      // değildir; ilk çerçeve gelmeden de null ile durdurmayı geciktirme.
+      const yanit = await this.baglanti.http.acilDurdur(runId, iptal.signal);
+      k.komut_no = yanit.komut_no;
+      this.komutNoyaGore.set(yanit.komut_no, k);
+      k.asama = 'kuyrukta';
+      k.ileti = 'sunucu kabul etti (kuyrukta); uygulanması bekleniyor';
+      this.bildir(k);
+      // HTTP yanıtı beklenirken kopmuşsa yeni bir gönderim yapılmaz; sonuç belirsizdir.
+      if (this.baglanti.bilgi.durum !== 'bagli') {
+        const ara = this.sonucArabellegi.get(yanit.komut_no);
+        if (ara !== undefined && this.arabellektenUygula(k, ara)) return k;
+        this.bitir(k, 'bilinmiyor', 'baglanti_koptu', hataIletisi('baglanti_koptu'), null);
+        return k;
+      }
+      return this.sonucuBekle(k, this.ayar.sureMs);
+    } catch (h) {
+      if (iptal.signal.aborted) this.bitir(k, 'bilinmiyor', 'zaman_asimi', hataIletisi('zaman_asimi'), null);
+      else this.gonderimHatasi(k, h);
+      return k;
+    } finally {
+      clearTimeout(zamanlayici);
+    }
   }
 
   /**

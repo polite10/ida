@@ -168,7 +168,7 @@ export function calismaDenetimi(b: A3Baglanti, komutlar: KomutYoneticisi): { kok
     guncelle();
   });
   b.durumDinle(() => guncelle());
-  komutlar.dinle((liste) => komutGoster(liste));
+  komutlar.dinle((liste) => komutGoster(liste.filter((k) => k.komut !== 'acil_durdur')));
   guncelle();
   return { kok };
 }
