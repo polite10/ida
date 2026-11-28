@@ -5,6 +5,7 @@ import { A3Baglanti, adrestenAyar, type BaglantiBilgisi } from '../a3/baglanti';
 import { GECERLILIK_NEDENLERI, YUKLER } from '../a3/katalog';
 import { KomutYoneticisi } from '../a3/komut';
 import { calismaDenetimi } from './denetim';
+import { acilDurdurmaDenetimi } from './acil-durdurma';
 import { buyuk, durumAdi, kipAdi, sayi, simZamani, sure_ns, tamsayi } from './bicim';
 import { el, sinifSec, yaz } from './dom';
 
@@ -29,7 +30,7 @@ export const MARKA_SVG = `<svg class="marka-simge" viewBox="0 0 24 24" fill="non
 
 export interface Panel {
   baglanti: A3Baglanti;
-  /** Durum değiştiren komutların tek yolu (çalıştırma denetimi ve senaryo yükleme). */
+  /** Durum değiştiren komutların tek yolu. */
   komutlar: KomutYoneticisi;
   icerik: HTMLElement;
   /** Bağlantı koptuysa ya da hiç kurulmadıysa true (veri bayat). */
@@ -271,8 +272,9 @@ export function panelBaslat(ad: PanelAdi, kur: (p: Panel) => void, secenek: Pane
   const serit = durumSeridi(b, ust.sahte);
   const komutlar = new KomutYoneticisi(b);
   const denetim = calismaDenetimi(b, komutlar);
+  const acil = acilDurdurmaDenetimi(b, komutlar);
   const icerik = el('main', { class: `icerik ${secenek.icerikSinifi ?? ''}` });
-  kok.append(ust.kok, el('div', { class: 'ust-blok' }, serit.kok, denetim.kok), icerik, kopukPerdesi(b));
+  kok.append(ust.kok, el('div', { class: 'ust-blok' }, serit.kok, acil.kok, denetim.kok), icerik, kopukPerdesi(b));
 
   let ekran: HTMLElement | null = null;
   b.durumDinle((bi) => {

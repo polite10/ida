@@ -2,9 +2,8 @@
 //
 // Her `/api/` isteği `Authorization: Bearer <jeton>` taşır (A3-K06). Durum
 // değiştiren istekler ayrıca `Ida-Istemci` başlığı ve gövdede `istek_kimligi`
-// taşır (A3-K50). Çalıştırma kontrolü ve senaryo yükleme dışında durum değiştiren
-// sarmalayıcı yoktur: emniyet girdisini değiştiren, yer istasyonu komutu gönderen ya da
-// atışa giden bir yöntem bu kitaplıkta bulunmaz (W5-K46, A3-K99).
+// taşır (A3-K50). Sanal acil durdurmanın yalnız basılması için sabit bir yol vardır;
+// çalıştırma kontrolü ve senaryo yükleme de bu kimlik altyapısını kullanır.
 
 import { HTTP_TABAN_YOLU } from './katalog';
 import type {
@@ -62,9 +61,10 @@ export class A3Http {
     return this.taban.replace(/\/$/, '') + HTTP_TABAN_YOLU + yol;
   }
 
-  async istek<T>(yontem: string, yol: string, govde?: unknown, ekBaslik?: Record<string, string>): Promise<T> {
+  async istek<T>(yontem: string, yol: string, govde?: unknown, ekBaslik?: Record<string, string>, sinyal?: AbortSignal): Promise<T> {
     const baslik: Record<string, string> = { Authorization: `Bearer ${this.jeton}`, ...ekBaslik };
     const ayar: RequestInit = { method: yontem, headers: baslik, cache: 'no-store' };
+    if (sinyal !== undefined) ayar.signal = sinyal;
     if (govde !== undefined) {
       baslik['Content-Type'] = 'application/json';
       ayar.body = JSON.stringify(govde);
@@ -195,8 +195,8 @@ export class A3Http {
   }
 
   /** `POST /istemciler` (A3 §2): durum değiştiren isteklerin kimliği. */
-  async istemciKaydet(ad = 'panel'): Promise<number> {
-    const y = await this.istek<YanitIstemci>('POST', '/istemciler', { ad: ad.slice(0, 64) });
+  async istemciKaydet(ad = 'panel', sinyal?: AbortSignal): Promise<number> {
+    const y = await this.istek<YanitIstemci>('POST', '/istemciler', { ad: ad.slice(0, 64) }, undefined, sinyal);
     this.istemciId = y.istemci_id;
     return y.istemci_id;
   }
@@ -210,10 +210,19 @@ export class A3Http {
    * `istek_kimligi` verilmezse rastgele üretilir; yeniden denemede aynı kimlik
    * verilerek yineleme güvencesi (A3-K53) kullanılabilir.
    */
-  async komut<T = YanitKuyrukta>(yol: string, govde: Record<string, unknown>): Promise<T> {
-    if (this.istemciId === null) await this.istemciKaydet();
+  async komut<T = YanitKuyrukta>(yol: string, govde: Record<string, unknown>, sinyal?: AbortSignal): Promise<T> {
+    if (this.istemciId === null) await this.istemciKaydet('panel', sinyal);
     const g = { istek_kimligi: istekKimligi(), ...govde };
-    return this.istek<T>('POST', yol, g, { 'Ida-Istemci': String(this.istemciId) });
+    return this.istek<T>('POST', yol, g, { 'Ida-Istemci': String(this.istemciId) }, sinyal);
+  }
+
+  /** A3-K90/K92: tek yönlü sanal acil durdurma; onay ya da revizyon istemez. */
+  acilDurdur(runId: string | null, sinyal?: AbortSignal): Promise<YanitKuyrukta> {
+    return this.komut('/emniyet/degistir', {
+      beklenen_run_id: runId,
+      girdi: 'acil_durdurma',
+      hedef_durum: 'basili',
+    }, sinyal);
   }
 
   /**

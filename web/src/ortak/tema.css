@@ -831,6 +831,15 @@ button {
   margin-right: 4px;
 }
 
+.acil-durdurma-dugme {
+  border: 2px solid var(--kotu);
+  color: var(--kotu);
+  font-weight: 800;
+}
+.acil-durdurma-durum {
+  font-size: 12px;
+}
+
 .denetim-grup {
   display: inline-flex;
   align-items: center;
